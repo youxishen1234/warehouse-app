@@ -15,6 +15,9 @@ jobs:
       - name: Install CocoaPods
         run: sudo gem install cocoapods
 
+      - name: Install npm dependencies
+        run: npm install --legacy-peer-deps
+
       - name: Sync Capacitor
         run: npx cap sync ios
 
