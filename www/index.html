@@ -6,7 +6,7 @@
         };
         set();
         window.addEventListener('resize', set);
-      })();</script><script>// App 内热更新引导（仅原生环境生效）：启动时检查云端版本，后台静默下载，下次启动生效
+      })();</script><script>// App 内热更新（仅原生环境生效）：启动时向服务器检查版本，后台静默下载，下次启动生效；全过程上报服务器
       (function() {
         try {
           var cap = window.Capacitor;
@@ -15,7 +15,26 @@
           if (!TU) return;
           // 上报启动成功，防止插件误回滚
           TU.notifyAppReady().catch(function() {});
-          var BASE = 'https://blast-afterwards-management-applications.trycloudflare.com/appupdate/';
+
+          // 服务器/更新地址：优先使用「我的-服务器地址」里保存的自定义地址，否则用默认穿透地址
+          var ROOT = (function() {
+            try {
+              var c = localStorage.getItem('sg_custom_base');
+              if (c && c.length) return /\/$/.test(c) ? c : c + '/';
+            } catch (e) {}
+            return 'https://inkjet-reliability-nerve-tee.trycloudflare.com/';
+          })();
+          var API = ROOT + 'api/appupdate/';
+          var FILES = ROOT + 'appupdate/';
+
+          // 设备唯一标识（本机持久化，用于服务器统计）
+          var did = localStorage.getItem('sg_did');
+          if (!did) {
+            did = 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+            localStorage.setItem('sg_did', did);
+          }
+          var platform = (cap.getPlatform && cap.getPlatform()) || 'native';
+
           var toast = function(msg) {
             var el = document.createElement('div');
             el.style.cssText = 'position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 12px);transform:translateX(-50%);max-width:82%;padding:10px 18px;background:rgba(17,24,39,.88);color:#fff;font-size:14px;line-height:1.5;border-radius:10px;z-index:99999;box-shadow:0 4px 16px rgba(0,0,0,.25);';
@@ -23,28 +42,103 @@
             document.body.appendChild(el);
             setTimeout(function() { el.remove(); }, 3200);
           };
-          fetch(BASE + 'manifest.json?t=' + Date.now(), { cache: 'no-store' })
-            .then(function(r) { return r.ok ? r.json() : null; })
-            .then(async function(m) {
-              if (!m || !m.version || !m.url) return;
-              var cur = await TU.current().catch(function() { return null; });
+
+          // 事件上报（fire-and-forget，失败静默）
+          var report = function(ev, extra) {
+            try {
+              var body = Object.assign({ device_id: did, platform: platform, event: ev }, extra || {});
+              fetch(API + 'report?t=' + Date.now(), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+              }).catch(function() {});
+            } catch (e) {}
+          };
+
+          // 简单版本号比较：a<b 返回 -1，a>b 返回 1
+          var cmpVer = function(a, b) {
+            var pa = String(a).split('.').map(function(x) { return parseInt(x, 10) || 0; });
+            var pb = String(b).split('.').map(function(x) { return parseInt(x, 10) || 0; });
+            for (var i = 0; i < Math.max(pa.length, pb.length); i++) {
+              var d = (pa[i] || 0) - (pb[i] || 0);
+              if (d) return d < 0 ? -1 : 1;
+            }
+            return 0;
+          };
+
+          var getNativeVersion = function() {
+            var App = cap.Plugins && cap.Plugins.App;
+            if (!App || !App.getInfo) return Promise.resolve('');
+            return App.getInfo().then(function(i) { return (i && (i.version || i.build)) || ''; }).catch(function() { return ''; });
+          };
+          var currentVersion = function() {
+            return TU.current().then(function(cur) {
               var cb = cur && cur.bundle;
-              var curV = !cb ? 'builtin' : (cb.id === 'builtin' ? 'builtin' : (cb.version || 'builtin'));
-              if (curV === m.version) return;
-              // 已下载过该版本则直接标记，否则下载
-              var list = await TU.list().catch(function() { return { bundles: [] }; });
-              var hit = null;
-              (list.bundles || []).forEach(function(b) { if (b.version === m.version) hit = b; });
-              var bid = hit ? hit.id : null;
-              if (!bid) {
-                var res = await TU.download({ url: BASE + m.url + '?t=' + Date.now(), version: m.version }).catch(function() { return null; });
-                if (!res) return;
-                bid = res.id;
-              }
-              if (!bid) return;
-              var nx = await TU.next({ id: bid }).catch(function() { return null; });
-              if (nx !== null) toast('已发现新版本，重启应用后生效');
-            })
-            .catch(function() {});
+              return !cb ? 'builtin' : (cb.id === 'builtin' ? 'builtin' : (cb.version || 'builtin'));
+            }).catch(function() { return 'builtin'; });
+          };
+
+          Promise.resolve().then(async function() {
+            var nativeV = await getNativeVersion();
+            var curV = await currentVersion();
+
+            // 检测上一次热更新是否已生效：本次启动的 bundle 版本与上次记录不同
+            var lastV = localStorage.getItem('sg_bundle_v');
+            if (lastV && curV !== 'builtin' && lastV !== curV) {
+              report('installed', { from_version: lastV, to_version: curV, current: curV, native_version: nativeV });
+            }
+            localStorage.setItem('sg_bundle_v', curV);
+
+            // 向服务器检查更新；接口不通时回退静态 manifest.json（兼容旧服务器）
+            var m = null;
+            try {
+              var r = await fetch(API + 'check?device_id=' + encodeURIComponent(did) +
+                '&platform=' + encodeURIComponent(platform) +
+                '&native_version=' + encodeURIComponent(nativeV) +
+                '&current=' + encodeURIComponent(curV) + '&t=' + Date.now(), { cache: 'no-store' });
+              var j = await r.json();
+              if (j && j.success && j.data && j.data.version) m = j.data;
+            } catch (e) {}
+            if (!m) {
+              try {
+                var r2 = await fetch(FILES + 'manifest.json?t=' + Date.now(), { cache: 'no-store' });
+                m = r2.ok ? await r2.json() : null;
+              } catch (e) { m = null; }
+            }
+            if (!m || !m.version || !m.url) return;
+            if (curV === m.version) return;
+            // 热更包要求更高原生版本时跳过（等整包更新）
+            if (m.minNativeVersion && nativeV && cmpVer(nativeV, m.minNativeVersion) < 0) return;
+
+            // 已下载过该版本则直接应用，否则下载
+            var list = await TU.list().catch(function() { return { bundles: [] }; });
+            var hit = null;
+            (list.bundles || []).forEach(function(b) { if (b.version === m.version) hit = b; });
+            var bid = hit ? hit.id : null;
+            if (!bid) {
+              toast('发现新版本，正在自动更新…');
+              var res = await TU.download({ url: FILES + m.url + '?t=' + Date.now(), version: m.version }).catch(function(e) {
+                report('download_failed', { current: curV, native_version: nativeV, to_version: m.version, message: (e && e.message) || 'download error' });
+                toast('更新下载失败，请检查网络后重试');
+                return null;
+              });
+              if (!res) return;
+              bid = res.id;
+              report('downloaded', { current: curV, native_version: nativeV, to_version: m.version });
+            }
+            if (!bid) return;
+            // 立即应用新版本：无需用户手动重启，应用后 webview 自动刷新并运行新版
+            var applied = await TU.set({ id: bid }).catch(function() { return null; });
+            if (applied !== null) {
+              report('updated_auto', { current: curV, native_version: nativeV, to_version: m.version });
+              return; // set 已触发刷新，新版本启动时会再次检查（此时 curV 已是最新，直接跳过）
+            }
+            // set 失败（异常情况）：退回“下次启动生效”，避免影响当前使用
+            var nx = await TU.next({ id: bid }).catch(function() { return null; });
+            if (nx !== null) {
+              report('pending_restart', { current: curV, native_version: nativeV, to_version: m.version });
+              toast('更新已准备好，重启应用后生效');
+            }
+          }).catch(function() {});
         } catch (e) {}
-      })();</script><script defer="defer" src="/js/426.91b47f9f.js"></script><script defer="defer" src="/js/app.91b47f9f.js"></script><link href="/css/app.91b47f9fdadc3ea2e013.css" rel="stylesheet"></head><body><div id="app"></div></body></html>
+      })();</script><script defer="defer" src="/js/950.e90a9a15.js"></script><script defer="defer" src="/js/app.e90a9a15.js"></script><link href="/css/app.e90a9a157ae6980ae9a4.css" rel="stylesheet"></head><body><div id="app"></div></body></html>
