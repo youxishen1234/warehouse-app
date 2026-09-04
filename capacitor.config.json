@@ -1,0 +1,8 @@
+{
+  "appId": "com.warehouse.app",
+  "appName": "仓库管理系统",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}
