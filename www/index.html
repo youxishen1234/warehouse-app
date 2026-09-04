@@ -28,7 +28,8 @@
             .then(async function(m) {
               if (!m || !m.version || !m.url) return;
               var cur = await TU.current().catch(function() { return null; });
-              var curV = cur && cur.bundle ? cur.bundle : 'builtin';
+              var cb = cur && cur.bundle;
+              var curV = !cb ? 'builtin' : (cb.id === 'builtin' ? 'builtin' : (cb.version || 'builtin'));
               if (curV === m.version) return;
               // 已下载过该版本则直接标记，否则下载
               var list = await TU.list().catch(function() { return { bundles: [] }; });
@@ -38,12 +39,12 @@
               if (!bid) {
                 var res = await TU.download({ url: BASE + m.url + '?t=' + Date.now(), version: m.version }).catch(function() { return null; });
                 if (!res) return;
-                bid = (res.bundle && res.bundle.id) ? res.bundle.id : res.id;
+                bid = res.id;
               }
               if (!bid) return;
               var nx = await TU.next({ id: bid }).catch(function() { return null; });
-              if (nx !== null) toast('已发现新版本 ' + m.version + '，重启应用后生效');
+              if (nx !== null) toast('已发现新版本，重启应用后生效');
             })
             .catch(function() {});
         } catch (e) {}
-      })();</script><script defer="defer" src="/js/426.2869efe0.js"></script><script defer="defer" src="/js/app.2869efe0.js"></script><link href="/css/app.2869efe06177271b68a7.css" rel="stylesheet"></head><body><div id="app"></div></body></html>
+      })();</script><script defer="defer" src="/js/426.91b47f9f.js"></script><script defer="defer" src="/js/app.91b47f9f.js"></script><link href="/css/app.91b47f9fdadc3ea2e013.css" rel="stylesheet"></head><body><div id="app"></div></body></html>
