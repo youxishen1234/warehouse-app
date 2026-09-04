@@ -6,4 +6,44 @@
         };
         set();
         window.addEventListener('resize', set);
-      })();</script><script defer="defer" src="/js/426.f1e312c8.js"></script><script defer="defer" src="/js/app.f1e312c8.js"></script><link href="/css/app.f1e312c820b96c4ea4f3.css" rel="stylesheet"></head><body><div id="app"></div></body></html>
+      })();</script><script>// App 内热更新引导（仅原生环境生效）：启动时检查云端版本，后台静默下载，下次启动生效
+      (function() {
+        try {
+          var cap = window.Capacitor;
+          if (!cap || !cap.isNativePlatform || !cap.isNativePlatform()) return;
+          var TU = cap.Plugins && cap.Plugins.CapacitorUpdater;
+          if (!TU) return;
+          // 上报启动成功，防止插件误回滚
+          TU.notifyAppReady().catch(function() {});
+          var BASE = 'https://blast-afterwards-management-applications.trycloudflare.com/appupdate/';
+          var toast = function(msg) {
+            var el = document.createElement('div');
+            el.style.cssText = 'position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 12px);transform:translateX(-50%);max-width:82%;padding:10px 18px;background:rgba(17,24,39,.88);color:#fff;font-size:14px;line-height:1.5;border-radius:10px;z-index:99999;box-shadow:0 4px 16px rgba(0,0,0,.25);';
+            el.textContent = msg;
+            document.body.appendChild(el);
+            setTimeout(function() { el.remove(); }, 3200);
+          };
+          fetch(BASE + 'manifest.json?t=' + Date.now(), { cache: 'no-store' })
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(async function(m) {
+              if (!m || !m.version || !m.url) return;
+              var cur = await TU.current().catch(function() { return null; });
+              var curV = cur && cur.bundle ? cur.bundle : 'builtin';
+              if (curV === m.version) return;
+              // 已下载过该版本则直接标记，否则下载
+              var list = await TU.list().catch(function() { return { bundles: [] }; });
+              var hit = null;
+              (list.bundles || []).forEach(function(b) { if (b.version === m.version) hit = b; });
+              var bid = hit ? hit.id : null;
+              if (!bid) {
+                var res = await TU.download({ url: BASE + m.url + '?t=' + Date.now(), version: m.version }).catch(function() { return null; });
+                if (!res) return;
+                bid = (res.bundle && res.bundle.id) ? res.bundle.id : res.id;
+              }
+              if (!bid) return;
+              var nx = await TU.next({ id: bid }).catch(function() { return null; });
+              if (nx !== null) toast('已发现新版本 ' + m.version + '，重启应用后生效');
+            })
+            .catch(function() {});
+        } catch (e) {}
+      })();</script><script defer="defer" src="/js/426.2869efe0.js"></script><script defer="defer" src="/js/app.2869efe0.js"></script><link href="/css/app.2869efe06177271b68a7.css" rel="stylesheet"></head><body><div id="app"></div></body></html>

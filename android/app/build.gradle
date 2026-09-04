@@ -1,5 +1,14 @@
 apply plugin: 'com.android.application'
 
+// capacitor-updater 依赖的 work-runtime 2.10.5 要求 compileSdk 35，
+// 本项目为 Capacitor 6（compileSdk 34），降级到兼容版本
+configurations.all {
+    resolutionStrategy {
+        force 'androidx.work:work-runtime:2.9.1'
+        force 'androidx.work:work-runtime-ktx:2.9.1'
+    }
+}
+
 android {
     namespace "com.warehouse.app"
     compileSdk rootProject.ext.compileSdkVersion
