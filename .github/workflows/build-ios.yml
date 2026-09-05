@@ -51,27 +51,55 @@ jobs:
 
       - name: Upload IPA to server via SCP
         run: |
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/deploy_key
+          # 用 heredoc 方式写入私钥，确保换行符正确
+          cat > ~/deploy_key << 'KEYEOF'
+          ${{ secrets.SSH_PRIVATE_KEY }}
+          KEYEOF
           chmod 600 ~/deploy_key
 
+          # 调试：显示私钥文件信息
+          echo "=== 私钥文件信息 ==="
+          ls -la ~/deploy_key
+          echo "=== 私钥前2行 ==="
+          head -2 ~/deploy_key
+          echo "=== 私钥后2行 ==="
+          tail -2 ~/deploy_key
+          echo "=== 私钥行数 ==="
+          wc -l ~/deploy_key
+
+          # 调试：显示连接信息
+          echo "=== 连接信息 ==="
+          echo "主机: ${{ secrets.SERVER_HOST }}"
+          echo "用户: ${{ secrets.SERVER_USER }}"
+          echo "端口: ${{ secrets.SERVER_PORT }}"
+          echo "目标目录: ${{ secrets.SERVER_TARGET_DIR }}"
+
+          # 创建服务器上的目录
+          echo "=== 创建服务器目录 ==="
           ssh -i ~/deploy_key \
             -o StrictHostKeyChecking=no \
             -o UserKnownHostsFile=/dev/null \
+            -o ConnectTimeout=10 \
             -p ${{ secrets.SERVER_PORT }} \
             ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} \
-            "mkdir -p ${{ secrets.SERVER_TARGET_DIR }}"
+            "mkdir -p ${{ secrets.SERVER_TARGET_DIR }} && echo '目录创建成功'"
 
+          # 用 scp 上传 IPA 文件
+          echo "=== 开始上传 IPA ==="
           scp -i ~/deploy_key \
             -o StrictHostKeyChecking=no \
             -o UserKnownHostsFile=/dev/null \
+            -o ConnectTimeout=10 \
             -P ${{ secrets.SERVER_PORT }} \
             ios/App/曙光.ipa \
             ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ secrets.SERVER_TARGET_DIR }}/
 
           echo "✅ IPA 上传成功"
+          echo "=== 服务器文件列表 ==="
           ssh -i ~/deploy_key \
             -o StrictHostKeyChecking=no \
             -o UserKnownHostsFile=/dev/null \
+            -o ConnectTimeout=10 \
             -p ${{ secrets.SERVER_PORT }} \
             ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} \
             "ls -lh ${{ secrets.SERVER_TARGET_DIR }}/"
