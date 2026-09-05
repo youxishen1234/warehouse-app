@@ -41,60 +41,83 @@ jobs:
           path: ios/App/shuguang.ipa
       - name: Upload IPA to server
         env:
-          SSHPASS: ${{ secrets.SSH_PASSWORD }}
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          SERVER_TARGET_DIR: ${{ secrets.SERVER_TARGET_DIR }}
         run: |
-          brew install hudochenkov/sshpass/sshpass
-          sshpass -e ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -p ${{ secrets.SERVER_PORT }} ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "mkdir -p ${{ secrets.SERVER_TARGET_DIR }}"
-          sshpass -e scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -P ${{ secrets.SERVER_PORT }} ios/App/shuguang.ipa ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ secrets.SERVER_TARGET_DIR }}/
-          echo "✅ IPA uploaded successfully!"
-          sshpass -e ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -p ${{ secrets.SERVER_PORT }} ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "ls -lh ${{ secrets.SERVER_TARGET_DIR }}/"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+          pip3 install paramiko
+          python3 << 'EOF'
+          import os
+          import paramiko
+          host = os.environ['SERVER_HOST']
+          port = int(os.environ['SERVER_PORT'])
+          user = os.environ['SERVER_USER']
+          password = os.environ['SERVER_PASSWORD']
+          target_dir = os.environ['SERVER_TARGET_DIR']
+          print(f'连接到 {user}@{host}:{port}...')
+          ssh = paramiko.SSHClient()
+          ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+          ssh.connect(host, port=port, username=user, password=password, timeout=30)
+          print('SSH连接成功！')
+          stdin, stdout, stderr = ssh.exec_command(f'mkdir -p {target_dir}')
+          stdout.channel.recv_exit_status()
+          print(f'目标目录已创建: {target_dir}')
+          sftp = ssh.open_sftp()
+          local_path = 'ios/App/shuguang.ipa'
+          remote_path = f'{target_dir}/shuguang.ipa'
+          print(f'上传文件: {local_path} -> {remote_path}')
+          sftp.put(local_path, remote_path)
+          sftp.close()
+          print('IPA上传成功！')
+          stdin, stdout, stderr = ssh.exec_command(f'ls -lh {target_dir}/')
+          print('服务器文件列表:')
+          print(stdout.read().decode())
+          ssh.close()
+          print('全部完成！')
+          EOF
+name: Build iOS IPA
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install CocoaPods
+        run: sudo gem install cocoapods
+      - name: Install npm dependencies
+        run: npm install --legacy-peer-deps
+      - name: Sync Capacitor
+        run: npx cap sync ios
+      - name: Install Pods
+        run: cd ios/App && pod install
+      - name: Build unsigned IPA
+        run: |
+          cd ios/App
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/App.app Payload/
+          zip -r shuguang.ipa Payload
+          ls -lh shuguang.ipa
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: shuguang-ios-ipa
+          path: ios/App/shuguang.ipa
+      - name: Upload IPA to server
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
