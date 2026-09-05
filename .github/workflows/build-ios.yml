@@ -1,4 +1,3 @@
-# v3 - Secret已正确更新，使用ED25519密钥 + Python写入私钥
 name: Build iOS IPA
 on:
   push:
@@ -40,14 +39,33 @@ jobs:
         with:
           name: shuguang-ios-ipa
           path: ios/App/shuguang.ipa
-      - name: Upload IPA to server
+      - name: Debug SSH key
         run: |
+          echo "=== 1. Base64长度 ==="
+          echo "${{ secrets.SSH_PRIVATE_KEY_B64 }}" | wc -c
+          echo "=== 2. Python解码写入私钥 ==="
           python3 -c "import base64, os; open(os.path.expanduser('~/deploy_key'), 'wb').write(base64.b64decode('${{ secrets.SSH_PRIVATE_KEY_B64 }}'))"
           chmod 600 ~/deploy_key
-          ssh -i ~/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -p ${{ secrets.SERVER_PORT }} ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "mkdir -p ${{ secrets.SERVER_TARGET_DIR }}"
-          scp -i ~/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -P ${{ secrets.SERVER_PORT }} ios/App/shuguang.ipa ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ secrets.SERVER_TARGET_DIR }}/
-          echo "✅ IPA uploaded successfully!"
-          ssh -i ~/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -p ${{ secrets.SERVER_PORT }} ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "ls -lh ${{ secrets.SERVER_TARGET_DIR }}/"
+          echo "私钥大小: $(wc -c < ~/deploy_key) bytes"
+          echo "=== 3. 私钥前3行 ==="
+          head -3 ~/deploy_key
+          echo "=== 4. 私钥后3行 ==="
+          tail -3 ~/deploy_key
+          echo "=== 5. 私钥指纹 ==="
+          ssh-keygen -lf ~/deploy_key
+          echo "=== 6. 测试私钥有效性 ==="
+          ssh-keygen -y -f ~/deploy_key && echo "私钥有效" || echo "私钥无效"
+          echo "=== 7. SSH详细连接测试 ==="
+          ssh -v -i ~/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -p ${{ secrets.SERVER_PORT }} ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "echo SSH连接成功" 2>&1 | tail -40
+
+
+
+
+
+
+
+
+
 
 
 
