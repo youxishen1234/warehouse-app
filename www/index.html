@@ -20,9 +20,13 @@
           var ROOT = (function() {
             try {
               var c = localStorage.getItem('sg_custom_base');
+              if (c && /^http:\/\/152\.136\.100\.200:4000\/?$/i.test(c)) {
+                c = 'http://152.136.100.200';
+                localStorage.setItem('sg_custom_base', c);
+              }
               if (c && c.length) return /\/$/.test(c) ? c : c + '/';
             } catch (e) {}
-            return 'http://152.136.100.200:4000/';
+            return 'http://152.136.100.200/';
           })();
           var API = ROOT + 'api/appupdate/';
           var FILES = ROOT + 'appupdate/';
@@ -141,4 +145,4 @@
             }
           }).catch(function() {});
         } catch (e) {}
-      })();</script><script defer="defer" src="/js/950.6a7b7fe3.js"></script><script defer="defer" src="/js/app.6a7b7fe3.js"></script><link href="/css/app.6a7b7fe34b5a9fb3dcf0.css" rel="stylesheet"></head><body><div id="app"></div></body></html>
+      })();</script><script defer="defer" src="/js/950.04982b06.js"></script><script defer="defer" src="/js/app.04982b06.js"></script><link href="/css/app.04982b06a96b22ab1b91.css" rel="stylesheet"></head><body><div id="app"></div></body></html>
