@@ -1,3 +1,4 @@
+# v3 - Secret已正确更新，使用ED25519密钥 + Python写入私钥
 name: Build iOS IPA
 on:
   push:
@@ -47,6 +48,7 @@ jobs:
           scp -i ~/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -P ${{ secrets.SERVER_PORT }} ios/App/shuguang.ipa ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ secrets.SERVER_TARGET_DIR }}/
           echo "✅ IPA uploaded successfully!"
           ssh -i ~/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -p ${{ secrets.SERVER_PORT }} ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "ls -lh ${{ secrets.SERVER_TARGET_DIR }}/"
+
 
 
 
