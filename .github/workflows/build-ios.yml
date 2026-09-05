@@ -1,3 +1,4 @@
+# v2 - 使用新的 ED25519 密钥 + Python 写入私钥
 name: Build iOS IPA
 on:
   push:
@@ -43,7 +44,6 @@ jobs:
         run: |
           python3 -c "import base64, os; open(os.path.expanduser('~/deploy_key'), 'wb').write(base64.b64decode('${{ secrets.SSH_PRIVATE_KEY_B64 }}'))"
           chmod 600 ~/deploy_key
-          echo "私钥大小: $(wc -c < ~/deploy_key) bytes"
           ssh -i ~/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -p ${{ secrets.SERVER_PORT }} ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "mkdir -p ${{ secrets.SERVER_TARGET_DIR }}"
           scp -i ~/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -P ${{ secrets.SERVER_PORT }} ios/App/shuguang.ipa ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ secrets.SERVER_TARGET_DIR }}/
           echo "✅ IPA uploaded successfully!"
