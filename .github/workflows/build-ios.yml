@@ -34,37 +34,19 @@ jobs:
           cp -R build/Build/Products/Release-iphoneos/App.app Payload/
           zip -r shuguang.ipa Payload
           ls -lh shuguang.ipa
-      - name: Upload IPA
+      - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
           name: shuguang-ios-ipa
           path: ios/App/shuguang.ipa
-      - name: Debug SSH connection
+      - name: Upload IPA to server
         run: |
-          echo "=== 1. Base64长度 ==="
-          echo "${{ secrets.SSH_PRIVATE_KEY_B64 }}" | wc -c
-          echo "=== 2. 解码并写入私钥 ==="
           echo "${{ secrets.SSH_PRIVATE_KEY_B64 }}" | base64 -d > ~/deploy_key
           chmod 600 ~/deploy_key
-          echo "私钥大小: $(wc -c < ~/deploy_key) bytes"
-          echo "私钥权限: $(ls -la ~/deploy_key)"
-          echo "=== 3. 私钥前3行 ==="
-          head -3 ~/deploy_key
-          echo "=== 4. 私钥后3行 ==="
-          tail -3 ~/deploy_key
-          echo "=== 5. 测试私钥有效性 ==="
-          ssh-keygen -y -f ~/deploy_key && echo "私钥有效" || echo "私钥无效"
-          echo "=== 6. SSH详细连接测试 ==="
-          ssh -v -i ~/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -p ${{ secrets.SERVER_PORT }} ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "echo SSH连接成功" 2>&1 | tail -30
-
-
-
-
-
-
-
-
-
+          ssh -i ~/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -p ${{ secrets.SERVER_PORT }} ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "mkdir -p ${{ secrets.SERVER_TARGET_DIR }}"
+          scp -i ~/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -P ${{ secrets.SERVER_PORT }} ios/App/shuguang.ipa ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ secrets.SERVER_TARGET_DIR }}/
+          echo "✅ IPA uploaded successfully!"
+          ssh -i ~/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -p ${{ secrets.SERVER_PORT }} ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "ls -lh ${{ secrets.SERVER_TARGET_DIR }}/"
 
 
 
