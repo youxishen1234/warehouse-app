@@ -43,24 +43,10 @@ jobs:
         run: |
           echo "${{ secrets.SSH_PRIVATE_KEY_B64 }}" | base64 -d | tr -d '\r' > ~/deploy_key
           chmod 600 ~/deploy_key
-          echo "私钥大小: $(wc -c < ~/deploy_key) bytes"
-          echo "私钥前2行:"
-          head -2 ~/deploy_key
-          echo "测试私钥是否有效:"
-          ssh-keygen -y -f ~/deploy_key || echo "私钥无效"
-          echo "测试SSH连接:"
-          ssh -i ~/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -p ${{ secrets.SERVER_PORT }} ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "echo SSH连接成功 && mkdir -p ${{ secrets.SERVER_TARGET_DIR }}"
-          echo "上传IPA文件:"
+          ssh -i ~/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -p ${{ secrets.SERVER_PORT }} ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "mkdir -p ${{ secrets.SERVER_TARGET_DIR }}"
           scp -i ~/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -P ${{ secrets.SERVER_PORT }} ios/App/shuguang.ipa ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ secrets.SERVER_TARGET_DIR }}/
           echo "IPA uploaded successfully!"
           ssh -i ~/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -p ${{ secrets.SERVER_PORT }} ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "ls -lh ${{ secrets.SERVER_TARGET_DIR }}/"
-
-
-
-
-
-
-
 
 
 
