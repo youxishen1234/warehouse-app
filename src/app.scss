@@ -1,0 +1,133 @@
+@use '@/styles/compat.scss';
+@use '@/styles/variables.scss' as *;
+
+// 全局样式
+page {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Hiragino Sans GB',
+    sans-serif;
+  font-size: $font-size-md;
+  line-height: $line-height-normal;
+  color: $color-text-primary;
+  // 液态玻璃风格底色：柔和渐变光晕，让毛玻璃卡片透出层次感
+  background:
+    radial-gradient(140% 55% at 100% 0%, rgba(120, 170, 255, 0.32) 0%, rgba(255, 255, 255, 0) 55%),
+    radial-gradient(120% 50% at 0% 100%, rgba(110, 220, 190, 0.28) 0%, rgba(255, 255, 255, 0) 50%),
+    linear-gradient(165deg, #edf3ff 0%, #f7f9ff 46%, #e9f7f2 100%);
+  background-attachment: fixed;
+}
+
+html,
+body,
+.taro_router,
+.taro_page {
+  background: transparent;
+  overscroll-behavior-y: none;
+}
+
+// ===== 离线模式提示条（全局，App 根节点挂载） =====
+.sg-offline-bar {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9997;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 14rpx 30rpx;
+  background: rgba(217, 119, 6, 0.95);
+  border-radius: $radius-round;
+  box-shadow: $shadow-float;
+  max-width: 90%;
+}
+
+.sg-offline-bar-text {
+  font-size: $font-size-sm;
+  color: #fff;
+  @include text-ellipsis;
+}
+
+.sg-offline-retry {
+  flex: 0 0 auto;
+  padding: 6rpx 20rpx;
+  border-radius: $radius-round;
+  background: rgba(255, 255, 255, 0.24);
+  color: #fff;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+
+  &:active {
+    opacity: 0.85;
+  }
+}
+
+// ===== 安全区与白屏修复（App 全屏 WebView） =====
+// 【白屏根因】Taro H5 页面默认 transform: translate(100%,0) 停在屏幕外，
+// 靠 onLoad 回调注入 taro_page_show/taro_tabbar_page 类名才能移入；
+// Taro 路由源码自带 FIXME：iOS WKWebView 冷启动时该回调可能不执行 → 页面永远在屏幕外 → 纯白屏。
+// 强制所有页面常驻可见区域（代价：关闭页面滑动进场动画，功能无影响）。
+.taro_router > .taro_page {
+  transform: none !important;
+  transition: none !important;
+}
+
+// 顶部：页面内容避开 iPhone 灵动岛/状态栏（彩色头部页用负 margin 顶出，见 home/mine 样式）
+.taro_page {
+  padding-top: constant(safe-area-inset-top);
+  padding-top: env(safe-area-inset-top);
+  box-sizing: border-box;
+}
+
+// 底部：框架默认已对 TabBar 做 env(safe-area-inset-bottom) 外边距
+// （依赖 index.html 的 viewport-fit=cover 生效）；这里仅让底部横条区域与白色 TabBar 同色
+// ===== TabBar 液态玻璃（悬浮毛玻璃条） =====
+.taro-tabbar__container {
+  background: rgba(255, 255, 255, 0.62) !important;
+  backdrop-filter: blur(28px) saturate(190%);
+  -webkit-backdrop-filter: blur(28px) saturate(190%);
+  border-top: 1rpx solid rgba(255, 255, 255, 0.6);
+  border-radius: 28rpx 28rpx 0 0;
+  box-shadow: 0 -10rpx 40rpx rgba(45, 55, 110, 0.14), inset 0 1rpx 0 rgba(255, 255, 255, 0.7);
+}
+
+.taro-tabbar__tab {
+  -webkit-tap-highlight-color: transparent;
+}
+
+// ===== 全局浮动返回按钮（子页面左上角，配合左边缘右滑返回手势） =====
+// Liquid Glass 风格：半透明毛玻璃 + 高光边缘 + 柔光阴影
+.sg-back-btn {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  left: 12px;
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.46);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1rpx solid rgba(255, 255, 255, 0.75);
+  box-shadow:
+    0 4rpx 20rpx rgba(40, 60, 130, 0.16),
+    inset 0 1rpx 0 rgba(255, 255, 255, 0.9),
+    inset 0 -2rpx 6rpx rgba(120, 150, 255, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  pointer-events: auto;
+
+  &:active {
+    transform: scale(0.9);
+    opacity: 0.85;
+  }
+}
+
+.sg-back-icon {
+  font-size: 44rpx;
+  line-height: 1;
+  color: #2f5bd6;
+  font-weight: 600;
+  margin-top: -6rpx; // 视觉居中（‹ 字符基线偏下）
+  margin-left: -4rpx;
+}

@@ -1,0 +1,267 @@
+@use '@/styles/variables.scss' as *;
+
+.container {
+  padding: 0 24rpx calc(200rpx + constant(safe-area-inset-bottom));
+  padding: 0 24rpx calc(200rpx + env(safe-area-inset-bottom));
+  min-height: 100vh;
+  box-sizing: border-box;
+  // H5(App)：容器顶到屏幕最顶端，由 .header 自身留白避开状态栏
+  // （小程序端 env(safe-area-inset-top) 为 0，规则自动失效）
+  margin-top: calc(0px - constant(safe-area-inset-top));
+  margin-top: calc(0px - env(safe-area-inset-top));
+}
+
+.header {
+  background: $gradient-header;
+  border-radius: 0 0 32rpx 32rpx;
+  padding: calc(64rpx + constant(safe-area-inset-top)) 32rpx 56rpx;
+  padding: calc(64rpx + env(safe-area-inset-top)) 32rpx 56rpx;
+  margin: 0 -24rpx 24rpx;
+  color: $color-text-white;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.avatar {
+  width: 128rpx;
+  height: 128rpx;
+  border-radius: 50%;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 56rpx;
+  font-weight: $font-weight-bold;
+  color: $color-primary;
+  margin-bottom: 20rpx;
+  box-shadow: 0 8rpx 24rpx rgba(15, 42, 105, 0.25);
+}
+
+.headerTitle {
+  font-size: 40rpx;
+  font-weight: $font-weight-bold;
+  letter-spacing: 2rpx;
+}
+
+.headerDesc {
+  font-size: $font-size-sm;
+  opacity: 0.85;
+  margin-top: 10rpx;
+}
+
+// ============ 菜单 ============
+.menuList {
+  background: $color-bg-card;
+  border-radius: $radius-lg;
+  box-shadow: $shadow-card;
+  overflow: hidden;
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  padding: 26rpx 24rpx;
+  border-bottom: 1rpx solid $color-divider;
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:active {
+    background: $color-bg-hover;
+  }
+}
+
+.menuIcon {
+  width: 76rpx;
+  height: 76rpx;
+  border-radius: $radius-md;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 20rpx;
+  flex-shrink: 0;
+}
+
+.menuIconImg {
+  width: 38rpx;
+  height: 38rpx;
+}
+
+.menuTextWrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.menuText {
+  font-size: $font-size-md;
+  color: $color-text-primary;
+  font-weight: $font-weight-medium;
+}
+
+.menuDesc {
+  font-size: $font-size-xs;
+  color: $color-text-tertiary;
+  margin-top: 6rpx;
+}
+
+.menuArrow {
+  width: 32rpx;
+  height: 32rpx;
+  flex-shrink: 0;
+}
+
+.about {
+  text-align: center;
+  color: $color-text-tertiary;
+  font-size: $font-size-xs;
+  margin-top: 48rpx;
+}
+
+.sectionTitle {
+  display: block;
+  margin: 28rpx 8rpx 14rpx;
+  font-size: $font-size-xs;
+  color: $color-text-tertiary;
+}
+
+// ============ 服务器地址设置弹窗 ============
+.mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 15, 25, 0.45);
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48rpx;
+  box-sizing: border-box;
+}
+
+.addrDialog {
+  width: 100%;
+  // Liquid Glass 弹窗
+  background:
+    radial-gradient(140% 90% at 12% 0%, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0) 52%),
+    rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(28px) saturate(190%);
+  -webkit-backdrop-filter: blur(28px) saturate(190%);
+  border: 1rpx solid rgba(255, 255, 255, 0.75);
+  border-radius: $radius-lg;
+  padding: 32rpx;
+  box-shadow:
+    inset 0 1rpx 0 rgba(255, 255, 255, 0.7),
+    0 16rpx 48rpx rgba(15, 25, 60, 0.22);
+}
+
+.addrTitle {
+  font-size: $font-size-lg;
+  font-weight: $font-weight-bold;
+  color: $color-text-primary;
+}
+
+.addrTip {
+  margin-top: 12rpx;
+  color: $color-text-secondary;
+  font-size: $font-size-xs;
+  line-height: 1.7;
+}
+
+.addrTestRow {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-top: 20rpx;
+  flex-wrap: wrap;
+}
+
+.addrTestBtn {
+  flex-shrink: 0;
+  padding: 12rpx 28rpx;
+  border-radius: $radius-md;
+  background: rgba(47, 107, 255, 0.12);
+  border: 1rpx solid rgba(47, 107, 255, 0.35);
+  color: #2f6bff;
+  font-size: $font-size-xs;
+  font-weight: 600;
+
+  &:active {
+    background: rgba(47, 107, 255, 0.2);
+  }
+}
+
+.addrAutoBtn {
+  flex-shrink: 0;
+  padding: 12rpx 28rpx;
+  border-radius: $radius-md;
+  background: rgba(20, 184, 166, 0.12);
+  border: 1rpx solid rgba(20, 184, 166, 0.4);
+  color: #0d9488;
+  font-size: $font-size-xs;
+  font-weight: 600;
+
+  &:active {
+    background: rgba(20, 184, 166, 0.22);
+  }
+}
+
+.addrTestResult {
+  flex-basis: 100%;
+  color: #334155;
+  font-size: $font-size-xs;
+  line-height: 1.6;
+}
+
+.addrInput {
+  margin-top: 24rpx;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: $radius-md;
+  height: 88rpx;
+  padding: 0 20rpx;
+  font-size: $font-size-sm;
+  color: $color-text-primary;
+  border: 1rpx solid rgba(255, 255, 255, 0.8);
+}
+
+.addrPlaceholder {
+  color: $color-text-tertiary;
+}
+
+.addrBtns {
+  display: flex;
+  margin-top: 28rpx;
+  gap: 16rpx;
+}
+
+.addrBtnGhost {
+  flex: 1;
+  height: 80rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: $radius-md;
+  background: $color-bg-hover;
+  color: $color-text-secondary;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+}
+
+.addrBtnPrimary {
+  flex: 1;
+  height: 80rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: $radius-md;
+  background: $color-primary;
+  color: #fff;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+
+  &:active {
+    opacity: 0.88;
+  }
+}

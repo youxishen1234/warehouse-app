@@ -1,0 +1,99 @@
+@use '@/styles/variables.scss' as *;
+
+.container {
+  padding: $spacing-md $page-padding;
+  min-height: 100vh;
+}
+
+.searchBox {
+  display: flex;
+  gap: $spacing-sm;
+  margin-bottom: $spacing-md;
+}
+
+.searchInput {
+  flex: 1;
+  padding: $spacing-md;
+  border: 1rpx solid $color-border;
+  border-radius: $radius-sm;
+  font-size: $font-size-md;
+}
+
+.listItem {
+  background: $color-bg-card;
+  border-radius: $radius-md;
+  padding: $spacing-lg;
+  margin-bottom: $spacing-md;
+  box-shadow: $shadow-card;
+}
+
+.itemTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: $spacing-sm;
+}
+
+.itemName {
+  font-size: $font-size-md;
+  font-weight: $font-weight-semibold;
+  color: $color-text-primary;
+}
+
+.tag {
+  padding: 4rpx 16rpx;
+  border-radius: $radius-xs;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-medium;
+}
+
+.itemBottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.itemMeta {
+  font-size: $font-size-sm;
+  color: $color-text-tertiary;
+}
+
+.itemStock {
+  font-size: $font-size-lg;
+  font-weight: $font-weight-bold;
+  color: $color-text-primary;
+}
+
+.itemActions {
+  display: flex;
+  gap: $spacing-sm;
+  margin-top: $spacing-sm;
+  padding-top: $spacing-sm;
+  border-top: 1rpx solid $color-border;
+}
+
+// 联动按钮：出库（红）、入库（绿）
+.btnOut,
+.btnIn {
+  @include button-reset;
+  flex: 1;
+  height: 64rpx;
+  line-height: 64rpx;
+  text-align: center;
+  color: $color-text-white;
+  border-radius: $radius-sm;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+
+  &:active { opacity: 0.88; }
+}
+
+.btnOut { background: #dc2626; }
+.btnIn { background: #16a34a; }
+
+.empty {
+  text-align: center;
+  color: $color-text-tertiary;
+  padding: $spacing-xl 0;
+  font-size: $font-size-sm;
+}

@@ -1,0 +1,157 @@
+@use '@/styles/variables.scss' as *;
+
+.container {
+  padding: $spacing-md $page-padding calc(220rpx + env(safe-area-inset-bottom));
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+.filterBox {
+  display: flex;
+  gap: $spacing-sm;
+  margin-bottom: $spacing-md;
+}
+
+.filterSelect {
+  flex: 0 0 160rpx;
+  padding: $spacing-md;
+  border: 1rpx solid $color-border;
+  border-radius: $radius-sm;
+  font-size: $font-size-md;
+  background: $color-bg-card;
+}
+
+.searchInput {
+  flex: 1;
+  padding: $spacing-md;
+  border: 1rpx solid $color-border;
+  border-radius: $radius-sm;
+  font-size: $font-size-md;
+}
+
+.listItem {
+  background: $color-bg-card;
+  border-radius: $radius-md;
+  padding: $spacing-lg;
+  margin-bottom: $spacing-md;
+  box-shadow: $shadow-card;
+}
+
+.itemTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: $spacing-sm;
+}
+
+.itemName {
+  flex: 1;
+  min-width: 0;
+  font-size: $font-size-md;
+  font-weight: $font-weight-semibold;
+  color: $color-text-primary;
+  @include text-ellipsis;
+}
+
+.tagIn {
+  padding: 4rpx 16rpx;
+  border-radius: $radius-xs;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-medium;
+  background: #dcfce7;
+  color: #166534;
+}
+
+.tagOut {
+  padding: 4rpx 16rpx;
+  border-radius: $radius-xs;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-medium;
+  background: $color-error-soft;
+  color: #b91c1c;
+}
+
+.itemBottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.itemMeta {
+  font-size: $font-size-xs;
+  color: $color-text-tertiary;
+}
+
+.itemActions {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  flex-shrink: 0;
+  margin-left: $spacing-sm;
+}
+
+.itemQty {
+  font-size: $font-size-md;
+  font-weight: $font-weight-semibold;
+}
+
+.deleteBtn {
+  min-width: 72rpx;
+  padding: 12rpx 16rpx;
+  border-radius: $radius-sm;
+  background: $color-error-soft;
+  color: $color-error;
+  font-size: $font-size-sm;
+  text-align: center;
+}
+
+.customerFilterBar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #e6f7f5;
+  border-radius: $radius-sm;
+  padding: $spacing-sm $spacing-md;
+  margin-bottom: $spacing-md;
+}
+
+.customerFilterText {
+  font-size: $font-size-sm;
+  color: #0f766e;
+  font-weight: $font-weight-medium;
+}
+
+.customerFilterClear {
+  font-size: $font-size-sm;
+  color: $color-text-tertiary;
+  padding: 4rpx 12rpx;
+}
+
+.customerLine {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  margin-bottom: $spacing-sm;
+}
+
+.customerTag {
+  flex: 0 0 auto;
+  font-size: $font-size-xs;
+  color: #0f766e;
+  background: #ccfbf1;
+  border-radius: $radius-xs;
+  padding: 2rpx 12rpx;
+}
+
+.customerName {
+  font-size: $font-size-sm;
+  color: #0f766e;
+  font-weight: $font-weight-medium;
+}
+
+.empty {
+  text-align: center;
+  color: $color-text-tertiary;
+  padding: $spacing-xl 0;
+  font-size: $font-size-sm;
+}

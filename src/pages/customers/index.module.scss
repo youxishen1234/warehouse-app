@@ -1,0 +1,126 @@
+@use '@/styles/variables.scss' as *;
+
+.container {
+  padding: $spacing-md $page-padding;
+  min-height: 100vh;
+}
+
+.searchBox {
+  display: flex;
+  gap: $spacing-sm;
+  margin-bottom: $spacing-md;
+}
+
+.searchInput {
+  flex: 1;
+  padding: $spacing-md;
+  border: 1rpx solid $color-border;
+  border-radius: $radius-sm;
+  font-size: $font-size-md;
+}
+
+.addBtn {
+  @include button-reset;
+  padding: 0 $spacing-lg;
+  height: 72rpx;
+  background: $color-primary;
+  color: $color-text-white;
+  border-radius: $radius-sm;
+  font-size: $font-size-md;
+  font-weight: $font-weight-medium;
+
+  &:active { opacity: 0.9; }
+}
+
+.listItem {
+  background: $color-bg-card;
+  border-radius: $radius-md;
+  padding: $spacing-lg;
+  box-shadow: $shadow-card;
+
+  &:active { opacity: 0.92; }
+}
+
+.itemTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: $spacing-sm;
+}
+
+.itemName {
+  font-size: $font-size-md;
+  font-weight: $font-weight-semibold;
+  color: $color-text-primary;
+}
+
+.itemBadge {
+  padding: 4rpx 16rpx;
+  border-radius: $radius-xs;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-medium;
+  background: #eaf1ff;
+  color: $color-primary;
+}
+
+.itemMeta {
+  font-size: $font-size-sm;
+  color: $color-text-tertiary;
+  line-height: 1.7;
+  white-space: pre-line;
+}
+
+.itemStats {
+  display: flex;
+  gap: $spacing-lg;
+  margin-top: $spacing-sm;
+  padding-top: $spacing-sm;
+  border-top: 1rpx solid $color-border;
+}
+
+.statItem {
+  font-size: $font-size-xs;
+  color: $color-text-tertiary;
+}
+
+.statNum {
+  font-weight: $font-weight-semibold;
+  margin-left: 6rpx;
+}
+
+.statNumOut { color: #b91c1c; }
+.statNumIn { color: #166534; }
+
+.itemActions {
+  display: flex;
+  gap: $spacing-sm;
+  margin-top: $spacing-sm;
+  padding-top: $spacing-sm;
+  border-top: 1rpx solid $color-border;
+}
+
+// 联动按钮：出库给客户发货（红）、入库来自供应商（绿）
+.btnOut,
+.btnIn {
+  @include button-reset;
+  flex: 1;
+  height: 64rpx;
+  line-height: 64rpx;
+  text-align: center;
+  color: $color-text-white;
+  border-radius: $radius-sm;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+
+  &:active { opacity: 0.88; }
+}
+
+.btnOut { background: #dc2626; }
+.btnIn { background: #16a34a; }
+
+.empty {
+  text-align: center;
+  color: $color-text-tertiary;
+  padding: $spacing-xl 0;
+  font-size: $font-size-sm;
+}

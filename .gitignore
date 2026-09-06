@@ -1,0 +1,14 @@
+node_modules/
+dist/
+dist_*/
+*.zip
+*.ipa
+*.p12
+*.mobileprovision
+.pai/
+.swc/
+
+.env
+.env.*
+!.env.example
+.DS_Store
