@@ -43,9 +43,9 @@ jobs:
       - name: Upload update files
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.SHUGUANG_SERVER_HOST }}
-          username: ${{ secrets.SHUGUANG_SERVER_USER }}
-          password: ${{ secrets.SHUGUANG_SERVER_PASSWORD }}
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
           port: 22
           source: "release/www.zip,release/manifest.json"
           target: "/tmp/shuguang-hotupdate"
@@ -54,13 +54,13 @@ jobs:
       - name: Publish atomically and clean old files
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.SHUGUANG_SERVER_HOST }}
-          username: ${{ secrets.SHUGUANG_SERVER_USER }}
-          password: ${{ secrets.SHUGUANG_SERVER_PASSWORD }}
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
           port: 22
           script: |
             set -eu
-            target="${{ secrets.SHUGUANG_UPDATE_DIR }}"
+            target="/opt/shuguang/public/appupdate"
             mkdir -p "$target"
             mv /tmp/shuguang-hotupdate/release/www.zip "$target/www.zip.new"
             mv /tmp/shuguang-hotupdate/release/manifest.json "$target/manifest.json.new"
