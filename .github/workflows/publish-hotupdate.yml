@@ -40,31 +40,15 @@ jobs:
           printf '{"version":"%s","url":"www.zip","publishedAt":"%s"}\n' "$VERSION" "$PUBLISHED_AT" > release/manifest.json
           unzip -t release/www.zip
 
-      - name: Upload update files
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          port: 22
-          source: "release/www.zip,release/manifest.json"
-          target: "/tmp/shuguang-hotupdate"
-          overwrite: true
+      - name: Install sshpass
+        run: sudo apt-get update && sudo apt-get install -y sshpass
 
-      - name: Publish atomically and clean old files
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          port: 22
-          script: |
-            set -eu
-            target="/opt/shuguang/public/appupdate"
-            mkdir -p "$target"
-            mv /tmp/shuguang-hotupdate/release/www.zip "$target/www.zip.new"
-            mv /tmp/shuguang-hotupdate/release/manifest.json "$target/manifest.json.new"
-            mv "$target/www.zip.new" "$target/www.zip"
-            mv "$target/manifest.json.new" "$target/manifest.json"
-            rm -rf /tmp/shuguang-hotupdate
-            find "$target" -maxdepth 1 -type f \( -name '*.new' -o -name 'www-*.zip' -o -name 'manifest-*.json' \) -delete
+      - name: Upload update files
+        env:
+          SSH_HOST: ${{ secrets.SERVER_HOST }}
+          SSH_USER: ${{ secrets.SERVER_USER }}
+          SSH_PASS: ${{ secrets.SSH_PASSWORD }}
+        run: |
+          set -eu
+          sshpass -p "$SSH_PASS" scp -o StrictHostKeyChecking=no -P 22 release/www.zip release/manifest.json "$SSH_USER@$SSH_HOST:/tmp/"
+          sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no -p 22 "$SSH_USER@$SSH_HOST" "mkdir -p /opt/shuguang/public/appupdate && mv /tmp/www.zip /opt/shuguang/public/appupdate/www.zip && mv /tmp/manifest.json /opt/shuguang/public/appupdate/manifest.json"
