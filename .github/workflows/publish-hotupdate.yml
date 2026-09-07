@@ -49,8 +49,8 @@ jobs:
         run: |
           echo "SSH_HOST=${{ secrets.SERVER_HOST }}"
           echo "SSH_USER=${{ secrets.SERVER_USER }}"
-          if [ -z "${{ secrets.SERVER_HOST }}" ] || [ -z "${{ secrets.SERVER_USER }}" ] || [ -z "${{ secrets.SSH_PASSWORD }}" ]; then
-            echo "::error::One or more required secrets (SERVER_HOST, SERVER_USER, SSH_PASSWORD) are not configured!"
+          if [ -z "${{ secrets.SERVER_HOST }}" ] || [ -z "${{ secrets.SERVER_USER }}" ] || [ -z "${{ secrets.SHUGUANG_SERVER_PASSWORD }}" ]; then
+            echo "::error::One or more required secrets (SERVER_HOST, SERVER_USER, SHUGUANG_SERVER_PASSWORD) are not configured!"
             exit 1
           fi
           echo "All required secrets are configured."
@@ -59,7 +59,7 @@ jobs:
         env:
           SSH_HOST: ${{ secrets.SERVER_HOST }}
           SSH_USER: ${{ secrets.SERVER_USER }}
-          SSH_PASS: ${{ secrets.SSH_PASSWORD }}
+          SSH_PASS: ${{ secrets.SHUGUANG_SERVER_PASSWORD }}
         shell: bash
         run: |
           set -eu
