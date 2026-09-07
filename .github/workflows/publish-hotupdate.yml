@@ -45,15 +45,25 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y sshpass
 
       - name: Verify secrets
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SSH_PASS: ${{ secrets.SHUGUANG_SERVER_PASSWORD }}
         shell: bash
         run: |
-          echo "SSH_HOST=${{ secrets.SERVER_HOST }}"
-          echo "SSH_USER=${{ secrets.SERVER_USER }}"
-          if [ -z "${{ secrets.SERVER_HOST }}" ] || [ -z "${{ secrets.SERVER_USER }}" ] || [ -z "${{ secrets.SHUGUANG_SERVER_PASSWORD }}" ]; then
-            echo "::error::One or more required secrets (SERVER_HOST, SERVER_USER, SHUGUANG_SERVER_PASSWORD) are not configured!"
+          echo "SSH_HOST length: ${#SERVER_HOST}"
+          echo "SSH_USER length: ${#SSH_USER}"
+          echo "SSH_PASS length: ${#SSH_PASS}"
+          echo "SSH_HOST: $SERVER_HOST"
+          echo "SSH_USER: $SSH_USER"
+          if [ -z "$SERVER_HOST" ] || [ -z "$SSH_USER" ] || [ -z "$SSH_PASS" ]; then
+            echo "::error::One or more required secrets are not configured!"
             exit 1
           fi
           echo "All required secrets are configured."
+          # Test SSH connection with verbose output
+          echo "Testing SSH connection..."
+          sshpass -p "$SSH_PASS" ssh -v -o StrictHostKeyChecking=no -o ConnectTimeout=30 -p 22 "$SSH_USER@$SSH_HOST" "echo 'SSH test successful' && whoami" 2>&1 | tail -30 || echo "SSH test failed with exit code $?"
 
       - name: Upload update files
         env:
