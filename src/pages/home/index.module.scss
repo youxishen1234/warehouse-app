@@ -89,6 +89,94 @@
   background: rgba(255, 255, 255, 0.25);
 }
 
+// ============ 首页搜索 ============
+.searchCard {
+  display: flex;
+  align-items: center;
+  margin: 24rpx;
+  padding: 20rpx 24rpx;
+  border-radius: $radius-lg;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1rpx solid rgba(255, 255, 255, 0.9);
+}
+
+.searchIcon,
+.searchResultIcon {
+  width: 34rpx;
+  height: 34rpx;
+  flex-shrink: 0;
+}
+
+.searchInput {
+  flex: 1;
+  margin-left: 14rpx;
+  font-size: 26rpx;
+}
+
+.searchResults {
+  margin: -14rpx 24rpx 24rpx;
+  padding: 8rpx 24rpx;
+  border-radius: $radius-md;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.searchResult {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  padding: 18rpx 0;
+  border-bottom: 1rpx solid $color-divider;
+  font-size: 25rpx;
+  color: $color-text-primary;
+
+  &:last-child { border-bottom: none; }
+}
+
+.searchEmpty {
+  display: block;
+  padding: 18rpx 0;
+  color: $color-text-tertiary;
+  font-size: 24rpx;
+}
+
+.searchActionGroup {
+  padding: 8rpx 0;
+
+  &:not(:last-child) {
+    border-bottom: 1rpx solid $color-divider;
+    margin-bottom: 8rpx;
+  }
+}
+
+.searchGroupLabel {
+  display: block;
+  font-size: 22rpx;
+  color: $color-text-tertiary;
+  padding: 8rpx 0 4rpx;
+}
+
+.searchActionIcon {
+  width: 52rpx;
+  height: 52rpx;
+  border-radius: 14rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.searchActionText {
+  flex: 1;
+  font-size: 27rpx;
+  font-weight: 500;
+}
+
+.searchActionArrow {
+  color: $color-text-tertiary;
+  font-size: 32rpx;
+  flex-shrink: 0;
+}
+
 // ============ 通用卡片（液态玻璃） ============
 .overviewCard,
 .funcCard,
@@ -155,6 +243,10 @@
   display: flex;
   align-items: center;
   padding: 20rpx 8rpx;
+
+  &:active {
+    opacity: 0.82;
+  }
 }
 
 .overviewIcon {

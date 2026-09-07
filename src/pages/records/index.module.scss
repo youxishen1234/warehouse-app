@@ -1,93 +1,143 @@
 @use '@/styles/variables.scss' as *;
 
 .container {
-  padding: $spacing-md $page-padding calc(220rpx + env(safe-area-inset-bottom));
+  padding: 24rpx 24rpx calc(240rpx + env(safe-area-inset-bottom));
   min-height: 100vh;
   box-sizing: border-box;
+  background: linear-gradient(180deg, #eef4ff 0%, #f7f8ff 36%, #ffffff 100%);
 }
 
 .filterBox {
   display: flex;
-  gap: $spacing-sm;
-  margin-bottom: $spacing-md;
+  gap: 16rpx;
+  margin-bottom: 24rpx;
+  padding: 16rpx;
+  border-radius: $radius-lg;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1rpx solid rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(18px) saturate(180%);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  box-shadow: 0 10rpx 28rpx rgba(45, 55, 110, 0.08);
 }
 
 .filterSelect {
-  flex: 0 0 160rpx;
-  padding: $spacing-md;
-  border: 1rpx solid $color-border;
-  border-radius: $radius-sm;
+  flex: 0 0 154rpx;
+  box-sizing: border-box;
+  height: 80rpx;
+  line-height: 80rpx;
+  padding: 0 20rpx;
+  border-radius: $radius-md;
   font-size: $font-size-md;
-  background: $color-bg-card;
+  font-weight: $font-weight-medium;
+  color: $color-primary;
+  background: rgba(47, 107, 255, 0.1);
 }
 
 .searchInput {
   flex: 1;
-  padding: $spacing-md;
-  border: 1rpx solid $color-border;
-  border-radius: $radius-sm;
+  height: 80rpx;
+  box-sizing: border-box;
+  padding: 0 20rpx;
+  border-radius: $radius-md;
   font-size: $font-size-md;
+  color: $color-text-primary;
+  background: rgba(245, 247, 252, 0.9);
 }
 
 .listItem {
-  background: $color-bg-card;
-  border-radius: $radius-md;
-  padding: $spacing-lg;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1rpx solid rgba(255, 255, 255, 0.84);
+  border-radius: $radius-lg;
+  padding: 24rpx 22rpx;
   margin-bottom: $spacing-md;
-  box-shadow: $shadow-card;
+  box-shadow: 0 16rpx 36rpx rgba(47, 107, 255, 0.08);
+  backdrop-filter: blur(18px) saturate(180%);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+}
+
+.titleWrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  margin-right: 16rpx;
 }
 
 .itemTop {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: $spacing-sm;
+  align-items: flex-start;
+  gap: 16rpx;
+  margin-bottom: 18rpx;
 }
 
 .itemName {
-  flex: 1;
-  min-width: 0;
   font-size: $font-size-md;
   font-weight: $font-weight-semibold;
   color: $color-text-primary;
+  line-height: 1.4;
   @include text-ellipsis;
 }
 
-.tagIn {
-  padding: 4rpx 16rpx;
-  border-radius: $radius-xs;
+.tagIn,
+.tagOut {
+  flex: 0 0 auto;
+  padding: 6rpx 16rpx;
+  border-radius: 999rpx;
   font-size: $font-size-xs;
-  font-weight: $font-weight-medium;
-  background: #dcfce7;
-  color: #166534;
+  font-weight: $font-weight-semibold;
+  line-height: 1.4;
+}
+
+.tagIn {
+  background: rgba(22, 163, 74, 0.12);
+  color: #15803d;
 }
 
 .tagOut {
-  padding: 4rpx 16rpx;
-  border-radius: $radius-xs;
-  font-size: $font-size-xs;
+  background: rgba(220, 38, 38, 0.12);
+  color: #dc2626;
+}
+
+.metaBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  margin-bottom: 20rpx;
+  padding: 16rpx 18rpx;
+  border-radius: $radius-md;
+  background: rgba(245, 247, 252, 0.9);
+}
+
+.itemTime {
+  font-size: $font-size-sm;
   font-weight: $font-weight-medium;
-  background: $color-error-soft;
-  color: #b91c1c;
+  color: $color-text-primary;
+}
+
+.itemRemark {
+  font-size: $font-size-xs;
+  color: $color-text-tertiary;
+  line-height: 1.6;
 }
 
 .itemBottom {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 16rpx;
 }
 
-.itemMeta {
-  font-size: $font-size-xs;
-  color: $color-text-tertiary;
-}
-
-.itemActions {
+.itemBottomRight {
   display: flex;
   align-items: center;
-  gap: $spacing-sm;
-  flex-shrink: 0;
-  margin-left: $spacing-sm;
+  gap: 12rpx;
+}
+
+.itemQtyLabel {
+  font-size: $font-size-xs;
+  color: $color-text-tertiary;
 }
 
 .itemQty {
@@ -99,7 +149,7 @@
   min-width: 72rpx;
   padding: 12rpx 16rpx;
   border-radius: $radius-sm;
-  background: $color-error-soft;
+  background: rgba(220, 38, 38, 0.1);
   color: $color-error;
   font-size: $font-size-sm;
   text-align: center;
@@ -109,10 +159,11 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #e6f7f5;
-  border-radius: $radius-sm;
-  padding: $spacing-sm $spacing-md;
-  margin-bottom: $spacing-md;
+  background: rgba(13, 148, 136, 0.1);
+  border: 1rpx solid rgba(13, 148, 136, 0.14);
+  border-radius: $radius-lg;
+  padding: 18rpx 22rpx;
+  margin-bottom: 20rpx;
 }
 
 .customerFilterText {
@@ -127,26 +178,11 @@
   padding: 4rpx 12rpx;
 }
 
-.customerLine {
-  display: flex;
-  align-items: center;
-  gap: $spacing-sm;
-  margin-bottom: $spacing-sm;
-}
-
-.customerTag {
-  flex: 0 0 auto;
-  font-size: $font-size-xs;
-  color: #0f766e;
-  background: #ccfbf1;
-  border-radius: $radius-xs;
-  padding: 2rpx 12rpx;
-}
-
 .customerName {
   font-size: $font-size-sm;
   color: #0f766e;
   font-weight: $font-weight-medium;
+  @include text-ellipsis;
 }
 
 .empty {

@@ -51,6 +51,9 @@ function BackNavigator() {
     refresh();
     const timer = setInterval(refresh, 800);
     let clickCleanup: (() => void) | null = null;
+    if (typeof document === 'undefined') {
+      return () => clearInterval(timer);
+    }
 
     try {
       const onClickRefresh = () => setTimeout(refresh, 350);
@@ -141,6 +144,7 @@ function BackNavigator() {
 // 底部四个主页面支持左右横滑切换；只在 Tab 根页启用，不影响子页返回和列表左滑操作。
 function TabSwipeNavigator() {
   useEffect(() => {
+    if (typeof document === 'undefined') return;
     const tabs = [
       '/pages/home/index',
       '/pages/inbound/index',
@@ -158,7 +162,8 @@ function TabSwipeNavigator() {
     };
     const onStart = (e: TouchEvent) => {
       if (e.touches.length !== 1 || isInteractive(e.target)) { active = false; return; }
-      const page = Taro.getCurrentPages().slice(-1)[0];
+      let page;
+      try { page = Taro.getCurrentPages().slice(-1)[0]; } catch (err) { active = false; return; }
       active = !!page && tabs.includes('/' + page.route);
       if (!active) return;
       const t = e.touches[0];
@@ -177,7 +182,8 @@ function TabSwipeNavigator() {
       if (!active) return;
       active = false;
       if (Math.abs(dx) < 72) return;
-      const page = Taro.getCurrentPages().slice(-1)[0];
+      let page;
+      try { page = Taro.getCurrentPages().slice(-1)[0]; } catch (err) { return; }
       const index = page ? tabs.indexOf('/' + page.route) : -1;
       const next = dx < 0 ? index + 1 : index - 1;
       if (next >= 0 && next < tabs.length) Taro.switchTab({ url: tabs[next] });

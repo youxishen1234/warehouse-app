@@ -1,10 +1,10 @@
 @use '@/styles/variables.scss' as *;
 
 .container {
-  padding: 24rpx 24rpx calc(240rpx + constant(safe-area-inset-bottom));
   padding: 24rpx 24rpx calc(240rpx + env(safe-area-inset-bottom));
   min-height: 100vh;
   box-sizing: border-box;
+  background: linear-gradient(180deg, #eef4ff 0%, #f7f8ff 36%, #ffffff 100%);
 }
 
 // ============ 分组标题 ============
@@ -179,8 +179,9 @@
 // ============ 最近记录 ============
 .recentItem {
   display: flex;
-  align-items: center;
-  padding: 24rpx 0;
+  align-items: flex-start;
+  gap: 16rpx;
+  padding: 22rpx 0;
   border-bottom: 1rpx solid $color-divider;
 
   &:last-child {
@@ -189,51 +190,60 @@
   }
 }
 
-.recentDot {
-  width: 12rpx;
-  height: 12rpx;
-  border-radius: 50%;
-  background: $color-success;
-  margin-right: 18rpx;
-  flex-shrink: 0;
-}
-
 .recentLeft {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: 8rpx;
+}
+
+.recentTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
 }
 
 .recentName {
+  flex: 1;
+  min-width: 0;
   font-size: $font-size-md;
   color: $color-text-primary;
   font-weight: $font-weight-medium;
   @include text-ellipsis;
 }
 
+.recentCustomer {
+  font-size: $font-size-xs;
+  color: #0f766e;
+  background: #ccfbf1;
+  border-radius: $radius-xs;
+  padding: 4rpx 12rpx;
+  display: inline-flex;
+  align-self: flex-start;
+}
+
 .recentTime {
   font-size: $font-size-xs;
   color: $color-text-tertiary;
-  margin-top: 6rpx;
 }
 
-.recentActions {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  flex-shrink: 0;
-  margin-left: 16rpx;
+.recentRemark {
+  font-size: $font-size-xs;
+  color: $color-text-tertiary;
+  line-height: 1.6;
 }
 
 .deleteBtn {
   min-width: 72rpx;
   padding: 12rpx 16rpx;
   border-radius: $radius-sm;
-  background: $color-error-soft;
+  background: rgba(220, 38, 38, 0.1);
   color: $color-error;
   font-size: $font-size-sm;
   text-align: center;
+  flex-shrink: 0;
 }
 
 .btnDisabled {
@@ -247,9 +257,8 @@
   color: $color-success;
   background: $color-success-soft;
   padding: 8rpx 20rpx;
-  border-radius: $radius-xs;
+  border-radius: 999rpx;
   flex-shrink: 0;
-  margin-left: 16rpx;
 }
 
 .empty {

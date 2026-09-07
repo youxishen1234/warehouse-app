@@ -21,6 +21,10 @@ const MineContent: React.FC = () => {
   const [checking, setChecking] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState('');
+  const [ipaDownloading, setIpaDownloading] = useState(false);
+  const [ipaProgress, setIpaProgress] = useState(0);
+  const [ipaMessage, setIpaMessage] = useState('正在下载新版 IPA');
+  const [ipaCompleted, setIpaCompleted] = useState(false);
 
   const goAuto = async () => {
     if (testing) return;
@@ -101,26 +105,56 @@ const MineContent: React.FC = () => {
     }
   };
 
-  const copyIpaLink = () => {
-    const link = getBaseUrl() + '/download/shuguang-ios.ipa';
-    Taro.setClipboardData({
-      data: link,
-      success: () => Taro.showToast({ title: '安装包链接已复制', icon: 'success' }),
-      fail: () => Taro.showToast({ title: '复制失败，请手动访问下载地址', icon: 'none' })
-    });
+  const downloadIpa = async () => {
+    if (ipaDownloading) return;
+    setIpaDownloading(true);
+    setIpaCompleted(false);
+    setIpaMessage('正在下载新版 IPA');
+    setIpaProgress(0);
+    try {
+      const task = Taro.downloadFile({
+        url: `${getBaseUrl()}/download/shuguang.ipa?t=${Date.now()}`,
+        timeout: 10 * 60 * 1000
+      });
+      task.onProgressUpdate((res) => {
+        setIpaProgress(Math.max(0, Math.min(100, res.progress || 0)));
+      });
+      const result = await task;
+      if (result.statusCode < 200 || result.statusCode >= 300) {
+        throw new Error(`HTTP ${result.statusCode}`);
+      }
+      setIpaProgress(100);
+      setIpaMessage('更新已下载，请关闭后重新打开 App 生效');
+      setIpaCompleted(true);
+    } catch (e: any) {
+      setIpaMessage(e?.message || '下载失败，请重试');
+      setIpaCompleted(true);
+    }
   };
 
   const addrSummary = getBaseUrl().replace(/^https?:\/\//, '');
-  const ipaSummary = addrSummary + '/download/shuguang-ios.ipa';
+  const ipaSummary = addrSummary + '/download/shuguang.ipa';
 
   const doCheck = async () => {
-    if (checking) return;
+    if (checking || ipaDownloading) return;
     setChecking(true);
+    setIpaCompleted(false);
+    setIpaMessage('正在检查更新');
+    setIpaProgress(0);
+    setIpaDownloading(true);
     try {
       const r = await checkAndUpdate();
-      Taro.showToast({ title: r.message, icon: 'none' });
+      if (r.hasUpdate && r.message.includes('已下载')) {
+        setIpaProgress(100);
+        setIpaMessage('更新已下载，请关闭后重新打开 App 生效');
+        setIpaCompleted(true);
+      } else {
+        setIpaDownloading(false);
+        Taro.showToast({ title: r.message, icon: 'none' });
+      }
     } catch (e: any) {
-      Taro.showToast({ title: e?.message || '检查更新失败', icon: 'none' });
+      setIpaMessage(e?.message || '检查更新失败');
+      setIpaCompleted(true);
     } finally {
       setChecking(false);
     }
@@ -173,7 +207,7 @@ const MineContent: React.FC = () => {
           </View>
           <Icon name="chevron" color="#c0c6d0" className={styles.menuArrow} />
         </View>
-        <View className={styles.menuItem} onClick={copyIpaLink}>
+        <View className={styles.menuItem} onClick={downloadIpa}>
           <View className={styles.menuIcon} style={{ background: 'rgba(47,107,255,0.14)' }}>
             <Icon name="download" color="#2f6bff" className={styles.menuIconImg} />
           </View>
@@ -188,6 +222,30 @@ const MineContent: React.FC = () => {
       <View className={styles.about}>
         <Text>曙光 · 库存管理 v1.0</Text>
       </View>
+
+      {ipaDownloading && (
+        <View className={styles.mask}>
+          <View className={styles.ipaDialog}>
+            <View className={styles.ipaTitleRow}>
+              <View className={styles.ipaIcon}>
+                <Icon name="download" color="#fff" className={styles.ipaIconImg} />
+              </View>
+              <Text className={styles.ipaTitle}>正在下载新版 IPA</Text>
+            </View>
+            <View className={styles.ipaFileName}>shuguang-ios.ipa</View>
+            <Text className={styles.ipaStatus}>{ipaMessage}</Text>
+            {!ipaCompleted && (
+              <View className={styles.ipaProgressTrack}>
+                <View className={styles.ipaProgressBar} style={{ width: `${ipaProgress}%` }} />
+              </View>
+            )}
+            {!ipaCompleted && <Text className={styles.ipaProgressText}>{ipaProgress}%</Text>}
+            {ipaCompleted && (
+              <View className={styles.ipaCloseBtn} onClick={() => setIpaDownloading(false)}>关闭</View>
+            )}
+          </View>
+        </View>
+      )}
 
       {addrOpen && (
         <View className={styles.mask} onClick={() => setAddrOpen(false)}>

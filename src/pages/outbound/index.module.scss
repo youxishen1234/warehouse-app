@@ -1,7 +1,6 @@
 @use '@/styles/variables.scss' as *;
 
 .container {
-  padding: 24rpx 24rpx calc(240rpx + constant(safe-area-inset-bottom));
   padding: 24rpx 24rpx calc(240rpx + env(safe-area-inset-bottom));
   min-height: 100vh;
   box-sizing: border-box;
@@ -22,10 +21,17 @@
 
 // ============ 卡片 ============
 .card {
-  background: $color-bg-card;
+  background:
+    radial-gradient(140% 90% at 12% 0%, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0) 52%),
+    rgba(255, 255, 255, 0.66);
+  border: 1rpx solid rgba(255, 255, 255, 0.72);
   border-radius: $radius-lg;
   padding: 28rpx 24rpx;
-  box-shadow: $shadow-card;
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  box-shadow:
+    inset 0 1rpx 0 rgba(255, 255, 255, 0.65),
+    0 10rpx 28rpx rgba(45, 55, 110, 0.08);
 }
 
 // ============ 搜索框 ============
@@ -187,8 +193,9 @@
 // ============ 最近记录 ============
 .recentItem {
   display: flex;
-  align-items: center;
-  padding: 24rpx 0;
+  align-items: flex-start;
+  gap: 16rpx;
+  padding: 22rpx 0;
   border-bottom: 1rpx solid $color-divider;
 
   &:last-child {
@@ -197,51 +204,60 @@
   }
 }
 
-.recentDot {
-  width: 12rpx;
-  height: 12rpx;
-  border-radius: 50%;
-  background: $color-primary;
-  margin-right: 18rpx;
-  flex-shrink: 0;
-}
-
 .recentLeft {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: 8rpx;
+}
+
+.recentTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
 }
 
 .recentName {
+  flex: 1;
+  min-width: 0;
   font-size: $font-size-md;
   color: $color-text-primary;
   font-weight: $font-weight-medium;
   @include text-ellipsis;
 }
 
+.recentCustomer {
+  font-size: $font-size-xs;
+  color: #0f766e;
+  background: #ccfbf1;
+  border-radius: $radius-xs;
+  padding: 4rpx 12rpx;
+  display: inline-flex;
+  align-self: flex-start;
+}
+
 .recentTime {
   font-size: $font-size-xs;
   color: $color-text-tertiary;
-  margin-top: 6rpx;
 }
 
-.recentActions {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  flex-shrink: 0;
-  margin-left: 16rpx;
+.recentRemark {
+  font-size: $font-size-xs;
+  color: $color-text-tertiary;
+  line-height: 1.6;
 }
 
 .deleteBtn {
   min-width: 72rpx;
   padding: 12rpx 16rpx;
   border-radius: $radius-sm;
-  background: $color-error-soft;
+  background: rgba(220, 38, 38, 0.1);
   color: $color-error;
   font-size: $font-size-sm;
   text-align: center;
+  flex-shrink: 0;
 }
 
 .btnDisabled {
@@ -255,9 +271,17 @@
   color: $color-error;
   background: $color-error-soft;
   padding: 8rpx 20rpx;
-  border-radius: $radius-xs;
+  border-radius: 999rpx;
   flex-shrink: 0;
-  margin-left: 16rpx;
+}
+
+.productInfoWarn {
+  background: rgba(254, 226, 226, 0.95);
+  border: 1rpx solid rgba(248, 113, 113, 0.28);
+}
+
+.infoNameWarn {
+  color: #dc2626;
 }
 
 .empty {

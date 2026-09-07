@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, Input, ScrollView, Picker } from '@tarojs/components';
 import Taro, { useRouter } from '@tarojs/taro';
-import { getTransactions, getProducts, deleteTransaction } from '@/services/api';
+import { getTransactions, getProducts } from '@/services/api';
 import { formatShortTime } from '@/utils/format';
 import type { Transaction, Product } from '@/types';
 import styles from './index.module.scss';
@@ -39,17 +39,6 @@ const RecordsPage: React.FC = () => {
 
   const productName = (id: number) => products.find(p => p.id === id)?.name || '(已删除)';
 
-  const handleDelete = async (tx: Transaction) => {
-    const product = productName(tx.product_id);
-    const result = await Taro.showModal({ title: '删除记录', content: `确定删除${tx.type === 'in' ? '入库' : '出库'}记录「${product} × ${tx.quantity}」？库存将自动回滚。`, confirmColor: '#dc2626' });
-    if (!result.confirm) return;
-    try {
-      await deleteTransaction(tx.id);
-      Taro.showToast({ title: '删除成功', icon: 'success' });
-      load();
-    } catch (e) { console.error('[Records] delete failed', e); }
-  };
-
   return (
     <ScrollView scrollY className={styles.container} onRefresherRefresh={load} refresherEnabled refresherTriggered={false}>
       <View className={styles.filterBox}>
@@ -81,24 +70,32 @@ const RecordsPage: React.FC = () => {
         list.map(t => (
           <View key={t.id} className={styles.listItem}>
             <View className={styles.itemTop}>
-              <Text className={styles.itemName}>{productName(t.product_id)}</Text>
+              <View className={styles.titleWrap}>
+                <Text className={styles.itemName}>{productName(t.product_id)}</Text>
+                {t.customer_name && (
+                  <Text className={styles.customerName}>{t.customer_name}</Text>
+                )}
+              </View>
               {t.type === 'in'
                 ? <Text className={styles.tagIn}>入库</Text>
                 : <Text className={styles.tagOut}>出库</Text>}
             </View>
-            {t.customer_name && (
-              <View className={styles.customerLine}>
-                <Text className={styles.customerTag}>客户</Text>
-                <Text className={styles.customerName}>{t.customer_name}</Text>
-              </View>
-            )}
+
+            <View className={styles.metaBlock}>
+              <Text className={styles.itemTime}>{formatShortTime(t.created_at)}</Text>
+              <Text className={styles.itemRemark}>
+                {t.operator || t.remark
+                  ? `${t.operator ? `操作人：${t.operator}` : ''}${t.operator && t.remark ? ' · ' : ''}${t.remark ? `备注：${t.remark}` : ''}`
+                  : '暂无备注'}
+              </Text>
+            </View>
+
             <View className={styles.itemBottom}>
-              <Text className={styles.itemMeta}>{formatShortTime(t.created_at)} {t.operator ? `· ${t.operator}` : ''}{t.remark ? ` · ${t.remark}` : ''}</Text>
-              <View className={styles.itemActions}>
+              <Text className={styles.itemQtyLabel}>数量</Text>
+              <View className={styles.itemBottomRight}>
                 <Text className={styles.itemQty} style={{ color: t.type === 'in' ? '#16a34a' : '#dc2626' }}>
                   {t.type === 'in' ? '+' : '-'}{t.quantity}
                 </Text>
-                <Text className={styles.deleteBtn} onClick={() => handleDelete(t)}>删除</Text>
               </View>
             </View>
           </View>

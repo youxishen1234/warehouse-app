@@ -49,6 +49,9 @@ export const stockOut = (product_id: number, quantity: number, operator = '', re
     data: { product_id, quantity, operator, remark, customer_id: customer_id || null }
   });
 
+export const syncUpload = (payload: { action: string; type?: string; id?: number; product_id?: number; quantity?: number; customer_id?: number | null; remark?: string; operator?: string }) =>
+  request<{ ok: boolean }>({ url: '/api/sync/upload', method: 'POST', data: payload });
+
 // 记录
 export const deleteTransaction = (id: number) =>
   request<{ id: number; product_id: number; type: 'in' | 'out'; quantity: number }>({ url: `/api/transactions/${id}`, method: 'DELETE' });

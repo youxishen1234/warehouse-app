@@ -120,9 +120,11 @@ export async function checkAndUpdate(): Promise<CheckUpdateResult> {
 
   // 2) 下载更新包
   let bid = '';
+  const downloadUrl = `${base}/appupdate/${(info.url || 'www.zip').replace(/^\//, '')}?t=${now}`;
+  report('download_attempt', cur, latest, downloadUrl);
   try {
     const res = await tu.download({
-      url: `${base}/appupdate/${(info.url || 'www.zip').replace(/^\//, '')}?t=${now}`,
+      url: downloadUrl,
       version: latest
     });
     bid = (res && res.id) || '';

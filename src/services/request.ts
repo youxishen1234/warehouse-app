@@ -1,11 +1,7 @@
 import Taro from '@tarojs/taro';
 
-// 后端 API 基地址
-// 桌面 App（Electron）使用本地后端；手机 App / 微信小程序使用云端服务器（已部署在腾讯云）
-const isNativeApp = typeof window !== 'undefined' && !!(window as any).Capacitor?.isNativePlatform?.();
-const DEFAULT_BASE = (isNativeApp || process.env.TARO_ENV !== 'h5')
-  ? 'http://152.136.100.200'
-  : 'http://localhost:4000';
+// 后端 API 基地址，统一指向服务器
+const DEFAULT_BASE = 'http://152.136.100.200';
 
 // 用户可在「我的-服务器地址」里修改后端/更新地址，修改后持久化，优先于默认地址
 const CUSTOM_BASE_KEY = 'sg_custom_base';
@@ -61,16 +57,14 @@ export function setBaseUrl(url: string): void {
 
 // ============================================
 // 自动选择可达地址（服务器优先，自定义地址兜底）
-// 打开 App 或离线时自动探测：候选地址先验一遍，用可达的那个，
-// 全程无需手动修改地址。
+// 打开 App 时自动探测：优先服务器地址，必要时再尝试用户自定义地址。
 // ============================================
-const LAN_BASE = 'http://152.136.100.200';
 
 /** 依次探测候选地址，返回第一个可用的；全部失败返回 null */
 export async function autoBestBase(): Promise<string | null> {
   const custom = readCustomBase();
-  // 去重候选：局域网 → 用户自定义 → 默认隧道
-  const candidates = [...new Set([LAN_BASE, custom, DEFAULT_BASE])].filter(Boolean);
+  // 去重候选：服务器 → 用户自定义
+  const candidates = [...new Set([DEFAULT_BASE, custom])].filter(Boolean);
   for (const c of candidates) {
     try {
       const res = await Taro.request({

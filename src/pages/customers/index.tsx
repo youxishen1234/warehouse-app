@@ -3,6 +3,7 @@ import { View, Text, Input, ScrollView } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { getCustomers, deleteCustomer, getTransactions } from '@/services/api';
 import type { Customer, Transaction } from '@/types';
+import Icon from '@/components/Icon';
 import SwipeRow from '@/components/SwipeRow';
 import styles from './index.module.scss';
 
@@ -55,6 +56,22 @@ const CustomersPage: React.FC = () => {
     Taro.navigateTo({ url: '/pages/customer-edit/index' });
   };
 
+  const handleGoProducts = () => {
+    Taro.switchTab({ url: '/pages/products/index' });
+  };
+
+  const handleGoInventory = () => {
+    Taro.switchTab({ url: '/pages/inventory/index' });
+  };
+
+  const handleGoInbound = () => {
+    Taro.switchTab({ url: '/pages/inbound/index' });
+  };
+
+  const handleGoOutbound = () => {
+    Taro.switchTab({ url: '/pages/outbound/index' });
+  };
+
   const handleEdit = (id: number) => {
     Taro.navigateTo({ url: `/pages/customer-edit/index?id=${id}` });
   };
@@ -82,8 +99,30 @@ const CustomersPage: React.FC = () => {
   return (
     <ScrollView scrollY className={styles.container} onRefresherRefresh={load} refresherEnabled refresherTriggered={false}>
       <View className={styles.searchBox}>
-        <Input className={styles.searchInput} placeholder="搜索客户名 / 电话 / 联系人" value={keyword} onInput={e => setKeyword(e.detail.value)} />
+        <View className={styles.searchField}>
+          <Icon name="search" color="#9aa3b2" className={styles.searchIcon} />
+          <Input className={styles.searchInput} placeholder="搜索客户名 / 电话 / 联系人" value={keyword} onInput={e => setKeyword(e.detail.value)} />
+        </View>
         <View className={styles.addBtn} onClick={handleAdd}>+ 新增</View>
+      </View>
+
+      <View className={styles.quickLinks}>
+        <View className={styles.quickLink} onClick={handleGoProducts}>
+          <Icon name="tag" color="#d97706" className={styles.quickLinkIcon} />
+          <Text className={styles.quickLinkText}>商品</Text>
+        </View>
+        <View className={styles.quickLink} onClick={handleGoInventory}>
+          <Icon name="clipboard" color="#7c3aed" className={styles.quickLinkIcon} />
+          <Text className={styles.quickLinkText}>库存</Text>
+        </View>
+        <View className={styles.quickLink} onClick={handleGoInbound}>
+          <Icon name="inbound" color="#16a34a" className={styles.quickLinkIcon} />
+          <Text className={styles.quickLinkText}>入库</Text>
+        </View>
+        <View className={styles.quickLink} onClick={handleGoOutbound}>
+          <Icon name="outbound" color="#2f6bff" className={styles.quickLinkIcon} />
+          <Text className={styles.quickLinkText}>出库</Text>
+        </View>
       </View>
 
       {list.length === 0 ? (

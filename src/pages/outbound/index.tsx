@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, Input, ScrollView, Picker } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
-import { getProducts, stockOut, getTransactions, getCustomers, deleteTransaction } from '@/services/api';
+import { getProducts, stockOut, getTransactions, getCustomers, deleteTransaction, syncUpload } from '@/services/api';
 import { formatShortTime } from '@/utils/format';
 import type { Product, Transaction, Customer } from '@/types';
 import Icon from '@/components/Icon';
@@ -68,19 +68,35 @@ const OutboundPage: React.FC = () => {
     if (submitting) return;
     setSubmitting(true);
     try {
-      await stockOut(selectedId, qty, operator, remark, customerId);
+      const result = await stockOut(selectedId, qty, operator, remark, customerId);
+      await syncUpload({
+        action: 'stock_out',
+        type: 'out',
+        id: result.transaction.id,
+        product_id: result.transaction.product_id,
+        quantity: result.transaction.quantity,
+        customer_id: result.transaction.customer_id,
+        remark: result.transaction.remark,
+        operator: result.transaction.operator
+      }).catch(error => console.error('[Outbound] sync upload failed', error));
       Taro.showToast({ title: '出库成功', icon: 'success' });
       setSelectedId(null); setQuantity('1'); setOperator(''); setRemark(''); setCustomerId(null);
       loadProducts(); loadRecent();
-    } catch (e) { console.error('[Outbound] confirm failed', e); }
+    } catch (e) { console.error('[Outbound] confirm failed', e); Taro.showToast({ title: String((e as any)?.message || '出库失败'), icon: 'none' }); }
     finally { setSubmitting(false); }
   };
 
   const handleDeleteRecent = async (tx: Transaction) => {
     const result = await Taro.showModal({ title: '删除出库记录', content: '删除后会自动恢复对应库存，确定继续吗？', confirmColor: '#dc2626' });
     if (!result.confirm) return;
-    try { await deleteTransaction(tx.id); Taro.showToast({ title: '已删除', icon: 'success' }); loadProducts(); loadRecent(); }
-    catch (e) { console.error('[Outbound] delete failed', e); }
+    try {
+      await deleteTransaction(tx.id);
+      await syncUpload({ action: 'transaction_delete', type: tx.type, id: tx.id, product_id: tx.product_id, quantity: tx.quantity, customer_id: tx.customer_id, remark: tx.remark, operator: tx.operator }).catch(error => console.error('[Outbound] delete sync failed', error));
+      Taro.showToast({ title: '已删除', icon: 'success' });
+      loadProducts();
+      loadRecent();
+    }
+    catch (e) { console.error('[Outbound] delete failed', e); Taro.showToast({ title: String((e as any)?.message || '删除失败'), icon: 'none' }); }
   };
 
   const productOptions = products.map(p => `${p.name}（库存${p.stock}${p.unit}）`);
@@ -95,7 +111,7 @@ const OutboundPage: React.FC = () => {
           <Input className={styles.searchInput} placeholder="搜索商品名称或分类" value={keyword} onInput={e => setKeyword(e.detail.value)} />
         </View>
 
-        <Picker mode="selector" range={productOptions} value={selectedId ? products.findIndex(p => p.id === selectedId) : 0} onChange={e => {
+        <Picker mode="selector" range={productOptions} value={selectedId ? Math.max(products.findIndex(p => p.id === selectedId), 0) : 0} onChange={e => {
           const idx = Number(e.detail.value);
           setSelectedId(products[idx]?.id ?? null);
         }}>
@@ -112,8 +128,9 @@ const OutboundPage: React.FC = () => {
             <Icon name={isOutOfStock ? 'alert' : 'box'} color={isOutOfStock ? '#ef4444' : '#2f6bff'} className={styles.infoIcon} />
             <View className={styles.infoTextWrap}>
               <Text className={`${styles.infoName} ${isOutOfStock ? styles.infoNameWarn : ''}`}>
-                {isOutOfStock ? `${selectedProduct.name} · 当前缺货` : selectedProduct.name}
+                {isOutOfStock ? `商品名称：${selectedProduct.name} · 当前缺货` : `商品名称：${selectedProduct.name}`}
               </Text>
+              <Text className={styles.infoStock}>规格：{selectedProduct.category || '未填写'} · 单位：{selectedProduct.unit}</Text>
               <Text className={styles.infoStock}>当前库存 {selectedProduct.stock}{selectedProduct.unit} · 单价 ¥{selectedProduct.price}</Text>
             </View>
           </View>
@@ -164,15 +181,16 @@ const OutboundPage: React.FC = () => {
         ) : (
           recent.map(t => (
             <View key={t.id} className={styles.recentItem}>
-              <View className={styles.recentDot} />
               <View className={styles.recentLeft}>
-                <Text className={styles.recentName}>{products.find(p => p.id === t.product_id)?.name || '(已删除商品)'}{t.customer_name ? ` · ${t.customer_name}` : ''}</Text>
-                <Text className={styles.recentTime}>{formatShortTime(t.created_at)}{t.operator ? ` · ${t.operator}` : ''}</Text>
+                <View className={styles.recentTop}>
+                  <Text className={styles.recentName}>{products.find(p => p.id === t.product_id)?.name || '(已删除商品)'}</Text>
+                  <Text className={styles.tagOut}>-{t.quantity}</Text>
+                </View>
+                {t.customer_name && <Text className={styles.recentCustomer}>{t.customer_name}</Text>}
+                <Text className={styles.recentTime}>{formatShortTime(t.created_at)}</Text>
+                <Text className={styles.recentRemark}>{t.operator || t.remark ? `${t.operator ? `操作人：${t.operator}` : ''}${t.operator && t.remark ? ' · ' : ''}${t.remark ? `备注：${t.remark}` : ''}` : '暂无备注'}</Text>
               </View>
-              <View className={styles.recentActions}>
-                <Text className={styles.tagOut}>-{t.quantity}</Text>
-                <Text className={styles.deleteBtn} onClick={() => handleDeleteRecent(t)}>删除</Text>
-              </View>
+              <Text className={styles.deleteBtn} onClick={() => handleDeleteRecent(t)}>删除</Text>
             </View>
           ))
         )}

@@ -13,7 +13,7 @@ export type IconName =
   | 'tag' | 'box' | 'money' | 'alert'
   | 'search' | 'clipboard' | 'records' | 'chevron'
   | 'plus' | 'edit' | 'list' | 'clock' | 'trend'
-  | 'check' | 'scan' | 'trash';
+  | 'check' | 'scan' | 'trash' | 'download';
 
 // 24x24 viewBox，stroke 线性图标（与 tabBar 图标同风格）
 const ICON_PATHS: Record<IconName, string> = {
