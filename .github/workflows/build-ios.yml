@@ -52,57 +52,41 @@ jobs:
           files: ios/App/shuguang.ipa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+      - name: Upload IPA to server
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PASS: ${{ secrets.SHUGUANG_SERVER_PASSWORD }}
+        run: |
+          set -euo pipefail
+          
+          IPA_PATH="ios/App/shuguang.ipa"
+          REMOTE_PATH="/opt/shuguang/public/shuguang.ipa"
+          
+          if [ -z "$SERVER_HOST" ] || [ -z "$SERVER_USER" ]; then
+            echo "::warning::SERVER_HOST or SERVER_USER not configured, skipping upload"
+            exit 0
+          fi
+          
+          if [ -n "$SSH_PRIVATE_KEY" ]; then
+            echo "Using SSH private key authentication"
+            mkdir -p ~/.ssh
+            echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+            chmod 600 ~/.ssh/id_rsa
+            ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+            
+            scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa "$IPA_PATH" "$SERVER_USER@$SERVER_HOST:/tmp/shuguang.ipa"
+            ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa "$SERVER_USER@$SERVER_HOST" "sudo mv /tmp/shuguang.ipa $REMOTE_PATH && sudo chmod 644 $REMOTE_PATH && ls -la $REMOTE_PATH"
+          elif [ -n "$SSH_PASS" ]; then
+            echo "Using password authentication (sshpass)"
+            brew install sshpass 2>/dev/null || true
+            
+            sshpass -p "$SSH_PASS" scp -o StrictHostKeyChecking=no "$IPA_PATH" "$SERVER_USER@$SERVER_HOST:/tmp/shuguang.ipa"
+            sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "echo '$SSH_PASS' | sudo -S mv /tmp/shuguang.ipa $REMOTE_PATH && echo '$SSH_PASS' | sudo -S chmod 644 $REMOTE_PATH && ls -la $REMOTE_PATH"
+          else
+            echo "::warning::Neither SSH_PRIVATE_KEY nor SHUGUANG_SERVER_PASSWORD configured, skipping upload"
+            exit 0
+          fi
+          
+          echo "IPA uploaded successfully to $SERVER_HOST:$REMOTE_PATH"
