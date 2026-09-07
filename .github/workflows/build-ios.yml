@@ -1,0 +1,75 @@
+name: Build iOS IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+      - main
+    paths:
+      - 'ios/**'
+      - 'www/**'
+      - 'package.json'
+      - 'capacitor.config.json'
+
+jobs:
+  build-ios:
+    runs-on: macos-14
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build H5
+        run: npm run build:h5
+
+      - name: Install Capacitor CLI
+        run: npm install -g @capacitor/cli@6
+
+      - name: Cap sync iOS
+        run: npx cap sync ios
+
+      - name: Install CocoaPods
+        run: |
+          cd ios/App
+          pod install
+
+      - name: Build iOS (unsigned)
+        run: |
+          cd ios/App
+          xcodebuild -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            ONLY_ACTIVE_ARCH=NO \
+            clean build
+
+      - name: Package IPA
+        run: |
+          cd ios/App/build/Build/Products/Release-iphoneos
+          mkdir -p Payload
+          cp -r App.app Payload/
+          zip -qr shuguang-ios-unsigned.ipa Payload
+          ls -la shuguang-ios-unsigned.ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: shuguang-ios-unsigned
+          path: ios/App/build/Build/Products/Release-iphoneos/shuguang-ios-unsigned.ipa
+          retention-days: 30
