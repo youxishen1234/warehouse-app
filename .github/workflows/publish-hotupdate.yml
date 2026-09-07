@@ -19,7 +19,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
@@ -39,16 +39,32 @@ jobs:
           PUBLISHED_AT="$(date -u '+%Y-%m-%d %H:%M:%S')"
           printf '{"version":"%s","url":"www.zip","publishedAt":"%s"}\n' "$VERSION" "$PUBLISHED_AT" > release/manifest.json
           unzip -t release/www.zip
+          ls -la release/
 
       - name: Install sshpass
         run: sudo apt-get update && sudo apt-get install -y sshpass
+
+      - name: Verify secrets
+        shell: bash
+        run: |
+          echo "SSH_HOST=${{ secrets.SERVER_HOST }}"
+          echo "SSH_USER=${{ secrets.SERVER_USER }}"
+          if [ -z "${{ secrets.SERVER_HOST }}" ] || [ -z "${{ secrets.SERVER_USER }}" ] || [ -z "${{ secrets.SSH_PASSWORD }}" ]; then
+            echo "::error::One or more required secrets (SERVER_HOST, SERVER_USER, SSH_PASSWORD) are not configured!"
+            exit 1
+          fi
+          echo "All required secrets are configured."
 
       - name: Upload update files
         env:
           SSH_HOST: ${{ secrets.SERVER_HOST }}
           SSH_USER: ${{ secrets.SERVER_USER }}
           SSH_PASS: ${{ secrets.SSH_PASSWORD }}
+        shell: bash
         run: |
           set -eu
-          sshpass -p "$SSH_PASS" scp -o StrictHostKeyChecking=no -P 22 release/www.zip release/manifest.json "$SSH_USER@$SSH_HOST:/tmp/"
-          sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no -p 22 "$SSH_USER@$SSH_HOST" "mkdir -p /opt/shuguang/public/appupdate && mv /tmp/www.zip /opt/shuguang/public/appupdate/www.zip && mv /tmp/manifest.json /opt/shuguang/public/appupdate/manifest.json"
+          echo "Connecting to $SSH_USER@$SSH_HOST ..."
+          sshpass -p "$SSH_PASS" scp -o StrictHostKeyChecking=no -o ConnectTimeout=30 -P 22 release/www.zip release/manifest.json "$SSH_USER@$SSH_HOST:/tmp/"
+          echo "Files uploaded to /tmp/"
+          sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -p 22 "$SSH_USER@$SSH_HOST" "mkdir -p /opt/shuguang/public/appupdate && mv /tmp/www.zip /opt/shuguang/public/appupdate/www.zip && mv /tmp/manifest.json /opt/shuguang/public/appupdate/manifest.json && echo 'Deploy completed' && ls -la /opt/shuguang/public/appupdate/"
+          echo "Hot update published successfully!"
