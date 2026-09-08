@@ -1,0 +1,55 @@
+name: Publish hot update
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Package current web assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f www/index.html
+          mkdir -p release
+          (cd www && zip -qr ../release/www.zip .)
+          version="$(date -u +%Y%m%d%H%M)"
+          published="$(date -u '+%Y-%m-%d %H:%M:%S')"
+          printf '{"version":"%s","url":"www.zip","publishedAt":"%s"}\n' "$version" "$published" > release/manifest.json
+          unzip -t release/www.zip
+
+      - name: Upload update files
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SHUGUANG_SERVER_HOST }}
+          username: ${{ secrets.SHUGUANG_SERVER_USER }}
+          password: ${{ secrets.SHUGUANG_SERVER_PASSWORD }}
+          port: 22
+          source: "release/www.zip,release/manifest.json"
+          target: "/tmp/shuguang-hotupdate"
+          overwrite: true
+
+      - name: Publish atomically
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SHUGUANG_SERVER_HOST }}
+          username: ${{ secrets.SHUGUANG_SERVER_USER }}
+          password: ${{ secrets.SHUGUANG_SERVER_PASSWORD }}
+          port: 22
+          script: |
+            set -eu
+            target="${{ secrets.SHUGUANG_UPDATE_DIR }}"
+            mkdir -p "$target"
+            mv /tmp/shuguang-hotupdate/release/www.zip "$target/www.zip.new"
+            mv /tmp/shuguang-hotupdate/release/manifest.json "$target/manifest.json.new"
+            mv "$target/www.zip.new" "$target/www.zip"
+            mv "$target/manifest.json.new" "$target/manifest.json"
+            rm -rf /tmp/shuguang-hotupdate
