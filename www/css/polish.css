@@ -47,8 +47,5 @@
 .sg-home-search-result { border:0; border-radius:.45rem; padding:.55rem .7rem; text-align:left; color:#1f2937; background:transparent; font-size:.7rem; }
 .sg-home-search-result:active { background:#eef3ff; }
 
-/* Navigation controls stay above the tab bar and never cover page content. */
-.sg-page-nav { position:fixed; left:0; right:0; bottom:calc(3.2rem + env(safe-area-inset-bottom, 0px)); z-index:9996; display:flex; justify-content:space-between; padding:0 .65rem; pointer-events:none; }
-.sg-page-nav button { pointer-events:auto; width:2.1rem; height:2.1rem; border:1px solid rgba(210,218,235,.9); border-radius:50%; color:#2f6bff; background:rgba(255,255,255,.92); box-shadow:0 .15rem .55rem rgba(40,60,130,.18); font-size:1.55rem; line-height:1; }
-.sg-page-nav button:active { transform:scale(.92); }
-.sg-back-btn { top:auto !important; bottom:calc(3.2rem + env(safe-area-inset-bottom, 0px)) !important; left:.65rem !important; }
+/* Keep the page back affordance just above the content instead of covering its search field. */
+.sg-back-btn { top:calc(env(safe-area-inset-top, 0px) - .05rem) !important; }
