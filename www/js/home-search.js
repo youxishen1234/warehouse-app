@@ -31,6 +31,19 @@
     function submit() { var value = input.value.trim(); if (!value) return; var exact = actions.filter(function (a) { return a[0] === value; })[0]; if (exact) { results.innerHTML = ''; clickRoute(exact[1]); } else render(); }
     input.addEventListener('input', render); input.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); }); bar.querySelector('button').addEventListener('click', submit);
   }
-  function watch() { addSearchBar(); new MutationObserver(addSearchBar).observe(document.body, { childList: true, subtree: true }); }
+  function enhanceDashboard() {
+    var links = [['经营概览', '/pages/inventory/index'], ['今日入库', '/pages/inbound/index'], ['今日出库', '/pages/outbound/index'], ['库存预警', '/pages/inventory/index']];
+    var nodes = document.querySelectorAll('taro-text-core, taro-view-core');
+    links.forEach(function (link) {
+      for (var i = 0; i < nodes.length; i += 1) {
+        if (nodes[i].textContent.trim() !== link[0] || nodes[i].getAttribute('data-sg-link')) continue;
+        var target = nodes[i].closest('taro-view-core') || nodes[i];
+        target.setAttribute('data-sg-link', link[1]); target.style.cursor = 'pointer';
+        target.addEventListener('click', function (e) { if (e.target.closest('.sg-home-search')) return; clickRoute(this.getAttribute('data-sg-link')); });
+        break;
+      }
+    });
+  }
+  function watch() { addSearchBar(); enhanceDashboard(); new MutationObserver(function () { addSearchBar(); enhanceDashboard(); }).observe(document.body, { childList: true, subtree: true }); }
   if (document.body) watch(); else document.addEventListener('DOMContentLoaded', watch);
 })();
