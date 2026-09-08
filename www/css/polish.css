@@ -1,0 +1,10 @@
+/* Keep native iOS route pages visible after a navigation transition. */
+.taro_router > .taro_page.taro_page_show:not(.taro_page_shade) {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  transform: none !important;
+  -webkit-transform: none !important;
+  transition: none !important;
+  -webkit-transition: none !important;
+}
