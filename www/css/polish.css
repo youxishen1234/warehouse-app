@@ -8,3 +8,36 @@
   transition: none !important;
   -webkit-transition: none !important;
 }
+
+.sg-home-search {
+  display: flex;
+  align-items: center;
+  gap: .25rem;
+  height: 2rem;
+  margin: .7rem 0 .15rem;
+  padding: 0 .35rem 0 .55rem;
+  border: 1px solid rgba(255,255,255,.35);
+  border-radius: 1rem;
+  background: rgba(255,255,255,.94);
+  box-sizing: border-box;
+}
+
+.sg-home-search-icon { color: #6b7280; font-size: 1rem; line-height: 1; }
+.sg-home-search-input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #1f2937;
+  font-size: .68rem;
+}
+.sg-home-search-input::placeholder { color: #9ca3af; }
+.sg-home-search-submit {
+  border: 0;
+  border-radius: .75rem;
+  padding: .28rem .6rem;
+  color: #fff;
+  background: #2f6bff;
+  font-size: .62rem;
+}
