@@ -42,17 +42,21 @@
     return action.aliases.some(function (alias) { return normalize(alias).indexOf(needle) >= 0 || needle.indexOf(normalize(alias)) >= 0; });
   }
   function queryTargets(value) {
-    var needle = normalize(value), ranked = actions.filter(function (action) { return matchesAction(action, needle); });
+    var needle = normalize(value), matched = actions.filter(function (action) { return matchesAction(action, needle); });
     var order;
     if (/客户|电话|联系人/.test(needle)) order = ['/pages/customers/index', '/pages/records/index', '/pages/outbound/index'];
     else if (/入库|采购/.test(needle)) order = ['/pages/inbound/index', '/pages/records/index', '/pages/products/index'];
     else if (/出库|销售/.test(needle)) order = ['/pages/outbound/index', '/pages/records/index', '/pages/products/index'];
     else if (/库存|经营/.test(needle)) order = ['/pages/inventory/index', '/pages/products/index', '/pages/records/index'];
     else order = ['/pages/products/index', '/pages/customers/index', '/pages/inventory/index', '/pages/records/index'];
+    var ranked = [];
     order.forEach(function (route) {
-      if (!ranked.some(function (action) { return action.route === route; })) {
-        var action = routeAction(route); if (action) ranked.push(action);
-      }
+      var action = routeAction(route);
+      if (action && (matched.some(function (item) { return item.route === route; }) || ranked.length === 0)) ranked.push(action);
+    });
+    matched.forEach(function (action) { if (!ranked.some(function (item) { return item.route === action.route; })) ranked.push(action); });
+    order.forEach(function (route) {
+      var action = routeAction(route); if (action && !ranked.some(function (item) { return item.route === route; })) ranked.push(action);
     });
     return ranked;
   }
