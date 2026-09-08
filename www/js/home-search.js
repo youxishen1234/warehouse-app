@@ -124,6 +124,28 @@
     addSearchBar(); enhanceDashboard(); injectPendingSearch();
     new MutationObserver(function () { addSearchBar(); enhanceDashboard(); injectPendingSearch(); }).observe(document.body, { childList: true, subtree: true });
     window.addEventListener('hashchange', injectPendingSearch);
+    installSwipeNavigation();
+  }
+  function installSwipeNavigation() {
+    var startX = 0, startY = 0, tracking = false;
+    document.addEventListener('touchstart', function (event) {
+      if (!event.touches || event.touches.length !== 1) return;
+      var target = event.target;
+      if (target.closest('input, textarea, select, button, a, .weui-tabbar')) { tracking = false; return; }
+      startX = event.touches[0].clientX; startY = event.touches[0].clientY; tracking = true;
+    }, { passive: true });
+    document.addEventListener('touchend', function (event) {
+      if (!tracking || !event.changedTouches || !event.changedTouches.length) return;
+      tracking = false;
+      var end = event.changedTouches[0], dx = end.clientX - startX, dy = end.clientY - startY;
+      if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.35) return;
+      var tabs = Array.prototype.slice.call(document.querySelectorAll('.weui-tabbar__item')).filter(visible);
+      if (tabs.length < 2) return;
+      var active = document.querySelector('.weui-tabbar__item.weui-bar__item_on');
+      var index = Math.max(0, tabs.indexOf(active));
+      var next = dx < 0 ? index + 1 : index - 1;
+      if (next >= 0 && next < tabs.length) tabs[next].click();
+    }, { passive: true });
   }
   if (document.body) watch(); else document.addEventListener('DOMContentLoaded', watch);
 })();
