@@ -2,8 +2,6 @@
   'use strict';
 
   var headerSelector = '[class*="header___"]';
-  var baseUrl = 'https://youxishen.online';
-
   function addSearchBar() {
     var header = document.querySelector(headerSelector);
     if (!header || header.querySelector('.sg-home-search')) return;
@@ -23,7 +21,14 @@
       var value = input.value.trim();
       if (!value) return;
       try { localStorage.setItem('sg_home_search', value); } catch (e) {}
-      window.location.href = '/pages/products/index?keyword=' + encodeURIComponent(value);
+      // Use the existing in-app route instead of reloading the Capacitor WebView.
+      var targets = document.querySelectorAll('taro-text-core, taro-view-core, text, view');
+      for (var i = 0; i < targets.length; i += 1) {
+        if (targets[i].textContent.trim() === '商品管理') {
+          targets[i].click();
+          return;
+        }
+      }
     };
     submit.addEventListener('click', submitSearch);
     input.addEventListener('keydown', function (event) {
@@ -33,7 +38,17 @@
 
   function watch() {
     addSearchBar();
-    new MutationObserver(addSearchBar).observe(document.body, { childList: true, subtree: true });
+    new MutationObserver(function () {
+      addSearchBar();
+      var value = '';
+      try { value = localStorage.getItem('sg_home_search') || ''; } catch (e) {}
+      if (!value || !/products/.test(window.location.pathname)) return;
+      var productInput = document.querySelector('input[placeholder*="搜索"], input[placeholder*="名称"]');
+      if (!productInput || productInput.value === value) return;
+      var setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      setter.call(productInput, value);
+      productInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }).observe(document.body, { childList: true, subtree: true });
   }
 
   if (document.body) watch();
