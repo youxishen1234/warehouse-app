@@ -24,7 +24,7 @@
       // Use the existing in-app route instead of reloading the Capacitor WebView.
       var targets = document.querySelectorAll('taro-text-core, taro-view-core, text, view');
       for (var i = 0; i < targets.length; i += 1) {
-        if (targets[i].textContent.trim() === '商品管理') {
+        if (targets[i].textContent.trim() === '商品管理' && getComputedStyle(targets[i]).display !== 'none') {
           targets[i].click();
           return;
         }
@@ -48,6 +48,7 @@
       var setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
       setter.call(productInput, value);
       productInput.dispatchEvent(new Event('input', { bubbles: true }));
+      try { localStorage.removeItem('sg_home_search'); } catch (e) {}
     }).observe(document.body, { childList: true, subtree: true });
   }
 
