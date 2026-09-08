@@ -21,7 +21,8 @@ jobs:
           test -f www/index.html
           mkdir -p release
           (cd www && zip -qr ../release/www.zip .)
-          version="$(date -u +%Y%m%d%H%M)"
+          # Include seconds so consecutive pushes cannot publish the same bundle id.
+          version="$(date -u +%Y%m%d%H%M%S)"
           published="$(date -u '+%Y-%m-%d %H:%M:%S')"
           printf '{"version":"%s","url":"www.zip","publishedAt":"%s"}\n' "$version" "$published" > release/manifest.json
           unzip -t release/www.zip
