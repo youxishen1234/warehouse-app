@@ -53,10 +53,11 @@
   pointer-events: none;
 }
 .taro-tabbar__tabbar {
+  position: fixed !important;
   pointer-events: auto;
   left: 0 !important;
   right: 0 !important;
-  bottom: calc(.45rem + env(safe-area-inset-bottom, 0px)) !important;
+  bottom: calc(.15rem + env(safe-area-inset-bottom, 0px)) !important;
   width: calc(100% - 1.6rem) !important;
   margin-left: .8rem !important;
   height: 3.2rem !important;
@@ -93,6 +94,12 @@
 .taro-tabbar__tabbar .weui-tabbar__label { font-size: .66rem; }
 .taro-tabbar__tabbar .weui-tabbar__icon { margin-top: .08rem; }
 .taro-tabbar__tabbar .weui-tabbar__item:active { transform: scale(.96); }
+
+/* The tab bar floats above the WebView's content; keep the final row reachable. */
+taro-scroll-view-core.taro-scroll-view__scroll-y {
+  padding-bottom: calc(4.4rem + env(safe-area-inset-bottom, 0px)) !important;
+  box-sizing: border-box;
+}
 
 @media (prefers-reduced-transparency: reduce) {
   .taro-tabbar__tabbar > .weui-tabbar { background: #fff !important; -webkit-backdrop-filter: none; backdrop-filter: none; }
