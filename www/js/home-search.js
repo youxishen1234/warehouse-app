@@ -44,6 +44,30 @@
       }
     });
   }
-  function watch() { addSearchBar(); enhanceDashboard(); new MutationObserver(function () { addSearchBar(); enhanceDashboard(); }).observe(document.body, { childList: true, subtree: true }); }
+  function addPageNav() {
+    if (document.querySelector('.sg-page-nav')) {
+      var existing = document.querySelector('.sg-page-nav button');
+      var back = document.querySelector('.sg-back-btn');
+      if (existing) existing.style.visibility = back && getComputedStyle(back).display !== 'none' ? 'hidden' : 'visible';
+      return;
+    }
+    var nav = document.createElement('div'); nav.className = 'sg-page-nav';
+    nav.innerHTML = '<button type="button" aria-label="返回">‹</button><button type="button" aria-label="下一个页面">›</button>';
+    var buttons = nav.querySelectorAll('button');
+    buttons[0].addEventListener('click', function () {
+      var back = document.querySelector('.sg-back-btn');
+      if (back && getComputedStyle(back).display !== 'none') { back.click(); return; }
+      var tabs = document.querySelectorAll('.taro-tabbar__tab'); if (tabs.length) tabs[Math.max(0, tabs.length - 1)].click();
+    });
+    buttons[1].addEventListener('click', function () {
+      var tabs = document.querySelectorAll('.taro-tabbar__tab');
+      if (!tabs.length) return;
+      var active = document.querySelector('.taro-tabbar__tab--active, .taro-tabbar__tab-selected');
+      var index = Array.prototype.indexOf.call(tabs, active); tabs[(index + 1 + tabs.length) % tabs.length].click();
+    });
+    document.body.appendChild(nav);
+    addPageNav();
+  }
+  function watch() { addSearchBar(); enhanceDashboard(); addPageNav(); new MutationObserver(function () { addSearchBar(); enhanceDashboard(); addPageNav(); }).observe(document.body, { childList: true, subtree: true }); }
   if (document.body) watch(); else document.addEventListener('DOMContentLoaded', watch);
 })();
