@@ -16,9 +16,12 @@
   height: 2rem;
   margin: .7rem 0 .15rem;
   padding: 0 .35rem 0 .55rem;
-  border: 1px solid rgba(255,255,255,.35);
+  border: 1px solid rgba(255,255,255,.62);
   border-radius: 1rem;
-  background: rgba(255,255,255,.94);
+  background: rgba(255,255,255,.62);
+  -webkit-backdrop-filter: blur(1.1rem) saturate(1.8);
+  backdrop-filter: blur(1.1rem) saturate(1.8);
+  box-shadow: 0 .18rem .7rem rgba(37,57,110,.12), inset 0 1px 0 rgba(255,255,255,.72);
   box-sizing: border-box;
 }
 
@@ -42,10 +45,29 @@
   font-size: .62rem;
 }
 .sg-home-search { position: relative; }
-.sg-home-search-results { position:absolute; left:0; right:0; top:2.15rem; z-index:10000; display:flex; flex-direction:column; padding:.2rem; border-radius:.65rem; background:#fff; box-shadow:0 .3rem 1rem rgba(20,35,80,.2); }
+.sg-home-search-results { position:absolute; left:0; right:0; top:2.15rem; z-index:10000; display:flex; flex-direction:column; padding:.2rem; border:1px solid rgba(255,255,255,.7); border-radius:.65rem; background:rgba(255,255,255,.84); -webkit-backdrop-filter:blur(1.1rem) saturate(1.7); backdrop-filter:blur(1.1rem) saturate(1.7); box-shadow:0 .3rem 1rem rgba(20,35,80,.2), inset 0 1px 0 rgba(255,255,255,.8); }
 .sg-home-search-results:empty { display:none; }
 .sg-home-search-result { border:0; border-radius:.45rem; padding:.55rem .7rem; text-align:left; color:#1f2937; background:transparent; font-size:.7rem; }
 .sg-home-search-result:active { background:#eef3ff; }
 
-/* Keep the page back affordance just above the content instead of covering its search field. */
-.sg-back-btn { top:calc(env(safe-area-inset-top, 0px) - .05rem) !important; }
+/* iOS 26 liquid-glass surfaces and safe-area aware tab bar. */
+.taro-tabbar__container {
+  min-height: calc(3rem + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  box-sizing: border-box;
+  background: rgba(255,255,255,.5) !important;
+  border-top: 1px solid rgba(255,255,255,.72) !important;
+  -webkit-backdrop-filter: blur(1.35rem) saturate(1.8);
+  backdrop-filter: blur(1.35rem) saturate(1.8);
+  box-shadow: 0 -.3rem 1.1rem rgba(37,57,110,.1), inset 0 1px 0 rgba(255,255,255,.72);
+}
+[class*="overviewCard___"], [class*="funcItem___"], [class*="todayItem___"], [class*="section___"] {
+  border-color: rgba(255,255,255,.62) !important;
+  background: rgba(255,255,255,.58) !important;
+  -webkit-backdrop-filter: blur(.9rem) saturate(1.35);
+  backdrop-filter: blur(.9rem) saturate(1.35);
+  box-shadow: 0 .22rem .8rem rgba(37,57,110,.08), inset 0 1px 0 rgba(255,255,255,.7);
+}
+
+/* Navigation is intentionally gesture-only; the old floating arrows must not intercept taps. */
+.sg-page-nav, .sg-back-btn { display: none !important; pointer-events: none !important; }
