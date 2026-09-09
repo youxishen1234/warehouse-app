@@ -50,7 +50,15 @@
 /* Compact translucent bottom navigation with native edge-swipe navigation retained. */
 .taro-tabbar__container {
   background: transparent !important;
-  pointer-events: none;
+  /* This wrapper owns the page panel as well as the tab bar.  `pointer-events`
+     is inherited, so disabling it here also disables every page control and
+     prevents scrolling.  The tab bar is positioned independently below. */
+  pointer-events: auto;
+}
+.taro-tabbar__panel,
+.taro-tabbar__panel .taro_router,
+.taro-tabbar__panel .taro_page {
+  pointer-events: auto;
 }
 .taro-tabbar__tabbar {
   position: absolute !important;
