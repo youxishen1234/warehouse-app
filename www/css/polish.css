@@ -51,13 +51,19 @@
 .taro-tabbar__container {
   background: transparent !important;
   pointer-events: none;
+  position: fixed !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  height: calc(4.5rem + env(safe-area-inset-bottom, 0px)) !important;
+  z-index: 9998 !important;
 }
 .taro-tabbar__tabbar {
   position: fixed !important;
   pointer-events: auto;
   left: 0 !important;
   right: 0 !important;
-  bottom: calc(.15rem + env(safe-area-inset-bottom, 0px)) !important;
+  bottom: calc(.4rem + env(safe-area-inset-bottom, 0px)) !important;
   width: calc(100% - 1.6rem) !important;
   margin-left: .8rem !important;
   height: 3.2rem !important;
@@ -97,7 +103,7 @@
 
 /* The tab bar floats above the WebView's content; keep the final row reachable. */
 taro-scroll-view-core.taro-scroll-view__scroll-y {
-  padding-bottom: calc(4.4rem + env(safe-area-inset-bottom, 0px)) !important;
+  padding-bottom: calc(5.2rem + env(safe-area-inset-bottom, 0px)) !important;
   box-sizing: border-box;
 }
 
