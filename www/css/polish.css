@@ -53,7 +53,7 @@
   pointer-events: none;
 }
 .taro-tabbar__tabbar {
-  position: fixed !important;
+  position: absolute !important;
   pointer-events: auto;
   left: 0 !important;
   right: 0 !important;
