@@ -36,6 +36,8 @@ jobs:
           port: 22
           source: "release/www.zip,release/manifest.json"
           target: "/tmp/shuguang-hotupdate"
+          strip_components: 1
+          rm: true
           overwrite: true
 
       - name: Publish atomically
@@ -51,7 +53,7 @@ jobs:
             # document root. Keep this path independent of optional CI secrets.
             target="/opt/shuguang/public/appupdate"
             mkdir -p "$target"
-            staging="/tmp/shuguang-hotupdate/release"
+            staging="/tmp/shuguang-hotupdate"
             # scp can finish just after the SSH action starts; wait briefly for both files.
             for attempt in 1 2 3 4 5; do
               if [ -f "$staging/www.zip" ] && [ -f "$staging/manifest.json" ]; then
