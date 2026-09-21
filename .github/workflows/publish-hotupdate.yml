@@ -47,7 +47,9 @@ jobs:
           port: 22
           script: |
             set -eu
-            target="${{ secrets.SHUGUANG_UPDATE_DIR }}"
+            # The public update files are served from the deployed app's known
+            # document root. Keep this path independent of optional CI secrets.
+            target="/opt/shuguang/public/appupdate"
             mkdir -p "$target"
             staging="/tmp/shuguang-hotupdate/release"
             # scp can finish just after the SSH action starts; wait briefly for both files.
