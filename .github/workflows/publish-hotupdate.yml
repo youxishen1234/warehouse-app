@@ -49,8 +49,18 @@ jobs:
             set -eu
             target="${{ secrets.SHUGUANG_UPDATE_DIR }}"
             mkdir -p "$target"
-            mv /tmp/shuguang-hotupdate/release/www.zip "$target/www.zip.new"
-            mv /tmp/shuguang-hotupdate/release/manifest.json "$target/manifest.json.new"
+            staging="/tmp/shuguang-hotupdate/release"
+            # scp can finish just after the SSH action starts; wait briefly for both files.
+            for attempt in 1 2 3 4 5; do
+              if [ -f "$staging/www.zip" ] && [ -f "$staging/manifest.json" ]; then
+                break
+              fi
+              sleep 2
+            done
+            test -f "$staging/www.zip"
+            test -f "$staging/manifest.json"
+            mv -f "$staging/www.zip" "$target/www.zip.new"
+            mv -f "$staging/manifest.json" "$target/manifest.json.new"
             mv "$target/www.zip.new" "$target/www.zip"
             mv "$target/manifest.json.new" "$target/manifest.json"
             rm -rf /tmp/shuguang-hotupdate
