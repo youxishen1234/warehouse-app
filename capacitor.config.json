@@ -3,7 +3,7 @@
   "appName": "曙光",
   "webDir": "www",
   "server": {
-    "androidScheme": "https"
+    "androidScheme": "http"
   },
   "plugins": {
     "CapacitorUpdater": {

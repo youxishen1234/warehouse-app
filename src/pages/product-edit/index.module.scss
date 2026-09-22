@@ -1,0 +1,80 @@
+@use '@/styles/variables.scss' as *;
+
+.container {
+  padding: $spacing-md $page-padding calc(320rpx + env(safe-area-inset-bottom));
+  min-height: 100vh;
+}
+
+.form {
+  background: $color-bg-card;
+  border-radius: $radius-md;
+  padding: $spacing-lg;
+  box-shadow: $shadow-card;
+}
+
+.field {
+  margin-bottom: $spacing-lg;
+}
+
+.label {
+  font-size: $font-size-sm;
+  color: $color-text-secondary;
+  margin-bottom: $spacing-sm;
+  display: block;
+}
+
+.input {
+  width: 100%;
+  padding: $spacing-md;
+  border: 1rpx solid $color-border;
+  border-radius: $radius-sm;
+  font-size: $font-size-md;
+  box-sizing: border-box;
+}
+
+.picker {
+  width: 100%;
+  padding: $spacing-md;
+  border: 1rpx solid $color-border;
+  border-radius: $radius-sm;
+  font-size: $font-size-md;
+  background: $color-bg-card;
+}
+.combo { position:relative; display:flex; align-items:center; }
+.combo .input { padding-right:54rpx; }
+.comboArrow { position:absolute; right:0; width:50rpx; text-align:center; color:#526174; font-size:30rpx; }
+.historyDropdown { position:relative; z-index:5; max-height:230rpx; overflow:auto; border:1rpx solid #dbe3ea; border-radius:8rpx; background:#fff; }
+.historyDropdown text { display:block; padding:14rpx 16rpx; border-bottom:1rpx solid #edf0f4; color:#334155; font-size:$font-size-sm; }
+.historyDropdown text:last-child { border-bottom:0; }
+
+.row {
+  display: flex;
+  gap: $spacing-md;
+}
+
+.rowItem {
+  flex: 1;
+}
+
+.btnPrimary {
+  @include button-reset;
+  width: 100%;
+  height: $button-height-lg;
+  position: fixed;
+  z-index: 80;
+  left: $page-padding;
+  right: $page-padding;
+  bottom: calc(132rpx + env(safe-area-inset-bottom));
+  width: auto;
+  background: #246bea;
+  color: $color-text-white;
+  border-radius: $radius-button;
+  font-size: $font-size-lg;
+  font-weight: $font-weight-semibold;
+  margin: 0;
+
+  &:active {
+    opacity: 0.9;
+    transform: none;
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "shuguang-server",
+  "private": true,
+  "scripts": { "start": "node server.js", "test": "node --test team.test.cjs" },
+  "dependencies": { "express": "^4.19.2" }
+}

@@ -1,0 +1,45 @@
+@use '@/styles/variables.scss' as *;
+
+// 外层容器：负责圆角裁剪 + 列表间距
+.wrap {
+  position: relative;
+  overflow: hidden;
+  border-radius: $radius-md;
+  margin-bottom: $spacing-md;
+}
+
+// 操作按钮层（绝对定位在右侧，随内容滑动露出）
+.actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: row;
+  z-index: 1;
+}
+
+.actionBtn {
+  @include button-reset;
+  height: 100%;
+  color: #fff;
+  font-size: $font-size-md;
+  font-weight: $font-weight-medium;
+  white-space: nowrap;
+
+  &:active {
+    opacity: 0.88;
+  }
+}
+
+// 内容层：跟随手势水平移动
+.content {
+  position: relative;
+  z-index: 2;
+  touch-action: pan-y; // 纵向滚动交给页面，横向手势由组件接管
+  transition: transform $transition-base;
+}
+
+.dragging {
+  transition: none;
+}

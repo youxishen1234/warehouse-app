@@ -1,0 +1,55 @@
+// ============================================
+// 曙光 · 主题配色（专业进销存 · 商务蓝）
+// 对标：秦丝进销存 / 管家婆 / 金蝶精斗云
+// ============================================
+
+// 品牌主题色 —— 商务蓝
+$color-primary: #2f6bff;
+$color-primary-light: #5a8cff;
+$color-primary-dark: #1e54e0;
+$color-primary-soft: #eef3ff;
+
+// 渐变（蓝色头部）
+$gradient-primary: linear-gradient(135deg, #4d84ff 0%, #2f6bff 55%, #1e54e0 100%);
+$gradient-header: linear-gradient(150deg, #3f7cff 0%, #2f6bff 55%, #2357e6 100%);
+
+// 功能色
+$color-success: #16a34a;
+$color-success-soft: #ecfdf3;
+$color-warning: #d97706;
+$color-warning-soft: #fffaeb;
+$color-error: #ef4444;
+$color-error-soft: #fef2f2;
+$color-info: #2f6bff;
+
+// 背景色
+$color-bg-page: #f5f6f8;
+$color-bg-card: #ffffff;
+$color-bg-hover: #f7f8fa;
+$color-bg-fill: #f5f7fa; // 输入框/浅灰底
+
+// 文本色
+$color-text-primary: #1a2233;
+$color-text-secondary: #5b6472;
+$color-text-tertiary: #9aa3b2;
+$color-text-disabled: #cdd3dc;
+$color-text-white: #ffffff;
+
+// 边框色
+$color-border: #e8ebf0;
+$color-divider: #f0f2f5;
+
+// 圆角（商务风：规整、不过圆）
+$radius-xs: 8rpx;
+$radius-sm: 12rpx;
+$radius-md: 16rpx;
+$radius-lg: 24rpx;
+$radius-xl: 32rpx;
+$radius-button: 16rpx;
+$radius-round: 999rpx;
+
+// 阴影（蓝色调、轻柔）
+$shadow-card: 0 4rpx 20rpx rgba(31, 58, 120, 0.06);
+$shadow-card-hover: 0 8rpx 28rpx rgba(31, 58, 120, 0.1);
+$shadow-float: 0 8rpx 24rpx rgba(47, 107, 255, 0.22);
+$shadow-popup: 0 16rpx 48rpx rgba(31, 58, 120, 0.15);

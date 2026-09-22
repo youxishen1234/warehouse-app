@@ -20,37 +20,33 @@ jobs:
           set -euo pipefail
           test -f www/index.html
           mkdir -p release
-          (cd www && zip -qr ../release/www.zip .)
+          python3 scripts/package-hotupdate.py www release/www.zip
           # Include seconds so consecutive pushes cannot publish the same bundle id.
           version="$(date -u +%Y%m%d%H%M%S)"
           published="$(date -u '+%Y-%m-%d %H:%M:%S')"
           printf '{"version":"%s","url":"www.zip","publishedAt":"%s"}\n' "$version" "$published" > release/manifest.json
           unzip -t release/www.zip
 
-      - name: Upload update files
+      - name: Upload web bundle
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SHUGUANG_SERVER_HOST }}
           username: ${{ secrets.SHUGUANG_SERVER_USER }}
           password: ${{ secrets.SHUGUANG_SERVER_PASSWORD }}
           port: 22
-          source: "release/www.zip,release/manifest.json"
-          target: "/tmp/shuguang-hotupdate"
+          source: "release/www.zip"
+          target: "/opt/shuguang/public/appupdate"
+          strip_components: 1
           overwrite: true
 
-      - name: Publish atomically
-        uses: appleboy/ssh-action@v1.0.3
+      - name: Upload update manifest
+        uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SHUGUANG_SERVER_HOST }}
           username: ${{ secrets.SHUGUANG_SERVER_USER }}
           password: ${{ secrets.SHUGUANG_SERVER_PASSWORD }}
           port: 22
-          script: |
-            set -eu
-            target="${{ secrets.SHUGUANG_UPDATE_DIR }}"
-            mkdir -p "$target"
-            mv /tmp/shuguang-hotupdate/release/www.zip "$target/www.zip.new"
-            mv /tmp/shuguang-hotupdate/release/manifest.json "$target/manifest.json.new"
-            mv "$target/www.zip.new" "$target/www.zip"
-            mv "$target/manifest.json.new" "$target/manifest.json"
-            rm -rf /tmp/shuguang-hotupdate
+          source: "release/manifest.json"
+          target: "/opt/shuguang/public/appupdate"
+          strip_components: 1
+          overwrite: true

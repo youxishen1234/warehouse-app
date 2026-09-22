@@ -8,3 +8,10 @@ android/local.properties
 .idea/
 .vscode/
 .DS_Store
+/release/
+/dist/
+/.swc/
+/test-results/
+/backend/data.json
+/backend/accounts.json
+/backend/update-log.jsonl

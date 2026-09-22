@@ -1,0 +1,71 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const express = require('express');
+const install = require('./team');
+
+test('shared warehouse authorization, idempotency, conflicts, persistence and rollback', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'warehouse-team-test-'));
+  process.env.WAREHOUSE_DATA_FILE = path.join(dir, 'data.json');
+  process.env.WAREHOUSE_ACCOUNTS_FILE = path.join(dir, 'accounts.json');
+  fs.writeFileSync(process.env.WAREHOUSE_DATA_FILE, JSON.stringify({ products:[],customers:[],suppliers:[],transactions:[],orders:[],ledger:[],_meta:{nextProductId:1,nextCustomerId:1,nextSupplierId:1,nextTransactionId:1,nextLedgerId:1} }));
+  const initial = fs.readFileSync(process.env.WAREHOUSE_DATA_FILE,'utf8');
+  await install.bootstrap(process.env.WAREHOUSE_ACCOUNTS_FILE, 'Example-test-password!');
+  const db = require('./db');
+  assert.equal(fs.readFileSync(process.env.WAREHOUSE_DATA_FILE,'utf8'),initial);
+  const app=express();app.use(express.json());app.use('/api',install(db));
+  const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));
+  const origin=`http://127.0.0.1:${server.address().port}/api`;
+  async function call(url, method='GET', body, token='', rev, key) {
+    const headers={'Content-Type':'application/json',Authorization:`Bearer ${token}`};
+    if (rev!==undefined) headers['If-Match']=String(rev);
+    if(key) headers['Idempotency-Key']=key;
+    const r=await fetch(origin+url,{method,headers,body:body===undefined?undefined:JSON.stringify(body)});
+    return {status:r.status,body:await r.json(),revision:r.headers.get('x-warehouse-revision')};
+  }
+  try {
+    assert.equal((await call('/products')).status,401);
+    assert.equal((await call('/auth/gate','POST',{password:'shuguang2026'})).status,200);
+    assert.equal((await call('/auth/login','POST',{username:'admin',password:'Wrong-password-123'})).status,401);
+    const admin=(await call('/auth/login','POST',{username:'admin',password:'Example-test-password!'})).body.data.token;
+    for(const role of ['operator','viewer']) assert.equal((await call('/team','POST',{username:role,password:'Example-test-password!',role},admin)).status,200);
+    const operator=(await call('/auth/login','POST',{username:'operator',password:'Example-test-password!'})).body.data.token;
+    const viewer=(await call('/auth/login','POST',{username:'viewer',password:'Example-test-password!'})).body.data.token;
+    assert.equal((await call('/products','POST',{name:'x'},viewer,0,'viewer-request-0001')).status,403);
+    assert.equal((await call('/team','GET',undefined,operator)).status,403);
+    let created=await call('/products','POST',{name:'Box',price:2,stock:10},operator,0,'product-request-0001');
+    assert.equal(created.status,200);const id=created.body.data.id;
+    assert.equal((await call('/products','GET',undefined,viewer)).body.data.length,1);
+    assert.equal((await call('/products','POST',{name:'Box',price:2,stock:10},operator,0,'product-request-0001')).body.data.id,id);
+    assert.equal(db.revision(),1);
+    assert.equal((await call('/products','POST',{name:'Different'},operator,1,'product-request-0001')).status,409);
+    const both=await Promise.all([call('/stock/out','POST',{product_id:id,quantity:7},operator,1,'stock-request-one1'),call('/stock/out','POST',{product_id:id,quantity:7},admin,1,'stock-request-two2')]);
+    assert.deepEqual(both.map(x=>x.status).sort(),[200,409]);
+    assert.equal(db.getProduct(id).stock,3);
+    assert.equal((await call('/stock/out','POST',{product_id:id,quantity:7},admin,2,'stock-request-new3')).status,400);
+    assert.equal(db.getProduct(id).stock,3);
+    assert.equal((await call('/suppliers','POST',{name:'Supplier',payable:10},operator,2,'supplier-request1')).status,403);
+    const supplier=await call('/suppliers','POST',{name:'Supplier',payable:10},admin,2,'supplier-request1');
+    assert.equal(supplier.status,200);
+    assert.equal((await call(`/suppliers/${supplier.body.data.id}`,'PUT',{payable:0},operator,3,'settlement-req01')).status,403);
+    assert.equal((await call(`/suppliers/${supplier.body.data.id}`,'PUT',{payable:0},admin,3,'settlement-req02')).status,200);
+    const disk=fs.readFileSync(process.env.WAREHOUSE_DATA_FILE,'utf8');
+    assert.throws(()=>db.transact({id:'test',username:'test'},'failure-request1','fp','4','test',()=>{db.updateProduct(id,{name:'Corrupted',price:-1});}),/无效/);
+    assert.equal(db.getProduct(id).name,'Box');assert.equal(fs.readFileSync(process.env.WAREHOUSE_DATA_FILE,'utf8'),disk);
+    const originalRename=fs.renameSync;
+    fs.renameSync=()=>{throw new Error('Disk error');};
+    assert.throws(()=>db.transact({id:'test',username:'test'},'failure-request2','fp','4','test',()=>db.updateProduct(id,{name:'Corrupted'})),/Disk error/);
+    fs.renameSync=originalRename;
+    assert.equal(db.getProduct(id).name,'Box');assert.equal(fs.readFileSync(process.env.WAREHOUSE_DATA_FILE,'utf8'),disk);
+    const audit=await call('/audit','GET',undefined,admin);assert.equal(audit.status,200);assert(audit.body.data.items.some(e=>e.actor_name===(both[0].status===200?'operator':'admin')&&e.operation==='POST /stock/out'));
+    const members=(await call('/team','GET',undefined,admin)).body.data;
+    assert.equal((await call(`/team/${members.find(u=>u.username==='admin').id}`,'PUT',{disabled:true},admin)).status,400);
+    assert.equal((await call(`/team/${members.find(u=>u.username==='operator').id}`,'PUT',{disabled:true},admin)).status,200);
+    assert.equal((await call('/products','GET',undefined,operator)).status,401);
+    assert.equal((await call('/auth/password','POST',{currentPassword:'Example-test-password!',password:'New-test-password!'},viewer)).status,200);
+    assert.equal((await call('/products','GET',undefined,viewer)).status,401);
+    delete require.cache[require.resolve('./db')]; const reopened=require('./db');assert.equal(reopened.getProduct(id).stock,3);assert.equal(reopened.revision(),4);
+  } finally { await new Promise(r=>server.close(r)); server.closeAllConnections(); }
+});

@@ -16,6 +16,8 @@
           // 上报启动成功，防止插件误回滚
           TU.notifyAppReady().catch(function() {});
 
+          // 启动时检查更新；下载失败静默处理，不影响当前版本使用。
+
           // 服务器/更新地址：优先使用「我的-服务器地址」里保存的自定义地址，否则用默认穿透地址
           var ROOT = (function() {
             try {
@@ -131,18 +133,12 @@
               report('downloaded', { current: curV, native_version: nativeV, to_version: m.version });
             }
             if (!bid) return;
-            // 立即应用新版本：无需用户手动重启，应用后 webview 自动刷新并运行新版
-            var applied = await TU.set({ id: bid }).catch(function() { return null; });
-            if (applied !== null) {
-              report('updated_auto', { current: curV, native_version: nativeV, to_version: m.version });
-              return; // set 已触发刷新，新版本启动时会再次检查（此时 curV 已是最新，直接跳过）
-            }
-            // set 失败（异常情况）：退回“下次启动生效”，避免影响当前使用
+            // 发现新版本后自动下载，重启后生效；iOS 运行中切换网页包会导致 WebView 闪退。
             var nx = await TU.next({ id: bid }).catch(function() { return null; });
             if (nx !== null) {
               report('pending_restart', { current: curV, native_version: nativeV, to_version: m.version });
-              toast('更新已准备好，重启应用后生效');
+              toast('更新已下载，请关闭后重新打开 App 生效');
             }
           }).catch(function() {});
         } catch (e) {}
-      })();</script><script defer="defer" src="/js/950.04982b06.js"></script><script defer="defer" src="/js/app.04982b06.js"></script><script defer="defer" src="/js/home-search.js"></script><link href="/css/app.04982b06a96b22ab1b91.css" rel="stylesheet"><link href="/css/polish.css" rel="stylesheet"></head><body><div id="app"></div></body></html>
+      })();</script><script defer="defer" src="./js/315.33453857.js"></script><script defer="defer" src="./js/app.33453857.js"></script><script defer="defer" src="./js/home-search.js"></script><link href="./css/app.334538576f830febaa84.css" rel="stylesheet"><link href="./css/polish.css" rel="stylesheet"></head><body><div id="app"></div></body></html>
