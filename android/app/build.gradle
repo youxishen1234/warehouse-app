@@ -16,7 +16,7 @@ android {
         applicationId "com.warehouse.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        // Increment the native version so Android accepts the repaired build
+        // Increment the native version so Android accepts the calculator build
         // as an update instead of treating it as the old package.
         versionCode 5
         versionName "1.0.5"
