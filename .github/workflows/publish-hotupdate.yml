@@ -27,44 +27,26 @@ jobs:
           printf '{"version":"%s","url":"www.zip","publishedAt":"%s"}\n' "$version" "$published" > release/manifest.json
           unzip -t release/www.zip
 
-      - name: Upload update files
+      - name: Upload web bundle
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SHUGUANG_SERVER_HOST }}
           username: ${{ secrets.SHUGUANG_SERVER_USER }}
           password: ${{ secrets.SHUGUANG_SERVER_PASSWORD }}
           port: 22
-          source: "release/www.zip,release/manifest.json"
-          target: "/tmp/shuguang-hotupdate"
+          source: "release/www.zip"
+          target: "/opt/shuguang/public/appupdate"
           strip_components: 1
-          rm: true
           overwrite: true
 
-      - name: Publish atomically
-        uses: appleboy/ssh-action@v1.0.3
+      - name: Upload manifest file
+        uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SHUGUANG_SERVER_HOST }}
           username: ${{ secrets.SHUGUANG_SERVER_USER }}
           password: ${{ secrets.SHUGUANG_SERVER_PASSWORD }}
           port: 22
-          script: |
-            set -eu
-            # The public update files are served from the deployed app's known
-            # document root. Keep this path independent of optional CI secrets.
-            target="/opt/shuguang/public/appupdate"
-            mkdir -p "$target"
-            staging="/tmp/shuguang-hotupdate"
-            # scp can finish just after the SSH action starts; wait briefly for both files.
-            for attempt in 1 2 3 4 5; do
-              if [ -f "$staging/www.zip" ] && [ -f "$staging/manifest.json" ]; then
-                break
-              fi
-              sleep 2
-            done
-            test -f "$staging/www.zip"
-            test -f "$staging/manifest.json"
-            mv -f "$staging/www.zip" "$target/www.zip.new"
-            mv -f "$staging/manifest.json" "$target/manifest.json.new"
-            mv "$target/www.zip.new" "$target/www.zip"
-            mv "$target/manifest.json.new" "$target/manifest.json"
-            rm -rf /tmp/shuguang-hotupdate
+          source: "release/manifest.json"
+          target: "/opt/shuguang/public/appupdate"
+          strip_components: 1
+          overwrite: true
