@@ -1,0 +1,248 @@
+/* Keep native iOS route pages visible after a navigation transition. */
+.taro_router > .taro_page.taro_page_show:not(.taro_page_shade) {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  transform: none !important;
+  -webkit-transform: none !important;
+  transition: none !important;
+  -webkit-transition: none !important;
+}
+
+.sg-home-search {
+  display: flex;
+  align-items: center;
+  gap: .25rem;
+  height: 2rem;
+  margin: .7rem 0 .15rem;
+  padding: 0 .35rem 0 .55rem;
+  border: 1px solid rgba(255,255,255,.35);
+  border-radius: 1rem;
+  background: rgba(255,255,255,.94);
+  box-sizing: border-box;
+}
+
+.sg-home-search-icon { color: #6b7280; font-size: 1rem; line-height: 1; }
+.sg-home-search-input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #1f2937;
+  font-size: .68rem;
+}
+.sg-home-search-input::placeholder { color: #9ca3af; }
+.sg-home-search-submit {
+  border: 0;
+  border-radius: .75rem;
+  padding: .28rem .6rem;
+  color: #fff;
+  background: #2f6bff;
+  font-size: .62rem;
+}
+.sg-home-search { position: relative; }
+.sg-home-search-results { position:absolute; left:0; right:0; top:2.15rem; z-index:10000; display:flex; flex-direction:column; padding:.2rem; border-radius:.65rem; background:#fff; box-shadow:0 .3rem 1rem rgba(20,35,80,.2); }
+.sg-home-search-results:empty { display:none; }
+.sg-home-search-result { border:0; border-radius:.45rem; padding:.55rem .7rem; text-align:left; color:#1f2937; background:transparent; font-size:.7rem; }
+.sg-home-search-result:active { background:#eef3ff; }
+
+/* Corrugated roll diameter calculator. */
+.sg-corrugated-item {
+  -webkit-box-align: center;
+  -ms-flex-align: center;
+  align-items: center;
+  box-sizing: border-box;
+  color: #1a2233;
+  cursor: pointer;
+  display: -webkit-box;
+  display: -ms-flexbox;
+  display: flex;
+  -webkit-box-orient: vertical;
+  -webkit-box-direction: normal;
+  -ms-flex-direction: column;
+  flex-direction: column;
+  padding: .58667rem 0;
+  text-align: center;
+  touch-action: manipulation;
+  width: 25%;
+}
+.sg-corrugated-item:active { opacity: .7; }
+.sg-corrugated-icon {
+  -webkit-box-align: center;
+  -ms-flex-align: center;
+  align-items: center;
+  background: rgba(234, 88, 12, .14);
+  border-radius: .64rem;
+  color: #ea580c;
+  display: -webkit-box;
+  display: -ms-flexbox;
+  display: flex;
+  font-size: .78rem;
+  font-weight: 700;
+  height: 2.34667rem;
+  -webkit-box-pack: center;
+  -ms-flex-pack: center;
+  justify-content: center;
+  width: 2.34667rem;
+}
+.sg-corrugated-text { font-size: .64rem; margin-top: .37333rem; }
+
+.sg-calc-overlay {
+  -webkit-box-align: center;
+  -ms-flex-align: center;
+  align-items: center;
+  background: rgba(17, 24, 39, .54);
+  display: -webkit-box;
+  display: -ms-flexbox;
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: max(1rem, env(safe-area-inset-top, 0px)) 1rem max(1rem, env(safe-area-inset-bottom, 0px));
+  position: fixed;
+  z-index: 100000;
+}
+.sg-calc-dialog {
+  background: #fff;
+  border-radius: 1.1rem;
+  box-shadow: 0 .8rem 2.5rem rgba(15, 23, 42, .25);
+  box-sizing: border-box;
+  color: #172033;
+  max-height: calc(100vh - 2rem);
+  max-width: 31rem;
+  overflow: auto;
+  padding: 1.1rem;
+  width: 100%;
+}
+.sg-calc-header { align-items: flex-start; display: flex; justify-content: space-between; gap: .8rem; }
+.sg-calc-header h2 { color: #111827; font-size: 1.02rem; line-height: 1.35; margin: 0; }
+.sg-calc-header p { color: #64748b; font-size: .68rem; line-height: 1.4; margin: .22rem 0 0; }
+.sg-calc-close {
+  align-items: center;
+  background: #f1f5f9;
+  border: 0;
+  border-radius: 50%;
+  color: #475569;
+  cursor: pointer;
+  display: flex;
+  flex: 0 0 auto;
+  font-size: 1.15rem;
+  height: 1.7rem;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  width: 1.7rem;
+}
+.sg-calc-fields { display: grid; gap: .68rem; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 1rem; }
+.sg-calc-field { display: block; min-width: 0; }
+.sg-calc-field-wide { grid-column: 1 / -1; }
+.sg-calc-field > span { color: #334155; display: flex; font-size: .68rem; font-weight: 600; justify-content: space-between; margin-bottom: .28rem; }
+.sg-calc-field em { color: #94a3b8; font-size: .6rem; font-style: normal; font-weight: 500; }
+.sg-calc-field input {
+  -webkit-appearance: none;
+  background: #f8fafc;
+  border: 1px solid #dbe3ec;
+  border-radius: .58rem;
+  box-sizing: border-box;
+  color: #0f172a;
+  font-size: .78rem;
+  height: 2.25rem;
+  outline: none;
+  padding: 0 .65rem;
+  width: 100%;
+}
+.sg-calc-field input:focus { background: #fff; border-color: #0f766e; box-shadow: 0 0 0 .12rem rgba(15, 118, 110, .12); }
+.sg-calc-field input.sg-calc-derived { background: #ecfdf5; border-color: #10b981; color: #047857; font-weight: 700; }
+.sg-calc-field input[aria-invalid="true"] { border-color: #ef4444; }
+.sg-calc-field input::placeholder { color: #b2bdca; }
+.sg-calc-actions { display: flex; gap: .6rem; margin-top: 1rem; }
+.sg-calc-actions button { border: 0; border-radius: .58rem; cursor: pointer; font-size: .72rem; font-weight: 700; height: 2.3rem; }
+.sg-calc-reset { background: #f1f5f9; color: #475569; flex: 0 0 4.5rem; }
+.sg-calc-submit { background: #0f766e; color: #fff; flex: 1; }
+.sg-calc-message { color: #0f766e; font-size: .65rem; min-height: 1rem; padding-top: .55rem; }
+.sg-calc-message-error { color: #dc2626; }
+.sg-calc-result { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: .72rem; margin-top: .3rem; padding: .75rem; }
+.sg-calc-result-heading { align-items: center; color: #0f172a; display: flex; font-size: .74rem; font-weight: 700; justify-content: space-between; }
+.sg-calc-result-heading span { background: #dcfce7; border-radius: .35rem; color: #15803d; font-size: .58rem; font-weight: 600; padding: .22rem .38rem; }
+.sg-calc-result-grid { display: grid; gap: .55rem; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: .7rem; }
+.sg-calc-result-grid > div { background: #fff; border-radius: .45rem; padding: .48rem .55rem; }
+.sg-calc-result small { color: #64748b; display: block; font-size: .6rem; }
+.sg-calc-result strong { color: #0f172a; display: block; font-size: .78rem; margin-top: .16rem; }
+.sg-calc-result strong i { color: #64748b; font-size: .58rem; font-style: normal; font-weight: 500; }
+.sg-calc-result-meta { border-top: 1px solid #e2e8f0; color: #64748b; display: flex; flex-wrap: wrap; font-size: .62rem; gap: .35rem .75rem; margin-top: .7rem; padding-top: .62rem; }
+.sg-calc-result-meta b { color: #334155; font-weight: 700; }
+
+@media (max-width: 360px) {
+  .sg-calc-dialog { padding: .85rem; }
+  .sg-calc-fields { gap: .52rem; margin-top: .8rem; }
+  .sg-calc-field input { height: 2.1rem; }
+}
+
+/* Compact translucent bottom navigation with native edge-swipe navigation retained. */
+.taro-tabbar__container {
+  background: transparent !important;
+  /* This wrapper owns the page panel as well as the tab bar.  `pointer-events`
+     is inherited, so disabling it here also disables every page control and
+     prevents scrolling.  The tab bar is positioned independently below. */
+  pointer-events: auto;
+}
+.taro-tabbar__panel,
+.taro-tabbar__panel .taro_router,
+.taro-tabbar__panel .taro_page {
+  pointer-events: auto;
+}
+.taro-tabbar__tabbar {
+  position: absolute !important;
+  pointer-events: auto;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: calc(.4rem + env(safe-area-inset-bottom, 0px)) !important;
+  width: calc(100% - 1.6rem) !important;
+  margin-left: .8rem !important;
+  height: 3.2rem !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 1.75rem !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  box-sizing: border-box;
+}
+.taro-tabbar__tabbar > .weui-tabbar {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding: .2rem !important;
+  border: 1px solid rgba(255,255,255,.72) !important;
+  border-radius: 1.75rem !important;
+  background: rgba(255,255,255,.68) !important;
+  -webkit-backdrop-filter: blur(.75rem) saturate(1.25);
+  backdrop-filter: blur(.75rem) saturate(1.25);
+  box-shadow: 0 .15rem .65rem rgba(30,50,100,.16), inset 0 1px 0 rgba(255,255,255,.78);
+  box-sizing: border-box;
+}
+.taro-tabbar__tabbar .weui-tabbar__item {
+  border-radius: 1.4rem;
+  transition: background .18s ease, transform .18s ease;
+}
+.taro-tabbar__tabbar .weui-bar__item_on {
+  background: rgba(255,255,255,.42);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.42);
+}
+.taro-tabbar__tabbar .weui-tabbar__label { font-size: .66rem; }
+.taro-tabbar__tabbar .weui-tabbar__icon { margin-top: .08rem; }
+.taro-tabbar__tabbar .weui-tabbar__item:active { transform: scale(.96); }
+
+/* The tab bar floats above the WebView's content; keep the final row reachable. */
+taro-scroll-view-core.taro-scroll-view__scroll-y {
+  padding-bottom: calc(5.2rem + env(safe-area-inset-bottom, 0px)) !important;
+  box-sizing: border-box;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .taro-tabbar__tabbar > .weui-tabbar { background: #fff !important; -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+
+/* Navigation is intentionally gesture-only; the old floating arrows must not intercept taps. */
+.sg-page-nav, .sg-back-btn { display: none !important; pointer-events: none !important; }
