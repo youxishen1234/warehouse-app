@@ -9,6 +9,7 @@ export default defineAppConfig({
     'pages/records/index',
     'pages/ledger/index',
     'pages/orders/index',
+    'pages/carton-calculator/index',
     'pages/team/index',
     'pages/suppliers/index',
     'pages/product-edit/index',

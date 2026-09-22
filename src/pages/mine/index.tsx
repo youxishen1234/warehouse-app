@@ -16,9 +16,10 @@ const menus: { icon: IconName; text: string; desc: string; url: string; color: s
   { icon: 'records', text: '出入库记录', desc: '查看全部流水明细', url: '/pages/records/index', color: '#0891b2', bg: '#e5f7fa' },
   { icon: 'records', text: '账本流水', desc: '收入、支出与结清记录', url: '/pages/ledger/index', color: '#7c3aed', bg: '#f0eaff' },
   { icon: 'list', text: '客户订单', desc: '查看与管理客户订单', url: '/pages/orders/index', color: '#ea580c', bg: '#fff1e8' },
+  { icon: 'box', text: '纸箱尺寸换算', desc: '内尺寸、外尺寸双向计算', url: '/pages/carton-calculator/index', color: '#0f766e', bg: '#e6f7f5' },
   { icon: 'edit', text: '自定义文案', desc: '修改页面菜单和按钮名称', url: '/pages/custom-copy/index', color: '#2563eb', bg: '#eaf1ff' }
 ];
-const menuCopyKey = (url: string) => url.includes('inventory') ? 'inventory' : url.includes('customers') ? 'customers' : url.includes('suppliers') ? 'suppliers' : url.includes('products') ? 'products' : url.includes('records') ? 'records' : url.includes('ledger') ? 'ledger' : url.includes('orders') ? 'orders' : url.includes('custom-copy') ? 'appName' : '';
+const menuCopyKey = (url: string) => url.includes('inventory') ? 'inventory' : url.includes('customers') ? 'customers' : url.includes('suppliers') ? 'suppliers' : url.includes('products') ? 'products' : url.includes('records') ? 'records' : url.includes('ledger') ? 'ledger' : url.includes('orders') ? 'orders' : url.includes('carton-calculator') ? 'cartonCalculator' : url.includes('custom-copy') ? 'appName' : '';
 
 const MineContent: React.FC = () => {
   const [addrOpen, setAddrOpen] = useState(false);

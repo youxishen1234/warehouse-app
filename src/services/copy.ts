@@ -13,6 +13,7 @@ export const COPY_DEFAULTS: Record<string, string> = {
   records: '出入库记录',
   ledger: '账本流水',
   orders: '客户订单',
+  cartonCalculator: '纸箱尺寸换算',
   addProduct: '新增商品',
   confirmInbound: '确认入库',
   confirmOutbound: '确认出库'
