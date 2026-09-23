@@ -7,7 +7,7 @@ import { getBaseUrl } from '@/services/request';
 // ============================================
 
 interface NativeUpdater {
-  current(): Promise<{ id?: string; version?: string; native?: string } | null>;
+  current(): Promise<{ bundle?: { id?: string; version?: string }; native?: string } | null>;
   download(opts: { url: string; version: string }): Promise<{ id: string; version?: string } | null>;
   set(opts: { id: string }): Promise<{ id?: string; version?: string } | null>;
   next?(opts: { id: string }): Promise<boolean>;
@@ -80,7 +80,7 @@ export async function checkAndUpdate(): Promise<CheckUpdateResult> {
   let cur = 'builtin';
   try {
     const c = await tu.current();
-    if (c && c.version) cur = c.version;
+    if (c?.bundle?.version) cur = c.bundle.version;
   } catch (e) { /* ignore */ }
 
   const fetchJson = async (url: string) => {

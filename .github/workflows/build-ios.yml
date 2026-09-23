@@ -14,10 +14,25 @@ jobs:
         run: sudo gem install cocoapods
       - name: Install npm dependencies
         run: npm install --legacy-peer-deps
-      - name: Sync Capacitor
-        run: npx cap sync ios
+      - name: Copy Capacitor assets
+        run: npx cap copy ios
       - name: Install Pods
         run: cd ios/App && pod install
+      - name: Build simulator and verify native dock
+        run: |
+          set -euo pipefail
+          xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath release/ios-simulator CODE_SIGNING_ALLOWED=NO build > release-simulator.log 2>&1 || { tail -150 release-simulator.log; exit 1; }
+          bash scripts/ios-simulator-smoke.sh release/ios-simulator/Build/Products/Debug-iphonesimulator/App.app
+      - name: Upload simulator verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-dock-verification
+          path: |
+            release/ios-smoke/
+            release-simulator.log
       - name: Build unsigned IPA
         run: |
           cd ios/App
@@ -27,6 +42,8 @@ jobs:
             -configuration Release \
             -sdk iphoneos \
             -derivedDataPath build \
+            MARKETING_VERSION=1.0.7 \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
@@ -49,7 +66,10 @@ jobs:
             iOS IPA 鑷姩鏋勫缓
             鏋勫缓缂栧彿: ${{ github.run_number }}
             鎻愪氦: ${{ github.sha }}
-          files: ios/App/shuguang.ipa
+          files: |
+            ios/App/shuguang.ipa
+            release/ios-smoke/result.json
+            release/ios-smoke/simulator.png
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload IPA to server
@@ -62,6 +82,10 @@ jobs:
           set -euo pipefail
           IPA_PATH="ios/App/shuguang.ipa"
           REMOTE_PATH="/opt/shuguang/public/shuguang.ipa"
+          node scripts/prepare-download.cjs "$IPA_PATH" release/download
+          cp release/download/ipa.json /tmp/shuguang-ipa.json
+          cp www/download.html /tmp/shuguang-download.html
+          cp scripts/publish-ios-files.sh /tmp/publish-ios-files.sh
           if [ -z "$SERVER_HOST" ] || [ -z "$SERVER_USER" ]; then
             echo "::warning::SERVER_HOST or SERVER_USER not configured, skipping upload"
             exit 0
@@ -73,12 +97,14 @@ jobs:
             chmod 600 ~/.ssh/id_rsa
             ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null
             scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa "$IPA_PATH" "$SERVER_USER@$SERVER_HOST:/tmp/shuguang.ipa"
-            ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa "$SERVER_USER@$SERVER_HOST" "sudo mv /tmp/shuguang.ipa $REMOTE_PATH && sudo chmod 644 $REMOTE_PATH && ls -la $REMOTE_PATH"
+            scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa /tmp/shuguang-ipa.json /tmp/shuguang-download.html /tmp/publish-ios-files.sh "$SERVER_USER@$SERVER_HOST:/tmp/"
+            ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa "$SERVER_USER@$SERVER_HOST" "sudo -n sh /tmp/publish-ios-files.sh"
           elif [ -n "$SSH_PASS" ]; then
             echo "Using password authentication (sshpass)"
             brew install sshpass 2>/dev/null || true
             sshpass -p "$SSH_PASS" scp -o StrictHostKeyChecking=no "$IPA_PATH" "$SERVER_USER@$SERVER_HOST:/tmp/shuguang.ipa"
-            sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "echo '$SSH_PASS' | sudo -S mv /tmp/shuguang.ipa $REMOTE_PATH && echo '$SSH_PASS' | sudo -S chmod 644 $REMOTE_PATH && ls -la $REMOTE_PATH"
+            sshpass -p "$SSH_PASS" scp -o StrictHostKeyChecking=no /tmp/shuguang-ipa.json /tmp/shuguang-download.html /tmp/publish-ios-files.sh "$SERVER_USER@$SERVER_HOST:/tmp/"
+            printf '%s\n' "$SSH_PASS" | sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "sudo -S sh /tmp/publish-ios-files.sh"
           else
             echo "::warning::Neither SSH_PRIVATE_KEY nor SHUGUANG_SERVER_PASSWORD configured, skipping upload"
             exit 0

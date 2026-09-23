@@ -2,72 +2,313 @@ import UIKit
 import WebKit
 import Capacitor
 
-final class NativeGlassTabBarViewController: CAPBridgeViewController, WKScriptMessageHandler, UIGestureRecognizerDelegate {
+// A real UIKit container owns the WebView and dock as siblings. Never insert
+// application chrome into WKWebView's private, scrollable view hierarchy.
+final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHandler {
     private let routes = ["/pages/home/index", "/pages/inbound/index", "/pages/outbound/index", "/pages/mine/index"]
-    private let symbols = ["house.fill", "tray.and.arrow.down.fill", "tray.and.arrow.up.fill", "person.crop.circle"]
     private let titles = ["首页", "入库", "出库", "我的"]
-    private var glassView: UIVisualEffectView?
+    private let symbols = ["house.fill", "tray.and.arrow.down.fill", "tray.and.arrow.up.fill", "person.fill"]
+    private let bridgeController = WarehouseBridgeController()
+    private let dock = UIView()
+    private var glass: UIVisualEffectView!
     private var buttons: [UIButton] = []
+    private var bridgeProxy: WeakTabMessageHandler?
     private var selectedIndex = 0
-    private var bridgeHandlerInstalled = false
-    private var swipeRecognizer: UIPanGestureRecognizer?
+    private var routeIsTab = true
+    private var webReady = false
+    private var keyboardVisible = false
+    private var modalVisible = false
+    private var keyboardObservers: [NSObjectProtocol] = []
+    private var smokeStarted = false
 
-    override func viewDidLoad() { super.viewDidLoad(); installGlassBar(); installBridgeHandler(); installSwipeNavigation() }
-    override func viewDidAppear(_ animated: Bool) { super.viewDidAppear(animated); installBridgeHandler(); installSwipeNavigation(); glassView?.isHidden = false; markWebView(attempt: 0) }
-    deinit { bridge?.webView?.configuration.userContentController.removeScriptMessageHandler(forName: "nativeTabSelected") }
-
-    private func glassEffect() -> UIVisualEffect {
-        if #available(iOS 26.0, *) { let effect = UIGlassEffect(style: .regular); effect.isInteractive = true; return effect }
-        return UIBlurEffect(style: .systemUltraThinMaterialLight)
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .systemBackground
+        view.accessibilityIdentifier = "warehouse.native.container"
+        bridgeController.onBridgeLoaded = { [weak self] webView in
+            self?.installMessaging(on: webView)
+        }
+        addChild(bridgeController)
+        let content = bridgeController.view!
+        content.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(content)
+        NSLayoutConstraint.activate([
+            content.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            content.topAnchor.constraint(equalTo: view.topAnchor),
+            content.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+        bridgeController.didMove(toParent: self)
+        installDock()
+        keyboardObservers = [
+            NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main) { [weak self] _ in
+                self?.keyboardVisible = true
+                self?.updateVisibility()
+            },
+            NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillHideNotification, object: nil, queue: .main) { [weak self] _ in
+                self?.keyboardVisible = false
+                self?.updateVisibility()
+            }
+        ]
     }
 
-    private func installGlassBar() {
-        guard glassView == nil else { return }
-        let glass = UIVisualEffectView(effect: glassEffect())
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        publishCapability()
+        if ProcessInfo.processInfo.arguments.contains("--native-dock-smoke"), !smokeStarted {
+            smokeStarted = true
+            runSmokeTest(step: 0, attempt: 0)
+        }
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        view.bringSubviewToFront(dock)
+        dock.layer.shadowPath = UIBezierPath(roundedRect: dock.bounds, cornerRadius: 24).cgPath
+    }
+
+    override var childForStatusBarStyle: UIViewController? { bridgeController }
+    override var childForStatusBarHidden: UIViewController? { bridgeController }
+
+    deinit {
+        keyboardObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        bridgeController.webView?.configuration.userContentController.removeScriptMessageHandler(forName: "nativeTabSelected")
+    }
+
+    private func installDock() {
+        dock.translatesAutoresizingMaskIntoConstraints = false
+        dock.accessibilityIdentifier = "warehouse.native.tabbar"
+        dock.layer.shadowColor = UIColor.black.cgColor
+        dock.layer.shadowOpacity = 0.12
+        dock.layer.shadowRadius = 12
+        dock.layer.shadowOffset = CGSize(width: 0, height: 3)
+        view.addSubview(dock)
+
+        let effect: UIVisualEffect
+        if #available(iOS 26.0, *) {
+            let liquid = UIGlassEffect(style: .regular)
+            liquid.isInteractive = true
+            effect = liquid
+        } else {
+            effect = UIBlurEffect(style: .systemMaterial)
+        }
+        glass = UIVisualEffectView(effect: effect)
         glass.translatesAutoresizingMaskIntoConstraints = false
-        glass.layer.cornerRadius = 30
+        glass.layer.cornerRadius = 24
         glass.layer.cornerCurve = .continuous
         glass.clipsToBounds = true
-        glass.layer.borderWidth = 1
-        glass.layer.borderColor = UIColor.white.withAlphaComponent(0.62).cgColor
-        view.addSubview(glass)
-        let stack = UIStackView(); stack.axis = .horizontal; stack.alignment = .fill; stack.distribution = .fillEqually; stack.spacing = 4; stack.translatesAutoresizingMaskIntoConstraints = false
+        if #available(iOS 26.0, *) { glass.cornerConfiguration = .corners(radius: .fixed(24)) }
+        dock.addSubview(glass)
+
+        let stack = UIStackView()
+        stack.axis = .horizontal
+        stack.distribution = .fillEqually
+        stack.spacing = 4
+        stack.translatesAutoresizingMaskIntoConstraints = false
         glass.contentView.addSubview(stack)
-        for index in routes.indices { let button = makeButton(index: index); buttons.append(button); stack.addArrangedSubview(button) }
+        for index in routes.indices {
+            let button = UIButton(type: .system)
+            button.tag = index
+            button.accessibilityLabel = titles[index]
+            button.accessibilityIdentifier = "warehouse.tab.\(index)"
+            // Native image/label layout also works on iOS 13 and 14.
+            let icon = UIImageView(image: UIImage(systemName: symbols[index]))
+            icon.preferredSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 21, weight: .semibold)
+            icon.contentMode = .scaleAspectFit
+            icon.translatesAutoresizingMaskIntoConstraints = false
+            let label = UILabel()
+            label.text = titles[index]
+            label.font = .systemFont(ofSize: 11, weight: .semibold)
+            label.textAlignment = .center
+            label.translatesAutoresizingMaskIntoConstraints = false
+            label.tag = 101
+            button.addSubview(icon)
+            button.addSubview(label)
+            NSLayoutConstraint.activate([
+                icon.centerXAnchor.constraint(equalTo: button.centerXAnchor),
+                icon.topAnchor.constraint(equalTo: button.topAnchor, constant: 5),
+                icon.heightAnchor.constraint(equalToConstant: 23),
+                icon.widthAnchor.constraint(equalToConstant: 26),
+                label.topAnchor.constraint(equalTo: icon.bottomAnchor, constant: 2),
+                label.leadingAnchor.constraint(equalTo: button.leadingAnchor),
+                label.trailingAnchor.constraint(equalTo: button.trailingAnchor),
+                label.bottomAnchor.constraint(lessThanOrEqualTo: button.bottomAnchor, constant: -3)
+            ])
+            button.layer.cornerRadius = 20
+            button.addTarget(self, action: #selector(selectTab(_:)), for: .touchUpInside)
+            buttons.append(button)
+            stack.addArrangedSubview(button)
+        }
+        let safe = view.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
-            glass.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            glass.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            glass.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -10),
-            glass.heightAnchor.constraint(equalToConstant: 60),
-            stack.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor, constant: 6),
-            stack.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor, constant: -6),
+            dock.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 12),
+            dock.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -12),
+            dock.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -8),
+            dock.heightAnchor.constraint(equalToConstant: 60),
+            glass.leadingAnchor.constraint(equalTo: dock.leadingAnchor),
+            glass.trailingAnchor.constraint(equalTo: dock.trailingAnchor),
+            glass.topAnchor.constraint(equalTo: dock.topAnchor),
+            glass.bottomAnchor.constraint(equalTo: dock.bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor, constant: 5),
+            stack.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor, constant: -5),
             stack.topAnchor.constraint(equalTo: glass.contentView.topAnchor, constant: 4),
             stack.bottomAnchor.constraint(equalTo: glass.contentView.bottomAnchor, constant: -4)
         ])
-        glassView = glass; updateSelection()
-    }
-
-    private func makeButton(index: Int) -> UIButton {
-        let button = UIButton(type: .system)
-        if #available(iOS 15.0, *) {
-            var config = UIButton.Configuration.plain(); config.image = UIImage(systemName: symbols[index]); config.title = titles[index]; config.imagePlacement = .top; config.imagePadding = 1; config.contentInsets = NSDirectionalEdgeInsets(top: 2, leading: 2, bottom: 2, trailing: 2)
-            config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attrs in var result = attrs; result.font = .systemFont(ofSize: 10, weight: .semibold); return result }
-            button.configuration = config
-        }
-        button.tag = index; button.accessibilityLabel = titles[index]; button.addTarget(self, action: #selector(selectTab(_:)), for: .touchUpInside); return button
+        updateSelection()
     }
 
     private func updateSelection() {
-        for (index, button) in buttons.enumerated() { let selected = index == selectedIndex; if #available(iOS 15.0, *) { button.configuration?.baseForegroundColor = selected ? .systemBlue : .secondaryLabel }; button.backgroundColor = selected ? UIColor.white.withAlphaComponent(0.42) : .clear; button.layer.cornerRadius = 24 }
+        for (index, button) in buttons.enumerated() {
+            let selected = index == selectedIndex
+            let color: UIColor = selected ? .systemBlue : .label
+            button.tintColor = color
+            (button.viewWithTag(101) as? UILabel)?.textColor = color
+            button.backgroundColor = selected ? UIColor.systemBlue.withAlphaComponent(0.17) : .clear
+            button.isSelected = selected
+            button.accessibilityTraits = selected ? [.button, .selected] : [.button]
+        }
     }
 
-    private func installBridgeHandler() { guard !bridgeHandlerInstalled, let webView = bridge?.webView else { return }; webView.configuration.userContentController.add(self, name: "nativeTabSelected"); bridgeHandlerInstalled = true }
-    private func markWebView(attempt: Int) { guard attempt < 20, let webView = bridge?.webView else { return }; webView.evaluateJavaScript("document.getElementById('app') ? (document.documentElement.classList.add('sg-native-ios'), 'ready') : ''") { [weak self] result, error in guard error != nil || (result as? String) != "ready", let self else { return }; DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { self.markWebView(attempt: attempt + 1) } } }
+    private func updateVisibility() {
+        dock.isHidden = !routeIsTab || keyboardVisible || modalVisible
+    }
 
-    private func installSwipeNavigation() { guard swipeRecognizer == nil, let webView = bridge?.webView else { return }; let recognizer = UIPanGestureRecognizer(target: self, action: #selector(handleSwipe(_:))); recognizer.delegate = self; recognizer.cancelsTouchesInView = false; webView.addGestureRecognizer(recognizer); swipeRecognizer = recognizer }
-    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool { guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return true }; let velocity = pan.velocity(in: view); return abs(velocity.x) > abs(velocity.y) * 1.35 && abs(velocity.x) > 45 }
-    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool { true }
-    @objc private func handleSwipe(_ recognizer: UIPanGestureRecognizer) { guard recognizer.state == .ended else { return }; let translation = recognizer.translation(in: view); guard abs(translation.x) >= 60, abs(translation.x) > abs(translation.y) * 1.25 else { return }; let next = translation.x < 0 ? selectedIndex + 1 : selectedIndex - 1; guard routes.indices.contains(next) else { return }; selectedIndex = next; updateSelection(); bridge?.webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('sg-native-tab',{detail:'\(routes[next])'}));") }
-    @objc private func selectTab(_ sender: UIButton) { guard routes.indices.contains(sender.tag) else { return }; selectedIndex = sender.tag; updateSelection(); bridge?.webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('sg-native-tab',{detail:'\(routes[sender.tag])'}));") }
-    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) { guard let route = message.body as? String, let index = routes.firstIndex(where: { route.contains($0.replacingOccurrences(of: "/pages", with: "")) || route == $0 }) else { return }; DispatchQueue.main.async { self.selectedIndex = index; self.updateSelection() } }
+    private func installMessaging(on webView: WKWebView) {
+        let proxy = WeakTabMessageHandler(self)
+        bridgeProxy = proxy
+        let controller = webView.configuration.userContentController
+        controller.add(proxy, name: "nativeTabSelected")
+        controller.addUserScript(WKUserScript(source: capabilityScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+    }
+
+    private var capabilityScript: String {
+        let info: [String: Any] = [
+            "api": 2,
+            "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "",
+            "build": Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "",
+            "bottomSpace": 84
+        ]
+        let data = try! JSONSerialization.data(withJSONObject: info)
+        let json = String(data: data, encoding: .utf8)!
+        return """
+        window.__sgNativeDock = \(json);
+        window.dispatchEvent(new Event('sg-native-ready'));
+        """
+    }
+
+    private func publishCapability() {
+        bridgeController.webView?.evaluateJavaScript(capabilityScript, completionHandler: nil)
+    }
+
+    @objc private func selectTab(_ sender: UIButton) {
+        guard webReady, routes.indices.contains(sender.tag) else { return }
+        // Highlight changes only after Taro acknowledges the actual route.
+        let route = routes[sender.tag]
+        bridgeController.webView?.evaluateJavaScript(
+            "window.dispatchEvent(new CustomEvent('sg-native-tab',{detail:'\(route)'}));",
+            completionHandler: nil
+        )
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.frameInfo.isMainFrame else { return }
+        if let state = message.body as? [String: Any], let route = state["route"] as? String {
+            webReady = state["ready"] as? Bool ?? false
+            routeIsTab = routes.contains(route)
+            modalVisible = state["modal"] as? Bool ?? false
+            if let index = routes.firstIndex(of: route) { selectedIndex = index }
+            updateSelection()
+            updateVisibility()
+        }
+    }
+
+    // Executed only by the simulator job, against the compiled storyboard and WebView.
+    private func runSmokeTest(step: Int, attempt: Int) {
+        guard attempt < 60 else { finishSmokeTest("WebView did not acknowledge navigation"); return }
+        let expected = step < routes.count ? step : 0
+        guard webReady, selectedIndex == expected else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.runSmokeTest(step: step, attempt: attempt + 1)
+            }
+            return
+        }
+        view.layoutIfNeeded()
+        guard dock.superview === view, bridgeController.view.superview === view,
+              dock.superview !== bridgeController.webView,
+              !dock.isHidden, dock.bounds.height == 60,
+              dock.frame.minY > view.bounds.height / 2,
+              dock.frame.maxY <= view.safeAreaLayoutGuide.layoutFrame.maxY,
+              dock.hitTest(CGPoint(x: dock.bounds.midX, y: dock.bounds.midY), with: nil) != nil else {
+            finishSmokeTest("Native dock hierarchy, bounds or hit testing failed")
+            return
+        }
+        let script = """
+        JSON.stringify({
+          native: document.documentElement.classList.contains('sg-native-ios'),
+          search: !!document.querySelector('.sg-home-search'),
+          pages: Array.from(document.querySelectorAll('.taro_page')).filter(function(p) {
+            return p.getBoundingClientRect().height > 100 && getComputedStyle(p).display !== 'none';
+          }).length
+        })
+        """
+        bridgeController.webView?.evaluateJavaScript(script) { [weak self] result, error in
+            guard let self = self else { return }
+            guard error == nil, let json = result as? String, let data = json.data(using: .utf8),
+                  let state = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  state["native"] as? Bool == true, state["search"] as? Bool == false,
+                  (state["pages"] as? Int ?? 0) > 0 else {
+                self.finishSmokeTest("Web content, handshake or search removal failed")
+                return
+            }
+            if step < self.routes.count - 1 {
+                self.buttons[step + 1].sendActions(for: .touchUpInside)
+            } else if step == self.routes.count - 1 {
+                self.buttons[0].sendActions(for: .touchUpInside)
+            } else if step == self.routes.count {
+                self.webReady = false
+                self.bridgeController.webView?.reload()
+            } else {
+                self.finishSmokeTest(nil)
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                self.runSmokeTest(step: step + 1, attempt: 0)
+            }
+        }
+    }
+
+    private func finishSmokeTest(_ error: String?) {
+        let result: [String: Any] = ["success": error == nil, "error": error ?? "",
+                                    "controller": String(describing: type(of: self)),
+                                    "selectedIndex": selectedIndex,
+                                    "dockFrame": NSStringFromCGRect(dock.frame)]
+        let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        if let data = try? JSONSerialization.data(withJSONObject: result, options: .prettyPrinted) {
+            try? data.write(to: directory.appendingPathComponent("native-dock-smoke.json"), options: .atomic)
+        }
+    }
+}
+
+private final class WarehouseBridgeController: CAPBridgeViewController {
+    var onBridgeLoaded: ((WKWebView) -> Void)?
+    override func capacitorDidLoad() {
+        super.capacitorDidLoad()
+        if let webView = webView { onBridgeLoaded?(webView) }
+    }
+    override func instanceDescriptor() -> InstanceDescriptor {
+        let descriptor = super.instanceDescriptor()
+        // Keep simulator verification offline and on the bundled revision.
+        if ProcessInfo.processInfo.arguments.contains("--native-dock-smoke") {
+            descriptor.appLocation = Bundle.main.bundleURL.appendingPathComponent("public")
+        }
+        return descriptor
+    }
+}
+
+private final class WeakTabMessageHandler: NSObject, WKScriptMessageHandler {
+    weak var target: WKScriptMessageHandler?
+    init(_ target: WKScriptMessageHandler) { self.target = target }
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        target?.userContentController(userContentController, didReceive: message)
+    }
 }

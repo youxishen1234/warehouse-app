@@ -20,7 +20,10 @@ export default defineConfig<'webpack5'>(async (merge, { command, mode }) => {
     plugins: ['@tarojs/plugin-html'],
     defineConstants: {},
     copy: {
-      patterns: [],
+      patterns: [
+        { from: 'www/js/home-search.js', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/js/home-search.js' },
+        { from: 'www/css/polish.css', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/css/polish.css' }
+      ],
       options: {},
     },
     framework: 'react',

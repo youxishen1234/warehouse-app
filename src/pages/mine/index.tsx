@@ -33,7 +33,23 @@ const MineContent: React.FC = () => {
   const [ipaMessage, setIpaMessage] = useState('正在下载新版 IPA');
   const [ipaCompleted, setIpaCompleted] = useState(false);
   const [webVersion, setWebVersion] = useState('获取中…');
-  React.useEffect(() => { fetch(`${getBaseUrl()}/appupdate/manifest.json?t=${Date.now()}`, { cache: 'no-store' }).then(r => r.json()).then(m => m?.version && setWebVersion(String(m.version))).catch(() => setWebVersion('离线')); }, []);
+  const [nativeVersion, setNativeVersion] = useState('');
+  React.useEffect(() => {
+    const win = window as any;
+    const refresh = () => {
+      const info = win.__sgNativeDock;
+      if (info?.version) setNativeVersion(`${info.version} (Build ${info.build})`);
+    };
+    refresh();
+    window.addEventListener('sg-native-ready', refresh);
+    const updater = win.Capacitor?.Plugins?.CapacitorUpdater;
+    if (updater) updater.current().then((current: any) => {
+      setWebVersion(current?.bundle?.version || 'builtin');
+      if (!win.__sgNativeDock?.version && current?.native) setNativeVersion(current.native);
+    }).catch(() => setWebVersion('未知'));
+    else setWebVersion('浏览器');
+    return () => window.removeEventListener('sg-native-ready', refresh);
+  }, []);
 
   const goAuto = async () => {
     if (testing) return;
@@ -110,7 +126,7 @@ const MineContent: React.FC = () => {
 
   const openUpdateAddress = () => {
     if (typeof window !== 'undefined') {
-      window.location.href = 'http://152.136.100.200/download/';
+      window.open('https://youxishen.online/download/', '_blank', 'noopener');
     }
   };
 
@@ -122,7 +138,7 @@ const MineContent: React.FC = () => {
     setIpaProgress(0);
     try {
       const task = Taro.downloadFile({
-        url: `${getBaseUrl()}/download/shuguang.ipa?t=${Date.now()}`,
+        url: `https://youxishen.online/shuguang.ipa?t=${Date.now()}`,
         timeout: 10 * 60 * 1000
       });
       task.onProgressUpdate((res) => {
@@ -133,7 +149,7 @@ const MineContent: React.FC = () => {
         throw new Error(`HTTP ${result.statusCode}`);
       }
       setIpaProgress(100);
-      setIpaMessage('更新已下载，请关闭后重新打开 App 生效');
+      setIpaMessage('IPA 已下载，需要签名安装；重启 App 不会安装 IPA');
       setIpaCompleted(true);
     } catch (e: any) {
       setIpaMessage(e?.message || '下载失败，请重试');
@@ -142,7 +158,7 @@ const MineContent: React.FC = () => {
   };
 
   const addrSummary = getBaseUrl().replace(/^https?:\/\//, '');
-  const ipaSummary = addrSummary + '/download/shuguang.ipa';
+  const ipaSummary = 'youxishen.online/shuguang.ipa';
 
   const doCheck = async () => {
     if (checking || ipaDownloading) return;
@@ -229,7 +245,7 @@ const MineContent: React.FC = () => {
       </View>
 
       <View className={styles.about}>
-        <Text>曙光 · 共享仓库 v1.2.0 (Build 11)</Text>
+        <Text>曙光 · 共享仓库{nativeVersion ? ` ${nativeVersion}` : ''}</Text>
       </View>
 
       {ipaDownloading && (

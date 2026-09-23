@@ -198,32 +198,8 @@
     item.addEventListener('keydown', function (event) { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openCorrugatedCalculator(); } });
     grid.appendChild(item);
   }
-  function addSearchBar() {
-    var header = document.querySelector(headerSelector);
-    if (!header || header.querySelector('.sg-home-search')) return;
-    var bar = document.createElement('div');
-    bar.className = 'sg-home-search';
-    bar.innerHTML = '<span class="sg-home-search-icon" aria-hidden="true">⌕</span><input class="sg-home-search-input" type="search" placeholder="搜索功能、商品或客户" autocomplete="off" /><button class="sg-home-search-submit" type="button">搜索</button><div class="sg-home-search-results" role="listbox"></div>';
-    var top = header.querySelector('[class*="headerTop___"]');
-    header.insertBefore(bar, top ? top.nextSibling : header.firstChild);
-    var input = bar.querySelector('.sg-home-search-input'), results = bar.querySelector('.sg-home-search-results');
-    function render() {
-      var value = input.value.trim(); results.innerHTML = ''; if (!value) return;
-      queryTargets(value).slice(0, 5).forEach(function (action, index) {
-        var result = document.createElement('button'); result.type = 'button'; result.className = 'sg-home-search-result'; result.setAttribute('role', 'option');
-        result.textContent = index === 0 && matchesAction(action, value) ? action.label : '搜索“' + value + '” · ' + action.label;
-        result.addEventListener('click', function () { results.innerHTML = ''; rememberAndOpen(action.route, value); });
-        results.appendChild(result);
-      });
-    }
-    function submit() {
-      var value = input.value.trim(); if (!value) return;
-      var exact = actions.filter(function (action) { return normalize(action.label) === normalize(value); })[0];
-      if (exact) { results.innerHTML = ''; rememberAndOpen(exact.route, ''); } else render();
-    }
-    input.addEventListener('input', render);
-    input.addEventListener('keydown', function (event) { if (event.key === 'Enter') submit(); });
-    bar.querySelector('.sg-home-search-submit').addEventListener('click', submit);
+  function removeSearchBar() {
+    document.querySelectorAll('.sg-home-search').forEach(function (element) { element.remove(); });
   }
   function setInputValue(input, value) {
     var setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
@@ -258,38 +234,10 @@
       }
     });
   }
-  // Taro nests the tab bar inside an overflow-hidden router panel. Move the
-  // rendered bar to body so fixed positioning is relative to the viewport.
-  function detachTabbar() {
-    // Keep the generated tabbar inside Taro's page container. It belongs to
-    // the page bottom and must scroll with the page rather than the viewport.
-  }
   function watch() {
-    addSearchBar(); enhanceDashboard(); addCorrugatedLauncher(); injectPendingSearch(); detachTabbar();
-    new MutationObserver(function () { addSearchBar(); enhanceDashboard(); addCorrugatedLauncher(); injectPendingSearch(); detachTabbar(); }).observe(document.body, { childList: true, subtree: true });
+    removeSearchBar(); enhanceDashboard(); addCorrugatedLauncher(); injectPendingSearch();
+    new MutationObserver(function () { removeSearchBar(); enhanceDashboard(); addCorrugatedLauncher(); injectPendingSearch(); }).observe(document.body, { childList: true, subtree: true });
     window.addEventListener('hashchange', injectPendingSearch);
-    installSwipeNavigation();
-  }
-  function installSwipeNavigation() {
-    var startX = 0, startY = 0, tracking = false;
-    document.addEventListener('touchstart', function (event) {
-      if (!event.touches || event.touches.length !== 1) return;
-      var target = event.target;
-      if (target.closest('input, textarea, select, button, a, .weui-tabbar')) { tracking = false; return; }
-      startX = event.touches[0].clientX; startY = event.touches[0].clientY; tracking = true;
-    }, { passive: true });
-    document.addEventListener('touchend', function (event) {
-      if (!tracking || !event.changedTouches || !event.changedTouches.length) return;
-      tracking = false;
-      var end = event.changedTouches[0], dx = end.clientX - startX, dy = end.clientY - startY;
-      if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.35) return;
-      var tabs = Array.prototype.slice.call(document.querySelectorAll('.weui-tabbar__item')).filter(visible);
-      if (tabs.length < 2) return;
-      var active = document.querySelector('.weui-tabbar__item.weui-bar__item_on');
-      var index = Math.max(0, tabs.indexOf(active));
-      var next = dx < 0 ? index + 1 : index - 1;
-      if (next >= 0 && next < tabs.length) tabs[next].click();
-    }, { passive: true });
   }
   if (document.body) watch(); else document.addEventListener('DOMContentLoaded', watch);
 })();
