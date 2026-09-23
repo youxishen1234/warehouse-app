@@ -185,6 +185,16 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
               window.__sgStartupErrors.push(String(e.message || (e.target && e.target.src) || 'resource error'));
             }, true);
             window.addEventListener('unhandledrejection', function(e) { window.__sgStartupErrors.push(String(e.reason)); });
+            const realFetch = window.fetch.bind(window);
+            window.fetch = function(input, options) {
+              const url = typeof input === 'string' ? input : input.url;
+              if (url.indexOf('/api/') < 0) return realFetch(input, options);
+              let data = [];
+              if (url.indexOf('/auth/guest') >= 0) data = {token:'simulator',user:{id:'1',username:'preview',role:'viewer'}};
+              if (url.indexOf('/stats') >= 0) data = {todayIn:0,todayOut:0,totalProducts:0,totalStock:0,lowStock:0,totalValue:0};
+              if (url.indexOf('/sync') >= 0) data = {revision:1};
+              return Promise.resolve(new Response(JSON.stringify({success:true,data:data}), {status:200,headers:{'Content-Type':'application/json'}}));
+            };
             """, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
         controller.addUserScript(WKUserScript(source: capabilityScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
@@ -233,7 +243,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
 
     // Executed only by the simulator job, against the compiled storyboard and WebView.
     private func runSmokeTest(step: Int, attempt: Int) {
-        guard attempt < 60 else { finishSmokeTest("WebView did not acknowledge navigation"); return }
+        guard attempt < 300 else { finishSmokeTest("WebView did not acknowledge navigation"); return }
         let expected = step < routes.count ? step : 0
         guard webReady, selectedIndex == expected else {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {

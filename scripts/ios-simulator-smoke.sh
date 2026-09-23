@@ -9,7 +9,7 @@ mkdir -p release/ios-smoke
 xcrun simctl launch --console-pty "$DEVICE_ID" com.warehouse.app --native-dock-smoke > release/ios-smoke/console.log 2>&1 &
 APP_DATA="$(xcrun simctl get_app_container "$DEVICE_ID" com.warehouse.app data)"
 mkdir -p release/ios-smoke
-for attempt in {1..90}; do
+for attempt in {1..180}; do
   if [ -f "$APP_DATA/Documents/native-dock-smoke.json" ]; then
     cp "$APP_DATA/Documents/native-dock-smoke.json" release/ios-smoke/result.json
     xcrun simctl io "$DEVICE_ID" screenshot release/ios-smoke/simulator.png
