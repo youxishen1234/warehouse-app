@@ -2,24 +2,27 @@ import UIKit
 import WebKit
 import Capacitor
 
-final class NativeGlassTabBarViewController: CAPBridgeViewController, WKScriptMessageHandler {
+final class NativeGlassTabBarViewController: CAPBridgeViewController, WKScriptMessageHandler, UIGestureRecognizerDelegate {
     private let routes = ["/pages/home/index", "/pages/inbound/index", "/pages/outbound/index", "/pages/mine/index"]
     private let symbols = ["house.fill", "tray.and.arrow.down.fill", "tray.and.arrow.up.fill", "person.crop.circle"]
-    private let titles = ["首页", "入库", "出库", "我的"]
+    private let titles = ["\u{9996}\u{9875}", "\u{5165}\u{5E93}", "\u{51FA}\u{5E93}", "\u{6211}\u{7684}"]
     private var glassView: UIVisualEffectView?
     private var buttons: [UIButton] = []
     private var selectedIndex = 0
     private var bridgeHandlerInstalled = false
+    private var swipeRecognizer: UIPanGestureRecognizer?
 
     override func viewDidLoad() {
         super.viewDidLoad()
         installGlassBar()
         installBridgeHandler()
+        installSwipeNavigation()
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         installBridgeHandler()
+        installSwipeNavigation()
         markWebView(attempt: 0)
     }
 
@@ -62,11 +65,11 @@ final class NativeGlassTabBarViewController: CAPBridgeViewController, WKScriptMe
             glass.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             glass.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             glass.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8),
-            glass.heightAnchor.constraint(equalToConstant: 68),
+            glass.heightAnchor.constraint(equalToConstant: 58),
             stack.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor, constant: 6),
             stack.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor, constant: -6),
             stack.topAnchor.constraint(equalTo: glass.contentView.topAnchor, constant: 4),
-            stack.bottomAnchor.constraint(equalTo: glass.contentView.bottomAnchor, constant: -4)
+            stack.bottomAnchor.constraint(equalTo: glass.contentView.bottomAnchor, constant: -3)
         ])
         glassView = glass
         updateSelection()
@@ -116,6 +119,36 @@ final class NativeGlassTabBarViewController: CAPBridgeViewController, WKScriptMe
         guard !bridgeHandlerInstalled, let webView = bridge?.webView else { return }
         webView.configuration.userContentController.add(self, name: "nativeTabSelected")
         bridgeHandlerInstalled = true
+    }
+
+    private func installSwipeNavigation() {
+        guard swipeRecognizer == nil, let webView = bridge?.webView else { return }
+        let recognizer = UIPanGestureRecognizer(target: self, action: #selector(handleSwipe(_:)))
+        recognizer.delegate = self
+        recognizer.cancelsTouchesInView = false
+        webView.addGestureRecognizer(recognizer)
+        swipeRecognizer = recognizer
+    }
+
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return true }
+        let velocity = pan.velocity(in: view)
+        return abs(velocity.x) > abs(velocity.y) * 1.35 && abs(velocity.x) > 45
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        true
+    }
+
+    @objc private func handleSwipe(_ recognizer: UIPanGestureRecognizer) {
+        guard recognizer.state == .ended else { return }
+        let translation = recognizer.translation(in: view)
+        guard abs(translation.x) >= 60, abs(translation.x) > abs(translation.y) * 1.25 else { return }
+        let next = translation.x < 0 ? selectedIndex + 1 : selectedIndex - 1
+        guard routes.indices.contains(next) else { return }
+        selectedIndex = next
+        updateSelection()
+        bridge?.webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('sg-native-tab',{detail:'\(routes[next])'}));")
     }
 
     private func markWebView(attempt: Int) {
