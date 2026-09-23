@@ -162,6 +162,7 @@ function TabSwipeNavigator() {
     let active = false;
     let gestureMode: 'tab' | 'back' | '' = '';
     const isAndroid = /Android/i.test(typeof navigator !== 'undefined' ? navigator.userAgent : '') || (() => { try { return (globalThis as any).Capacitor?.getPlatform?.() === 'android'; } catch (e) { return false; } })();
+    const isNativeIOS = (() => { try { return (globalThis as any).Capacitor?.getPlatform?.() === 'ios'; } catch (e) { return false; } })();
     const EDGE_GUARD = 50;
     // Android middle-area tabs are deliberately easy to switch; iOS keeps its prior feel.
     const TAB_SWIPE_THRESHOLD = isAndroid ? 50 : 72;
@@ -237,19 +238,23 @@ function TabSwipeNavigator() {
     const pointerDown = (e: PointerEvent) => { if (e.pointerType === 'touch') { pointerStart = e.clientX; pointerY = e.clientY; const width = typeof window !== 'undefined' ? window.innerWidth : 0; if (isAndroid && (e.clientX <= EDGE_GUARD || (width > 0 && e.clientX >= width - EDGE_GUARD))) { pointerActive = false; pointerMode = ''; return; } let depth=1; try { depth=Taro.getCurrentPages().length; } catch (err) {} pointerMode=currentTabIndex()>=0?'tab':(!isAndroid&&depth>1&&e.clientX<=EDGE_GUARD?'back':''); pointerActive=!!pointerMode; } };
     const pointerUp = (e: PointerEvent) => { if (!pointerActive) return; pointerActive = false; const delta = e.clientX - pointerStart; if (Math.abs(delta) >= TAB_SWIPE_THRESHOLD && Math.abs(delta) > Math.abs(e.clientY - pointerY) * 1.35) { if(pointerMode==='back'){if(delta>TAB_SWIPE_THRESHOLD)Taro.navigateBack({delta:1}).catch(()=>{});return;} const i=currentTabIndex(); const n=delta<0?i+1:i-1; if(n>=0&&n<tabs.length) Taro.switchTab({url:tabs[n]}); } };
 
-    window.addEventListener('touchstart', onStart, { passive: true, capture: true });
-    window.addEventListener('touchmove', onMove, { passive: false, capture: true });
-    window.addEventListener('touchend', onEnd, { passive: true, capture: true });
-    window.addEventListener('touchcancel', onEnd, { passive: true, capture: true });
-    window.addEventListener('pointerdown', pointerDown, { passive: true, capture: true });
-    window.addEventListener('pointerup', pointerUp, { passive: true, capture: true });
+    if (!isNativeIOS) {
+      window.addEventListener('touchstart', onStart, { passive: true, capture: true });
+      window.addEventListener('touchmove', onMove, { passive: false, capture: true });
+      window.addEventListener('touchend', onEnd, { passive: true, capture: true });
+      window.addEventListener('touchcancel', onEnd, { passive: true, capture: true });
+      window.addEventListener('pointerdown', pointerDown, { passive: true, capture: true });
+      window.addEventListener('pointerup', pointerUp, { passive: true, capture: true });
+    }
     return () => {
-      window.removeEventListener('touchstart', onStart, true);
-      window.removeEventListener('touchmove', onMove, true);
-      window.removeEventListener('touchend', onEnd, true);
-      window.removeEventListener('touchcancel', onEnd, true);
-      window.removeEventListener('pointerdown', pointerDown, true);
-      window.removeEventListener('pointerup', pointerUp, true);
+      if (!isNativeIOS) {
+        window.removeEventListener('touchstart', onStart, true);
+        window.removeEventListener('touchmove', onMove, true);
+        window.removeEventListener('touchend', onEnd, true);
+        window.removeEventListener('touchcancel', onEnd, true);
+        window.removeEventListener('pointerdown', pointerDown, true);
+        window.removeEventListener('pointerup', pointerUp, true);
+      }
       window.removeEventListener('sg-native-tab', onNativeTabSelect);
       window.removeEventListener('hashchange', notifyNativeTabSelection);
       window.removeEventListener('popstate', notifyNativeTabSelection);

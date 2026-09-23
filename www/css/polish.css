@@ -358,4 +358,4 @@ taro-tabbar.taro-tabbar__tabbar {
   transform: none !important;
 }
 html.sg-native-ios taro-tabbar { display: none !important; }
-html.sg-native-ios taro-scroll-view-core.taro-scroll-view__scroll-y { padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px)) !important; }
+html.sg-native-ios taro-scroll-view-core.taro-scroll-view__scroll-y { padding-bottom: 0 !important; }

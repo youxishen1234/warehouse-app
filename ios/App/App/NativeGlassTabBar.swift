@@ -11,6 +11,7 @@ final class NativeGlassTabBarViewController: CAPBridgeViewController, WKScriptMe
     private var selectedIndex = 0
     private var bridgeHandlerInstalled = false
     private var swipeRecognizer: UIPanGestureRecognizer?
+    private var metricsHandlerInstalled = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -28,6 +29,7 @@ final class NativeGlassTabBarViewController: CAPBridgeViewController, WKScriptMe
 
     deinit {
         bridge?.webView?.configuration.userContentController.removeScriptMessageHandler(forName: "nativeTabSelected")
+        bridge?.webView?.configuration.userContentController.removeScriptMessageHandler(forName: "nativeTabMetrics")
     }
 
     private func glassEffect() -> UIVisualEffect {
@@ -42,7 +44,7 @@ final class NativeGlassTabBarViewController: CAPBridgeViewController, WKScriptMe
     private func installGlassBar() {
         guard glassView == nil else { return }
         let glass = UIVisualEffectView(effect: glassEffect())
-        glass.translatesAutoresizingMaskIntoConstraints = false
+        glass.translatesAutoresizingMaskIntoConstraints = true
         glass.layer.cornerRadius = 34
         glass.clipsToBounds = true
         view.addSubview(glass)
@@ -61,11 +63,8 @@ final class NativeGlassTabBarViewController: CAPBridgeViewController, WKScriptMe
             stack.addArrangedSubview(button)
         }
 
+        glass.frame = CGRect(x: 16, y: view.bounds.height - 80, width: max(0, view.bounds.width - 32), height: 58)
         NSLayoutConstraint.activate([
-            glass.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            glass.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            glass.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8),
-            glass.heightAnchor.constraint(equalToConstant: 58),
             stack.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor, constant: 6),
             stack.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor, constant: -6),
             stack.topAnchor.constraint(equalTo: glass.contentView.topAnchor, constant: 4),
@@ -73,6 +72,7 @@ final class NativeGlassTabBarViewController: CAPBridgeViewController, WKScriptMe
         ])
         glassView = glass
         updateSelection()
+        glass.isHidden = true
     }
 
     private func makeButton(index: Int) -> UIButton {
@@ -116,9 +116,47 @@ final class NativeGlassTabBarViewController: CAPBridgeViewController, WKScriptMe
     }
 
     private func installBridgeHandler() {
-        guard !bridgeHandlerInstalled, let webView = bridge?.webView else { return }
-        webView.configuration.userContentController.add(self, name: "nativeTabSelected")
-        bridgeHandlerInstalled = true
+        guard let webView = bridge?.webView else { return }
+        if !bridgeHandlerInstalled {
+            webView.configuration.userContentController.add(self, name: "nativeTabSelected")
+            bridgeHandlerInstalled = true
+        }
+        if !metricsHandlerInstalled {
+            webView.configuration.userContentController.add(self, name: "nativeTabMetrics")
+            metricsHandlerInstalled = true
+        }
+        installPageAnchorScript()
+    }
+
+    private func installPageAnchorScript() {
+        let script = """
+        (function(){
+          if (window.__sgNativeAnchorInstalled) return;
+          window.__sgNativeAnchorInstalled = true;
+          var anchor = null;
+          function report(){
+            if (!anchor || !anchor.isConnected) return;
+            var r = anchor.getBoundingClientRect();
+            var h = window.innerHeight || document.documentElement.clientHeight;
+            window.webkit.messageHandlers.nativeTabMetrics.postMessage({x:r.left,y:r.top,w:r.width,h:r.height,viewport:h});
+          }
+          function install(){
+            var roots = Array.prototype.slice.call(document.querySelectorAll('taro-scroll-view-core'));
+            var root = roots.find(function(el){ return el.offsetWidth > 0 && el.offsetHeight > 0; }) || document.querySelector('.taro_page.taro_tabbar_page') || document.body;
+            if (!root) return;
+            if (!anchor) { anchor = document.createElement('div'); anchor.id = 'sg-native-tabbar-anchor'; }
+            if (anchor.parentNode !== root) root.appendChild(anchor);
+            anchor.style.cssText = 'display:block;width:100%;height:76px;pointer-events:none;';
+            report();
+          }
+          new MutationObserver(install).observe(document.body, {childList:true,subtree:true});
+          document.addEventListener('scroll', report, true);
+          window.addEventListener('resize', report);
+          install();
+          setInterval(report, 250);
+        })();
+        """
+        bridge?.webView?.evaluateJavaScript(script)
     }
 
     private func installSwipeNavigation() {
@@ -167,6 +205,18 @@ final class NativeGlassTabBarViewController: CAPBridgeViewController, WKScriptMe
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        if message.name == "nativeTabMetrics", let data = message.body as? [String: Any],
+           let x = (data["x"] as? NSNumber)?.doubleValue,
+           let y = (data["y"] as? NSNumber)?.doubleValue,
+           let width = (data["w"] as? NSNumber)?.doubleValue {
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let glass = self.glassView else { return }
+                let origin = self.bridge?.webView?.convert(CGPoint(x: x, y: y + 8), to: self.view) ?? CGPoint(x: 16, y: self.view.bounds.height - 80)
+                glass.frame = CGRect(x: 16, y: origin.y, width: max(0, min(CGFloat(width) - 32, self.view.bounds.width - 32)), height: 58)
+                glass.isHidden = false
+            }
+            return
+        }
         guard let route = message.body as? String,
               let index = routes.firstIndex(where: { route.contains($0.replacingOccurrences(of: "/pages", with: "")) || route == $0 }) else { return }
         DispatchQueue.main.async { self.selectedIndex = index; self.updateSelection() }
