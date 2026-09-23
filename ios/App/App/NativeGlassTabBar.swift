@@ -281,7 +281,8 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         let result: [String: Any] = ["success": error == nil, "error": error ?? "",
                                     "controller": String(describing: type(of: self)),
                                     "selectedIndex": selectedIndex,
-                                    "dockFrame": NSStringFromCGRect(dock.frame)]
+                                    "dockFrame": ["x": dock.frame.minX, "y": dock.frame.minY,
+                                                  "width": dock.frame.width, "height": dock.frame.height]]
         let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         if let data = try? JSONSerialization.data(withJSONObject: result, options: .prettyPrinted) {
             try? data.write(to: directory.appendingPathComponent("native-dock-smoke.json"), options: .atomic)
