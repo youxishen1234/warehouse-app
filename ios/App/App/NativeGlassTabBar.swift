@@ -24,6 +24,8 @@ final class NativeGlassTabBarViewController: CAPBridgeViewController, WKScriptMe
         super.viewDidAppear(animated)
         installBridgeHandler()
         installSwipeNavigation()
+        glassView?.isHidden = false
+        glassView?.frame = CGRect(x: 16, y: view.bounds.height - 80, width: max(0, view.bounds.width - 32), height: 58)
         markWebView(attempt: 0)
     }
 
@@ -72,7 +74,7 @@ final class NativeGlassTabBarViewController: CAPBridgeViewController, WKScriptMe
         ])
         glassView = glass
         updateSelection()
-        glass.isHidden = true
+        glass.isHidden = false
     }
 
     private func makeButton(index: Int) -> UIButton {
