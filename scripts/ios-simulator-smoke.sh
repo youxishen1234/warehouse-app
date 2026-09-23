@@ -5,7 +5,8 @@ DEVICE_ID="$(xcrun simctl list devices available -j | ruby -rjson -e 'j=JSON.par
 xcrun simctl boot "$DEVICE_ID" 2>/dev/null || true
 xcrun simctl bootstatus "$DEVICE_ID" -b
 xcrun simctl install "$DEVICE_ID" "$APP_PATH"
-xcrun simctl launch "$DEVICE_ID" com.warehouse.app --native-dock-smoke
+mkdir -p release/ios-smoke
+xcrun simctl launch --console-pty "$DEVICE_ID" com.warehouse.app --native-dock-smoke > release/ios-smoke/console.log 2>&1 &
 APP_DATA="$(xcrun simctl get_app_container "$DEVICE_ID" com.warehouse.app data)"
 mkdir -p release/ios-smoke
 for attempt in {1..90}; do

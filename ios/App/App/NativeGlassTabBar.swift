@@ -178,6 +178,15 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         bridgeProxy = proxy
         let controller = webView.configuration.userContentController
         controller.add(proxy, name: "nativeTabSelected")
+        if ProcessInfo.processInfo.arguments.contains("--native-dock-smoke") {
+            controller.addUserScript(WKUserScript(source: """
+            window.__sgStartupErrors = [];
+            window.addEventListener('error', function(e) {
+              window.__sgStartupErrors.push(String(e.message || (e.target && e.target.src) || 'resource error'));
+            }, true);
+            window.addEventListener('unhandledrejection', function(e) { window.__sgStartupErrors.push(String(e.reason)); });
+            """, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
         controller.addUserScript(WKUserScript(source: capabilityScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
     }
 
@@ -278,14 +287,24 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     }
 
     private func finishSmokeTest(_ error: String?) {
-        let result: [String: Any] = ["success": error == nil, "error": error ?? "",
+        var result: [String: Any] = ["success": error == nil, "error": error ?? "",
                                     "controller": String(describing: type(of: self)),
                                     "selectedIndex": selectedIndex,
                                     "dockFrame": ["x": dock.frame.minX, "y": dock.frame.minY,
                                                   "width": dock.frame.width, "height": dock.frame.height]]
-        let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        if let data = try? JSONSerialization.data(withJSONObject: result, options: .prettyPrinted) {
-            try? data.write(to: directory.appendingPathComponent("native-dock-smoke.json"), options: .atomic)
+        result["url"] = bridgeController.webView?.url?.absoluteString ?? "nil"
+        result["loading"] = bridgeController.webView?.isLoading ?? false
+        result["progress"] = bridgeController.webView?.estimatedProgress ?? 0
+        result["webFrame"] = String(describing: bridgeController.webView?.frame)
+        bridgeController.webView?.evaluateJavaScript("""
+          JSON.stringify({url:location.href, state:document.readyState, native:window.__sgNativeDock,
+          errors:window.__sgStartupErrors, html:document.documentElement.outerHTML.slice(0,14000)})
+        """) { value, jsError in
+            result["webState"] = value as? String ?? jsError?.localizedDescription ?? "no JS result"
+            let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            if let data = try? JSONSerialization.data(withJSONObject: result, options: .prettyPrinted) {
+                try? data.write(to: directory.appendingPathComponent("native-dock-smoke.json"), options: .atomic)
+            }
         }
     }
 }
