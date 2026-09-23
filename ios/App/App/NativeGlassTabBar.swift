@@ -34,9 +34,7 @@ final class NativeGlassTabBarViewController: CAPBridgeViewController, WKScriptMe
 
     private func makeGlassEffect() -> UIVisualEffect {
         if #available(iOS 26.0, *) {
-            let effect = UIGlassEffect(style: .regular)
-            effect.isInteractive = true
-            return effect
+            return UIBlurEffect(style: .systemUltraThinMaterial)
         }
         return UIBlurEffect(style: .systemUltraThinMaterial)
     }
