@@ -1,4 +1,4 @@
-name: Build iOS IPA
+﻿name: Build iOS IPA
 permissions: write-all
 on:
   push:
@@ -46,9 +46,9 @@ jobs:
           tag_name: build-${{ github.run_number }}
           name: Build ${{ github.run_number }}
           body: |
-            iOS IPA 自动构建
-            构建编号: ${{ github.run_number }}
-            提交: ${{ github.sha }}
+            iOS IPA 鑷姩鏋勫缓
+            鏋勫缓缂栧彿: ${{ github.run_number }}
+            鎻愪氦: ${{ github.sha }}
           files: ios/App/shuguang.ipa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -84,3 +84,4 @@ jobs:
             exit 0
           fi
           echo "IPA uploaded successfully to $SERVER_HOST:$REMOTE_PATH"
+
