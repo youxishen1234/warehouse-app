@@ -3,7 +3,7 @@
 .container {
   min-height: 100vh;
   background: #fff;
-  padding-bottom: calc(160rpx + env(safe-area-inset-bottom));
+  padding-bottom: calc(240rpx + env(safe-area-inset-bottom));
   // H5(App)：容器顶到屏幕最顶端，由 .header 自身留白避开状态栏
   // （小程序端 env(safe-area-inset-top) 为 0，规则自动失效）
   margin-top: calc(0px - constant(safe-area-inset-top));

@@ -173,6 +173,18 @@ function TabSwipeNavigator() {
       route = '/' + route.replace(/^\/+/, '');
       return tabs.findIndex(tab => route.includes(tab.replace('/pages', '')) || route === tab);
     };
+    const notifyNativeTabSelection = () => {
+      const index = currentTabIndex();
+      const handler = (window as any).webkit?.messageHandlers?.nativeTabSelected;
+      if (index >= 0 && handler) handler.postMessage(location.hash || tabs[index]);
+    };
+    const onNativeTabSelect = (event: Event) => {
+      const url = (event as CustomEvent<string>).detail;
+      if (typeof url === 'string' && tabs.includes(url)) Taro.switchTab({ url });
+    };
+    window.addEventListener('sg-native-tab', onNativeTabSelect);
+    window.addEventListener('hashchange', notifyNativeTabSelection);
+    window.addEventListener('popstate', notifyNativeTabSelection);
 
     const isInteractive = (target: EventTarget | null) => {
       const el = target as HTMLElement | null;
@@ -238,6 +250,9 @@ function TabSwipeNavigator() {
       window.removeEventListener('touchcancel', onEnd, true);
       window.removeEventListener('pointerdown', pointerDown, true);
       window.removeEventListener('pointerup', pointerUp, true);
+      window.removeEventListener('sg-native-tab', onNativeTabSelect);
+      window.removeEventListener('hashchange', notifyNativeTabSelection);
+      window.removeEventListener('popstate', notifyNativeTabSelection);
       if (isAndroid) document.documentElement.classList.remove('sg-android-edge-system');
     };
   }, []);

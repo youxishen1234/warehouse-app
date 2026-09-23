@@ -17,12 +17,11 @@
 .segment { flex: 1; padding: 15rpx 0; border-radius: 9rpx; color: #64748b; font-size: 26rpx; font-weight: 600; text-align: center; }
 .active { background: #0f766e; color: #fff; box-shadow: 0 3rpx 10rpx rgba(15, 118, 110, .22); }
 
-.fields { margin-top: 18rpx; }
-.field { display: flex; align-items: center; min-height: 88rpx; border-bottom: 1rpx solid #edf0f4; }
-.field:last-child { border-bottom: 0; }
-.field > text:first-child { width: 135rpx; color: #475569; font-size: 26rpx; }
-.field > text text { margin-left: 8rpx; color: #94a3b8; font-size: 21rpx; }
-.field input { flex: 1; min-width: 0; padding: 14rpx 18rpx; border-radius: 10rpx; background: #f6f8fb; color: #172033; font-size: 27rpx; text-align: right; }
+.fields { display: flex; align-items: flex-end; gap: 12rpx; margin-top: 18rpx; }
+.field { flex: 1; min-width: 0; }
+.field > text:first-child { display: block; margin-bottom: 8rpx; color: #475569; font-size: 24rpx; text-align: center; }
+.field input { box-sizing: border-box; width: 100%; min-width: 0; padding: 14rpx 8rpx; border-radius: 10rpx; background: #f6f8fb; color: #172033; font-size: 27rpx; text-align: center; }
+.separator { flex: 0 0 auto; padding-bottom: 19rpx; color: #94a3b8; font-size: 30rpx; line-height: 1; }
 
 .thicknessRow { display: flex; flex-wrap: wrap; gap: 14rpx; }
 .chip { min-width: 92rpx; padding: 13rpx 14rpx; border-radius: 10rpx; background: #f1f5f9; color: #64748b; font-size: 23rpx; text-align: center; }

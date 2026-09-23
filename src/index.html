@@ -37,13 +37,13 @@
           var ROOT = (function() {
             try {
               var c = localStorage.getItem('sg_custom_base');
-              if (c && /^http:\/\/152\.136\.100\.200:4000\/?$/i.test(c)) {
-                c = 'http://152.136.100.200';
+              if (c && (/^http:\/\/152\.136\.100\.200(?::4000)?\/?$/i.test(c) || /^https?:\/\/youxishen\.online(?::4000)?\/?$/i.test(c))) {
+                c = 'https://youxishen.online';
                 localStorage.setItem('sg_custom_base', c);
               }
               if (c && c.length) return /\/$/.test(c) ? c : c + '/';
             } catch (e) {}
-            return 'http://152.136.100.200/';
+            return 'https://youxishen.online/';
           })();
           var API = ROOT + 'api/appupdate/';
           var FILES = ROOT + 'appupdate/';

@@ -258,9 +258,15 @@
       }
     });
   }
+  // Taro nests the tab bar inside an overflow-hidden router panel. Move the
+  // rendered bar to body so fixed positioning is relative to the viewport.
+  function detachTabbar() {
+    // Keep the generated tabbar inside Taro's page container. It belongs to
+    // the page bottom and must scroll with the page rather than the viewport.
+  }
   function watch() {
-    addSearchBar(); enhanceDashboard(); addCorrugatedLauncher(); injectPendingSearch();
-    new MutationObserver(function () { addSearchBar(); enhanceDashboard(); addCorrugatedLauncher(); injectPendingSearch(); }).observe(document.body, { childList: true, subtree: true });
+    addSearchBar(); enhanceDashboard(); addCorrugatedLauncher(); injectPendingSearch(); detachTabbar();
+    new MutationObserver(function () { addSearchBar(); enhanceDashboard(); addCorrugatedLauncher(); injectPendingSearch(); detachTabbar(); }).observe(document.body, { childList: true, subtree: true });
     window.addEventListener('hashchange', injectPendingSearch);
     installSwipeNavigation();
   }

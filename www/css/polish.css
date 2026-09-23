@@ -185,7 +185,17 @@
      is inherited, so disabling it here also disables every page control and
      prevents scrolling.  The tab bar is positioned independently below. */
   pointer-events: auto;
+  position: relative !important;
+  height: auto !important;
+  min-height: 100% !important;
 }
+.taro-tabbar__panel { position: relative !important; height: auto !important; min-height: 100vh; overflow: visible !important; }
+.taro-tabbar__panel > .taro_page.taro_tabbar_page { height: auto !important; max-height: none !important; min-height: 100vh; overflow: visible !important; }
+.taro-tabbar__panel,
+taro-tabbar { overflow: visible !important; transform: none !important; }
+taro-tabbar { position: fixed !important; inset: auto 0 0 !important; z-index: 1000 !important; height: 84px !important; pointer-events: none; }
+taro-tabbar > .taro-tabbar__tabbar { pointer-events: auto; }
+.sg-detached-tabbar { position: fixed !important; }
 .taro-tabbar__panel,
 .taro-tabbar__panel .taro_router,
 .taro-tabbar__panel .taro_page {
@@ -193,11 +203,12 @@
 }
 .taro-tabbar__tabbar {
   position: absolute !important;
+  z-index: 1000 !important;
   pointer-events: auto;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: calc(.4rem + env(safe-area-inset-bottom, 0px)) !important;
-  width: calc(100% - 1.6rem) !important;
+  left: 1rem !important;
+  right: 5.75rem !important;
+  bottom: .55rem !important;
+  width: auto !important;
   margin-left: .8rem !important;
   height: 3.2rem !important;
   padding: 0 !important;
@@ -207,6 +218,9 @@
   box-shadow: none !important;
   box-sizing: border-box;
 }
+.sg-quick-add { position: absolute; z-index: 1002; right: 1rem; bottom: .55rem; width: 3.2rem; height: 3.2rem; border: 1px solid rgba(255,255,255,.82); border-radius: 50%; background: rgba(255,255,255,.76); -webkit-backdrop-filter: blur(.75rem) saturate(1.35) !important; backdrop-filter: blur(.75rem) saturate(1.35) !important; box-shadow: 0 .25rem .875rem rgba(30,50,100,.16), inset 0 1px 0 rgba(255,255,255,.9); color: #111; display: flex; align-items: center; justify-content: center; pointer-events: auto; }
+.sg-quick-add text { font-size: 1.9rem; font-weight: 300; line-height: 1; }
+.sg-quick-add:active { transform: scale(.94); }
 .taro-tabbar__tabbar > .weui-tabbar {
   position: absolute !important;
   inset: 0 !important;
@@ -217,8 +231,8 @@
   border: 1px solid rgba(255,255,255,.72) !important;
   border-radius: 1.75rem !important;
   background: rgba(255,255,255,.68) !important;
-  -webkit-backdrop-filter: blur(.75rem) saturate(1.25);
-  backdrop-filter: blur(.75rem) saturate(1.25);
+  -webkit-backdrop-filter: blur(.75rem) saturate(1.25) !important;
+  backdrop-filter: blur(.75rem) saturate(1.25) !important;
   box-shadow: 0 .15rem .65rem rgba(30,50,100,.16), inset 0 1px 0 rgba(255,255,255,.78);
   box-sizing: border-box;
 }
@@ -246,3 +260,102 @@ taro-scroll-view-core.taro-scroll-view__scroll-y {
 
 /* Navigation is intentionally gesture-only; the old floating arrows must not intercept taps. */
 .sg-page-nav, .sg-back-btn { display: none !important; pointer-events: none !important; }
+
+/* Keep Taro's router viewport measurable; the page itself owns scrolling. */
+.taro-tabbar__container { height: 100% !important; min-height: 100vh !important; }
+.taro-tabbar__panel { height: 100% !important; min-height: 100vh !important; overflow: hidden !important; }
+.taro-tabbar__panel > .taro_page.taro_tabbar_page { height: 100% !important; min-height: 100vh !important; max-height: 100vh !important; overflow-y: auto !important; overflow-x: hidden !important; }
+
+/* Standard bottom tab bar: white, full-width, and reserved content clearance. */
+taro-tabbar {
+  position: fixed !important;
+  z-index: 1000 !important;
+  inset: auto 0 0 !important;
+  height: calc(58px + env(safe-area-inset-bottom, 0px)) !important;
+  overflow: visible !important;
+  pointer-events: none !important;
+  transform: none !important;
+  background: #fff !important;
+  border-top: 1px solid #e6e9ed !important;
+}
+.taro-tabbar__tabbar {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 58px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: #fff !important;
+  box-shadow: none !important;
+  pointer-events: auto !important;
+}
+.taro-tabbar__tabbar > .weui-tabbar {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 58px !important;
+  margin: 0 !important;
+  padding: 0 0 env(safe-area-inset-bottom, 0px) !important;
+  box-sizing: border-box !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: #fff !important;
+  box-shadow: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+.taro-tabbar__tabbar .weui-tabbar__item,
+.taro-tabbar__tabbar .weui-bar__item_on { border-radius: 0 !important; background: transparent !important; box-shadow: none !important; }
+.taro-tabbar__tabbar .weui-tabbar__item:active { transform: none !important; }
+.sg-quick-add { display: none !important; }
+taro-scroll-view-core.taro-scroll-view__scroll-y { padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px)) !important; box-sizing: border-box !important; }
+
+/* iOS 27 Liquid Glass treatment on the fixed, full-width native tab bar. */
+taro-tabbar {
+  height: calc(68px + env(safe-area-inset-bottom, 0px)) !important;
+  border-top: 0 !important;
+  background: rgba(248, 250, 252, .72) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(1.8) !important;
+  backdrop-filter: blur(28px) saturate(1.8) !important;
+  box-shadow: 0 -1px 0 rgba(255,255,255,.78), 0 -8px 28px rgba(31,41,55,.08) !important;
+}
+.taro-tabbar__tabbar { height: 68px !important; background: transparent !important; }
+.taro-tabbar__tabbar > .weui-tabbar {
+  height: 68px !important;
+  padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  background: rgba(255,255,255,.42) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(1.8) !important;
+  backdrop-filter: blur(28px) saturate(1.8) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.72) !important;
+}
+.taro-tabbar__tabbar .weui-tabbar__item,
+.taro-tabbar__tabbar .weui-bar__item_on { transition: none !important; }
+.taro-tabbar__tabbar .weui-bar__item_on { background: rgba(47,107,255,.09) !important; border-radius: 16px !important; }
+.sg-quick-add { display: none !important; }
+@media (prefers-reduced-transparency: reduce) {
+  taro-tabbar, .taro-tabbar__tabbar > .weui-tabbar { background: #fff !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+}
+
+/* The tab bar class is on the custom-element host, not a child of it. */
+taro-tabbar.taro-tabbar__tabbar {
+  position: fixed !important;
+  top: auto !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: calc(68px + env(safe-area-inset-bottom, 0px)) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: rgba(255,255,255,.58) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(1.8) !important;
+  backdrop-filter: blur(28px) saturate(1.8) !important;
+  box-shadow: 0 -1px 0 rgba(255,255,255,.78), 0 -8px 28px rgba(31,41,55,.08) !important;
+  transform: none !important;
+}
+html.sg-native-ios taro-tabbar { display: none !important; }
+html.sg-native-ios taro-scroll-view-core.taro-scroll-view__scroll-y { padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px)) !important; }

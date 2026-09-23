@@ -58,10 +58,13 @@ export default function CartonCalculator() {
       </View>
 
       <View className={styles.fields}>
-        {(Object.keys(labels) as DimensionKey[]).map(key => <View className={styles.field} key={key}>
-          <Text>{mode === 'inner' ? `内${labels[key]}` : `外${labels[key]}`}<Text>mm</Text></Text>
-          <Input type="digit" inputMode="decimal" value={dimensions[key]} placeholder="请输入" onInput={event => setDimensions(current => ({ ...current, [key]: event.detail.value }))} />
-        </View>)}
+        {(Object.keys(labels) as DimensionKey[]).map((key, index) => <React.Fragment key={key}>
+          <View className={styles.field}>
+            <Text>{labels[key]}</Text>
+            <Input type="digit" inputMode="decimal" value={dimensions[key]} placeholder="0" onInput={event => setDimensions(current => ({ ...current, [key]: event.detail.value }))} />
+          </View>
+          {index < 2 && <Text className={styles.separator}>×</Text>}
+        </React.Fragment>)}
       </View>
     </View>
 
