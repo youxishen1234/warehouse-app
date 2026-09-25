@@ -14,13 +14,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install npm dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Build current web assets
+        run: npm run build:h5
+
       - name: Package current web assets
         shell: bash
         run: |
           set -euo pipefail
-          test -f www/index.html
+          test -f dist/index.html
           mkdir -p release
-          python3 scripts/package-hotupdate.py www release/www.zip
+          python3 scripts/package-hotupdate.py dist release/www.zip
           # Include seconds so consecutive pushes cannot publish the same bundle id.
           version="$(date -u +%Y%m%d%H%M%S)"
           published="$(date -u '+%Y-%m-%d %H:%M:%S')"
