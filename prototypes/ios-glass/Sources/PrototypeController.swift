@@ -70,8 +70,9 @@ final class PrototypeController: UIViewController, WKScriptMessageHandler, WKNav
         field.frame = CGRect(x: safe.left + 16, y: tools.frame.maxY + 4, width: width - safe.left - safe.right - 32, height: 36)
         web.frame = CGRect(x: 0, y: field.frame.maxY + 8, width: width, height: view.bounds.height - field.frame.maxY - 8)
         // WebView extends behind the glass, rather than ending at its top edge.
-        let dockWidth = min(460, width - safe.left - safe.right - 32)
-        dock.frame = CGRect(x: (width - dockWidth) / 2, y: view.bounds.height - safe.bottom - 12 - 68, width: dockWidth, height: 68)
+        let dockWidth = min(460, width - safe.left - safe.right - 24)
+        let dockHeight: CGFloat = 64
+        dock.frame = CGRect(x: (width - dockWidth) / 2, y: view.bounds.height - safe.bottom - 12 - dockHeight, width: dockWidth, height: dockHeight)
         dock.layoutIfNeeded()
         publishInset()
         updateDiagnostic()

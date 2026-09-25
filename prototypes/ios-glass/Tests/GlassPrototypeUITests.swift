@@ -28,6 +28,10 @@ final class GlassPrototypeUITests: XCTestCase {
         }
         app.buttons["prototype.tab.0"].tap(); waitStatus(app, "route=home")
         let web = app.webViews.firstMatch
+        dock.swipeLeft()
+        waitStatus(app, "route=inbound")
+        shot("02-swipe-home-to-inbound")
+        app.buttons["prototype.tab.0"].tap(); waitStatus(app, "route=home")
         for index in 0..<3 { web.swipeUp(velocity: .slow); shot("03-refraction-" + String(index)) }
         let last = app.buttons["末条操作 · 不应被遮挡"]
         for _ in 0..<24 {

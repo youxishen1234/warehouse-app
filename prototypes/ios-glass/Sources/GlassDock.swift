@@ -14,7 +14,7 @@ final class GlassDock: UIView {
     private var selectionAnimator: UIViewPropertyAnimator?
     private var panStartFrame = CGRect.zero
     private let selectedBlue = UIColor.systemBlue
-    private let darkGlass = UIColor.black.withAlphaComponent(0.28)
+    private let darkGlass = UIColor.black.withAlphaComponent(0.46)
     var onSwipe: ((Int) -> Void)?
 
     override init(frame: CGRect) {
@@ -32,6 +32,7 @@ final class GlassDock: UIView {
         body.contentView.addSubview(stack)
         let pan = UIPanGestureRecognizer(target: self, action: #selector(panned(_:)))
         pan.maximumNumberOfTouches = 1
+        pan.cancelsTouchesInView = false
         addGestureRecognizer(pan)
         for index in titles.indices {
             let button = UIButton(type: .system)
@@ -77,7 +78,7 @@ final class GlassDock: UIView {
             body.cornerConfiguration = .capsule()
             let selectedGlass = UIGlassEffect(style: .regular)
             selectedGlass.isInteractive = true
-            selectedGlass.tintColor = selectedBlue.withAlphaComponent(0.9)
+            selectedGlass.tintColor = selectedBlue.withAlphaComponent(0.96)
             selection.effect = selectedGlass
             selection.cornerConfiguration = .capsule()
             material = "glass"
@@ -94,9 +95,22 @@ final class GlassDock: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         body.frame = bounds
+        body.layer.shadowColor = UIColor.black.cgColor
+        body.layer.shadowOpacity = 0.34
+        body.layer.shadowRadius = 14
+        body.layer.shadowOffset = CGSize(width: 0, height: 6)
         stack.frame = bounds.insetBy(dx: 7, dy: 6)
         stack.layoutIfNeeded()
-        if material == "blur" { body.layer.cornerRadius = bounds.height / 2; selection.layer.cornerRadius = selection.bounds.height / 2 }
+        selection.layer.shadowColor = UIColor.systemBlue.cgColor
+        selection.layer.shadowOpacity = 0.42
+        selection.layer.shadowRadius = 8
+        selection.layer.shadowOffset = CGSize(width: 0, height: 3)
+        if material == "blur" {
+            body.layer.cornerRadius = bounds.height / 2
+            selection.layer.cornerRadius = selection.bounds.height / 2
+            selection.layer.borderColor = UIColor.systemBlue.withAlphaComponent(0.85).cgColor
+            selection.layer.borderWidth = 0.75
+        }
         if selectionAnimator?.isRunning != true { selection.frame = selectedFrame() }
     }
     private func selectedFrame() -> CGRect {

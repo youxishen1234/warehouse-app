@@ -18,7 +18,7 @@ targets:
     info:
       path: Generated/Info.plist
       properties:
-        CFBundleDisplayName: 曙光玻璃原型
+        CFBundleDisplayName: 曙光库存
         CFBundleShortVersionString: '0.1.0'
         CFBundleVersion: '1'
         UILaunchScreen: {}
