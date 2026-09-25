@@ -50,3 +50,4 @@ result={'success':bool(ok),'xcodeTestExit':int(sys.argv[2]),'runtime':sys.argv[3
 print(json.dumps(result,indent=2))
 if not ok: raise SystemExit(1)
 PY
+# verification rerun: App Store-style blue glass selection
