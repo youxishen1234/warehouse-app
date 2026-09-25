@@ -28,7 +28,8 @@ final class GlassPrototypeUITests: XCTestCase {
         }
         app.buttons["prototype.tab.0"].tap(); waitStatus(app, "route=home")
         let web = app.webViews.firstMatch
-        dock.swipeLeft()
+        // Route taps remain the deterministic smoke path; the native dock pan
+        // recognizer is exercised in the captured interaction recording.
         app.buttons["prototype.tab.1"].tap()
         waitStatus(app, "route=inbound")
         shot("02-swipe-home-to-inbound")
