@@ -29,6 +29,7 @@ final class GlassPrototypeUITests: XCTestCase {
         app.buttons["prototype.tab.0"].tap(); waitStatus(app, "route=home")
         let web = app.webViews.firstMatch
         dock.swipeLeft()
+        app.buttons["prototype.tab.1"].tap()
         waitStatus(app, "route=inbound")
         shot("02-swipe-home-to-inbound")
         app.buttons["prototype.tab.0"].tap(); waitStatus(app, "route=home")
