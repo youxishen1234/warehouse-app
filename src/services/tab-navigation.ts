@@ -34,7 +34,7 @@ export function installTabNavigation(nav: Navigation): () => void {
     const native = capability?.api === 2 && win.webkit?.messageHandlers?.nativeTabSelected;
     root.classList.toggle('sg-native-ios', !!native);
     if (native) {
-      root.style.setProperty('--sg-native-bottom-space', String(capability.bottomSpace || 84) + 'px');
+      root.style.setProperty('--sg-native-bottom-space', String(capability.bottomSpace ?? 84) + 'px');
       native.postMessage({ route: route(), ready: true, modal: modalOpen() });
     }
   };

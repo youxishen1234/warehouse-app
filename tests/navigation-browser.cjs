@@ -77,6 +77,14 @@ async function verify(browser, name) {
   });
   await page.waitForFunction(() => document.documentElement.classList.contains('sg-native-ios'));
   assert.equal(await page.locator('taro-tabbar').isVisible(), false, 'hide web fallback only after native handshake');
+  assert.equal(await page.evaluate(() => document.documentElement.style.getPropertyValue('--sg-native-bottom-space')), '84px');
+  for (const bottomSpace of [0, null, 0]) {
+    await page.evaluate(bottomSpace => {
+      window.__sgNativeDock = { ...window.__sgNativeDock, bottomSpace, layout: 'inset' };
+      window.dispatchEvent(new Event('sg-native-ready'));
+    }, bottomSpace);
+    await page.waitForFunction(expected => document.documentElement.style.getPropertyValue('--sg-native-bottom-space') === expected, bottomSpace === null ? '84px' : '0px');
+  }
   await swipe(page, 110);
   await page.waitForURL(/outbound/);
   for (const route of ['/pages/inbound/index', '/pages/outbound/index', '/pages/mine/index', '/pages/home/index']) {

@@ -20,6 +20,8 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     private var modalVisible = false
     private var keyboardObservers: [NSObjectProtocol] = []
     private var smokeStarted = false
+    private var contentAboveDock: NSLayoutConstraint!
+    private var contentFullHeight: NSLayoutConstraint!
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -32,14 +34,17 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         let content = bridgeController.view!
         content.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(content)
+        installDock()
+        contentAboveDock = content.bottomAnchor.constraint(equalTo: dock.topAnchor)
+        contentFullHeight = content.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         NSLayoutConstraint.activate([
             content.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             content.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             content.topAnchor.constraint(equalTo: view.topAnchor),
-            content.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            contentFullHeight
         ])
         bridgeController.didMove(toParent: self)
-        installDock()
+        updateVisibility()
         keyboardObservers = [
             NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main) { [weak self] _ in
                 self?.keyboardVisible = true
@@ -63,8 +68,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        view.bringSubviewToFront(dock)
-        dock.layer.shadowPath = UIBezierPath(roundedRect: dock.bounds, cornerRadius: 24).cgPath
+        // Content ends at dock.topAnchor and cannot scroll beneath the bar.
     }
 
     override var childForStatusBarStyle: UIViewController? { bridgeController }
@@ -78,26 +82,12 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     private func installDock() {
         dock.translatesAutoresizingMaskIntoConstraints = false
         dock.accessibilityIdentifier = "warehouse.native.tabbar"
-        dock.layer.shadowColor = UIColor.black.cgColor
-        dock.layer.shadowOpacity = 0.12
-        dock.layer.shadowRadius = 12
-        dock.layer.shadowOffset = CGSize(width: 0, height: 3)
+        dock.backgroundColor = .systemBackground
         view.addSubview(dock)
 
-        let effect: UIVisualEffect
-        if #available(iOS 26.0, *) {
-            let liquid = UIGlassEffect(style: .regular)
-            liquid.isInteractive = true
-            effect = liquid
-        } else {
-            effect = UIBlurEffect(style: .systemMaterial)
-        }
-        glass = UIVisualEffectView(effect: effect)
+        // Keep compatibility with the deployment target and older Xcode SDKs.
+        glass = UIVisualEffectView(effect: UIBlurEffect(style: .systemMaterial))
         glass.translatesAutoresizingMaskIntoConstraints = false
-        glass.layer.cornerRadius = 24
-        glass.layer.cornerCurve = .continuous
-        glass.clipsToBounds = true
-        if #available(iOS 26.0, *) { glass.cornerConfiguration = .corners(radius: .fixed(24)) }
         dock.addSubview(glass)
 
         let stack = UIStackView()
@@ -141,18 +131,18 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         }
         let safe = view.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
-            dock.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 12),
-            dock.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -12),
-            dock.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -8),
-            dock.heightAnchor.constraint(equalToConstant: 60),
+            dock.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            dock.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            dock.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            dock.topAnchor.constraint(equalTo: safe.bottomAnchor, constant: -60),
             glass.leadingAnchor.constraint(equalTo: dock.leadingAnchor),
             glass.trailingAnchor.constraint(equalTo: dock.trailingAnchor),
             glass.topAnchor.constraint(equalTo: dock.topAnchor),
             glass.bottomAnchor.constraint(equalTo: dock.bottomAnchor),
-            stack.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor, constant: 5),
-            stack.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor, constant: -5),
+            stack.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 5),
+            stack.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -5),
             stack.topAnchor.constraint(equalTo: glass.contentView.topAnchor, constant: 4),
-            stack.bottomAnchor.constraint(equalTo: glass.contentView.bottomAnchor, constant: -4)
+            stack.heightAnchor.constraint(equalToConstant: 52)
         ])
         updateSelection()
     }
@@ -170,7 +160,13 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     }
 
     private func updateVisibility() {
-        dock.isHidden = !routeIsTab || keyboardVisible || modalVisible
+        let visible = webReady && routeIsTab && !keyboardVisible && !modalVisible
+        dock.isHidden = !visible
+        // Deactivate first to avoid conflicting bottom constraints.
+        contentAboveDock.isActive = false
+        contentFullHeight.isActive = false
+        if visible { contentAboveDock.isActive = true }
+        else { contentFullHeight.isActive = true }
     }
 
     private func installMessaging(on webView: WKWebView) {
@@ -205,7 +201,8 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
             "api": 2,
             "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "",
             "build": Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "",
-            "bottomSpace": 84
+            "bottomSpace": 0,
+            "layout": "inset"
         ]
         let data = try! JSONSerialization.data(withJSONObject: info)
         let json = String(data: data, encoding: .utf8)!
@@ -230,7 +227,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard message.frameInfo.isMainFrame else { return }
+        guard message.name == "nativeTabSelected", message.frameInfo.isMainFrame else { return }
         if let state = message.body as? [String: Any], let route = state["route"] as? String {
             webReady = state["ready"] as? Bool ?? false
             routeIsTab = routes.contains(route)
@@ -254,9 +251,10 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         view.layoutIfNeeded()
         guard dock.superview === view, bridgeController.view.superview === view,
               dock.superview !== bridgeController.webView,
-              !dock.isHidden, dock.bounds.height == 60,
+              !dock.isHidden, abs(dock.bounds.height - 60 - view.safeAreaInsets.bottom) < 1,
+              abs(bridgeController.view.frame.maxY - dock.frame.minY) < 1,
               dock.frame.minY > view.bounds.height / 2,
-              dock.frame.maxY <= view.safeAreaLayoutGuide.layoutFrame.maxY,
+              abs(dock.frame.maxY - view.bounds.maxY) < 1,
               dock.hitTest(CGPoint(x: dock.bounds.midX, y: dock.bounds.midY), with: nil) != nil else {
             finishSmokeTest("Native dock hierarchy, bounds or hit testing failed")
             return
