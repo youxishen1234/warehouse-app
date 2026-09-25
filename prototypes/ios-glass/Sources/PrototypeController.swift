@@ -52,6 +52,7 @@ final class PrototypeController: UIViewController, WKScriptMessageHandler, WKNav
         view.addSubview(field)
         view.addSubview(dock)
         dock.onSelect = { [weak self] index in self?.requestRoute(index) }
+        dock.onSwipe = { [weak self] index in self?.requestRoute(index) }
         observers.append(NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillChangeFrameNotification, object: nil, queue: .main) { [weak self] note in
             guard let self = self, let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
             let local = self.view.convert(frame, from: nil)

@@ -12,7 +12,10 @@ final class GlassDock: UIView {
     private(set) var material = "blur"
     var onSelect: ((Int) -> Void)?
     private var selectionAnimator: UIViewPropertyAnimator?
-    private let brand = UIColor(red: 15 / 255, green: 118 / 255, blue: 110 / 255, alpha: 1)
+    private var panStartFrame = CGRect.zero
+    private let selectedBlue = UIColor.systemBlue
+    private let darkGlass = UIColor.black.withAlphaComponent(0.28)
+    var onSwipe: ((Int) -> Void)?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -27,6 +30,9 @@ final class GlassDock: UIView {
         stack.distribution = .fillEqually
         stack.spacing = 4
         body.contentView.addSubview(stack)
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(panned(_:)))
+        pan.maximumNumberOfTouches = 1
+        addGestureRecognizer(pan)
         for index in titles.indices {
             let button = UIButton(type: .system)
             button.tag = index
@@ -66,19 +72,21 @@ final class GlassDock: UIView {
         if #available(iOS 26.0, *), !forceBlur {
             let glass = UIGlassEffect(style: .regular)
             glass.isInteractive = true
+            glass.tintColor = darkGlass
             body.effect = glass
             body.cornerConfiguration = .capsule()
             let selectedGlass = UIGlassEffect(style: .regular)
             selectedGlass.isInteractive = true
+            selectedGlass.tintColor = selectedBlue.withAlphaComponent(0.9)
             selection.effect = selectedGlass
             selection.cornerConfiguration = .capsule()
             material = "glass"
             return
         }
         #endif
-        body.effect = UIBlurEffect(style: .systemMaterial)
-        selection.effect = UIBlurEffect(style: .systemUltraThinMaterial)
-        selection.contentView.backgroundColor = brand.withAlphaComponent(0.10)
+        body.effect = UIBlurEffect(style: .systemChromeMaterialDark)
+        selection.effect = UIBlurEffect(style: .systemMaterialDark)
+        selection.contentView.backgroundColor = selectedBlue.withAlphaComponent(0.72)
         body.clipsToBounds = true
         selection.clipsToBounds = true
         material = "blur"
@@ -88,12 +96,14 @@ final class GlassDock: UIView {
         body.frame = bounds
         stack.frame = bounds.insetBy(dx: 7, dy: 6)
         stack.layoutIfNeeded()
-        if material == "blur" { body.layer.cornerRadius = bounds.height / 2; selection.layer.cornerRadius = (bounds.height - 12) / 2 }
+        if material == "blur" { body.layer.cornerRadius = bounds.height / 2; selection.layer.cornerRadius = selection.bounds.height / 2 }
         if selectionAnimator?.isRunning != true { selection.frame = selectedFrame() }
     }
     private func selectedFrame() -> CGRect {
         guard buttons.indices.contains(selectedIndex) else { return .zero }
-        return buttons[selectedIndex].convert(buttons[selectedIndex].bounds, to: body.contentView)
+        let buttonFrame = buttons[selectedIndex].convert(buttons[selectedIndex].bounds, to: body.contentView)
+        let diameter = min(56, buttonFrame.height - 2)
+        return CGRect(x: buttonFrame.midX - diameter / 2, y: buttonFrame.midY - diameter / 2, width: diameter, height: diameter)
     }
     func acknowledge(index: Int, animated: Bool) {
         guard buttons.indices.contains(index) else { return }
@@ -113,8 +123,8 @@ final class GlassDock: UIView {
     private func updateColors() {
         for (index, button) in buttons.enumerated() {
             let active = index == selectedIndex
-            button.tintColor = active ? brand : .secondaryLabel
-            (button.viewWithTag(100) as? UILabel)?.textColor = active ? brand : .secondaryLabel
+            button.tintColor = active ? .white : .white.withAlphaComponent(0.92)
+            (button.viewWithTag(100) as? UILabel)?.textColor = active ? .white : .white.withAlphaComponent(0.92)
             button.isSelected = active
             button.accessibilityTraits = active ? [.button, .selected] : [.button]
         }
@@ -126,5 +136,23 @@ final class GlassDock: UIView {
     }
     @objc private func released(_ sender: UIButton) {
         UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.25, delay: 0, usingSpringWithDamping: 0.72, initialSpringVelocity: 0, options: [.beginFromCurrentState, .allowUserInteraction], animations: { sender.transform = .identity })
+    }
+    @objc private func panned(_ gesture: UIPanGestureRecognizer) {
+        guard !UIAccessibility.isReduceMotionEnabled else { return }
+        switch gesture.state {
+        case .began:
+            selectionAnimator?.stopAnimation(false)
+            panStartFrame = selection.frame
+        case .changed:
+            var frame = panStartFrame
+            frame.origin.x += gesture.translation(in: body.contentView).x
+            selection.frame = frame
+        case .ended, .cancelled:
+            let dx = gesture.translation(in: body.contentView).x
+            let next = dx < -28 ? min(selectedIndex + 1, buttons.count - 1) : dx > 28 ? max(selectedIndex - 1, 0) : selectedIndex
+            if next != selectedIndex { onSwipe?(next) } else { acknowledge(index: selectedIndex, animated: true) }
+        default:
+            break
+        }
     }
 }
