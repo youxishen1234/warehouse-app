@@ -70,7 +70,7 @@ final class PrototypeController: UIViewController, WKScriptMessageHandler, WKNav
         field.frame = CGRect(x: safe.left + 16, y: tools.frame.maxY + 4, width: width - safe.left - safe.right - 32, height: 36)
         web.frame = CGRect(x: 0, y: field.frame.maxY + 8, width: width, height: view.bounds.height - field.frame.maxY - 8)
         // WebView extends behind the glass, rather than ending at its top edge.
-        let dockWidth = min(460, width - safe.left - safe.right - 24)
+        let dockWidth = min(460, width - safe.left - safe.right - 32)
         let dockHeight: CGFloat = 64
         dock.frame = CGRect(x: (width - dockWidth) / 2, y: view.bounds.height - safe.bottom - 12 - dockHeight, width: dockWidth, height: dockHeight)
         dock.layoutIfNeeded()
@@ -104,7 +104,7 @@ final class PrototypeController: UIViewController, WKScriptMessageHandler, WKNav
     private func startWatchdog() {
         watchdog?.cancel()
         let item = DispatchWorkItem { [weak self] in self?.failed = true; self?.updateVisibility() }
-        watchdog = item; DispatchQueue.main.asyncAfter(deadline: .now() + 8, execute: item)
+        watchdog = item; DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: item)
     }
     private func requestRoute(_ index: Int) {
         guard webReady, routes.indices.contains(index) else { return }
@@ -126,6 +126,7 @@ final class PrototypeController: UIViewController, WKScriptMessageHandler, WKNav
         route = newRoute; modal = state["modal"] as? Bool == true
         failed = false
         if let index = routes.firstIndex(of: route) { dock.acknowledge(index: index, animated: true) }
+        web.evaluateJavaScript("window.__nativeHandshakeAck=true;", completionHandler: nil)
         updateVisibility()
     }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { lastInset = -1; publishInset() }
