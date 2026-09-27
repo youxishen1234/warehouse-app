@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { View, Text } from '@tarojs/components';
 import { accountApi, session, sessionOrigin, setSession, watchSession } from '@/services/session';
 import { refreshSharedData } from '@/services/shared-refresh';
+import './style.scss';
 
 export default function TeamAccess({ children }: { children: React.ReactNode }) {
   const [current, setCurrent] = useState(session());

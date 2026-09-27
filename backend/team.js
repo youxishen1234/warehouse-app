@@ -128,9 +128,19 @@ function install(db) {
   });
   route('get', '/sync', (req, res) => ok(res, { revision: db.revision() }));
   route('get', '/orders/:id/events', (req, res) => ok(res, db.listOrderEvents(Number(req.params.id))));
+  route('get', '/delivery-notes/:id.csv', (req, res) => {
+    const note = db.getDeliveryNote(Number(req.params.id)); if (!note) throw error('送货单不存在', 404);
+    const rows = [['状态', note.voided_at ? '已作废' : '已入库'], ['日期', note.date], ['工单编号/采购单号', note.work_order_no], ['供应商', note.supplier_name], ['操作人', note.operator || ''], ['司机电话', note.driver_phone], ['车号', note.vehicle_no], ['运费（单独记录，不计入货款应付）', note.freight], [], ['商品', '规格/楞别', '单位', '计划数量', '单价', '实际入库数量', '平米数', '货款金额']];
+    for (const line of note.lines) rows.push([line.product_name, line.specification, line.unit || '', line.quantity, line.unit_price, line.delivered_qty, line.square_meters, line.amount]);
+    rows.push(['货款合计', '', '', '', '', '', '', note.total_amount], ['总平米', note.total_square_meters], ['备注', note.remark]);
+    res.attachment(`delivery-note-${note.id}.csv`).type('text/csv').send('\ufeff' + rows.map(row => row.map(v => `"${String(v ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n'));
+  });
+  route('get', '/backup', (req, res) => { if (req.user.role === 'viewer') throw error('只读账号不能导出备份',403); ok(res, { exportedAt: new Date().toISOString(), data: db.backupData() }); });
+  route('post', '/backup', (req, res) => { if (req.user.role === 'viewer') throw error('只读账号不能恢复备份',403); const key=req.get('Idempotency-Key'); if(!key) throw error('缺少提交编号'); const payload=req.body?.data || req.body; const result=db.transact(req.user,key,digest(JSON.stringify(payload)),req.get('If-Match'),'POST /backup',()=>db.restoreData(payload)); res.set('X-Warehouse-Revision',String(result.revision)); ok(res,result.data); });
+  route('post', '/stock/out/batch', (req, res) => { if (req.user.role === 'viewer') throw error('只读账号不能出库',403); const key=req.get('Idempotency-Key'); if(!key || !/^[\w-]{16,100}$/.test(key)) throw error('缺少有效的提交编号'); const body=req.body||{}; const result=db.transact(req.user,key,digest('POST /stock/out/batch'+JSON.stringify(body)),req.get('If-Match'),'POST /stock/out/batch',()=>({ transactions: db.stockOutBatch(body.lines,body.operator||req.user.username,body.remark||'',body.customer_id) })); res.set('X-Warehouse-Revision',String(result.revision)); ok(res,result.data); });
   route('get', '/export/transactions.csv', (req, res) => {
-    const rows = [['时间','类型','商品','规格','材质','数量','单位','单价','金额','客户','供应商','备注']];
-    for (const t of db.listTx(req.query)) rows.push([new Date(t.created_at).toISOString(),t.type,t.product_name||'',t.specification||'',t.material||'',t.quantity||0,t.unit||'',t.unit_price||0,t.amount||0,t.customer_name||'',t.supplier_name||'',t.remark||'']);
+    const rows = [['时间','类型','商品','规格','材质','数量','单位','单价','金额','客户','供应商','备注','状态']];
+    for (const t of db.listTx(req.query)) rows.push([new Date(t.created_at).toISOString(),t.type,t.product_name||'',t.specification||'',t.material||'',t.type === 'adjustment' ? t.adjustment : t.quantity||0,t.unit||'',t.unit_price||0,t.amount||0,t.customer_name||'',t.supplier_name||'',t.remark||'',t.voided_at ? '已作废（不计库存及金额）' : '有效']);
     res.type('text/csv').send('\ufeff' + rows.map(row => row.map(v => `"${String(v).replaceAll('"','""')}"`).join(',')).join('\r\n'));
   });
   route('get', '/export/ledger.csv', (req, res) => {
@@ -138,12 +148,18 @@ function install(db) {
     for (const x of db.listLedger(req.query)) rows.push([new Date(x.created_at).toISOString(),x.type,x.amount,x.party_name||'',x.remark||'']);
     res.type('text/csv').send('\ufeff' + rows.map(row => row.map(v => `"${String(v).replaceAll('"','""')}"`).join(',')).join('\r\n'));
   });
-  route('post', '/stocktake', (req, res) => { if (req.user.role === 'viewer') throw error('只读账号不能盘点',403); const key=req.get('Idempotency-Key'); if(!key) throw error('缺少提交编号'); const result=db.transact(req.user,key,digest(JSON.stringify(req.body)),req.get('If-Match'), 'POST /stocktake',()=>db.addStocktake(req.body)); res.set('X-Warehouse-Revision',String(result.revision)); ok(res,result.data); });
+  route('post', '/stocktake', (req, res) => { if (req.user.role === 'viewer') throw error('只读账号不能盘点',403); const key=req.get('Idempotency-Key'); if(!key || !/^[\w-]{16,100}$/.test(key)) throw error('缺少有效的提交编号'); const result=db.transact(req.user,key,digest(JSON.stringify(req.body)),req.get('If-Match'), 'POST /stocktake',()=>db.addStocktake(req.body)); res.set('X-Warehouse-Revision',String(result.revision)); ok(res,result.data); });
   route('get', '/stocktakes', (req, res) => ok(res, db.listStocktakes(req.query)));
   route('get', '/delivery-notes', (req, res) => ok(res, db.listDeliveryNotes()));
   route('get', '/delivery-notes/:id', (req, res) => { const note=db.getDeliveryNote(Number(req.params.id)); if(!note) throw error('送货单不存在',404); ok(res,note); });
-  route('get', '/delivery-notes/:id.csv', (req, res) => { const note=db.getDeliveryNote(Number(req.params.id)); if(!note) throw error('送货单不存在',404); const rows=[['日期',note.date],['工单编号/采购单号',note.work_order_no],['供应商',note.supplier_name],['司机电话',note.driver_phone],['车号',note.vehicle_no],['运费',note.freight],[],['规格/楞别','数量(张)','单价(元/张)','送货数','平米数','金额']]; for(const line of note.lines)rows.push([line.specification,line.quantity,line.unit_price,line.delivered_qty,line.square_meters,line.amount]); rows.push(['合计','','','','',note.total_amount],['总平米',note.total_square_meters],['备注',note.remark]); res.type('text/csv').send('\ufeff'+rows.map(row=>row.map(v=>`"${String(v??'').replaceAll('"','""')}"`).join(',')).join('\r\n')); });
-  route('post', '/delivery-notes', (req, res) => { if(req.user.role==='viewer') throw error('只读账号不能保存送货单',403); const key=req.get('Idempotency-Key'); if(!key) throw error('缺少提交编号'); const result=db.transact(req.user,key,digest(JSON.stringify(req.body)),req.get('If-Match'),'POST /delivery-notes',()=>db.addDeliveryNote(req.body)); res.set('X-Warehouse-Revision',String(result.revision)); ok(res,result.data); });
+  route('post', '/delivery-notes', (req, res) => { if(req.user.role==='viewer') throw error('只读账号不能保存送货单',403); const key=req.get('Idempotency-Key'); if(!key || !/^[\w-]{16,100}$/.test(key)) throw error('缺少有效的提交编号'); const result=db.transact(req.user,key,digest('POST /delivery-notes'+JSON.stringify(req.body)),req.get('If-Match'),'POST /delivery-notes',()=>db.addDeliveryNote({...req.body, operator: req.body.operator || req.user.username})); res.set('X-Warehouse-Revision',String(result.revision)); ok(res,result.data); });
+  route('delete', '/delivery-notes/:id', (req, res) => {
+    if (req.user.role !== 'admin' && !req.user.gate) throw error('作废需要管理员权限', 403);
+    const key = req.get('Idempotency-Key'); if (!key || !/^[\w-]{16,100}$/.test(key)) throw error('缺少有效的提交编号');
+    const operation = `DELETE /delivery-notes/${req.params.id}`;
+    const result = db.transact(req.user, key, digest(operation), req.get('If-Match'), operation, () => db.voidDeliveryNote(Number(req.params.id)));
+    res.set('X-Warehouse-Revision', String(result.revision)); ok(res, result.data);
+  });
   route('post', '/sync/upload', (req, res) => ok(res, { ok: true, received: true }));
   route('post', '/products/:id/image', (req, res) => {
     if (req.user.role === 'viewer') throw error('只读账号不能上传图片', 403);
@@ -182,7 +198,7 @@ function install(db) {
       delete payload.id; delete payload.created_at; delete payload.updated_at;
       if (collection === 'orders') {
         for (const key of Object.keys(payload)) if (!['order_no','customer_id','customer_name','specification','material','quantity','unit','unit_price','delivery_date','status','remark'].includes(key)) delete payload[key];
-        if (payload.status !== undefined && !['待生产','生产中','已发货','已完成'].includes(payload.status)) throw error('订单状态无效');
+        if (payload.status !== undefined && !['待生产','生产中','已发货','已完成','已取消'].includes(payload.status)) throw error('订单状态无效');
       }
       const operation = `${req.method} ${req.path}`;
       const result = db.transact(req.user, key, digest(operation + JSON.stringify(payload)), req.get('If-Match'), operation, () => {

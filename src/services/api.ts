@@ -54,6 +54,9 @@ export const stockOut = (product_id: number, quantity: number, operator = '', re
     url: '/api/stock/out', method: 'POST',
     data: { product_id, quantity, operator, remark, customer_id: customer_id || null, ...details }
   });
+export type StockOutLine = { product_id: number; quantity: number; specification?: string; material?: string; unit?: string; unit_price?: number; remark?: string };
+export const stockOutBatch = (lines: StockOutLine[], operator = '', remark = '', customer_id?: number | null) =>
+  request<{ transactions: Array<{ product: Product; transaction: Transaction }> }>({ url: '/api/stock/out/batch', method: 'POST', data: { lines, operator, remark, customer_id: customer_id || null } });
 
 export const syncUpload = (payload: { action: string; type?: string; id?: number; product_id?: number; quantity?: number; customer_id?: number | null; supplier_id?: number | null; remark?: string; operator?: string }) =>
   request<{ ok: boolean }>({ url: '/api/sync/upload', method: 'POST', data: payload });
@@ -62,7 +65,7 @@ export const syncUpload = (payload: { action: string; type?: string; id?: number
 export const deleteTransaction = (id: number) =>
   request<{ id: number; product_id: number; type: 'in' | 'out'; quantity: number }>({ url: `/api/transactions/${id}`, method: 'DELETE' });
 
-export const getTransactions = (params?: { type?: string; keyword?: string; customer_id?: number | string; supplier_id?: number | string; from?: number; to?: number }) => {
+export const getTransactions = (params?: { type?: string; keyword?: string; customer_id?: number | string; supplier_id?: number | string; from?: number; to?: number; include_voided?: boolean }) => {
   const qs = params ? Object.entries(params)
     .filter(([, v]) => v !== undefined && v !== null && v !== '')
     .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
@@ -80,11 +83,14 @@ export const addLedger = (data: Omit<LedgerEntry, 'id'|'created_at'>) => request
 export const deleteLedger = (id: number) => request<LedgerEntry>({ url: `/api/ledger/${id}`, method: 'DELETE' });
 export const addStocktake = (data: { product_id: number; counted_stock: number; counted_at?: string | number; remark?: string; operator?: string }) => request<any>({ url: '/api/stocktake', method: 'POST', data });
 export const getStocktakes = (product_id?: number) => request<any[]>({ url: `/api/stocktakes${product_id ? `?product_id=${product_id}` : ''}` });
-export type DeliveryLine = { product_id?: number | null; product_name?: string; specification: string; quantity: number; unit_price: number; delivered_qty: number; square_meters?: number; amount?: number; transaction_id?: number; };
-export type DeliveryNote = { id:number; date:string; work_order_no:string; supplier_id?:number|null; supplier_name:string; driver_phone:string; vehicle_no:string; freight:number; remark:string; lines:DeliveryLine[]; total_square_meters:number; total_amount:number; created_at:number; };
+export type DeliveryLine = { product_id?: number | null; product_name?: string; specification: string; unit?: string; length?: number; width?: number; quantity: number; unit_price: number; delivered_qty: number; square_meters?: number; amount?: number; transaction_id?: number; };
+export type DeliveryNote = { id:number; date:string; work_order_no:string; supplier_id?:number|null; supplier_name:string; driver_phone:string; vehicle_no:string; freight:number; remark:string; operator?:string; voided_at?:number; lines:DeliveryLine[]; total_square_meters:number; total_amount:number; created_at:number; };
 export const getDeliveryNotes = () => request<DeliveryNote[]>({ url: '/api/delivery-notes' });
 export const addDeliveryNote = (data: Omit<DeliveryNote, 'id'|'created_at'|'total_square_meters'|'total_amount'> & { operator?: string }) => request<DeliveryNote>({ url: '/api/delivery-notes', method: 'POST', data });
 export const deliveryNoteCsvUrl = (id: number) => `/api/delivery-notes/${id}.csv`;
+export const voidDeliveryNote = (id: number) => request<DeliveryNote>({ url: `/api/delivery-notes/${id}`, method: 'DELETE' });
+export const getBackup = () => request<{ exportedAt: string; data: any }>({ url: '/api/backup' });
+export const restoreBackup = (data: any) => request<any>({ url: '/api/backup', method: 'POST', data: { data } });
 export const uploadProductImage = (id: number, data: string) => request<Product>({ url: `/api/products/${id}/image`, method: 'POST', data: { data } });
 export const getOrders = () => request<CustomerOrder[]>({ url: '/api/orders' });
 export const addOrder = (data: Partial<CustomerOrder>) => request<CustomerOrder>({ url: '/api/orders', method: 'POST', data });

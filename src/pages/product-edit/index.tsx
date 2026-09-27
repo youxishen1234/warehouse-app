@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, Input, Picker, ScrollView } from '@tarojs/components';
 import Taro, { useRouter } from '@tarojs/taro';
 import { getProduct, getProducts, addProduct, updateProduct } from '@/services/api';
 import type { ProductForm } from '@/types';
+import { numberValue } from '@/utils/stock-math';
 import styles from './index.module.scss';
 
 const units = ['件', '箱', '个', '千克'];
@@ -18,6 +19,11 @@ const ProductEditPage: React.FC = () => {
   const [category, setCategory] = useState('');
   const [specification, setSpecification] = useState('');
   const [material, setMaterial] = useState('');
+  const [corrugation, setCorrugation] = useState('');
+  const [weight, setWeight] = useState('0');
+  const [length, setLength] = useState('0');
+  const [width, setWidth] = useState('0');
+  const [layers, setLayers] = useState('0');
   const [unit, setUnit] = useState('件');
   const [price, setPrice] = useState('0');
   const [stock, setStock] = useState('0');
@@ -28,6 +34,7 @@ const ProductEditPage: React.FC = () => {
   const [historyMaterials, setHistoryMaterials] = useState<string[]>([]);
   const [showSpecs, setShowSpecs] = useState(false);
   const [showMaterials, setShowMaterials] = useState(false);
+  const savingRef = useRef(false);
   const filteredSpecs = historySpecs.filter(value => !specification.trim() || value.toLowerCase().includes(specification.trim().toLowerCase()));
   const filteredMaterials = historyMaterials.filter(value => !material.trim() || value.toLowerCase().includes(material.trim().toLowerCase()));
 
@@ -44,6 +51,7 @@ const ProductEditPage: React.FC = () => {
         setName(p.name);
         setCategory(p.category);
         setSpecification(p.specification || ''); setMaterial(p.material || '');
+        setCorrugation(p.corrugation || ''); setWeight(String(p.weight || 0)); setLength(String(p.length || 0)); setWidth(String(p.width || 0)); setLayers(String(p.layers || 0));
         setUnit(p.unit);
         setUnitIndex(units.indexOf(p.unit));
         setPrice(String(p.price));
@@ -54,18 +62,29 @@ const ProductEditPage: React.FC = () => {
   }, [isEdit, editId]);
 
   const handleSave = async () => {
-    if (saving) return;
+    if (savingRef.current) return;
     if (!name.trim()) { Taro.showToast({ title: '请输入商品名称', icon: 'none' }); return; }
+    const numeric = (value: string, label: string) => {
+      try { return numberValue(value, label); }
+      catch (error) { Taro.showToast({ title: error instanceof Error ? error.message : `${label}无效`, icon: 'none' }); return undefined; }
+    };
+    const parsed = {
+      weight: numeric(weight, '克重'), length: numeric(length, '长度'), width: numeric(width, '宽度'),
+      layers: numeric(layers, '层数'), price: numeric(price, '单价'), stock: numeric(stock, '初始库存'), safety: numeric(safety, '安全库存')
+    };
+    if (Object.values(parsed).some(value => value === undefined)) return;
     const data: ProductForm = {
       name: name.trim(),
       category: category.trim(),
       specification: specification.trim(), material: material.trim(),
+      corrugation: corrugation.trim(), weight: parsed.weight!, length: parsed.length!, width: parsed.width!, layers: parsed.layers!,
       unit,
-      price: Number(price) || 0,
-      stock: Number(stock) || 0,
-      safety_stock: Number(safety) || 0
+      price: parsed.price!,
+      stock: parsed.stock!,
+      safety_stock: parsed.safety!
     };
     try {
+      savingRef.current = true;
       setSaving(true);
       if (isEdit && editId) {
         const { stock: _s, ...updateData } = data;
@@ -77,7 +96,7 @@ const ProductEditPage: React.FC = () => {
       Taro.setStorageSync(HISTORY_KEY, saved);
       Taro.showToast({ title: '保存成功', icon: 'success' });
       setTimeout(() => Taro.navigateBack(), 1000);
-    } catch (e) { setSaving(false); console.error('[ProductEdit] save failed', e); Taro.showToast({ title: e?.message || '保存失败', icon: 'none' }); }
+    } catch (e) { savingRef.current = false; setSaving(false); console.error('[ProductEdit] save failed', e); Taro.showToast({ title: e?.message || '保存失败', icon: 'none' }); }
   };
 
   return (
@@ -93,6 +112,10 @@ const ProductEditPage: React.FC = () => {
           <Text className={styles.label}>分类</Text>
           <Input className={styles.input} placeholder="如：食品、日用品" value={category} onInput={e => setCategory(e.detail.value)} />
         </View>
+
+        <View className={styles.row}><View className={styles.rowItem}><View className={styles.field}><Text className={styles.label}>楞型</Text><Input className={styles.input} placeholder="如：B楞、E楞、BC楞" value={corrugation} onInput={e => setCorrugation(e.detail.value)} /></View></View><View className={styles.rowItem}><View className={styles.field}><Text className={styles.label}>层数</Text><Input className={styles.input} type="number" value={layers} onInput={e => setLayers(e.detail.value)} /></View></View></View>
+        <View className={styles.row}><View className={styles.rowItem}><View className={styles.field}><Text className={styles.label}>克重（g/㎡）</Text><Input className={styles.input} type="digit" value={weight} onInput={e => setWeight(e.detail.value)} /></View></View><View className={styles.rowItem}><View className={styles.field}><Text className={styles.label}>长（mm）</Text><Input className={styles.input} type="digit" value={length} onInput={e => setLength(e.detail.value)} /></View></View></View>
+        <View className={styles.row}><View className={styles.rowItem}><View className={styles.field}><Text className={styles.label}>宽（mm）</Text><Input className={styles.input} type="digit" value={width} onInput={e => setWidth(e.detail.value)} /></View></View></View>
 
         <View className={styles.field}>
           <Text className={styles.label}>单位</Text>

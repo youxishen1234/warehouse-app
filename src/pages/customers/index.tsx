@@ -1,6 +1,6 @@
 import { useSharedRefresh } from '@/services/shared-refresh';
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, Input, ScrollView } from '@tarojs/components';
+import { View, Text, ScrollView } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
 import { getCustomers, deleteCustomer, getTransactions, getSuppliers, deleteSupplier, updateCustomer, updateSupplier } from '@/services/api';
 import type { Customer, Transaction } from '@/types';
@@ -11,11 +11,6 @@ import styles from './index.module.scss';
 // 跨页联动中转键：tabBar 页（入库/出库）无法通过 URL 传参，用 storage 中转
 const TRANSIT_KEY = 'sg_transit';
 
-// 跳入库页并自动带出该客户（作为供应商/关联客户）
-const goInbound = (c: Customer) => {
-  Taro.setStorageSync(TRANSIT_KEY, { customer_id: c.id, customer_name: c.name });
-  Taro.switchTab({ url: '/pages/inbound/index' });
-};
 
 // 跳出库页并自动带出该客户（作为销售对象）
 const goOutbound = (c: Customer) => {
@@ -86,8 +81,8 @@ const CustomersPage: React.FC<{ supplier?: boolean }> = ({ supplier = false }) =
 
   const handleDelete = async (c: Customer) => {
     const res = await Taro.showModal({
-      title: '删除确认',
-      content: `确定删除${label}「${c.name}」？`,
+      title: '停用确认',
+      content: `确定停用${label}「${c.name}」？历史流水会保留。`,
       confirmColor: '#dc2626'
     });
     if (res.confirm) {
@@ -136,7 +131,7 @@ const CustomersPage: React.FC<{ supplier?: boolean }> = ({ supplier = false }) =
               actions={[
                 { text: '流水', bg: '#64748b', onClick: () => handleRecords(c) },
                 { text: '编辑', bg: '#2f6bff', onClick: () => handleEdit(c.id) },
-                { text: '删除', bg: '#dc2626', onClick: () => handleDelete(c) }
+                { text: '停用', bg: '#dc2626', onClick: () => handleDelete(c) }
               ]}
             >
               <View className={styles.listItem}>

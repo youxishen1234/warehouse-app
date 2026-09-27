@@ -1,0 +1,482 @@
+[
+  {
+    "key": "home",
+    "isTab": true,
+    "blank": true,
+    "bodyLen": 0,
+    "appChildren": 0,
+    "errors": [
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      }
+    ],
+    "failed": []
+  },
+  {
+    "key": "inbound",
+    "isTab": true,
+    "blank": true,
+    "bodyLen": 0,
+    "appChildren": 0,
+    "errors": [
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      }
+    ],
+    "failed": []
+  },
+  {
+    "key": "outbound",
+    "isTab": true,
+    "blank": true,
+    "bodyLen": 0,
+    "appChildren": 0,
+    "errors": [
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      }
+    ],
+    "failed": []
+  },
+  {
+    "key": "mine",
+    "isTab": true,
+    "blank": true,
+    "bodyLen": 0,
+    "appChildren": 0,
+    "errors": [
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      }
+    ],
+    "failed": []
+  },
+  {
+    "key": "inventory",
+    "isTab": false,
+    "blank": true,
+    "bodyLen": 0,
+    "appChildren": 0,
+    "errors": [
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      }
+    ],
+    "failed": []
+  },
+  {
+    "key": "customers",
+    "isTab": false,
+    "blank": true,
+    "bodyLen": 0,
+    "appChildren": 0,
+    "errors": [
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      }
+    ],
+    "failed": []
+  },
+  {
+    "key": "suppliers",
+    "isTab": false,
+    "blank": true,
+    "bodyLen": 0,
+    "appChildren": 0,
+    "errors": [
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      }
+    ],
+    "failed": []
+  },
+  {
+    "key": "products",
+    "isTab": false,
+    "blank": true,
+    "bodyLen": 0,
+    "appChildren": 0,
+    "errors": [
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      }
+    ],
+    "failed": []
+  },
+  {
+    "key": "product-edit",
+    "isTab": false,
+    "blank": true,
+    "bodyLen": 0,
+    "appChildren": 0,
+    "errors": [
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      }
+    ],
+    "failed": []
+  },
+  {
+    "key": "records",
+    "isTab": false,
+    "blank": true,
+    "bodyLen": 0,
+    "appChildren": 0,
+    "errors": [
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      }
+    ],
+    "failed": []
+  },
+  {
+    "key": "ledger",
+    "isTab": false,
+    "blank": true,
+    "bodyLen": 0,
+    "appChildren": 0,
+    "errors": [
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      }
+    ],
+    "failed": []
+  },
+  {
+    "key": "orders",
+    "isTab": false,
+    "blank": true,
+    "bodyLen": 0,
+    "appChildren": 0,
+    "errors": [
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      }
+    ],
+    "failed": []
+  },
+  {
+    "key": "carton-calculator",
+    "isTab": false,
+    "blank": true,
+    "bodyLen": 0,
+    "appChildren": 0,
+    "errors": [
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      }
+    ],
+    "failed": []
+  },
+  {
+    "key": "customer-edit",
+    "isTab": false,
+    "blank": true,
+    "bodyLen": 0,
+    "appChildren": 0,
+    "errors": [
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      }
+    ],
+    "failed": []
+  },
+  {
+    "key": "custom-copy",
+    "isTab": false,
+    "blank": true,
+    "bodyLen": 0,
+    "appChildren": 0,
+    "errors": [
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      }
+    ],
+    "failed": []
+  },
+  {
+    "key": "team",
+    "isTab": false,
+    "blank": true,
+    "bodyLen": 0,
+    "appChildren": 0,
+    "errors": [
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      },
+      {
+        "where": "global",
+        "type": "pageerror",
+        "text": "SyntaxError: Unexpected token '<'"
+      }
+    ],
+    "failed": []
+  }
+]

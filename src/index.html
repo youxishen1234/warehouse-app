@@ -10,6 +10,22 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
     <title>曙光</title>
     <script>
+      // H5 页面可能被直接打开在任意深层 URL；网页端资源始终从站点根目录解析。
+      // Electron/Capacitor 使用 file:// 加载时保留相对路径，避免破坏本地打包资源。
+      (function() {
+        // Keep direct /pages/... links on the requested page in the hash router.
+        var path = window.location.pathname;
+        var route = path.match(/^(.*?)(\/pages\/[^/]+)(?:\/index)?\/?$/);
+        if (route && !window.location.hash && window.location.protocol !== 'file:') {
+          window.history.replaceState(null, '', (route[1] || '') + '/#' + route[2] + '/index' + window.location.search);
+        }
+        var href = window.location.protocol === 'file:' ? './' : '/';
+        // document.write keeps the base element ahead of Webpack's injected
+        // script/link tags while the HTML parser is still resolving them.
+        document.write('<base href="' + href + '">');
+      })();
+    </script>
+    <script>
       // 按设备宽度自适应 rem：750rpx = 20rem = 视口宽度（所有端等比缩放）
       (function() {
         var set = function() {
@@ -158,8 +174,16 @@
         } catch (e) {}
       })();
     </script>
-    <script defer src="./js/home-search.js"></script>
-    <link rel="stylesheet" href="./css/polish.css" />
+    <script>
+      // These two auxiliary assets are inserted after the URL base is known;
+      // keeping them out of static HTML prevents the browser preload scanner
+      // from resolving ./js and ./css against a deep route.
+      (function() {
+        var root = window.location.protocol === 'file:' ? './' : '/';
+        document.write('<script defer src="' + root + 'js/home-search.js"><\/script>');
+        document.write('<link rel="stylesheet" href="' + root + 'css/polish.css">');
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>

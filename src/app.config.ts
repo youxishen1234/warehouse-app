@@ -16,6 +16,8 @@ export default defineAppConfig({
     'pages/customers/index',
     'pages/customer-edit/index'
     ,'pages/custom-copy/index'
+    ,'pages/backup/index'
+    ,'pages/print-center/index'
   ],
   window: {
     backgroundTextStyle: 'dark',
@@ -26,9 +28,9 @@ export default defineAppConfig({
     backgroundColor: '#f5f6f8'
   },
   tabBar: {
-    color: '#9aa3b2',
-    selectedColor: '#2f6bff',
-    backgroundColor: 'rgba(255, 255, 255, 0.58)',
+    color: '#ffffff',
+    selectedColor: '#24a6f8',
+    backgroundColor: 'rgba(44, 44, 48, 0.68)',
     borderStyle: 'white',
     list: [
       {

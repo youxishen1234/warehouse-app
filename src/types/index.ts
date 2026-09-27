@@ -5,7 +5,13 @@ export interface Product {
   category: string;
   specification?: string;
   material?: string;
+  corrugation?: string;
+  weight?: number;
+  length?: number;
+  width?: number;
+  layers?: number;
   image_url?: string;
+  deleted_at?: number | null;
   unit: string;
   price: number;
   stock: number;
@@ -24,14 +30,22 @@ export interface Customer {
   phone: string;
   address: string;
   remark: string;
+  deleted_at?: number | null;
   created_at: number;
   updated_at: number;
 }
 
 // 出入库记录类型
 export interface Transaction {
+  voided_at?: number;
+  adjustment?: number;
   specification?: string;
   material?: string;
+  corrugation?: string;
+  weight?: number;
+  length?: number;
+  width?: number;
+  layers?: number;
   unit?: string;
   unit_price?: number;
   amount?: number;
@@ -84,10 +98,15 @@ export interface ProductForm {
   category: string;
   specification?: string;
   material?: string;
+  corrugation?: string;
+  weight?: number;
+  length?: number;
+  width?: number;
+  layers?: number;
   unit: string;
   price: number;
   stock: number;
   safety_stock: number;
 }
-export interface CustomerOrder { id:number; order_no:string; customer_id?:number|null; customer_name:string; specification:string; material:string; quantity:number; unit:string; unit_price:number; amount:number; delivery_date:string; status:'待生产'|'生产中'|'已发货'|'已完成'; remark:string; created_at:number; }
+export interface CustomerOrder { id:number; order_no:string; customer_id?:number|null; customer_name:string; specification:string; material:string; quantity:number; unit:string; unit_price:number; amount:number; delivery_date:string; status:'待生产'|'生产中'|'已发货'|'已完成'|'已取消'; remark:string; created_at:number; }
 export interface Stocktake { id:number; product_id:number; product_name:string; before_stock:number; counted_stock:number; diff:number; counted_at:number; created_at:number; remark:string; }

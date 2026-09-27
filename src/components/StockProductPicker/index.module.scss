@@ -1,0 +1,8 @@
+.root { margin: 12rpx 0 22rpx; }
+.selected { display: flex; justify-content: space-between; gap: 16rpx; padding: 22rpx 18rpx; border: 1rpx solid #dfe5eb; border-radius: 8rpx; background: #f8fafb; color: #172033; font-size: 26rpx; }
+.selected text { margin: 0; }
+.options { border: 1rpx solid #dfe5eb; border-radius: 8rpx; padding: 16rpx; background: #fff; }
+.search { height: 76rpx; padding: 0 16rpx; background: #f3f5f7; border-radius: 8rpx; font-size: 24rpx; }
+.list { max-height: 480rpx; }
+.option { padding: 20rpx 4rpx; border-bottom: 1rpx solid #edf0f3; font-size: 26rpx; color: #172033; }
+.detail { display: block; margin: 8rpx 0; color: #64748b; font-size: 22rpx; line-height: 1.6; }

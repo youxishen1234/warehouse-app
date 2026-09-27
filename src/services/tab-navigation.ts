@@ -1,3 +1,5 @@
+import { createGlassTabBar } from './glass-tabbar';
+
 export const tabRoutes = ['/pages/home/index', '/pages/inbound/index', '/pages/outbound/index', '/pages/mine/index'];
 
 export function normalizeRoute(value: string): string {
@@ -20,6 +22,7 @@ export function installTabNavigation(nav: Navigation): () => void {
   let state: { x: number; y: number; dx: number; locked: boolean; index: number; page: HTMLElement; back: boolean } | null = null;
   let suppressClickUntil = 0;
   let disposed = false;
+  let dock: ReturnType<typeof createGlassTabBar> | null = null;
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const android = /Android/i.test(navigator.userAgent) || win.Capacitor?.getPlatform?.() === 'android';
   const route = () => normalizeRoute(nav.route());
@@ -30,13 +33,26 @@ export function installTabNavigation(nav: Navigation): () => void {
 
   const sync = () => {
     if (disposed) return;
+    // Taro's shade class normally clears at transitionend. Our full-screen
+    // WebView disables those transitions, so returning from a subpage must also
+    // reveal the acknowledged tab explicitly.
+    if (!busy && tabRoutes.includes(route())) {
+      document.querySelectorAll<HTMLElement>('.taro_page').forEach(page => {
+        if (normalizeRoute(page.id) === route()) page.classList.remove('taro_page_shade');
+      });
+    }
     const capability = win.__sgNativeDock;
-    const native = capability?.api === 2 && win.webkit?.messageHandlers?.nativeTabSelected;
+    const bridge = win.webkit?.messageHandlers?.nativeTabSelected;
+    const native = capability?.api === 2 && bridge;
     root.classList.toggle('sg-native-ios', !!native);
+    const host = document.querySelector<HTMLElement>('taro-tabbar');
+    if (dock && dock.host !== host) { dock.destroy(); dock = null; }
+    if (host && !dock) dock = createGlassTabBar(host, index => { void switchTo(tabRoutes[index]); });
+    if (!state?.locked && !busy) dock?.update(Math.max(0, tabRoutes.indexOf(route())));
     if (native) {
       root.style.setProperty('--sg-native-bottom-space', String(capability.bottomSpace ?? 84) + 'px');
-      native.postMessage({ route: route(), ready: true, modal: modalOpen() });
     }
+    if (capability && bridge) bridge.postMessage({ route: route(), ready: true, modal: modalOpen() });
   };
   const scheduleSync = () => {
     if (!frame) frame = requestAnimationFrame(() => { frame = 0; sync(); });
@@ -61,12 +77,12 @@ export function installTabNavigation(nav: Navigation): () => void {
   const cancel = () => {
     const current = state;
     state = null;
-    if (current) { restore(current.page); }
+    if (current) { restore(current.page); dock?.update(Math.max(0, current.index)); }
   };
   const start = (event: TouchEvent) => {
     if (busy || event.touches.length !== 1) { cancel(); return; }
     const target = event.target as HTMLElement;
-    if (target.closest('input, textarea, select, button, a, [role="button"], taro-input-core, taro-picker-core, taro-textarea-core, .weui-tabbar, [class*="wrap___"], [data-no-tab-swipe]') || modalOpen()) return;
+    if (target.closest('input, textarea, select, button, a, [role="button"], taro-input-core, taro-picker-core, taro-textarea-core, .weui-tabbar, .sg-glass-dock, [class*="wrap___"], [data-no-tab-swipe]') || modalOpen()) return;
     const touch = event.touches[0];
     const index = tabRoutes.indexOf(route());
     const back = !android && index < 0 && nav.depth() > 1 && touch.clientX < 35;
@@ -93,6 +109,7 @@ export function installTabNavigation(nav: Navigation): () => void {
     const next = state.index + (dx < 0 ? 1 : -1);
     const amount = !state.back && (next < 0 || next >= tabRoutes.length) ? dx * .2 : dx;
     state.page.style.setProperty('transform', 'translate3d(' + amount + 'px,0,0)', 'important');
+    if (!state.back) dock?.preview(state.index - dx / innerWidth);
   };
   const end = async () => {
     const current = state;
@@ -102,6 +119,7 @@ export function installTabNavigation(nav: Navigation): () => void {
     const next = current.index + (current.dx < 0 ? 1 : -1);
     const commit = Math.abs(current.dx) >= 64 && (current.back || (next >= 0 && next < tabRoutes.length));
     busy = true;
+    if (!current.back) dock?.update(commit ? next : current.index);
     try {
       await animate(current.page, commit ? (current.dx < 0 ? -innerWidth : innerWidth) : 0);
       if (commit && !disposed) {
@@ -131,6 +149,7 @@ export function installTabNavigation(nav: Navigation): () => void {
     cancel();
     cancelAnimationFrame(frame);
     observer.disconnect();
+    dock?.destroy();
     window.removeEventListener('touchstart', start, true);
     window.removeEventListener('touchmove', move, true);
     window.removeEventListener('touchend', end, true);

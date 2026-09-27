@@ -1,0 +1,36 @@
+'use strict';
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { capture, verify, restore } = require('../scripts/stage0-snapshot.cjs');
+test('exact-byte snapshot, external assets and isolated restore; reject corruption and overwrite', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sg-stage0-fixture-'));
+  const source = path.join(dir, 'data.json');
+  const original = Buffer.from(JSON.stringify({ products: [{ id: 1, stock: 7 }], customers: [], suppliers: [], transactions: [], ledger: [], ext: { preserved: true } }, null, 2));
+  fs.writeFileSync(source, original);
+  const uploads = path.join(dir, 'uploads'); fs.mkdirSync(path.join(uploads, 'products'), { recursive: true });
+  const asset = Buffer.from([137,80,78,71]); fs.writeFileSync(path.join(uploads, 'products/test.png'), asset);
+  const backup = path.join(dir, 'snapshot');
+  assert.equal(capture(source, backup, uploads, true).files.length, 2);
+  const recovered = path.join(dir, 'recovered');
+  assert.equal(restore(backup, recovered).verified, true);
+  assert.deepEqual(fs.readFileSync(path.join(recovered, 'data.json')), original);
+  assert.deepEqual(fs.readFileSync(source), original);
+  assert.deepEqual(fs.readFileSync(path.join(recovered, 'uploads/products/test.png')), asset);
+  assert.throws(() => restore(backup, recovered), /must not exist/);
+  assert.throws(() => capture(source, backup), /already exists/);
+  fs.appendFileSync(path.join(backup, 'data.json'), ' ');
+  assert.throws(() => verify(backup), /Checksum mismatch/);
+  assert.throws(() => restore(backup, path.join(dir, 'invalid')), /Checksum mismatch/);
+  assert.equal(fs.existsSync(path.join(dir, 'invalid')), false);
+});
+test('missing or malformed source cannot create a backup', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sg-stage0-invalid-'));
+  const source = path.join(dir, 'data.json'), target = path.join(dir, 'snapshot');
+  assert.throws(() => capture(source, target), /ENOENT/);
+  fs.writeFileSync(source, '{}');
+  assert.throws(() => capture(source, target), /Invalid collection/);
+  assert.equal(fs.existsSync(target), false);
+});

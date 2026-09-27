@@ -14,6 +14,8 @@ const menus: { icon: IconName; text: string; desc: string; url: string; color: s
   { icon: 'mine', text: '供应商管理', desc: '往来资料 / 应付款', url: '/pages/suppliers/index', color: '#16a34a', bg: '#e6f7f5' },
   { icon: 'tag', text: '商品管理', desc: '新增 / 编辑 / 删除商品', url: '/pages/products/index', color: '#d97706', bg: '#fdf3e2' },
   { icon: 'records', text: '出入库记录', desc: '查看全部流水明细', url: '/pages/records/index', color: '#0891b2', bg: '#e5f7fa' },
+  { icon: 'download', text: '备份与恢复', desc: '导出备份或恢复共享数据', url: '/pages/backup/index', color: '#2563eb', bg: '#eaf1ff' },
+  { icon: 'records', text: '打印中心', desc: '打印当前出入库流水', url: '/pages/print-center/index', color: '#7c3aed', bg: '#f0eaff' },
   { icon: 'records', text: '账本流水', desc: '收入、支出与结清记录', url: '/pages/ledger/index', color: '#7c3aed', bg: '#f0eaff' },
   { icon: 'list', text: '客户订单', desc: '查看与管理客户订单', url: '/pages/orders/index', color: '#ea580c', bg: '#fff1e8' },
   { icon: 'box', text: '纸箱尺寸换算', desc: '内尺寸、外尺寸双向计算', url: '/pages/carton-calculator/index', color: '#0f766e', bg: '#e6f7f5' },
@@ -67,12 +69,6 @@ const MineContent: React.FC = () => {
     Taro.navigateTo({ url });
   };
 
-  const openAddr = () => {
-    setAddrVal(getBaseUrl());
-    setTestResult('');
-    setAddrOpen(true);
-    testConn(getBaseUrl());
-  };
 
   // 连接测试：用输入框里的地址（未填则用当前生效地址）请求一次后端探活接口
   const testConn = async (url?: string) => {

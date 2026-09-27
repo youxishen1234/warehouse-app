@@ -1,10 +1,9 @@
 import { useSharedRefresh } from '@/services/shared-refresh';
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, Input, ScrollView, Picker } from '@tarojs/components';
+import { View, Text, ScrollView, Picker, Switch } from '@tarojs/components';
 import Taro, { useRouter } from '@tarojs/taro';
 import { getTransactions, getProducts } from '@/services/api';
-import { getBaseUrl } from '@/services/request';
-import { session } from '@/services/session';
+import { downloadCsv } from '@/services/download';
 import { formatShortTime } from '@/utils/format';
 import type { Transaction, Product } from '@/types';
 import styles from './index.module.scss';
@@ -22,6 +21,7 @@ const RecordsPage: React.FC = () => {
   const [typeIndex, setTypeIndex] = useState(0);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [includeVoided, setIncludeVoided] = useState(false);
 
   const types = ['全部', '入库', '出库'];
 
@@ -35,6 +35,7 @@ const RecordsPage: React.FC = () => {
       const [tx, prods] = await Promise.all([
         getTransactions({
           type: type || undefined,
+          include_voided: includeVoided,
           customer_id: filterCustomerId || undefined,
           supplier_id: filterSupplierId || undefined
           , from: fromDate ? new Date(`${fromDate}T00:00:00`).getTime() : undefined
@@ -45,17 +46,25 @@ const RecordsPage: React.FC = () => {
       setList(tx);
       setProducts(prods);
     } catch (e) { console.error('[Records] load failed', e); }
-  }, [type, filterCustomerId, filterSupplierId, fromDate, toDate]);
+  }, [type, filterCustomerId, filterSupplierId, fromDate, toDate, includeVoided]);
 
   useSharedRefresh(load);
   useEffect(() => { load(); }, [load]);
 
-  const productName = (id: number) => products.find(p => p.id === id)?.name || '(已删除)';
+  const productName = (id: number, fallback?: string) => fallback || products.find(p => p.id === id)?.name || '(已停用商品)';
+  const exportCsv = async () => {
+    try {
+      if (fromDate && toDate && fromDate > toDate) throw new Error('开始日期不能晚于结束日期');
+      const filters = { type, customer_id: filterCustomerId, supplier_id: filterSupplierId, include_voided: includeVoided, from: fromDate ? new Date(`${fromDate}T00:00:00`).getTime() : '', to: toDate ? new Date(`${toDate}T00:00:00`).getTime() : '' };
+      const query = Object.entries(filters).filter(([, value]) => value !== '' && value !== null).map(([key, value]) => `${key}=${encodeURIComponent(String(value))}`).join('&');
+      await downloadCsv(`/api/export/transactions.csv?${query}`, 'stock-records.csv');
+    } catch (error) { Taro.showToast({ title: error?.message || '导出失败', icon: 'none' }); }
+  };
 
   return (
     <ScrollView scrollY className={styles.container} onRefresherRefresh={load} refresherEnabled refresherTriggered={false}>
       <View className={styles.filterBox}>
-        <View className={styles.exportBtn} onClick={async()=>{try{const token=session()?.token;const r=await Taro.downloadFile({url:`${getBaseUrl()}/api/export/transactions.csv`,header:token?{Authorization:`Bearer ${token}`}:{}});if(r.statusCode===200)Taro.showToast({title:'CSV已生成',icon:'success'});else throw new Error('导出失败')}catch(e){Taro.showToast({title:e?.message||'导出失败',icon:'none'});}}}>导出 CSV</View>
+        <View className={styles.exportBtn} onClick={exportCsv}>导出 CSV</View>
         <Picker mode="selector" range={types} value={typeIndex} onChange={e => {
           const idx = Number(e.detail.value);
           setTypeIndex(idx);
@@ -63,8 +72,9 @@ const RecordsPage: React.FC = () => {
         }}>
           <View className={styles.filterSelect}>{types[typeIndex]}</View>
         </Picker>
-        <Picker mode="date" value={fromDate || undefined} onChange={e=>setFromDate(e.detail.value)}><View className={styles.datePicker}>{fromDate || '开始日期'}</View></Picker>
-        <Picker mode="date" value={toDate || undefined} onChange={e=>setToDate(e.detail.value)}><View className={styles.datePicker}>{toDate || '结束日期'}</View></Picker>
+        <Picker mode="date" value={fromDate} onChange={e=>setFromDate(e.detail.value)}><View className={styles.datePicker}>{fromDate || '开始日期'}</View></Picker>
+        <Picker mode="date" value={toDate} onChange={e=>setToDate(e.detail.value)}><View className={styles.datePicker}>{toDate || '结束日期'}</View></Picker>
+        <View><Text>显示作废历史</Text><Switch checked={includeVoided} onChange={e => setIncludeVoided(e.detail.value)} /></View>
       </View>
 
       {(filterCustomerId || filterSupplierId) && (
@@ -86,7 +96,8 @@ const RecordsPage: React.FC = () => {
           <View key={t.id} className={styles.listItem}>
             <View className={styles.itemTop}>
               <View className={styles.titleWrap}>
-                <Text className={styles.itemName}>{productName(t.product_id)}</Text>
+                <Text className={styles.itemName}>{productName(t.product_id, t.product_name)}</Text>
+                {!!t.voided_at && <Text className={styles.tagOut}>已作废 · 不计库存及金额</Text>}
                 {t.customer_name && (
                   <Text className={styles.customerName}>{t.customer_name}</Text>
                 )}
@@ -110,7 +121,7 @@ const RecordsPage: React.FC = () => {
               <Text className={styles.itemQtyLabel}>数量</Text>
               <View className={styles.itemBottomRight}>
                 <Text className={styles.itemQty} style={{ color: t.type === 'out' ? '#dc2626' : '#16a34a' }}>
-                  {t.type === 'out' ? '-' : '+'}{t.quantity}
+                  {t.type === 'adjustment' ? `${Number(t.adjustment) >= 0 ? '+' : ''}${t.adjustment ?? t.quantity}` : `${t.type === 'out' ? '-' : '+'}${t.quantity}`}{t.unit}
                 </Text>
               </View>
             </View>

@@ -57,7 +57,11 @@ export default defineConfig<'webpack5'>(async (merge, { command, mode }) => {
       },
     },
     h5: {
-      publicPath: './',
+      // Web builds must resolve assets from the site root so refreshing a
+      // deep hash/history URL cannot turn /pages/x/js/app.js into a 404.
+      // Native/desktop packaging passes TARO_PUBLIC_PATH=./ to keep file://
+      // assets relative to the bundled index.html.
+      publicPath: process.env.TARO_PUBLIC_PATH || '/',
       staticDirectory: 'static',
       output: {
         filename: 'js/[name].[hash:8].js',

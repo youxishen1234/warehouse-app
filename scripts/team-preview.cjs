@@ -11,7 +11,7 @@ async function start() {
   await install.bootstrap(process.env.WAREHOUSE_ACCOUNTS_FILE, 'Local-preview-password!');
   const db = require('../backend/db');
   const app=express();app.use(express.json());
-  app.use((req,res,next)=>{res.set('Access-Control-Allow-Origin','*');res.set('Access-Control-Allow-Headers','Content-Type, Authorization, If-Match, Idempotency-Key');res.set('Access-Control-Expose-Headers','X-Warehouse-Revision');if(req.method==='OPTIONS')return res.sendStatus(204);next();});
+  app.use((req,res,next)=>{res.set('Access-Control-Allow-Origin','*');res.set('Access-Control-Allow-Methods','GET,POST,PUT,DELETE,OPTIONS');res.set('Access-Control-Allow-Headers','Content-Type, Authorization, If-Match, Idempotency-Key, X-Warehouse-Device');res.set('Access-Control-Expose-Headers','X-Warehouse-Revision');res.set('Access-Control-Max-Age','600');if(req.method==='OPTIONS')return res.sendStatus(204);next();});
   app.use('/api',install(db));
   app.use(express.static(path.resolve('dist')));
   app.get('*',(req,res)=>res.sendFile(path.resolve('dist/index.html')));

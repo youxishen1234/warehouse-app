@@ -1,6 +1,6 @@
 import { useSharedRefresh } from '@/services/shared-refresh';
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, Input, ScrollView, Image } from '@tarojs/components';
+import { View, Text, ScrollView, Image } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { getProducts, deleteProduct, uploadProductImage } from '@/services/api';
 import { formatMoney } from '@/utils/format';
@@ -48,11 +48,11 @@ const ProductsPage: React.FC = () => {
   };
 
   const handleDelete = async (id: number, name: string) => {
-    const res = await Taro.showModal({ title: '删除确认', content: `确定删除「${name}」？相关出入库记录也将被删除。`, confirmColor: '#dc2626' });
+    const res = await Taro.showModal({ title: '停用确认', content: `确定停用「${name}」？历史出入库记录会保留。`, confirmColor: '#dc2626' });
     if (res.confirm) {
       try {
         await deleteProduct(id);
-        Taro.showToast({ title: '删除成功', icon: 'success' });
+        Taro.showToast({ title: '已停用，历史记录已保留', icon: 'success' });
         load();
       } catch (e) { console.error('[Products] delete failed', e); }
     }
@@ -85,7 +85,7 @@ const ProductsPage: React.FC = () => {
             onTap={() => handleEdit(p.id)}
             actions={[
               { text: '编辑', bg: '#2f6bff', onClick: () => handleEdit(p.id) },
-              { text: '删除', bg: '#dc2626', onClick: () => handleDelete(p.id, p.name) }
+              { text: '停用', bg: '#dc2626', onClick: () => handleDelete(p.id, p.name) }
             ]}
           >
             <View className={styles.listItem}>

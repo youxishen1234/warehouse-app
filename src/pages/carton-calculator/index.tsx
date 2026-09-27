@@ -61,7 +61,7 @@ export default function CartonCalculator() {
         {(Object.keys(labels) as DimensionKey[]).map((key, index) => <React.Fragment key={key}>
           <View className={styles.field}>
             <Text>{labels[key]}</Text>
-            <Input type="digit" inputMode="decimal" value={dimensions[key]} placeholder="0" onInput={event => setDimensions(current => ({ ...current, [key]: event.detail.value }))} />
+            <Input type="digit" value={dimensions[key]} placeholder="0" onInput={event => setDimensions(current => ({ ...current, [key]: event.detail.value }))} />
           </View>
           {index < 2 && <Text className={styles.separator}>×</Text>}
         </React.Fragment>)}
@@ -75,7 +75,7 @@ export default function CartonCalculator() {
       </View>
       <View className={styles.customThickness}>
         <Text>自定义厚度</Text>
-        <Input type="digit" inputMode="decimal" value={thickness} onInput={event => setThickness(event.detail.value)} />
+        <Input type="digit" value={thickness} onInput={event => setThickness(event.detail.value)} />
         <Text>mm</Text>
       </View>
     </View>

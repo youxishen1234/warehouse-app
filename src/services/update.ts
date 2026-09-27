@@ -140,7 +140,7 @@ export async function checkAndUpdate(): Promise<CheckUpdateResult> {
   // 2) 下载更新包
   let bid = '';
   const downloadOrigin = base || 'http://152.136.100.200';
-  const downloadUrl = `${downloadOrigin}/appupdate/${(info.url || 'www.zip').replace(/^\//, '')}?t=${now}`;
+  const downloadUrl = `${downloadOrigin}/appupdate/${(info?.url || 'www.zip').replace(/^\//, '')}?t=${now}`;
   report('download_attempt', cur, latest, downloadUrl);
   try {
     const res = await tu.download({

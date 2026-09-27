@@ -6,17 +6,22 @@ on:
   workflow_dispatch:
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Select the Liquid Glass SDK
+        run: |
+          test -d /Applications/Xcode_26.2.app
+          sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer
+          xcodebuild -version
       - name: Install CocoaPods
         run: sudo gem install cocoapods
       - name: Install npm dependencies
         run: npm install --legacy-peer-deps
       - name: Build current web assets
         run: |
-          npm run build:h5
+          TARO_PUBLIC_PATH=./ npm run build:h5
           cp -R dist/. www/
       - name: Copy Capacitor assets
         run: npx cap copy ios

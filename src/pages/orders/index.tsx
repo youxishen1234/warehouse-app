@@ -1,5 +1,5 @@
 import { useSharedRefresh } from '@/services/shared-refresh';
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, Text, Input, Picker, ScrollView } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { addOrder, getCustomers, getOrderEvents, getOrders, updateOrder } from '@/services/api';
@@ -7,7 +7,13 @@ import type { Customer, CustomerOrder } from '@/types';
 import type { OrderStatusEvent } from '@/services/api';
 import styles from './index.module.scss';
 
-const statuses: CustomerOrder['status'][] = ['待生产', '生产中', '已发货', '已完成'];
+const nextStatusMap: Record<CustomerOrder['status'], CustomerOrder['status'][]> = {
+  '待生产': ['待生产', '生产中', '已取消'],
+  '生产中': ['生产中', '已发货', '已取消'],
+  '已发货': ['已发货', '已完成'],
+  '已完成': ['已完成'],
+  '已取消': ['已取消']
+};
 
 export default function Orders() {
   const [list, setList] = useState<CustomerOrder[]>([]);
@@ -62,7 +68,8 @@ export default function Orders() {
   };
 
   const changeStatus = async (order: CustomerOrder, index: number) => {
-    const next = statuses[index];
+    const options = nextStatusMap[order.status] || [order.status];
+    const next = options[index];
     if (next === order.status) return;
     try {
       await updateOrder(order.id, { status: next });
@@ -80,7 +87,7 @@ export default function Orders() {
       <Input placeholder="材质（可选，如五层AB楞）" value={material} onInput={e => setMaterial(e.detail.value)} />
       <Input type="number" placeholder="数量" value={qty} onInput={e => setQty(e.detail.value)} />
       <Input type="digit" placeholder="单价" value={price} onInput={e => setPrice(e.detail.value)} />
-      <Picker mode="date" value={delivery || undefined} onChange={e => setDelivery(e.detail.value)}><View>交货日期：{delivery || '未设置'}</View></Picker>
+      <Picker mode="date" value={delivery} onChange={e => setDelivery(e.detail.value)}><View>交货日期：{delivery || '未设置'}</View></Picker>
       <Input placeholder="备注（可选）" value={remark} onInput={e => setRemark(e.detail.value)} />
       <View className={styles.save} onClick={save}>{saving ? '保存中…' : '保存订单'}</View>
     </View>}
@@ -94,7 +101,7 @@ export default function Orders() {
           <Text>交期：{order.delivery_date || '未定'}{order.remark ? ` · ${order.remark}` : ''}</Text>
           {history.length > 0 && <View className={styles.events}><Text className={styles.eventsTitle}>状态记录</Text>{history.map(event => <Text key={event.id}>{event.from} → {event.to} · {new Date(event.created_at).toLocaleString()}</Text>)}</View>}
         </View>
-        <Picker range={statuses} value={Math.max(0, statuses.indexOf(order.status))} onChange={e => changeStatus(order, Number(e.detail.value))}><Text className={styles.status}>{order.status}</Text></Picker>
+        <Picker range={nextStatusMap[order.status] || [order.status]} value={0} onChange={e => changeStatus(order, Number(e.detail.value))}><Text className={styles.status}>{order.status}</Text></Picker>
       </View>;
     })}
   </ScrollView>;

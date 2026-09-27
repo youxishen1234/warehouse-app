@@ -71,7 +71,6 @@ export function setBaseUrl(url: string): void {
 
 /** 依次探测候选地址，返回第一个可用的；全部失败返回 null */
 export async function autoBestBase(): Promise<string | null> {
-  const custom = readCustomBase();
   // 去重候选：服务器 → 用户自定义
   const candidates = [TEAM_ORIGIN];
   for (const c of candidates) {
@@ -98,7 +97,6 @@ export async function autoBestBase(): Promise<string | null> {
 // ============================================
 const CACHE_PREFIX = 'team_cache_';
 const CACHE_INDEX_KEY = CACHE_PREFIX + '__idx';
-const CACHE_MAX = 60; // 最多缓存条数（FIFO 淘汰）
 
 let offline = false;
 const listeners = new Set<(v: boolean) => void>();
@@ -136,12 +134,12 @@ function writeIndex(idx: string[]) {
   try { Taro.setStorageSync(CACHE_INDEX_KEY, idx); } catch (e) { /* 存储已满时忽略 */ }
 }
 
-function cacheGet<T>(key: string): T | undefined {
+function cacheGet<T>(_key: string): T | undefined {
   // Business records must always come from the shared server; only session/device metadata is local.
   return undefined;
 }
 
-function cacheSet(key: string, val: unknown) {
+function cacheSet(_key: string, _val: unknown) {
   // Do not persist products, customers, suppliers, orders or ledger data on-device.
 }
 

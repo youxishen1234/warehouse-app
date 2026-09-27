@@ -12,7 +12,7 @@
 }
 
 .header {
-  background: $gradient-header;
+  background: #1677ff;
   border-radius: 0 0 32rpx 32rpx;
   padding: calc(64rpx + constant(safe-area-inset-top)) 32rpx 56rpx;
   padding: calc(64rpx + env(safe-area-inset-top)) 32rpx 56rpx;
@@ -375,3 +375,10 @@
     opacity: 0.88;
   }
 }
+
+/* warehouse-mobile-ios prototype alignment */
+.header { background: linear-gradient(145deg, #1677ff, #3d91ff); box-shadow: 0 16rpx 38rpx rgba(22,119,255,.20); }
+.menuList { border: 1rpx solid rgba(227,233,241,.9); border-radius: 34rpx; box-shadow: 0 10rpx 34rpx rgba(27,52,86,.05); }
+.menuItem { padding: 28rpx 26rpx; }
+.menuIcon { border-radius: 22rpx; }
+.sectionTitle { color: #7d8999; }

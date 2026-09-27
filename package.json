@@ -29,8 +29,8 @@
     "dev:qq": "npm run build:qq -- --watch",
     "dev:jd": "npm run build:jd -- --watch",
     "dev:quickapp": "npm run build:quickapp -- --watch",
-    "build:android": "npm run build:h5 && powershell -NoProfile -Command \"Copy-Item -Path dist\\* -Destination www -Recurse -Force\" && cap sync android && cd android && gradlew.bat assembleRelease",
-    "build:windows": "npm run build:h5 && powershell -NoProfile -Command \"Copy-Item -Path dist\\* -Destination www -Recurse -Force\" && electron-builder --win nsis"
+    "build:android": "powershell -NoProfile -Command \"$env:TARO_PUBLIC_PATH='./'; npm run build:h5\" && powershell -NoProfile -Command \"Copy-Item -Path dist\\* -Destination www -Recurse -Force\" && cap sync android && cd android && gradlew.bat assembleRelease",
+    "build:windows": "powershell -NoProfile -Command \"$env:TARO_PUBLIC_PATH='./'; npm run build:h5\" && powershell -NoProfile -Command \"Copy-Item -Path dist\\* -Destination www -Recurse -Force\" && electron-builder --win nsis"
   },
   "browserslist": [
     "last 3 versions",
@@ -67,15 +67,35 @@
   "build": {
     "appId": "com.warehouse.app.desktop",
     "productName": "曙光库存",
-    "directories": { "output": "release/windows" },
-    "files": ["desktop/**/*", "www/**/*", "package.json"],
-    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }] },
-    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true }
+    "directories": {
+      "output": "release/windows"
+    },
+    "files": [
+      "desktop/**/*",
+      "www/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
   },
   "devDependencies": {
     "@babel/core": "^7.8.0",
     "@babel/plugin-proposal-class-properties": "7.14.5",
     "@babel/preset-react": "^7.24.1",
+    "@playwright/test": "^1.63.0",
     "@pmmmwh/react-refresh-webpack-plugin": "^0.5.5",
     "@tarojs/cli": "4.2.1",
     "@tarojs/taro-loader": "4.2.1",

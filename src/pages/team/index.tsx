@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, Input, Picker, Button, Switch } from '@tarojs/components';
 import Taro, { usePullDownRefresh } from '@tarojs/taro';
 import { accountApi, Member, session, setSession } from '@/services/session';
@@ -10,6 +10,7 @@ export default function Team() {
   const [members,setMembers]=useState<Member[]>([]), [events,setEvents]=useState<any[]>([]);
   const [username,setUsername]=useState(''), [password,setPassword]=useState(''), [role,setRole]=useState(1);
   const [oldPassword,setOldPassword]=useState(''), [newPassword,setNewPassword]=useState('');
+  const [resetMember, setResetMember] = useState<string | null>(null), [resetPassword, setResetPassword] = useState('');
   const [message,setMessage]=useState(''), [busy,setBusy]=useState(false), [page,setPage]=useState(1), [total,setTotal]=useState(0);
   const load=async()=>{if(me?.role !== 'admin') return; try {setMembers(await accountApi('/team')); const a=await accountApi(`/audit?page=${page}`);setEvents(a.items);setTotal(a.total);}catch(e){setMessage(e.message);}};
   useEffect(()=>{load();},[page]);
@@ -25,8 +26,14 @@ export default function Team() {
         <Text>{u.username}</Text>
         <Picker value={roles.indexOf(u.role)} range={labels} disabled={busy} onChange={e=>action(()=>accountApi(`/team/${u.id}`,'PUT',{role:roles[Number(e.detail.value)]}))}><Text>{labels[roles.indexOf(u.role)]}</Text></Picker>
         <Switch checked={!u.disabled} disabled={busy || u.id === me.id} onChange={e=>action(()=>accountApi(`/team/${u.id}`,'PUT',{disabled:!e.detail.value}))} />
-        <Button size="mini" disabled={busy} onClick={async()=>{const r=await Taro.showModal({title:'重置成员密码',editable:true,placeholderText:'新密码，至少12位'});if(r.confirm)action(()=>accountApi(`/team/${u.id}`,'PUT',{password:r.content}));}}>重置密码</Button>
+        <Button size="mini" disabled={busy} onClick={() => { setResetMember(u.id); setResetPassword(''); }}>重置密码</Button>
       </View>)}
+      {resetMember && <View>
+        <Text>重置成员密码</Text>
+        <Input password disabled={busy} placeholder='新密码，至少12位' value={resetPassword} onInput={e => setResetPassword(e.detail.value)} />
+        <Button disabled={busy} onClick={() => action(async () => { if (resetPassword.length < 12) throw new Error('密码至少12位'); await accountApi(`/team/${resetMember}`, 'PUT', { password: resetPassword }); setResetMember(null); setResetPassword(''); })}>确认重置</Button>
+        <Button disabled={busy} onClick={() => { setResetMember(null); setResetPassword(''); }}>取消</Button>
+      </View>}
       <Text className="team-section">新增成员</Text>
       <Input placeholder="登录账号（字母、数字、下划线）" value={username} onInput={e=>setUsername(e.detail.value)} />
       <Input password placeholder="初始密码（至少12位）" value={password} onInput={e=>setPassword(e.detail.value)} />
