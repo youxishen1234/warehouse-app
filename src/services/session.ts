@@ -4,7 +4,9 @@ export const PUBLIC_ORIGIN = 'https://youxishen.online';
 export function sessionOrigin(): string {
   try {
     const cap = (globalThis as any).Capacitor;
-    if (cap?.isNativePlatform?.()) return TEAM_ORIGIN;
+    // Native iOS must use the public HTTPS endpoint first. The raw HTTP IP is
+    // only a fallback because carrier/Wi-Fi networks commonly block it.
+    if (cap?.isNativePlatform?.()) return PUBLIC_ORIGIN;
   } catch (e) { /* browser runtime */ }
   return typeof location !== 'undefined' && location.protocol === 'https:' ? PUBLIC_ORIGIN : TEAM_ORIGIN;
 }
@@ -36,7 +38,7 @@ export function watchSession(fn: () => void) { subscribers.add(fn); return () =>
 export async function accountApi<T = any>(url: string, method: 'GET'|'POST'|'PUT' = 'GET', data?: any): Promise<T> {
   let lastError: unknown;
   try {
-    for (const origin of [...new Set([sessionOrigin(), TEAM_ORIGIN, PUBLIC_ORIGIN])]) {
+    for (const origin of [...new Set([sessionOrigin(), PUBLIC_ORIGIN, TEAM_ORIGIN])]) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 12000);
       try {

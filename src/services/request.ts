@@ -3,7 +3,7 @@ import { session, setSession, TEAM_ORIGIN, PUBLIC_ORIGIN, sessionOrigin, watchSe
 import { refreshSharedData } from './shared-refresh';
 
 // 后端 API 基地址，统一指向服务器
-const API_ORIGINS = [TEAM_ORIGIN, PUBLIC_ORIGIN];
+const API_ORIGINS = [PUBLIC_ORIGIN, TEAM_ORIGIN];
 const DEBUG_API_LOG = typeof process === 'undefined' || process.env.NODE_ENV !== 'production';
 
 // 用户可在「我的-服务器地址」里修改后端/更新地址，修改后持久化，优先于默认地址
