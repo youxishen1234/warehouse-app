@@ -150,11 +150,6 @@ function writeIndex(idx: string[]) {
   try { Taro.setStorageSync(CACHE_INDEX_KEY, idx); } catch (e) { /* 存储已满时忽略 */ }
 }
 
-function cacheGet<T>(_key: string): T | undefined {
-  // Business records must always come from the shared server; only session/device metadata is local.
-  return undefined;
-}
-
 function cacheSet(_key: string, _val: unknown) {
   // Do not persist products, customers, suppliers, orders or ledger data on-device.
 }
@@ -375,17 +370,12 @@ async function performRequest<T = any>(options: RequestOptions, identity: string
     } catch (e: any) {
     const raw = String(e?.message || e?.errMsg || '');
 
-    // 读接口：网络/服务异常时回退到本地缓存，同时进入离线模式
+    // 读接口：业务数据必须来自在线服务器；网络异常只显示可重试错误
     if (isRead && (isNetworkError(e) || /^HTTP 5\d\d$/.test(raw))) {
-      const cached = cacheGet<T>(cacheKey);
-      setOffline(true);
-      if (cached !== undefined) {
-        if (DEBUG_API_LOG) console.warn(`[API] 离线模式，使用本地缓存: ${url}`);
-        return cached;
-      }
-      const msg = '暂无本地数据，请检查网络后重试';
+      setOffline(false);
+      const msg = friendlyError(e);
       toastOnce(msg);
-      if (DEBUG_API_LOG) console.error(`[API] ${method} ${url} 失败(无缓存):`, e?.message || e);
+      if (DEBUG_API_LOG) console.error(`[API] ${method} ${url} 失败(在线服务不可用):`, e?.message || e);
       throw new Error(msg);
     }
 
