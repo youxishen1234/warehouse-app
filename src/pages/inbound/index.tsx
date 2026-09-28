@@ -47,14 +47,20 @@ export default function InboundPage() {
   const lastLoadAt = useRef(0);
   const didShowOnce = useRef(false);
   const productMap = useMemo(() => new Map(products.map(product => [product.id, product])), [products]);
-  const remote = useRemoteData(async () => {
-    const startedAt = Date.now();
-    if (startedAt - lastLoadAt.current < 250) return { suppliers: [], products: [], notes: [] };
-    lastLoadAt.current = startedAt;
+  const loadInboundData = useCallback(async () => {
+    lastLoadAt.current = Date.now();
     const [s, p, n] = await Promise.all([getSuppliers(), loadProducts(true), getDeliveryNotes()]);
     return { suppliers: s, products: p, notes: n.slice(0, 8) };
-  }, { suppliers: [] as Customer[], products: [] as Product[], notes: [] as DeliveryNote[] });
-  const load = remote.reload;
+  }, []);
+  const remote = useRemoteData(loadInboundData, { suppliers: [] as Customer[], products: [] as Product[], notes: [] as DeliveryNote[] });
+  const { reload: remoteReload } = remote;
+  const load = useCallback((forceOrRevision: boolean | string = false) => {
+    const startedAt = Date.now();
+    const force = forceOrRevision === true || typeof forceOrRevision === 'string';
+    if (!force && startedAt - lastLoadAt.current < 250) return Promise.resolve();
+    lastLoadAt.current = startedAt;
+    return remoteReload();
+  }, [remoteReload]);
   // useRemoteData owns loadSequence/requestId; if (current !== loadSequence.current), stale responses are discarded.
   useEffect(() => {
     if (!remote.loading && remote.ready) { setSuppliers(remote.data.suppliers); setProducts(remote.data.products); setNotes(remote.data.notes); setReady(true); setLoadError(''); }
@@ -64,7 +70,8 @@ export default function InboundPage() {
   useDidShow(() => {
     const firstShow = !didShowOnce.current;
     didShowOnce.current = true;
-    if (!firstShow || Date.now() - lastLoadAt.current >= 250) void load();
+    if (!firstShow || remote.loadError) void load(true);
+    else if (Date.now() - lastLoadAt.current >= 250) void load();
     const transit = Taro.getStorageSync('sg_transit');
     if (transit?.product_id) { setTransitId(transit.product_id); Taro.removeStorageSync('sg_transit'); }
   });
@@ -131,9 +138,9 @@ export default function InboundPage() {
     try { await downloadCsv(deliveryNoteCsvUrl(note.id), `delivery-note-${note.id}.csv`); }
     catch (error) { Taro.showToast({ title: message(error), icon: 'none' }); }
   };
-  return <ScrollView scrollY className={styles.page} refresherEnabled={false} onRefresherRefresh={() => load()}>
+  return <ScrollView scrollY className={styles.page} refresherEnabled={false} onRefresherRefresh={() => load(true)}>
     <Text className={styles.title}>入库开单</Text><Text className={styles.subTitle}>选择已有商品，按实际入库数量更新库存与货款</Text>
-    {loadError && <View className={styles.error} onClick={() => load()}>{loadError} · 点击重试</View>}
+    {loadError && <View className={styles.error} onClick={() => load(true)}>{loadError} · 点击重试</View>}
     <View className={styles.card}>
       <View className={styles.row}>
         <View className={styles.half}><Text>日期</Text><Picker disabled={saving} mode='date' value={date} onChange={e => setDate(e.detail.value)}><View className={styles.picker}>{date}</View></Picker></View>

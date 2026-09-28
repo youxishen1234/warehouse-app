@@ -183,125 +183,77 @@ const MineContent: React.FC = () => {
 
   return (
     <ScrollView scrollY className={styles.container}>
-      <View className={styles.header}>
-        <View className={styles.avatar}>曙</View>
-        <Text className={styles.headerTitle}>曙光库存</Text>
-        <Text className={styles.headerDesc}>库存管理 · 清晰如一</Text>
+      <View className={styles.hero}>
+        <View className={styles.heroGlow} />
+        <View className={styles.heroTop}>
+          <View className={styles.brandMark}>曙</View>
+          <View className={styles.heroCopy}>
+            <Text className={styles.eyebrow}>SHUGUANG / CONTROL</Text>
+            <Text className={styles.heroTitle}>我的工作台</Text>
+            <Text className={styles.heroSubtitle}>连接、更新与业务入口</Text>
+          </View>
+          <View className={styles.heroBadge}><View className={styles.liveDot} /><Text>在线</Text></View>
+        </View>
+        <View className={styles.connectionBar} onClick={() => setAddrOpen(true)}>
+          <View className={styles.connectionIcon}><Icon name="trend" color="#bff5e7" className={styles.connectionIconImg} /></View>
+          <View className={styles.connectionCopy}><Text>当前服务节点</Text><Text>{addrSummary}</Text></View>
+          <Text className={styles.connectionAction}>设置</Text>
+        </View>
       </View>
 
-      <View className={styles.menuList}>
+      <View className={styles.sectionHead}><Text>业务入口</Text><Text>{menus.length} 项服务</Text></View>
+      <View className={styles.menuGrid}>
         {menus.map(m => (
-          <View key={m.url} className={styles.menuItem} onClick={() => goTo(m.url)}>
-            <View className={styles.menuIcon} style={{ background: m.bg }}>
-              <Icon name={m.icon} color={m.color} className={styles.menuIconImg} />
-            </View>
-            <View className={styles.menuTextWrap}>
+          <View key={m.url} className={styles.menuCard} onClick={() => goTo(m.url)}>
+            <View className={styles.menuIcon} style={{ background: m.bg }}><Icon name={m.icon} color={m.color} className={styles.menuIconImg} /></View>
             <Text className={styles.menuText}>{getCopy(menuCopyKey(m.url) || m.text)}</Text>
-              <Text className={styles.menuDesc}>{m.desc}</Text>
-            </View>
-            <Icon name="chevron" color="#c0c6d0" className={styles.menuArrow} />
+            <Text className={styles.menuDesc}>{m.desc}</Text>
+            <Icon name="chevron" color="#71809a" className={styles.menuArrow} />
           </View>
         ))}
       </View>
 
-      <Text className={styles.sectionTitle}>系统</Text>
-      <View className={styles.menuList}>
-        <View className={styles.menuItem} onClick={doCheck}>
-          <View className={styles.menuIcon} style={{ background: 'rgba(8,145,178,0.14)' }}>
-            <Icon name="trend" color="#0891b2" className={styles.menuIconImg} />
-          </View>
-          <View className={styles.menuTextWrap}>
-            <Text className={styles.menuText}>检查更新</Text>
-            <Text className={styles.menuDesc}>
-              {checking ? '正在检查' : `网页版本 ${webVersion}`}
-            </Text>
-          </View>
-          <Icon name="chevron" color="#c0c6d0" className={styles.menuArrow} />
+      <View className={styles.sectionHead}><Text>系统与连接</Text><Text>ONLINE</Text></View>
+      <View className={styles.systemStack}>
+        <View className={styles.systemCard} onClick={doCheck}>
+          <View className={`${styles.systemIcon} ${styles.cyan}`}><Icon name="trend" color="#70f2dd" className={styles.systemIconImg} /></View>
+          <View className={styles.systemCopy}><Text>检查更新</Text><Text>{checking ? '正在检查版本…' : `网页版本 ${webVersion}`}</Text></View>
+          <Text className={styles.systemAction}>{checking ? '检查中' : '检查'}</Text>
         </View>
-        <View className={styles.menuItem} onClick={openUpdateAddress}>
-          <View className={styles.menuIcon} style={{ background: 'rgba(99,102,241,0.14)' }}>
-            <Icon name="edit" color="#6366f1" className={styles.menuIconImg} />
-          </View>
-          <View className={styles.menuTextWrap}>
-            <Text className={styles.menuText}>服务器 / 更新地址</Text>
-            <Text className={styles.menuDesc}>{addrSummary}</Text>
-          </View>
-          <Icon name="chevron" color="#c0c6d0" className={styles.menuArrow} />
+        <View className={styles.systemCard} onClick={() => setAddrOpen(true)}>
+          <View className={`${styles.systemIcon} ${styles.purple}`}><Icon name="edit" color="#c6b7ff" className={styles.systemIconImg} /></View>
+          <View className={styles.systemCopy}><Text>服务器 / 更新地址</Text><Text>{addrSummary}</Text></View>
+          <View className={styles.systemActions}><Text onClick={(e) => { e.stopPropagation(); openUpdateAddress(); }}>官网</Text><Text>设置</Text></View>
         </View>
-        <View className={styles.menuItem} onClick={downloadIpa}>
-          <View className={styles.menuIcon} style={{ background: 'rgba(47,107,255,0.14)' }}>
-            <Icon name="download" color="#2f6bff" className={styles.menuIconImg} />
-          </View>
-          <View className={styles.menuTextWrap}>
-            <Text className={styles.menuText}>App 安装包下载</Text>
-            <Text className={styles.menuDesc}>{ipaSummary}</Text>
-          </View>
-          <Icon name="chevron" color="#c0c6d0" className={styles.menuArrow} />
+        <View className={styles.systemCard} onClick={downloadIpa}>
+          <View className={`${styles.systemIcon} ${styles.blue}`}><Icon name="download" color="#a8c7ff" className={styles.systemIconImg} /></View>
+          <View className={styles.systemCopy}><Text>App 安装包下载</Text><Text>{ipaSummary}</Text></View>
+          <Text className={styles.systemAction}>下载</Text>
         </View>
       </View>
 
-      <View className={styles.about}>
-        <Text>曙光 · 共享仓库{nativeVersion ? ` ${nativeVersion}` : ''}</Text>
-      </View>
+      <View className={styles.footerInfo}><Text>曙光库存 · 共享仓库</Text><Text>{nativeVersion ? nativeVersion : 'Web 控制台'}</Text></View>
 
       {ipaDownloading && (
         <View className={styles.mask}>
           <View className={styles.ipaDialog}>
-            <View className={styles.ipaTitleRow}>
-              <View className={styles.ipaIcon}>
-                <Icon name="download" color="#fff" className={styles.ipaIconImg} />
-              </View>
-              <Text className={styles.ipaTitle}>网页更新</Text>
-            </View>
-            <View className={styles.ipaFileName}>www.zip</View>
-            <Text className={styles.ipaStatus}>{ipaMessage}</Text>
-            {!ipaCompleted && (
-              <View className={styles.ipaProgressTrack}>
-                <View className={styles.ipaProgressBar} style={{ width: `${ipaProgress}%` }} />
-              </View>
-            )}
+            <View className={styles.ipaTitleRow}><View className={styles.ipaIcon}><Icon name="download" color="#fff" className={styles.ipaIconImg} /></View><Text className={styles.ipaTitle}>网页更新</Text></View>
+            <View className={styles.ipaFileName}>www.zip</View><Text className={styles.ipaStatus}>{ipaMessage}</Text>
+            {!ipaCompleted && <View className={styles.ipaProgressTrack}><View className={styles.ipaProgressBar} style={{ width: `${ipaProgress}%` }} /></View>}
             {!ipaCompleted && <Text className={styles.ipaProgressText}>{ipaProgress}%</Text>}
-            {ipaCompleted && (
-              <View className={styles.ipaCloseBtn} onClick={() => setIpaDownloading(false)}>关闭</View>
-            )}
+            {ipaCompleted && <View className={styles.ipaCloseBtn} onClick={() => setIpaDownloading(false)}>关闭</View>}
           </View>
         </View>
       )}
 
       {addrOpen && (
         <View className={styles.mask} onClick={() => setAddrOpen(false)}>
-          <View className={styles.addrDialog} onClick={(e) => e.stopPropagation()}>
+          <View className={styles.addrDialog} onClick={e => e.stopPropagation()}>
             <Text className={styles.addrTitle}>服务器 / 更新地址</Text>
-            <Text className={styles.addrTip}>
-              连接不上服务器时，在这里修改后端地址即可（如隧道地址变化后）。留空并保存 = 恢复默认地址。
-            </Text>
-            <View className={styles.addrTestRow}>
-                <View className={styles.addrTestBtn} onClick={() => testConn()}>
-                  {testing ? '测试中…' : '测试连接'}
-                </View>
-                <View className={styles.addrAutoBtn} onClick={goAuto}>
-                  {testing ? '连接中…' : '自动选择'}
-                </View>
-                {testResult ? (
-                  <Text className={styles.addrTestResult}>
-                    {testResult}
-                  </Text>
-                ) : null}
-              </View>
-            <Input
-              className={styles.addrInput}
-              value={addrVal}
-              placeholder="http:// 或 https:// 开头的地址"
-              placeholderClass={styles.addrPlaceholder}
-              onInput={(e) => { setAddrVal(e.detail.value); setTestResult(''); }}
-            />
-            <View className={styles.addrBtns}>
-              <View className={styles.addrBtnGhost} onClick={restoreDefault}>恢复默认</View>
-              <View className={styles.addrBtnGhost} onClick={() => setAddrOpen(false)}>取消</View>
-              <View className={styles.addrBtnPrimary} onClick={saveAddr}>
-                {saving ? '保存中…' : '保存'}
-              </View>
-            </View>
+            <Text className={styles.addrTip}>连接不上服务器时可在这里修改。留空并保存会恢复默认地址。</Text>
+            <View className={styles.addrTestRow}><View className={styles.addrTestBtn} onClick={() => testConn()}>{testing ? '测试中…' : '测试连接'}</View><View className={styles.addrAutoBtn} onClick={goAuto}>{testing ? '连接中…' : '自动选择'}</View>{testResult ? <Text className={styles.addrTestResult}>{testResult}</Text> : null}</View>
+            <Input className={styles.addrInput} value={addrVal} placeholder="http:// 或 https:// 开头的地址" placeholderClass={styles.addrPlaceholder} onInput={e => { setAddrVal(e.detail.value); setTestResult(''); }} />
+            <View className={styles.addrBtns}><View className={styles.addrBtnGhost} onClick={restoreDefault}>恢复默认</View><View className={styles.addrBtnGhost} onClick={() => setAddrOpen(false)}>取消</View><View className={styles.addrBtnPrimary} onClick={saveAddr}>{saving ? '保存中…' : '保存'}</View></View>
           </View>
         </View>
       )}
