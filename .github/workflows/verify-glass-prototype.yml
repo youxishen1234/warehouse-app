@@ -1,0 +1,56 @@
+name: Verify glass prototype (artifacts only)
+on:
+  workflow_dispatch:
+  push:
+    branches: ['codex/glass-prototype-review']
+    paths:
+      - 'prototypes/ios-glass/**'
+      - 'scripts/ios-glass-prototype-smoke.sh'
+      - '.github/workflows/verify-glass-prototype.yml'
+permissions:
+  contents: read
+concurrency:
+  group: glass-prototype-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  simulator:
+    runs-on: macos-15
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - xcode: '26.2'
+            runtime: '26.2'
+          - xcode: '26.2'
+            runtime: '18.5'
+          - xcode: '16.4'
+            runtime: '18.5'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select explicit Xcode
+        env:
+          XCODE_VERSION: ${{ matrix.xcode }}
+        run: |
+          test -d "/Applications/Xcode_$XCODE_VERSION.app"
+          sudo xcode-select -s "/Applications/Xcode_$XCODE_VERSION.app/Contents/Developer"
+          xcodebuild -version
+      - name: Install project generator
+        run: command -v xcodegen || brew install xcodegen
+      - name: Build and record simulator smoke
+        run: bash scripts/ios-glass-prototype-smoke.sh '${{ matrix.runtime }}'
+      - name: Upload evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: glass-prototype-xcode-${{ matrix.xcode }}-ios-${{ matrix.runtime }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            release/glass-prototype-${{ matrix.runtime }}/*.txt
+            release/glass-prototype-${{ matrix.runtime }}/*.log
+            release/glass-prototype-${{ matrix.runtime }}/*.json
+            release/glass-prototype-${{ matrix.runtime }}/*.png
+            release/glass-prototype-${{ matrix.runtime }}/*.mp4
+            release/glass-prototype-${{ matrix.runtime }}/screenshots/
+            release/glass-prototype-${{ matrix.runtime }}/tests.xcresult/

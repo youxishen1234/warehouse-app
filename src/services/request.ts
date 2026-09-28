@@ -3,10 +3,8 @@ import { session, setSession, TEAM_ORIGIN, PUBLIC_ORIGIN, sessionOrigin, watchSe
 import { refreshSharedData } from './shared-refresh';
 
 // 后端 API 基地址，统一指向服务器
-const DEFAULT_BASE = 'http://152.136.100.200';
-const FALLBACK_BASE = 'http://152.136.100.200';
-const API_ORIGINS = [FALLBACK_BASE, PUBLIC_ORIGIN];
-let activeApiOrigin = sessionOrigin();
+const API_ORIGINS = [TEAM_ORIGIN, PUBLIC_ORIGIN];
+const DEBUG_API_LOG = typeof process === 'undefined' || process.env.NODE_ENV !== 'production';
 
 // 用户可在「我的-服务器地址」里修改后端/更新地址，修改后持久化，优先于默认地址
 const CUSTOM_BASE_KEY = 'sg_custom_base';
@@ -30,15 +28,25 @@ function readCustomBase(): string {
       Taro.setStorageSync(CUSTOM_BASE_KEY, migrated);
       return migrated;
     }
-    return normalized;
+    return API_ORIGINS.includes(normalized) ? normalized : '';
   } catch (e) { return ''; }
 }
 
 let baseUrl = readCustomBase();
+let activeApiOrigin = baseUrl || sessionOrigin();
+let originVersion = 0;
+
+// Late requests and health probes must not undo a newer route selection.
+function acceptApiOrigin(origin: string, expectedVersion: number) {
+  if (expectedVersion !== originVersion || origin === activeApiOrigin) return;
+  if (DEBUG_API_LOG) console.info(`[API] switched origin ${activeApiOrigin} -> ${origin}`);
+  activeApiOrigin = origin;
+  originVersion += 1;
+}
 
 /** 当前生效的后端地址（用户可在 App 内修改） */
 export function getBaseUrl(): string {
-  return baseUrl || sessionOrigin();
+  return activeApiOrigin;
 }
 
 /** 修改后端/更新地址：空值恢复默认；清空旧缓存立即生效 */
@@ -55,6 +63,8 @@ export function setBaseUrl(url: string): void {
     baseUrl = '';
     try { Taro.removeStorageSync(CUSTOM_BASE_KEY); } catch (e) { /* ignore */ }
   }
+  activeApiOrigin = baseUrl || sessionOrigin();
+  originVersion += 1;
   // 地址变化后旧缓存不可信，整体清空；退出离线模式等待真实连接结果
   try {
     const idx = readIndex();
@@ -71,22 +81,22 @@ export function setBaseUrl(url: string): void {
 
 /** 依次探测候选地址，返回第一个可用的；全部失败返回 null */
 export async function autoBestBase(): Promise<string | null> {
-  const custom = readCustomBase();
-  // 去重候选：服务器 → 用户自定义
-  const candidates = [TEAM_ORIGIN];
+  // Prefer the currently selected route; a background probe must not undo failover.
+  const version = originVersion;
+  const candidates = [...new Set([getBaseUrl(), ...API_ORIGINS])];
   for (const c of candidates) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
     try {
-      const res = await fetchApi('/api/health', 'GET', undefined, {}, 5000);
-      if (res.statusCode >= 200 && res.statusCode < 300) {
-        if (c !== getBaseUrl()) {
-          // 记住选中的地址（默认隧道存空=恢复默认）；同时清旧缓存、退出离线
-          setBaseUrl(c === DEFAULT_BASE ? '' : c);
-        } else {
-          setOffline(false);
-        }
-        return c;
+      const response = await fetch(`${c}/api/health`, { cache: 'no-store', signal: controller.signal });
+      if (response.ok) {
+        if (version !== originVersion) return getBaseUrl();
+        acceptApiOrigin(c, version);
+        setOffline(false);
+        return getBaseUrl();
       }
     } catch (e) { /* 当前候选不可达，继续下一个 */ }
+    finally { clearTimeout(timer); }
   }
   return null;
 }
@@ -98,7 +108,11 @@ export async function autoBestBase(): Promise<string | null> {
 // ============================================
 const CACHE_PREFIX = 'team_cache_';
 const CACHE_INDEX_KEY = CACHE_PREFIX + '__idx';
-const CACHE_MAX = 60; // 最多缓存条数（FIFO 淘汰）
+const PENDING_WRITES_KEY = 'sg_pending_writes_v1';
+const PENDING_WRITE_TTL = 24 * 60 * 60 * 1000;
+// A write may have committed before transport failure; keep the same
+// idempotency key while retrying, then reconcile through the receipt endpoint.
+const WRITE_NETWORK_RETRIES = 2;
 
 let offline = false;
 const listeners = new Set<(v: boolean) => void>();
@@ -119,7 +133,7 @@ export function onOfflineChange(fn: (v: boolean) => void): () => void {
 function setOffline(v: boolean) {
   if (offline === v) return;
   offline = v;
-  console.log(`[API] offline mode: ${v}`);
+  if (DEBUG_API_LOG) console.log(`[API] offline mode: ${v}`);
   listeners.forEach(fn => {
     try { fn(v); } catch (e) { console.error('[API] offline listener error', e); }
   });
@@ -136,30 +150,17 @@ function writeIndex(idx: string[]) {
   try { Taro.setStorageSync(CACHE_INDEX_KEY, idx); } catch (e) { /* 存储已满时忽略 */ }
 }
 
-function cacheGet<T>(key: string): T | undefined {
+function cacheGet<T>(_key: string): T | undefined {
   // Business records must always come from the shared server; only session/device metadata is local.
   return undefined;
 }
 
-function cacheSet(key: string, val: unknown) {
+function cacheSet(_key: string, _val: unknown) {
   // Do not persist products, customers, suppliers, orders or ledger data on-device.
 }
 
-// 写操作成功后，清空列表类接口的旧缓存，保证下次读取刷新
-function evictRelated() {
-  const prefixes = ['/api/stats', '/api/products', '/api/customers', '/api/suppliers', '/api/transactions', '/api/ledger', '/api/orders'];
-  const idx = readIndex();
-  const keep = idx.filter(k => !prefixes.some(p => k.includes(p)));
-  idx.forEach(k => {
-    if (!keep.includes(k)) {
-      try { Taro.removeStorageSync(CACHE_PREFIX + k); } catch (e) { /* ignore */ }
-    }
-  });
-  writeIndex(keep);
-}
-
 // 网络层错误（iOS WKWebView 的 "load failed"、安卓 request:fail 等）
-const NET_RE = /timeout|load failed|request:fail|network|failed to fetch|networkerror|502|503|504/i;
+const NET_RE = /timeout|timed out|abort|load failed|request:fail|network|failed to fetch|networkerror|err_network|err_internet_disconnected|econnreset|econnrefused|net::err_|502|503|504/i;
 function isNetworkError(e: any): boolean {
   return NET_RE.test(String(e?.message || e?.errMsg || ''));
 }
@@ -168,16 +169,16 @@ function isNetworkError(e: any): boolean {
 function friendlyError(e: any): string {
   const raw = String(e?.message || e?.errMsg || '');
   if (/timeout/i.test(raw)) return '连接超时，请检查网络后重试';
+  if (/HTTP (\d+)/.test(raw) && /HTTP 5\d\d/.test(raw)) return '服务器繁忙，请稍后重试';
   if (NET_RE.test(raw)) return '服务器连接失败，请稍后重试';
-  if (/HTTP (\d+)/.test(raw)) return '服务器繁忙，请稍后重试';
   return raw || '网络错误，请稍后重试';
 }
 
 // 全局节流：同一时刻只弹一个 toast，避免离线时连续弹窗
 let lastToastAt = 0;
-function toastOnce(title: string) {
+function toastOnce(title: string, force = false) {
   const now = Date.now();
-  if (now - lastToastAt < 3000) return;
+  if (!force && now - lastToastAt < 3000) return;
   lastToastAt = now;
   Taro.showToast({ title, icon: 'none', duration: 2000 });
 }
@@ -189,9 +190,19 @@ interface RequestOptions {
   header?: Record<string, string>;
 }
 
+function requestId(): string {
+  return `req-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function fetchApi(url: string, method: string, data: unknown, headers: Record<string, string>, timeout: number) {
+  const version = originVersion;
   let lastError: unknown;
-  for (const origin of [...new Set([activeApiOrigin, ...API_ORIGINS])]) {
+  let lastServerResponse: { statusCode: number; data: any; header: Record<string, string> } | undefined;
+  for (const origin of [...new Set([getBaseUrl(), ...API_ORIGINS])]) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeout);
     try {
@@ -199,24 +210,82 @@ async function fetchApi(url: string, method: string, data: unknown, headers: Rec
       method,
       cache: 'no-store',
       signal: controller.signal,
-      headers,
+      headers: { 'X-Request-Id': requestId(), ...headers },
       body: data === undefined ? undefined : JSON.stringify(data)
       });
       let body: any = null;
       try { body = await response.json(); } catch (error) { /* non JSON errors use the HTTP status below */ }
-      if (response.ok || response.status < 500) activeApiOrigin = origin;
       const revision = response.headers.get('X-Warehouse-Revision');
-      return { statusCode: response.status, data: body, header: revision ? { 'x-warehouse-revision': revision } : {} };
+      const result: { statusCode: number; data: any; header: Record<string, string> } = { statusCode: response.status, data: body, header: {} };
+      if (revision) result.header['x-warehouse-revision'] = revision;
+      if (response.status >= 500) {
+        lastServerResponse = result;
+        if (DEBUG_API_LOG) console.warn(`[API] ${origin}${url} returned ${response.status}, trying next origin`);
+        continue;
+      }
+      acceptApiOrigin(origin, version);
+      return result;
     } catch (error) { lastError = error; }
     finally { clearTimeout(timer); }
   }
+  if (lastServerResponse) return lastServerResponse;
   throw lastError || new Error('网络连接失败');
 }
+type PendingWrite = { key: string; revision: string; createdAt: number };
 let knownRevision: string | undefined;
 const editRevisions = new Map<string, string>();
-const pending = new Map<string, { key: string; revision: string }>();
+const pending = new Map<string, PendingWrite>();
 const inFlight = new Map<string, Promise<any>>();
-watchSession(() => { knownRevision = undefined; pending.clear(); editRevisions.clear(); inFlight.clear(); });
+function readPendingWrites(): Record<string, PendingWrite> {
+  try {
+    const value = Taro.getStorageSync(PENDING_WRITES_KEY);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    const now = Date.now();
+    const valid: Record<string, PendingWrite> = {};
+    for (const [identity, item] of Object.entries(value as Record<string, Partial<PendingWrite>>)) {
+      const createdAt = item?.createdAt;
+      if (typeof item?.key === 'string' && typeof item.revision === 'string' && typeof createdAt === 'number' && Number.isFinite(createdAt) && now - createdAt < PENDING_WRITE_TTL) {
+        valid[identity] = { key: item.key, revision: item.revision, createdAt };
+      }
+    }
+    return valid;
+  } catch (error) { return {}; }
+}
+function writePendingWrites(value: Record<string, PendingWrite>) {
+  try {
+    if (Object.keys(value).length) Taro.setStorageSync(PENDING_WRITES_KEY, value);
+    else Taro.removeStorageSync(PENDING_WRITES_KEY);
+  } catch (error) { /* storage is an optimization; in-memory recovery still works */ }
+}
+function pendingGet(identity: string): PendingWrite | undefined {
+  const local = pending.get(identity);
+  if (local) return { ...local, createdAt: Date.now() };
+  const stored = readPendingWrites()[identity];
+  if (!stored) return undefined;
+  pending.set(identity, stored);
+  return stored;
+}
+function pendingSet(identity: string, value: Omit<PendingWrite, 'createdAt'>) {
+  const item = { ...value, createdAt: Date.now() };
+  pending.set(identity, item);
+  const all = readPendingWrites(); all[identity] = item; writePendingWrites(all);
+}
+function pendingDelete(identity: string) {
+  pending.delete(identity);
+  const all = readPendingWrites();
+  if (all[identity]) { delete all[identity]; writePendingWrites(all); }
+}
+async function recoverPending<T>(identity: string, current: { token: string }, attempt: PendingWrite): Promise<T | undefined> {
+  try {
+    const response = await fetchApi(`/api/sync/receipt/${encodeURIComponent(attempt.key)}`, 'GET', undefined, { Authorization: `Bearer ${current.token}` }, 5000);
+    if (response.statusCode !== 200 || !(response.data as any)?.success) return undefined;
+    pendingDelete(identity);
+    const payload = (response.data as any).data;
+    refreshSharedData(String((response.data as any).data?.revision || ''));
+    return payload?.data as T;
+  } catch (error) { return undefined; }
+}
+watchSession(() => { knownRevision = undefined; pending.clear(); editRevisions.clear(); inFlight.clear(); writePendingWrites({}); });
 export function request<T = any>(options: RequestOptions): Promise<T> {
   const identity = `${session()?.user.id || deviceId()}:${options.method || 'GET'}:${options.url}:${JSON.stringify(options.data || {})}`;
   if (inFlight.has(identity)) return inFlight.get(identity)!;
@@ -234,15 +303,20 @@ async function performRequest<T = any>(options: RequestOptions, identity: string
   try {
     let headers: Record<string,string> = {};
     if (!isRead) {
-      if (!pending.has(identity)) {
+      const saved = pendingGet(identity);
+      if (!saved) {
         const sync = await fetchApi('/api/sync', 'GET', undefined, current?.token ? { Authorization: `Bearer ${current.token}` } : {}, 10000);
         if (sync.statusCode === 401 && current) { setSession(null); throw new Error('登录已过期'); }
         if (sync.statusCode !== 200 || !(sync.data as any)?.success) throw new Error('未提交：无法确认服务器状态');
         const serverRevision = String((sync.data as any).data.revision);
+        // Prefer the revision captured when this resource was last read. Fall back
+        // to the latest known global revision, then the sync response. This keeps
+        // an edit tied to the resource snapshot instead of a stale global header.
         const expected = editRevisions.get(url) || knownRevision || serverRevision;
-        pending.set(identity, { key: `${Date.now()}-${deviceId()}-${Math.random().toString(36).slice(2, 12)}`, revision: expected });
+        const key = `${Date.now()}-${deviceId()}-${Math.random().toString(36).slice(2, 12)}`.replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 100);
+        pendingSet(identity, { key, revision: expected });
       }
-      const attempt = pending.get(identity)!;
+      const attempt = pendingGet(identity)!;
       headers = { 'Idempotency-Key': attempt.key, 'If-Match': attempt.revision };
     }
     const requestHeaders: Record<string, string> = { ...header, ...headers };
@@ -251,29 +325,54 @@ async function performRequest<T = any>(options: RequestOptions, identity: string
       requestHeaders['X-Warehouse-Device'] = deviceId();
     }
     if (current?.token) requestHeaders.Authorization = `Bearer ${current.token}`;
-    const res = await fetchApi(url, method, data, requestHeaders, 15000);
+    let res;
+    let networkAttempt = 0;
+    while (true) {
+      try {
+        res = await fetchApi(url, method, data, requestHeaders, 15000);
+        break;
+      } catch (error) {
+        // A write may have committed before the connection dropped. Retry once
+        // with the same idempotency key so the server can replay its receipt.
+        if (!isRead && isNetworkError(error) && networkAttempt < WRITE_NETWORK_RETRIES) {
+          await sleep(250 * (2 ** networkAttempt));
+          networkAttempt += 1;
+          continue;
+        }
+        throw error;
+      }
+    }
     if (current && session()?.token !== current.token) throw new Error('账号已切换');
     if (res.statusCode === 401) { setSession(null); knownRevision = undefined; pending.clear(); throw new Error('登录已过期，请重新登录'); }
-    if (res.statusCode < 500) pending.delete(identity);
+    if (res.statusCode < 500) pendingDelete(identity);
     const revisionHeader = Object.entries(res.header || {}).find(([key]) => key.toLowerCase() === 'x-warehouse-revision')?.[1];
     if (revisionHeader !== undefined && res.statusCode >= 200 && res.statusCode < 300) knownRevision = String(revisionHeader);
     if (isRead && revisionHeader !== undefined && /^\/api\/\w+\/\d+$/.test(url)) editRevisions.set(url, String(revisionHeader));
     if (!isRead && res.statusCode >= 200 && res.statusCode < 300) editRevisions.delete(url);
-    if (res.statusCode === 409) { knownRevision = undefined; refreshSharedData(); throw new Error((res.data as any)?.message || '数据已变化，请刷新'); }
-    setOffline(false);
-    console.log(`[API] ${method} ${url}`, res.statusCode);
+    if (res.statusCode === 409) {
+      // The API returns the current revision in the conflict body. Prefer the
+      // response header when present, but keep body-only 409 responses useful
+      // for retrying after a refresh as well.
+      const bodyRevision = (res.data as any)?.data?.revision;
+      const conflictRevision = revisionHeader === undefined && bodyRevision !== undefined ? String(bodyRevision) : revisionHeader;
+      const conflict = Object.assign(new Error((res.data as any)?.message || '数据已变化，请刷新'), { code: 'REVISION_CONFLICT', revision: conflictRevision });
+      knownRevision = conflictRevision === undefined ? undefined : String(conflictRevision);
+      refreshSharedData(conflictRevision === undefined ? undefined : String(conflictRevision));
+      throw conflict;
+    }    setOffline(false);
+    if (DEBUG_API_LOG) console.log(`[API] ${method} ${url}`, res.statusCode);
 
     if (res.statusCode >= 200 && res.statusCode < 300) {
       const body = res.data as any;
       if (body && body.success) {
         if (isRead) cacheSet(cacheKey, body.data);
-        else { evictRelated(); refreshSharedData(); }
+        else { refreshSharedData(revisionHeader === undefined ? undefined : String(revisionHeader)); }
         return body.data as T;
       }
       throw new Error(body?.message || '请求失败');
     }
     throw new Error((res.data as any)?.message || `HTTP ${res.statusCode}`);
-  } catch (e: any) {
+    } catch (e: any) {
     const raw = String(e?.message || e?.errMsg || '');
 
     // 读接口：网络/服务异常时回退到本地缓存，同时进入离线模式
@@ -281,19 +380,26 @@ async function performRequest<T = any>(options: RequestOptions, identity: string
       const cached = cacheGet<T>(cacheKey);
       setOffline(true);
       if (cached !== undefined) {
-        console.warn(`[API] 离线模式，使用本地缓存: ${url}`);
+        if (DEBUG_API_LOG) console.warn(`[API] 离线模式，使用本地缓存: ${url}`);
         return cached;
       }
       const msg = '暂无本地数据，请检查网络后重试';
       toastOnce(msg);
-      console.error(`[API] ${method} ${url} 失败(无缓存):`, e?.message || e);
+      if (DEBUG_API_LOG) console.error(`[API] ${method} ${url} 失败(无缓存):`, e?.message || e);
       throw new Error(msg);
     }
 
     // 写接口或其他错误：正常提示
+    if (!isRead && isNetworkError(e)) {
+      const attempt = pendingGet(identity);
+      if (attempt) {
+        const recovered = await recoverPending<T>(identity, current, attempt);
+        if (recovered !== undefined) return recovered;
+      }
+    }
     const msg = !isRead && isNetworkError(e) ? '上传结果未确认，表单已保留；请勿更改内容，联网后重试' : friendlyError(e);
-    console.error(`[API] ${method} ${url} 失败:`, e?.message || e);
-    toastOnce(msg);
+    if (DEBUG_API_LOG) console.error(`[API] ${method} ${url} 失败:`, e?.message || e);
+    toastOnce(msg, !isRead);
     throw new Error(msg);
   }
 }

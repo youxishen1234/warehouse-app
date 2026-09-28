@@ -1,0 +1,11 @@
+export function roundDecimal(value: number, places: number): number;
+export function numberValue(value: unknown, label: string, positive?: boolean): number;
+export function lineAmount(quantity: number, price: number): number;
+export function dimensions(specification: string, product?: { length?: number; width?: number }): [number, number];
+export function localDate(date?: Date): string;
+export function sanitizeDecimalInput(value: unknown, maxDecimals?: number): string;
+export const QUANTITY_DECIMALS: 6;
+export const MONEY_DECIMALS: 2;
+export const AREA_DECIMALS: 4;
+export const MAX_QUANTITY_VALUE: number;
+export const MAX_MONEY_VALUE: number;

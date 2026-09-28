@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { isOffline, onOfflineChange, autoBestBase } from '@/services/request';
@@ -60,7 +60,6 @@ function TabSwipeNavigator() {
 
 function App(props) {
   // 可以使用所有的 React Hooks
-  useEffect(() => {});
 
   return (
     <TeamAccess>

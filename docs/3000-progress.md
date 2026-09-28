@@ -1,0 +1,493 @@
+﻿# 曙光库存 3000 条实施进度
+
+## 2026-09-28 ??????
+
+| ?? | ?? | ????? |
+| --- | --- | --- |
+| 8 | 已通过 | Atomic rollback evidence covers stock, balances, ledgers, audit and idempotency receipts. |
+| 28 | 已通过 | Per-line cent rounding reconciles inbound/outbound balances and ledgers; half-cent regression passes. |
+| 29 | 已通过 | Accounting identity failures roll back stock, party balances and ledgers atomically. |
+| 31 | 已通过 | Stocktake void error includes the re-count correction guidance. |
+| 32 | 已通过 | Six-decimal stock comparison boundary regression passes. |
+| 40 | 已通过 | Product edits preserve historical transaction snapshots. |
+| 45 | 已通过 | Batch decimal outbound leaves no negative or ghost inventory. |
+| 46 | 已通过 | Startup and restore normalize sub-micro ghost stock; precision tests pass. |
+| 71 | 已通过 | Relative image backup paths and uploads directory security regression pass. |
+| 78 | 已通过 | System-generated ledgers roll back with the business transaction. |
+| 79 | 已通过 | Concurrent outbound produces one accepted receivable and one conflict. |
+| 83 | 已通过 | Inbound/outbound dependency failure keeps forms not-ready; browser retry regression passes. |
+| 84 | 已通过 | Refresh sequence and stale-response race regression passes. |
+| 93 | 已通过 | Delivery CSV freight separation and UTF-8 BOM regression passes. |
+| 97 | 已通过 | Backup uses JSON download/file restore; reporting-browser Chromium verifies download, cancel and restore. |
+| 109 | 已通过 | Order-to-outbound API reuses batch outbound, changes production status to shipped, and rolls back on stock failure. |
+| 139 | 已通过 | Graceful shutdown drains in-flight requests; POSIX process check is explicitly skipped on Windows. |
+| 140 | 已通过 | In-flight request counter and drain logging regression passes. |
+| 175 | 已通过 | CSV and backup JSON use streaming serialization; 30000-row export regression passes. |
+| 177 | 已通过 | Idempotency key validation is centralized across write routes. |
+| 181 | 已通过 | Extended non-negative invariants roll back orders, ledgers and delivery details. |
+| 233 | 已通过 | Server security headers and CSP regression pass. |
+| 234 | 已通过 | H5/Desktop CSP and server CSP header regression pass. |
+| 237 | 已通过 | Image JSON limit is 2.5 MiB; decoded image bytes remain capped at 2 MiB; 413 regression passes. |
+| 322 | 已通过 | Audit pagination fixed at 50 with strict page validation. |
+| 343 | 已通过 | Products, records, inventory, orders, inbound and outbound use useRemoteData with loading/error/stale/unmount guards. |
+| 393 | 已通过 | If-Match revision precedence and resource edit revision regression passes. |
+| 395 | 已通过 | Network write retry reuses idempotency key and checks receipt; request revision tests pass. |
+| 414 | 已通过 | Seven list-page React.memo row tests pass. |
+| 418 | 已通过 | Product images use lazy loading and fixed thumbnail dimensions; H5 build passes. |
+| 419 | 已通过 | Product upload compresses supported browser images to max edge 1600 and JPEG quality 0.82; H5 build passes. |
+| 421 | 已通过 | Webpack stats and H5 build confirm constrained app assets and retained native sync; artifact tests pass. |
+| 427 | 已通过 | Hashed H5 assets and update manifest use cache controls; server/header and artifact tests pass. |
+| 434 | 已通过 | Product store shares concurrent reads and invalidation; product-store regression passes. |
+| 444 | 已通过 | Backup page has no Textarea and reporting-browser verifies large backup download/restore. |
+| 1766 | 已通过 | Ledger include_voided query contract and HTTP filtering regression pass. |
+| 1862 | 已通过 | Order filters, sorting and pagination are validated by HTTP regression. |
+| 2185 | 已通过 | Inbound remark 500-character client/server contract and browser regression pass. |
+| 2467 | 已通过 | Order number input max length matches the server contract. |
+| 2536 | 已通过 | Records page has atomic multi-source loading and Chinese retry. |
+| 2538 | 已通过 | Records page has explicit loading and empty states. |
+| 2592 | 已通过 | Records page does not enter ready state on partial failure. |
+| 2594 | 已通过 | Records errors are Chinese and use the existing retry entry. |
+| 2662 | 已通过 | Ledger amount input rejects invalid values and rounds to two decimals. |
+| 2680 | 已通过 | Ledger paste sanitizer regression passes. |
+| 2682 | 已通过 | Ledger preview and POST reuse the same money parser. |
+| 2890 | 已通过 | Carton calculator is synchronous local computation with no in-flight request; N/A cancellation evidence passes. |
+
+## 2026-09-28 商品编辑文本长度和缓存验收补充
+
+- 商品编辑页商品名称/分类限50字符，规格/材质/楞型限100字符，Chromium 长文粘贴验收通过。
+- 备份恢复精度校验补充非分币金额拒绝回归；H5 静态缓存的生产响应头实验仍待部署环境核对。
+
+
+## 2026-09-28 å®¢æ·ä¸ä¾åºåææ¬è¾å
+¥é¿åº¦çº¦æ
+
+- å®¢æ·/ä¾åºåç¼è¾è¡¨åå¯¹åç§°ãèç³»äººãçµè¯ãå°åãå¤æ³¨è®¾ç½®ä¸æå¡ç«¯ä¸è´ç maxlengthã
+- Chromium ç²è´´å®æµéªè¯é¿åº¦éå¶ï¼ä½é¢éé¢è¾¹çï¼éè´ãä¸¤ä½å°æ°ãè¶
+èå´ãææ°è®°æ°ï¼åçªéªæ¶éè¿ã
+- æªå¢å å¸¸é©» UI æä¿®æ¹é¡µé¢ä¸åºé¨ Tab ç»æã
+
+
+
+## 2026-09-28 å®¢æ·ä½é¢è¾å
+¥ä¸äºå¡æç­å¼åå½
+
+- å®¢æ·/ä¾åºåä½é¢è¾å
+¥å³æ¶éå¶éè´ä¸¤ä½å°æ°ï¼æç»è´æ°ãç§å­¦è®¡æ°åè¶
+èå´ç²è´´ï¼æå¡ç«¯ç¬ç«æ ¡éªä¿çã
+- Chromium çå®éªè¯æ°å­è¾å
+¥è¾¹çï¼çº¸ç®±æ¢ç®å
+å¤å°ºå¯¸åéæ³å¤å½¢æç¤ºäº¦éè¿ã
+- çç¹ adjustment éå¤è´¦æ¬ãéè¯¯æ¹ååè§¦åæ´ä¸ªäºå¡åæ»ã
+
+
+
+## 2026-09-28 ä¸å²ä½æ¹æ¬¡ï¼æ¥å¿è±æãçç¹æç­å¼ä¸ä½é¢è¾å
+¥æ ¡éª
+
+- åå¸å²ä½å¤æ ¸æ¡ç® 2261ï¼ç­æ´ report æ
+éæ¥å¿è®°å½ request-id/æ¹æ³/è·¯å¾/ç¶æï¼ææå¼åå
+é¨è·¯å¾è±æï¼æ
+éæ³¨å
+¥éªè¯ååºä¸æ³é²ç»èã
+- åºå­å²ä½è¡¥å¼ºæ¡ç® 8/29ï¼åç»­äºå¡ä¹æ£æ¥çç¹è°æ´è´¦æ¬æ°éãéé¢åæ¹åï¼éå¤ææ¹åéè¯¯ååå­åæ»ã
+- åç«¯å²ä½å®ææ¡ç® 1873ï¼å®¢æ·/ä¾åºåä½é¢è¾å
+¥å³æ¶éå¶éè´ä¸¤ä½å°æ°ï¼Chromium éªè¯è´æ°ãç§å­¦è®¡æ°åè¶
+èå´ç²è´´æç»ã
+
+
+## 2026-09-28 ???????????????????????
+
+- ???????? 2261???? report ????? request-id/??/??/????????????????????????????
+- ???????? 8/29????????????????????????????????????
+- ???????? 1873???/??????????????????Chromium ??????????????????
+
+
+## 2026-09-28 ???????????
+
+- Chromium ??????????????????????????????????????? 0?
+- ??????????????????????????????
+- ??? report ?????????????request-id ????????
+
+## 2026-09-27 ????????????????????
+
+- ???????????????????? debt???? payable ??????????????????/??? ID ???? party_type ?????
+- ?????????????????????????????????????????????? Chromium/WebKit ???
+- ?????? dist/ZIP ??????? SHA256 ?????? symlink???????????????????????????????
+- ??????? 40 ???? 29 ??TypeScript?ESLint ???????????????? App Store?
+
+
+## 2026-09-27 ???????????
+
+- ?? 28?????????????????????????????????????? 5 ?? 1??? debt ? receivable ?????? 8??????????????????
+- `backend/stock.test.cjs` ?? 18 ?????`npm run verify:fast` ???? 39 ???? 25 ??TypeScript ? ESLint ?????
+- ??????? 28 ??????????????????????????
+
+## 2026-09-27 库存价值逐商品舍入修复
+
+- 条目 63：修复先累计未舍入价值导致总额与逐商品价值不一致的问题。现复用 lineAmount，逐商品保留两位后汇总；两个 0.005 的库存价值合计为 0.02。
+- 新增 backend/stats-precision.test.cjs，修复前失败（0.01），修复后通过；同时恢复安全库存为零不预警、停用商品不参与统计的运行时覆盖。测试使用独立子进程及专属临时备份目录。
+- npm run verify:release 通过：H5 构建、TypeScript、后端 34 项、资源测试 25 项；日志 release/verify-stats-precision.log。入口仍有约 453 KiB 体积警告。
+- node tests/navigation-browser.cjs 在 Chromium 和 WebKit 均通过四 Tab、手势、布局和启动冒烟；接口由测试模拟，不能作为真实服务端或原生设备验收。
+- 修复条目 46 与 49 粘连导致编号遗漏的记录；46 降为部分完成，尚未完整核对所有库存写入路径。未执行生产部署或原生资源目录同步。
+
+依据：`docs/曙光库存-优化建议3000条.md`。本文记录当前工作区的已完成、部分完成和待验证条目；有实现不等于原始要求全部验收。其余条目不能据此视为已完成。
+
+更新时间：2026-09-27
+
+完整逐条对照见 [3000-status.md](./3000-status.md)，由 
+ode scripts/report-3000-progress.cjs` 按编号去重生成。无完成记录统一标为“待实施／待核对”，不将其直接判定为代码中完全不存在。
+
+
+| 75 | 已通过 | Voided receivable is excluded from stats, default ledger hides it, include_voided preserves history; stock.test HTTP regression passes |
+| 76 | 已通过 | 账本页操作文案统一为“作废”，确认提示说明保留历史且不再计入汇总，错误提示使用“流水作废失败” | `src/pages/ledger/index.tsx`；verify:fast 与 H5 构建通过 |
+| 77 | 已通过 | 自动生成的出入库账本流水禁止从账本页单独作废，服务端提示必须通过原单作废 | `backend/stock.test.cjs` 验证送货单 payable 流水边界；verify:fast 与 H5 构建通过 |
+| 条目 | 状态 | 实现位置 | 验证 |
+| --- | --- | --- | --- |
+| 37 |  已通过  | ??/??????????????????????????????????????? | backend/db.js?src/pages/ledger/index.tsx?backend/stock.test.cjs???60??? |
+| 27 | 已通过 | `backend/db.js`：送货单运费生成 expense 账本流水；整单作废同步作废 | `backend/stock.test.cjs` |
+| 33 | 已通过 | 入库作废被后续出库占用时列出阻塞出库流水编号和数量 | `backend/stock.test.cjs` |
+| 30 | 已通过 | 盘点调整按差异金额生成 income/expense 账本流水，盘盈盘亏方向分明 | `backend/stock.test.cjs` |
+| 43 | 已通过 | 实际入库数量允许为 0；只保留计划数量，不创建库存/应付流水；整单作废可安全处理 | `backend/stock.test.cjs` |
+| 44 | 已通过 | 实际入库数量超过计划数量时，前端 showModal 二次确认；确认后按实际数量入库 | `tests/stock-browser.cjs` |
+| 49 | 已通过 | 客户/供应商创建期初余额时同步生成 receivable/payable 账本流水 | `backend/stock.test.cjs` |
+| 63 | 已通过 | stats.totalValue 先用 lineAmount 对逐商品库存价值舍入，再汇总到两位小数 | `backend/stats-precision.test.cjs`：两个 0.005 合计 0.02，排除停用商品 |
+| 64 | 已通过 | stats 新增 totalStockByUnit，按单位分组返回并保留旧 totalStock 兼容 | `backend/stock.test.cjs` |
+| 50 | 已通过 | 客户 debt、供应商 payable 上调/下调分别生成 receivable/payable 或 settlement 流水 | `backend/stock.test.cjs` |
+| 51 | 已通过 | 客户/供应商结算继续走现有事务写接口并生成 settlement 账本流水 | `backend/stock.test.cjs`、`src/pages/customers/index.tsx` |
+| 52 | 已通过 | 客户/供应商页面结算弹窗支持部分金额、备注与余额上限校验 | `tests/team-browser.cjs`、
+px tsc --noEmit` |
+| 55 | 已通过 | `backend/db.js`：已完成/已取消订单禁止改数量和单价 | `backend/stock.test.cjs` |
+| 56 | 已通过 | `backend/db.js`：订单事件使用 
+extOrderEventId`，避免同毫秒冲突 | `backend/stock.test.cjs`、数据迁移兼容 |
+| 59 | 已通过 | `backend/db.js`：送货单日期、盘点日期禁止晚于 2026-09-27 | `backend/stock.test.cjs` |
+| 66 | 已通过 | `backend/db.js`、`src/utils/format.ts`、首页：安全库存为 0 不触发预警 | `backend/stock.test.cjs` |
+| 94 | 已通过 | `backend/team.js`：送货单 CSV 对字符串公式前缀加单引号并保留 BOM | `backend/stock.test.cjs` |
+| 85 | 已通过 | 高频数字输入统一清洗非法字符，数量最多 6 位小数，金额最多 2 位 | `src/utils/stock-math.ts`、表单页面、`backend/stock.test.cjs` |
+| 86 | 已通过 | 输入层拒绝科学计数法和十六进制等非业务数字格式，后端仍独立校验 | `backend/stock.test.cjs`、
+px tsc --noEmit` |
+| 87 | 已通过 | 金额/数量输入在前端即时截断超长小数 | 高频表单代码、H5 构建 |
+| 113 | 已通过 | /health 真实检查数据文件可读写、revision 和账号文件可用，不暴露路径 | `backend/team.test.cjs` |
+| 111 | 已通过 | 账本金额改用 numberValue，显式拒绝布尔、空值、文本、负数和超精度输入 | `backend/stock.test.cjs` |
+| 103 | 已通过 | 商品资料更新时间与库存更新时间分离，库存变动不再改变商品资料列表排序 | `backend/db.js`、`backend/stock.test.cjs` |
+| 104 | 已通过 | 商品新增 profile_updated_at/stock_updated_at 并兼容旧 updated_at 数据 | `backend/db.js`、`backend/stock.test.cjs` |
+| 105 | 已通过 | 客户/供应商增加 profile_updated_at/balance_updated_at，余额调整不改变资料排序 | `backend/db.js`、迁移兼容 |
+| 102 | 已通过 | 商品、客户、供应商、订单、盘点、送货单、流水列表在同时间戳下按 ID 稳定排序 | `backend/stock.test.cjs` |
+| 95 | 已通过 | `backend/team.js`：流水 CSV、账本 CSV 复用同一安全单元格编码 | `backend/stock.test.cjs` |
+| 166 | 已通过 | server.js 处理畸形 JSON、空/超大请求体，返回中文 JSON 错误而非 HTML | 临时 HTTP 集成验证 |
+| 167 | 已通过 | API 响应统一返回 X-Request-Id，便于日志与问题追踪 | `backend/team.test.cjs`、server 集成验证 |
+| 213 | 已通过 | 订单、盘点、订单事件改用持久化递增计数器，避免 Date.now() 主键碰撞 | `backend/stock.test.cjs` |
+| 214 | 已通过 | 订单/盘点/订单事件主键统一为 number 递增，旧数据 load 迁移兼容，恢复备份同时重算 
+extOrderId` | `backend/db.js`、`backend/stock.test.cjs` |
+| 68 | 已通过 | 备份恢复增加完整健康检查：非负核心数值、重复编号、悬空商品/往来引用、明细结构异常均拒绝，失败不改变在线数据 | `backend/stock.test.cjs` |
+| 69 | 已通过 | 备份恢复通过 transact 递增 revision，防止其他客户端基于旧版本提交 | `backend/stock.test.cjs` |
+| 117 | 已通过 | 删除 server.js 中被 team.js 遮蔽的重复 stats/products/customers/suppliers/stock/transactions/orders/ledger 路由 | `backend/server.js`、后端测试 |
+| 131 | 已通过 | 业务写路径统一由 team.js 事务路由处理，移除旧的非事务直连写入口 | `backend/server.js`、后端测试 |
+| 164 | 已通过 | server.js 仅在直接运行时监听，导出 app 供测试/集成验证 | `backend/server.js` |
+| 215 | 已通过 | `load` 与备份恢复补齐 orders/order_events/stocktakes 计数器 | 后端回归测试通过 |
+| 70 | 已通过 | 商品图片上传改为内容寻址文件名；校验 PNG/JPEG/WebP 文件头；重复上传复用文件并替换后清理旧图 | `backend/team.test.cjs` |
+| 81 | 已通过 | 写请求断线后以同一 Idempotency-Key 自动重试；待确认请求在本地短期持久化，后续重提可复用回执 | `src/services/request.ts`、TypeScript/H5 构建 |
+| 82 | 已通过 | 全局共享刷新轮询增加请求互斥、页面切后台暂停、回前台立即同步，并使用统一服务地址 | `src/components/TeamAccess/index.tsx`、H5 构建 |
+| 114 | 已通过 | `/api/sync` 返回 ETag，revision 未变化时支持 If-None-Match/304；客户端轮询不再重复下载 JSON | `backend/team.test.cjs`、`src/components/TeamAccess/index.tsx` |
+| 130 | 已通过 | 图片文件写入与事务更新失败时清理新文件和临时文件，事务成功后安全删除旧引用文件 | `backend/team.js`、`backend/team.test.cjs` |
+| 98 | 已通过 | 启动时清理残留 data.json.tmp 文件；原子替换后尽力 fsync 数据目录项，保留原有文件 fsync | `backend/db.js`、后端回归测试 |
+| 200 | 已通过 | 启动与备份恢复前自动创建带时间戳快照，备份目录可通过环境变量指定 | `backend/db.js`、`backend/stock.test.cjs` |
+| 201 | 已通过 | 自动备份按最近份数与最长天数双条件轮转，主动备份命名空间不受影响 | `backend/db.js` |
+| 202 | 已通过 | 自动备份目录/文件创建后设置 0700/0600 权限（平台不支持时保留系统 ACL） | `backend/db.js` |
+| 217 | 已通过 | 数据 `_meta.schemaVersion` 默认补齐并拒绝高于当前版本的文件；恢复备份统一写入当前版本 | `backend/db.js`、`backend/stock.test.cjs` |
+| 96 | 已通过 | 备份恢复进一步校验流水类型、金额恒等式、账本/订单/订单事件/送货单引用、盘点差额和合计，异常仍在覆盖前拒绝 | `backend/db.js`、`backend/stock.test.cjs`?backup-validation.test.cjs ????????????????|
+| 228 | 已通过 | team 路由按受控客户端 IP+设备 ID做写入/导出分级限流，超限返回 429 与 Retry-After | `backend/team.js`、`backend/server-security.test.cjs` |
+| 229 | 已通过 | trust proxy 默认仅信任回环代理，可通过 `WAREHOUSE_TRUSTED_PROXY_CIDRS` 显式配置；仅受信代理才读取 cf-connecting-ip/x-forwarded-for | `backend/server.js`、`backend/updates.js`、`backend/server-security.test.cjs` |
+| 231 | 已通过 | CORS 从通配符改为允许来源白名单，支持正式域名、Capacitor localhost 和本地开发端口；非法预检返回 403 | `backend/server.js`、`backend/server-security.test.cjs` |
+| 232 | 已通过 | CORS 暴露头收敛为 X-Warehouse-Revision；客户端用该 revision 生成条件同步标记 | `backend/server.js`、`src/components/TeamAccess/index.tsx` |
+| 247 | 已通过 | 图片上传除 data URL 白名单外校验 PNG/JPEG/WebP 文件头，伪装文本被拒绝 | `backend/team.js`、`backend/team.test.cjs` |
+| 248 | 已通过 | 图片扩展名白名单、2 MiB 上限和内容寻址文件名统一落地，重试不产生随机孤儿文件 | `backend/team.js`、`backend/team.test.cjs` |
+| 293 | 已通过 | 列表查询的 id/page/from/to 参数拒绝数组、非数字、负数和超安全整数 | `backend/team.js`、`backend/team.test.cjs` |
+| 291 | 已通过 | 列表接口统一支持受白名单约束的 `sort`／`order`；非法、重复、嵌套排序参数返回中文 400；先筛选、再排序、后分页，缺失字段和同值均有稳定处理且不修改持久化数据 | `backend/list-sort.js`、`backend/team.js`、`docs/api-list-query.md`；`backend/list-query.test.cjs` 覆盖九类列表、白名单字段、稳定分页和恶意参数 |
+| 294 | 已通过 | transactions/ledger 的 `type` 与订单列表 `status` 均限制白名单并返回中文允许值；订单状态筛选先于分页，新增／修改继续共享同一状态白名单 | `backend/team.js`、`backend/list-sort.js`、`backend/list-query.test.cjs`、`tests/api-query.test.cjs`；HTTP、客户端类型和浏览器回归 |
+| 296 | 已通过 | include_voided 查询参数只接受 true/false，日期 from 不得晚于 to | `backend/team.js`、`backend/team.test.cjs` |
+| 312 | 已通过 | 409 冲突响应体增加当前 revision，客户端可据此刷新后换新幂等键重试 | `backend/team.js`、`backend/team.test.cjs` |
+| 313 | 已通过 | 429 限流响应保持中文 JSON 并带 Retry-After | `backend/team.js`、`backend/server-security.test.cjs` |
+| 342 | 已通过 | shared-refresh 携带 revision 并跳过相同版本的重复刷新；写请求与全局轮询传递服务端 revision | `src/services/shared-refresh.ts`、`src/services/request.ts`、`src/components/TeamAccess/index.tsx` |
+| 360 | 已通过 | 更新上报与业务请求统一复用 session.ts 的设备 ID | `src/services/session.ts`、`src/services/update.ts`、TypeScript/H5 构建 |
+| 361 | 已通过 | 设备 ID 迁移兼容旧 `sg_did`，同时写入统一 Taro storage，避免同一设备重复统计 | `src/services/session.ts` |
+| 372 | 已通过 | formatTime/formatShortTime 对非法时间返回稳定占位，formatMoney 对 NaN/Infinity 返回安全金额 | `src/utils/format.ts`、TypeScript/H5 构建 |
+| 370 | 已通过 | 页面金额展示统一使用 utils/format，修复首页和打印页重复货币符号；结算输入使用 formatMoneyInput 保持无符号、无分组的两位小数，审计时间使用 formatTime；源码检索剩余页面 toFixed 仅用于尺寸／面积计算 | `src/utils/format.ts`、首页／客户／审计／打印页面；格式化单测与首页、账本、打印 Chromium/WebKit 回归 |
+| 371 | 已通过 | formatMoney 对零、负数、分组金额、NaN／Infinity／非数字保持稳定输出；账本收入与支出分别显示 +¥7.25、-¥2.50，保留业务方向且仅含一个货币符号 | `tests/format.test.cjs`、`tests/reporting-browser.cjs`；金额边界单测、账本 Chromium/WebKit 回归 |
+| 413 | 已通过 | 入库/出库金额与库存计算使用 memo，客户流水统计按往来对象建立索引，减少渲染中重复过滤 | `src/pages/inbound/index.tsx`、`src/pages/outbound/index.tsx`、`src/pages/customers/index.tsx` |
+| 384 | 已通过 | 主要页面加载在卸载时递增序号守卫，所有过期响应回调被丢弃，避免卸载后 setState 与旧数据覆盖 | 相关页面、TypeScript/H5 构建 |
+| 297 | 已通过 | 通用 POST/PUT 写入口拒绝非 JSON 或非对象请求体，返回中文 400 | `backend/team.js`、`backend/team.test.cjs` |
+| 301 | 已通过 | 通用资料字段增加服务端长度上限（名称、规格、备注、地址等），超限不落库 | `backend/team.js`、`backend/team.test.cjs` |
+| 302 | 已通过 | 电话/司机电话采用兼容座机的字符与长度校验，非法格式返回 400 | `backend/team.js`、`backend/team.test.cjs` |
+| 307 | 已通过 | 通用 lines 明细入口校验数组、行对象、商品和数量字段，错误定位到行号 | `backend/team.js` |
+| 398 | 已通过 | 请求层 API 成功/失败日志在生产构建关闭，避免线上输出业务请求细节 | `src/services/request.ts`、TypeScript/H5 构建 |
+| 399 | 已通过 | 本地业务缓存函数明确保持禁用，仅保留会话/设备与待确认写操作本地状态 | `src/services/request.ts` |
+| 400 | 已通过 | 移除业务缓存已禁用后的无效 `evictRelated` 清理路径 | `src/services/request.ts` |
+| 402 | 已通过 | autoBestBase 独立探测默认服务器、自定义地址和公网入口，候选切换顺序与实现一致 | `src/services/request.ts` |
+| 403 | 已通过 | 离线探测使用独立超时并仅在离线时运行，避免与业务请求共享错误重试 | `src/services/request.ts`、`src/app.tsx` |
+| 432 | 已通过 | 删除 App 组件中的空 useEffect 副作用 | `src/app.tsx` |
+| 436 | 已通过 | shared-refresh 同一事件循环内合并刷新通知，避免一次写操作触发重复页面加载 | `src/services/shared-refresh.ts` |
+| 411 | 已通过 | StockProductPicker 搜索输入增加 300ms 防抖，匹配结果使用 useMemo 缓存 | `src/components/StockProductPicker/index.tsx` |
+| 412 | 已通过 | 现有关键词入口（商品选择器、库存查询）统一增加 300ms 防抖，输入展示与实际过滤状态分离 | `src/components/StockProductPicker/index.tsx`、`src/pages/inventory/index.tsx` |
+| 413 | 已通过 | 库存过滤、库存盘点记录索引和首页流转最大值使用 memo，减少渲染中重复计算 | `src/pages/inventory/index.tsx`、`src/pages/home/index.tsx` |
+| 416 | 已通过 | ???????? useMemo([today])???????? memo????????????????????????????????????????????????? | src/pages/home/index.tsx?tests/home-origin-browser.cjs?TypeScript?ESLint?Chromium/WebKit ??????? |
+| 381 | 已通过 | fetchApi 遇到 5xx 会继续尝试下一个候选 origin；4xx/成功响应固化当前 origin，切换仅在开发日志记录 | `src/services/request.ts`、TypeScript/H5 构建 |
+| 382 | 已通过 | 故障转移只在可用响应源成功后更新 active origin，避免源地址来回漂移 | `src/services/request.ts` |
+| 383 | 已通过 | 健康探测保持 5 秒独立超时，业务请求仍按原分级超时 | `src/services/request.ts` |
+| 435 | 已通过 | 首页、入库、出库、客户页对 useEffect/useDidShow 的短时间重复加载做去重 | 相关页面、TypeScript/H5 构建 |
+| 428 | 已通过 | 修复游客会话建立早于页面订阅时共享刷新事件丢失的问题，待处理刷新会在订阅后补发，页面不再停在连接提示 | `src/services/shared-refresh.ts`、`tests/stock-browser.cjs` |
+| 390 | 已通过 | 新增 `/api/sync/receipt/:key` 回执查询；写请求网络异常后先按原幂等键确认服务端是否已提交，成功则直接返回首次结果 | `backend/db.js`、`backend/team.js`、`src/services/request.ts`、`backend/team.test.cjs` |
+| 391 | 已通过 | 409 冲突会清理旧 pending 幂等键并保留最新 revision，下一次重试自动生成新键建立新基线 | `src/services/request.ts`、`backend/team.test.cjs` |
+| 506 | 已通过 | 热更新服务端 REPORT_EVENTS 纳入客户端已上报的 `download_attempt`，不再返回 400 | `backend/updates.js`、`backend/updates.test.cjs` |
+| 507 | 已通过 | 更新事件统一携带当前原生版本 
+ative_version`，便于兼容性统计 | `src/services/update.ts`、TypeScript 构建 |
+| 409 | 已通过 | CSV/文件分享取消按用户主动取消处理，不再显示失败提示；真实下载失败仍返回明确中文错误 | `src/services/download.ts`、TypeScript 构建 |
+| 106 | 已通过 | 启动 load 扫描商品、往来、流水、账本、盘点、订单事件和送货单外键；悬空引用不阻断启动，写入健康 warningCount 并记录服务端日志 | `backend/db.js`、`backend/db-health.test.cjs` |
+| 448 | 已通过 | 网络错误写请求最多重试两次并使用 250ms/500ms 指数退避，始终复用原幂等键，避免重复入账与重试风暴 | `src/services/request.ts`、TypeScript/后端回归 |
+
+| 412 | 已通过 | 商品编辑页规格/材质历史建议增加 300ms 防抖并使用 memo 过滤，避免每次输入全量计算 | `src/pages/product-edit/index.tsx`、TypeScript/H5 构建 |
+| 336 | 已通过 | 补齐 BackupMetadata／WarehouseBackupData／BackupExport 与供应商删除响应类型；getBackup 返回 BackupExport，restoreBackup 返回 Stats，文件解析与恢复输入用 unknown 保留后端完整校验边界；api.ts 无显式 any 或无类型 request 调用 | `src/types/index.ts`、`src/services/api.ts`、`src/pages/backup/index.tsx`；
+px tsc --noEmit`、Chromium/WebKit 备份下载／取消／恢复回归 |
+| 337 | 已通过 | 新增 Supplier 类型并让供应商 API 返回 Supplier，保留与客户页面的结构兼容 | `src/types/index.ts`、`src/services/api.ts` |
+| 338 | 已通过 | 盘点、账本、送货单、订单事件类型统一集中到 `src/types`；`api.ts` 仅保留兼容性 type re-export | `src/types/index.ts`、`src/services/api.ts` | 
+px tsc --noEmit` |
+| 443 | 已通过 | 每页 200 条；修复第二页失败后重试错误请求上一页，以及无会话冷启动未自动重载；405 条按 200→400→405 展示，请求序列为 1、2、2、3 | `tests/reporting-browser.cjs` Chromium/WebKit、`backend/stock.test.cjs`、TypeScript/H5 构建 |
+| 467 | 已通过 | 修复 Taro 容器裁断打印内容；仅当前打印页启用样式，隐藏工具栏、底栏和其他页面，打印结束及卸载清理标记，行内容避免跨页拆分 | 双引擎 print media；Chromium 405 条生成 8 页 A4 PDF。WebKit 无 PDF API，实际 iOS／物理打印机仍待验收 |
+| 423 | 已通过 | H5 全部 14 个非 Tab 二级页均按需请求独立 JS chunk；首页作为共同基线，路由资源无 4xx 且 Chromium/WebKit 均无页面异常 | `tests/secondary-routes-browser.cjs`、Taro H5 构建产物；覆盖库存、商品、记录、账本、订单、换算、团队、客户/供应商、编辑、自定义文案、备份和打印页 |
+| 425 | 已通过 | H5 生产 webpack 链显式关闭 sourcemap，开发构建保留默认调试能力；配置位于 h5.webpackChain，dist/www 发布产物不携带源码映射 | `config/index.ts`、`tests/build-artifact.test.cjs`；H5 构建与 dist/www 无 .map 文件和实际 sourceMappingURL 注释 |
+| 430 | 已通过 | TeamAccess 的 4 秒共享同步轮询在页面隐藏／切后台时暂停，回到可见状态立即补同步；定时器和 visibilitychange 监听在卸载时清理 | `src/components/TeamAccess/index.tsx`；`tests/home-origin-browser.cjs` Chromium/WebKit 验证隐藏 24 小时无 sync 请求、回前台立即恢复 |
+| 422 | 已完成 | 全仓搜索未发现 dayjs 运行时代码引用，移除未使用的直接依赖及锁文件条目 | `package.json`、`package-lock.json` | 全仓引用检索、TypeScript/H5 构建 |
+| 331 | 已完成 | 全仓源码无 zustand 导入，移除未使用的直接依赖与 `use-sync-external-store` 锁条目；未引入新的 store，也未改变各页数据刷新逻辑 | `package.json`、`package-lock.json` | 全仓引用检索、TypeScript/H5 构建 |
+
+| 171 | 已通过 | 九类列表支持可选 page/page_size，返回 items/total/page/page_size；不传分页仍返回数组，默认每页 100、最大 500；总数与稳定顺序保留，页起止偏移超出安全整数均拒绝 | `backend/team.js`、`src/services/api.ts`、`src/types/index.ts`、`backend/stock.test.cjs`；越界空页、默认值、上限及兼容性回归 |
+| 172 | 已通过 | 通用列表查询统一验证 keyword/from/to/type/id/include_voided 和分页参数；CSV 复用相同验证，非法重复参数、嵌套对象、倒置日期和枚举返回 400 中文 JSON | `backend/team.js`、`backend/team.test.cjs`、`backend/stock.test.cjs` |
+| 173 | 已通过 | from/to 接受毫秒时间戳或本地 `YYYY-MM-DD`；from 取本地日初、日期型 to 取本地日末，DST 跨日使用本地日历计算，非法日期/格式和倒置范围返回中文 400；保留旧毫秒时间戳兼容 | `backend/date-query.js`、`backend/db.js`、`backend/team.js`、`backend/date-query.test.cjs`、`backend/list-query.test.cjs`；含 DST、边界和 HTTP 回归 |
+| 174 | 已通过 | 流水和账本 CSV 与列表复用筛选逻辑及验证，未因分页截断整份导出；商品和类型过滤结果、错误参数响应均验证 | `backend/stock.test.cjs` CSV filters 回归、`tests/reporting-browser.cjs` 真实下载 |
+| 316 | 已通过 | 流水／账本 CSV 在筛选无结果时返回中文 404 JSON，不再下载只有表头的空文件；有结果时继续复用列表筛选、排序、BOM、转义和下载鉴权 | `backend/team.js`、`backend/list-query.test.cjs`；空结果、合法筛选与分页参数不截断导出回归 |
+| 408 | 已通过 | getBaseUrl 与业务请求统一读取 activeApiOrigin，手动切换立即生效，业务故障切源后下载与共享同步跟随新地址；来源版本守卫阻止旧响应／健康探测覆盖较新选择，保留地址白名单、旧地址迁移和原会话凭据 | `src/services/request.ts`、`src/services/download.ts`、`tests/request-origin.test.cjs`；8 项地址单测，Chromium/WebKit 故障切源后真实 CSV 下载、鉴权与同步来源回归 |
+
+## 当前验证结果
+
+- 2026-09-27 本批复验：
+ode --test backend/*.test.cjs` 40/40 通过，包含 CSV 筛选、中文参数错误、分页、日期双格式与日末边界、稳定排序、订单状态筛选、分接口请求体上限、边界偏移与优雅停机。
+- 新增列表查询契约：
+ode --test backend/list-query.test.cjs tests/api-query.test.cjs` 共 8 项通过（HTTP 白名单／稳定排序／分页／状态／CSV，以及客户端 URL 编码和 type-only 字段约束）。
+- 新增 
+ode --test tests/request-origin.test.cjs tests/format.test.cjs`：11/11 通过，其中 8 项服务地址单测、3 项格式化单测，覆盖手动切源、故障转移、过期响应／探测、下载鉴权、未信任地址、旧地址迁移与金额／时间边界。
+- 
+px tsc --noEmit`：通过。
+- 新增 
+ode --test tests/build-artifact.test.cjs`：dist 与 www 产物 2/2 通过，无 .map 文件和实际 sourcemap 注释；构建配置中的生产 devtool=false 与证据一致。
+- 
+pm run build:h5`：后端请求体限制批次重新构建成功，日志为 `release/build-body-limit.log`；仍有既有两项 bundle 体积警告，entrypoint 约 453 KiB、app JS 约 256 KiB。
+- 列表业务双引擎回归：
+ode tests/order-query-browser.cjs` 与 `ORDER_BROWSER=webkit node tests/order-query-browser.cjs` 均通过；390／1280 宽度验证订单默认全状态加载、新增金额、状态变更和状态记录，无页面错误。
+- 
+pm run build:h5`：构建成功；最新 entrypoint 约 453 KiB、app JS 约 256 KiB，仍有两项 bundle 体积警告。产物为 `dist/`，日志为 `release/build-origin-home.log`。此前移除未使用的 dayjs/zustand 未减少运行时体积，保留该结论。
+- 
+ode tests/home-origin-browser.cjs` 与 `HOME_BROWSER=webkit`：跨日／跨月刷新、页面和共享 sync 后台暂停、隔夜恢复、单一货币符号、主来源 503 后故障切源、携带鉴权的 CSV 真实下载及同步轮询跟随来源均通过；仅使用隔离测试数据并拦截外部 API。
+- 最新浏览器回归：
+ode tests/navigation-browser.cjs`（Chromium/WebKit）、
+ode tests/stock-browser.cjs`（Chromium/WebKit，18 routes、390/1280 宽度、实际入账／下载／作废／防双击、无页面错误或缺失资源）、
+ode tests/team-browser.cjs`（游客启动、商品新增、部分结算与双会话可见性）均通过；四个 Tab 次序未变。
+- 
+ode tests/reporting-browser.cjs` 与 `REPORT_BROWSER=webkit`：冷启动、405 条分页、第二页失败重试、打印样式、账本 CSV 保存、收支金额符号、备份下载／取消／恢复均通过，无页面错误。Chromium PDF 为 8 页；`release/reporting-check/` 中均为隔离测试数据。
+- 本批定向 ESLint 为 0 errors：使用 `--no-eslintrc --config node_modules/eslint-config-taro/index.js`；前端按现有约定关闭 `react/react-in-jsx-scope`、`jsx-quotes`，CommonJS 测试关闭 `@typescript-eslint/no-var-requires`、`import/no-commonjs`。保留 `src/pages/team/index.tsx` 既有 load 依赖的 `react-hooks/exhaustive-deps` warning，配置仍提示 React 版本；未宣称全仓 lint 无告警。
+- 原生相对路径构建通过：以 `TARO_PUBLIC_PATH=./`、`TARO_OUTPUT_DIR=release/native-list-query` 执行 
+pm run build:h5`，日志为 `release/build-native-list-query.log`。对照 `release/native-list-query-before.json` 的 231 个旧资源哈希同步 48 个构建文件到 `www/`，保留 `www/js/home-search.js` 与 `www/css/polish.css` 字节，未删除旧文件；`NAV_WEB_DIR=www` 的 Chromium/WebKit 四 Tab、原生握手、手势和布局回归通过。未制作或上传 iOS 安装包。
+- 
+ode scripts/report-3000-progress.cjs --check` 校验 3000 个连续唯一编号、去重计数与报告同步；`git diff --check` 通过。
+- 
+pm ci --dry-run --ignore-scripts --no-audit --no-fund`：锁文件与依赖清单同步，计划移除 dayjs、zustand 及其专属子依赖。
+- 其他已通过：`backend/server-security.test.cjs`、`backend/updates.test.cjs`；出库金额断言同步到两位小数输入规则，代理转发伪造、CORS 限制、查询参数校验、列表竞态守卫、设备 ID 迁移、共享刷新补发、防重复加载、请求日志裁剪、幂等回执恢复、热更新上报契约、分享取消、入库/出库/客户金额格式化、列表 memo、关键词防抖、商品编辑历史建议防抖和卸载序号守卫回归也通过。
+
+## 未完成
+
+1. 设备验收：97/444 备份文件、418/419 图片清晰度与压缩、139/140 部署环境真实停机信号仍待测。打印双引擎通过不代表原生设备或物理打印机验收完成。
+2. 性能：175 全链路流式导出与大数据压测、421 首包警告仍待完成；423 全二级页按需加载、425 sourcemap 发布策略本批已完成。
+3. 安全与查询：233/234 H5／桌面 CSP 已通过；173、291、294、316 本批已完成并有独立回归证据；237 因图片兼容性冲突保留为部分完成。
+4. 质量门禁：全仓 lint 尚未建立；本批定向 lint 保留审计页 load 依赖 warning。浏览器双引擎通过不替代真实原生设备、超大备份和部署环境验收。
+5. 尚无完整验收记录：449–466 离线队列、468 起多模板打印、批次／库位／条码、采购销售与对账扩展、通知集成、CI/CD、发布部署及其余矩阵条目。全部编号见 `3000-status.md`。
+
+## 本批状态统计说明
+
+上一批分页／导出／打印核验前，原记录去重为 98 条完成、11 条部分／待验证、2891 条无完成记录；该批补记实现并纠正 6 条旧完成状态后，为 97 条完成、16 条部分／待验证、2887 条无完成记录。
+
+本批完成并复验 173 日期双格式、233/234 CSP、291 列表排序、294 枚举／订单状态查询、316 空结果导出响应、423 二级页分包、425 sourcemap 发布策略、430 后台同步降级；237 请求体限制因图片兼容性保留为部分完成，并补充客户端类型与双引擎浏览器证据；上一批完成的 336 API 类型、370 统一格式化、408 下载服务地址、416 首页日期缓存及 371 金额边界继续保留。最终数量以 `3000-status.md` 自动生成结果为准；重复编号不重复计数。此文件是实施证据对照，不代表已重新验收其余全部条目，3000 条整体仍未完成。
+
+| 396 | 已通过 | timeout 与 HTTP 5xx 错误统一转换为中文提示，5xx 优先提示服务器繁忙 | `src/services/request.ts`、`tests/request-revision.test.cjs`；请求层测试通过 |
+| 397 | 已通过 | 写操作错误 toast 强制绕过 3 秒节流，避免关键失败被吞掉 | `src/services/request.ts`、`tests/request-revision.test.cjs`；请求层测试通过 |
+
+
+## 2026-09-27 原生资源同步验证补强
+
+- `scripts/sync-native-assets.ps1` 改为使用源目录相对路径，兼容 Windows PowerShell 5.1，并在错误时终止。
+- `tests/native-sync.test.cjs` 新增真实临时目录执行测试：验证构建资源复制、嵌套路径复制，以及 `www/js/home-search.js` 与 `www/css/polish.css` 保持源文件内容。
+- 本批验证：原生同步测试通过，
+pm run test:artifacts` 24 项全部通过。
+
+## 2026-09-27 请求错误提示顺序修正
+
+- 5xx HTTP 错误现在优先显示“服务器繁忙”，不会被网络错误匹配器中的 502/503/504 关键字误判为“连接失败”。
+- 保留超时提示和普通网络错误提示；请求层回归测试 4 项全部通过，TypeScript 编译通过。
+
+## 2026-09-27 发布验证脚本加固
+
+- 新增 `scripts/verify-release.ps1`，设置 `$ErrorActionPreference = 'Stop'`，并对构建和验证命令分别检查退出码。
+- 
+pm run verify:release` 已改为调用该脚本，实际执行结果：H5 构建成功、TypeScript 通过、后端 31 项通过、资源测试 24 项通过。
+- 构建仍有既有包体积警告（入口约 453 KiB），未将警告误判为失败。
+
+## 2026-09-27 发布脚本回归测试
+
+- `tests/build-artifact.test.cjs` 新增验证：`verify:release` 必须调用 fail-fast PowerShell 脚本，脚本必须设置 Stop 策略并检查构建/验证退出码。
+- 资源测试现为 25 项全部通过。
+
+## 2026-09-27 库存预警统计回归覆盖
+
+- 为 `stats.lowStock` 增加运行时测试：安全库存为 0 的商品不计入预警，配置安全库存且库存低于阈值的商品计入预警。
+- 同时校验含零库存商品的 `totalValue` 汇总。
+- 后端测试现为 32 项全部通过，TypeScript 编译通过。
+
+## 2026-09-27 启动时幽灵库存归零
+
+- 数据库加载后扫描绝对值小于 `1e-6` 的非零库存，归零并更新库存变更时间；启动日志记录归零商品数量，随后安全持久化。
+- 保留 `1e-6` 及以上的有效小数库存，不改变正常精度。
+- 新增运行时测试覆盖两种情况；后端测试 32 项全部通过。
+
+## 2026-09-27 库存总量精度统一  
+
+- `stats.totalStock` 改为按 6 位小数累加并 roundDecimal，和 `totalStockByUnit` 使用同一精度口径。
+- 新增运行时测试覆盖 0.1 + 0.2 的统计结果，避免浮点尾差。
+- 后端测试 33 项全部通过，TypeScript 编译通过。
+
+## 2026-09-27 入库/出库加载状态修正
+
+- 入库、出库页在并发加载期间先清除 ready；任一商品、往来对象或历史流水请求失败时保持不可提交状态，并保留中文错误提示与点击重试入口。
+- 重试成功后才恢复 ready，旧请求通过 loadSequence 丢弃。
+- TypeScript 编译、H5 构建、后端 35 项、资源测试 25 项及 Chromium 导航/四 Tab 冒烟通过。
+
+## 2026-09-27 订单页加载状态修正
+
+- 订单页并发加载订单、客户和每笔订单状态事件时，先进入 loading；任一请求失败保持错误态，不显示“暂无订单”或允许提交。
+- 增加同一加载入口点击重试，成功后才恢复页面操作；旧请求使用 loadSequence 丢弃。
+- TypeScript、后端 35 项、资源测试 25 项通过；H5 构建已执行。
+
+## 2026-09-27 订单页真实浏览器失败重试回归
+
+- 新增 `tests/orders-load-browser.cjs`：Chromium/WebKit 连接隔离预览 API，模拟订单请求 400，验证页面显示错误而非“暂无订单”，点击原位置重试后订单和状态事件恢复。
+- 先修复并重新构建 H5 后测试通过；源码与 dist 保持同步。
+- TypeScript、后端 35 项、资源 25 项全部通过。
+
+## 2026-09-27 多行入库金额舍入回归
+
+- 新增真实 HTTP 回归：送货单多行金额逐行计算后汇总，供应商应付与货款合计、payable 账本流水逐分一致。
+- 后端测试现为 36 项全部通过；TypeScript 与资源测试 25 项通过。
+
+## 2026-09-27 ESLint 工程门禁补齐
+
+- 新增 `.eslintrc.cjs`，使用现有 `eslint-config-taro`，并加入 
+pm run lint`。
+- `verify:fast` / `verify:release` 现在包含 ESLint；实际通过 0 errors，保留 3 个既有 React Hook dependency warnings（TeamAccess、customer-edit、team）。
+- 完整 
+pm run verify:release` 通过：H5 构建成功、TypeScript、ESLint、后端 36 项、资源 25 项；日志 `release/verify-lint.log`。
+
+## 2026-09-27 ESLint React Hook 警告清理
+
+- 修复 TeamAccess、客户/供应商编辑页、团队页的 Hook 依赖：TeamAccess 依赖完整 session，编辑页包含 supplier，团队加载函数改为 useCallback 并由 load 作为 effect 依赖。
+- 
+pm run lint -- --quiet` 通过 0 errors；完整 
+pm run verify:release` 通过，日志 `release/verify-lint-clean.log`，H5、TypeScript、后端36项、资源25项均通过。
+
+## 2026-09-27 发布门禁接入 Playwright 冒烟
+
+- 新增 
+pm run test:browser`，发布验证脚本在单元/资源检查后执行现有 `tests/navigation-browser.cjs`。
+- 
+pm run verify:release` 实际通过：H5 构建、TypeScript、ESLint、后端36项、资源25项、Chromium 四 Tab/手势/布局冒烟通过。
+- 直接执行 
+ode tests/navigation-browser.cjs` 已确认 Chromium 与 WebKit 均通过；发布日志此前输出截断，不能据此判定 WebKit 缺失。
+
+## 2026-09-27 备份恢复拒绝坏数据
+
+- 新增 `backend/backup-validation.test.cjs`：构造负库存备份，验证恢复在校验阶段拒绝，当前 data.json 与内存数据均保持不变。
+- `verify:fast` 通过：TypeScript、ESLint、后端 37 项、资源 25 项。
+
+## 2026-09-27 多行出库应收舍入回归
+
+- 新增真实 HTTP 回归：批量出库多行金额汇总与客户 debt、逐笔 receivable 账本流水逐分一致。
+- 后端测试现为 37 项全部通过；此前错误测试暴露了批量接口返回的 `{ product, transaction }` 结构，已按实际 API 契约修正。
+
+
+
+
+
+
+
+
+
+
+| 38 | 已通过 | stats ?? totalReceivable/totalPayable??????????????????????????????/???? | backend/db.js?backend/stats-precision.test.cjs?src/types/index.ts?src/pages/home/index.tsx??????ESLint???30??? |
+
+| 48 |  已通过  | ??/???????????????????????????? | src/pages/inbound/index.tsx?outbound?backend/stock.test.cjs?preview-overflow.test.cjs???73??? |
+
+| 375 | 已通过 | ???? previewAmount ???? lineAmount??????????????????????????????? | tests/preview-line-amount.test.cjs?tests/stock-browser.cjs?Chromium realPosting??????CSV??????????? |
+| 39 |  已通过  | ??????????????????????????????????? | backend/stock.test.cjs??? HTTP ???????????? |
+
+| 34 |  已通过  | ????/????????????????????????????????????????? | backend/db.js?backend/stock.test.cjs??? HTTP ?????????? |
+
+| 238 | 已通过 | ?? API ???????? 500 ? request-id?????????????????????? 400 | backend/team.js?backend/error-contract.test.cjs????????????? |
+| 1185 | 已通过 | ??????????????????????????????? | src/components/StockProductPicker/index.tsx?tests/stock-picker-cleanup.test.cjs?TypeScript?ESLint??????? |
+| 108 |  已通过  | ?????????????????????????????????????????? | backend/db.js?backend/stock.test.cjs??? HTTP ???? |
+| 2270 |  已通过  | ??? stats ??????? team ???recent ?????? 1?200 ?????? 401????? 200????? 400 | backend/team.js?backend/updates.js?backend/updates.test.cjs??? HTTP ???????53??? |
+| 35 |  已通过  | ??????????????????????????????????????????? | backend/db.js?backend/stock.test.cjs??? HTTP ???? |
+| 65 |  已通过  | safety_stock=0 ??????????????????????????????? stats ???? | backend/db.js?backend/stats-precision.test.cjs?src/utils/format.ts?tests/format.test.cjs???54??? |
+| 144 |  已通过  | IPA ??????????? package_download ??????? IP?????????????????? | backend/server.js?backend/package-download.test.cjs??? HTTP ?????? |
+| 241 |  已通过  | ??? check ????? manifest ? sha256?size?integrity ???????????????? | backend/server.js?backend/updates.js?backend/package-download.test.cjs??? HTTP check/download ???? |
+| 508 |  已通过  | ?????????? zip/manifest ??????URL?size?SHA256 ? integrity ????????????? SSH | scripts/upload-hotupdate.cjs?tests/upload-hotupdate-gate.test.cjs???42??? |
+| 53 |  已通过  | ????????????????????????????? revision ?????????????? | backend/stock.test.cjs?????? party_type ???? |
+| 159 |  已通过  | ??? manifest ????????? URL?SHA256???? integrity ??????????????? | backend/updates.js?backend/updates.test.cjs???57????40??? |
+| 183 |  已通过  | ???????????????????????stock-math ?????????????? | backend/stock-math.js/.d.ts?src/utils/stock-math.ts???66??? |
+| 60 |  已通过  | ?? created_at ??????????????????? recorded_at??????????????? | backend/db.js?backend/stock.test.cjs?????? HTTP ?????58??? |
+| 509 |  已通过  | ???????????14?UTC??????????+?????????????????????? | scripts/package-hotupdate.py?tests/package-hotupdate.test.cjs???41??? |
+| 67 |  已通过  | atomicMutation ????????????????????????????????????????????? | backend/db.js?backend/backup-validation.test.cjs?backend/stock.test.cjs???59??? |
+| 57 |  已通过  | ??? trim ???????????? revision ????????????????409 | backend/db.js?backend/stock.test.cjs???59??? |
+| 2306 |  已通过  | /api/app/downloads ????? URL??????????? size/sha256 ??????????? | backend/server.js?backend/package-download.test.cjs??? HTTP ??? metadata ???? |
+| 61 |  已通过  | ????/??????? date ????????????????????????????? | backend/db.js?backend/stock.test.cjs???61??? |
+| 2222 |  已通过  | ??? check ????????????????/HTML??????????????????????400 | backend/updates.js?backend/server.js?backend/updates.test.cjs???62??? |
+| 1831 |  已通过  | ??? check ????????????????????????????? | backend/updates.js?backend/server.js?backend/updates.test.cjs???5????62??? |
+| 2246 |  已通过  | ???? report payload ??????/???????????????/HTML???????????400 | backend/updates.js?backend/server.js?backend/updates.test.cjs???7????64??? |
+| 1843 |  已通过  | ???? report ?????????????????????????????? | backend/updates.js?backend/updates.test.cjs???64??? |
+| 2228 |  已通过  | ??? check/report/downloads ?????? Cache-Control: no-store?????????????????? | backend/server.js?backend/package-download.test.cjs??????64??? |
+| 2300 |  已通过  | ??????????????? no-store ???????????????/???? | backend/server.js?backend/package-download.test.cjs?HTTP???? |
+| 2291 |  已通过  | /api/app/downloads ?????? IP ?????20?/?????2?1000???429? Retry-After??????????? | backend/server.js?backend/package-download.test.cjs??? HTTP ???????66??? |
+| 5 |  已通过  | systemLedger ????????? moneyValue?MONEY_DECIMALS ? roundDecimal????????????? | backend/db.js?backend/stock.test.cjs???66??? |
+| 2267 |  已通过  | /api/appupdate/stats ???IP+??ID?????60?/?????2?1000???429? Retry-After | backend/team.js?backend/updates.test.cjs??? HTTP ???????66??? |
+| 2243 |  已通过  | ?? report ??? IP+?? ID ?????429? Retry-After | backend/team.js?backend/updates.test.cjs???66??? |
+| 2261 |  已通过  | ????????????????????? | backend/team.js?backend/updates.test.cjs?backend/package-download.test.cjs??????? request-id ??? JSONL/console ??????????? |
+| 1748 |  已通过  | ?????????????????????????????? | src/pages/products/index.tsx?tests/products-load-state.test.cjs????TypeScript?ESLint?H5?? |
+| 1752 |  已通过  | ?????? loading/error/empty ???????????? | src/pages/products/index.tsx?tests/products-load-state.test.cjs???????????? |
+| 2632 |  已通过  | ????????????????????? | src/pages/ledger/index.tsx?tests/ledger-load-state.test.cjs????TypeScript?ESLint???????? |
+| 2634 |  已通过  | ????? loading/error/empty ????????????? | src/pages/ledger/index.tsx?tests/ledger-load-state.test.cjs??????????? |
+| 2276 |  已通过  | ??? stats ? latest ????? manifest size?sha256?integrity ?????????????? secretPath | backend/updates.js?backend/updates.test.cjs???68??? |
+| 2282 |  已通过  | ????????????????????????????? | backend/updates.js?backend/updates.test.cjs???7??? |
+| 2294 |  已通过  | /api/app/downloads ??????? cache-bust ?? t???????????????????400 | backend/server.js?backend/package-download.test.cjs???9????70??? |
+| 2303 |  已通过  | /api/app/downloads ?????????????????????????? | backend/server.js?backend/package-download.test.cjs???HTTP???? |
+| 2279 |  已通过  | ??? stats ???????????? recent ?????0/201/?????? | backend/updates.js?backend/updates.test.cjs???9????72??? |
+| 2285 |  已通过  | ??? stats ?? recent ????400???????????? request-id | backend/updates.js?backend/updates.test.cjs???72??? |
+| 2886 |  已通过  | ??????????/???????? sanitizeDecimalInput?????????????????? | src/pages/carton-calculator/index.tsx?tests/carton-calculator-input.test.cjs?TypeScript?ESLint??????? |
+| 2896 |  已通过  | ?????????????????????? helper???????????? | src/pages/carton-calculator/math.ts?tests/carton-math.test.cjs???????????tests/carton-calculator-browser.cjs Chromium ????|
+| 47 |  已通过  | ????????????????????????????????????? | backend/stock.test.cjs???73??? |
+| 376 |  已通过  | ?????????????? helper???/??????????? | src/pages/carton-calculator/math.ts?tests/carton-math.test.cjs????? |
+| 2309 |  已通过  | /api/app/downloads ???????? JSON???? request-id???????????????????????? | backend/server.js?backend/package-download.test.cjs????? HTTP ?????74???; package-download fault injection verifies generic JSON, request-id and no internal path leak?backend/package-download.test.cjs ?????? 500?request-id???????????????|
+| 1873 | 已通过 | 客户/供应商余额输入即时限制为非负两位小数，拒绝负号、正号、科学计数法和超范围金额；服务端仍独立校验 | src/pages/customer-edit/index.tsx、src/utils/form-input.ts、tests/customer-edit-money-input.test.cjs、customer-edit-money-browser.cjs；Chromium输入边界回归通过 |
+| 851 | 已通过 | 商品名称输入 maxlength 限制为50字符，长文本粘贴时即截断，与后端校验一致 | src/pages/product-edit/index.tsx、tests/product-name-length-browser.cjs；Chromium 输入边界测试通过 |
+| 1609 | 已通过 | 客户/供应商名称编辑输入上限 50 字符，长文本粘贴被浏览器限制 | src/pages/customer-edit/index.tsx、tests/customer-edit-money-browser.cjs；Chromium输入边界测试通过 |
+| 1657 | 已通过 | 联系人编辑输入 maxlength 与后端一致限制为 50 字符 | src/pages/customer-edit/index.tsx、tests/customer-edit-money-browser.cjs；Chromium验收通过 |
+| 1705 | 已通过 | 客户/供应商电话编辑输入 maxlength 限制为 20 字符 | src/pages/customer-edit/index.tsx、tests/customer-edit-money-browser.cjs；Chromium验收通过 |
+| 1753 | 已通过 | 客户/供应商地址编辑输入 maxlength 限制为 200 字符 | src/pages/customer-edit/index.tsx、tests/customer-edit-money-browser.cjs；Chromium验收通过 |
+| 1801 | 已通过 | 客户/供应商备注编辑输入 maxlength 限制为 500 字符 | src/pages/customer-edit/index.tsx、tests/customer-edit-money-browser.cjs；Chromium验收通过 |
+| 911 | 已通过 | 商品分类输入 maxlength 限制为50字符，长文粘贴与后端字段长度一致 | src/pages/product-edit/index.tsx、tests/product-name-length-browser.cjs；Chromium实测通过 |
+| 971 | 已通过 | 商品规格输入 maxlength 限制为100字符 | src/pages/product-edit/index.tsx、tests/product-name-length-browser.cjs；Chromium实测通过 |
+| 1031 | 已通过 | 商品材质输入 maxlength 限制为100字符 | src/pages/product-edit/index.tsx、tests/product-name-length-browser.cjs；Chromium实测通过 |
+| 1091 | 已通过 | 商品楞型输入 maxlength 限制为100字符 | src/pages/product-edit/index.tsx、tests/product-name-length-browser.cjs；Chromium实测通过 |
+| 1998 | 已通过 | 商品编辑页长文本字段均增加与后端契约一致的 maxlength，超长粘贴在输入层被限制 | src/pages/product-edit/index.tsx、tests/product-name-length-browser.cjs；5类字段 Chromium 验收通过 |

@@ -1,5 +1,6 @@
 import Taro from '@tarojs/taro';
 import { getBaseUrl } from '@/services/request';
+import { deviceId } from '@/services/session';
 
 // ============================================
 // App 内「检查更新」：点击即检查，发现新版本自动下载并在下次启动时应用
@@ -20,20 +21,6 @@ function getUpdater(): NativeUpdater | null {
   return (cap.Plugins && cap.Plugins.CapacitorUpdater) || null;
 }
 
-/** 设备唯一标识（与 index.html 更新脚本一致，用于服务器统计） */
-function deviceId(): string {
-  try {
-    let did = localStorage.getItem('sg_did');
-    if (!did) {
-      did = 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-      localStorage.setItem('sg_did', did);
-    }
-    return did;
-  } catch (e) {
-    return '';
-  }
-}
-
 function platform(): string {
   try {
     const cap = (window as any).Capacitor;
@@ -42,6 +29,8 @@ function platform(): string {
     return 'native';
   }
 }
+
+let nativeVersion = '';
 
 // 上报更新事件到服务器（fire-and-forget，失败静默）
 function report(ev: string, fromVersion: string, toVersion: string, message?: string) {
@@ -55,6 +44,7 @@ function report(ev: string, fromVersion: string, toVersion: string, message?: st
         event: ev,
         current: fromVersion,
         to_version: toVersion,
+        native_version: nativeVersion,
         message: message || ''
       })
     }).catch(() => {});
@@ -81,6 +71,7 @@ export async function checkAndUpdate(): Promise<CheckUpdateResult> {
   try {
     const c = await tu.current();
     if (c?.bundle?.version) cur = c.bundle.version;
+    if (c?.native) nativeVersion = c.native;
   } catch (e) { /* ignore */ }
 
   const fetchJson = async (url: string) => {
@@ -140,7 +131,7 @@ export async function checkAndUpdate(): Promise<CheckUpdateResult> {
   // 2) 下载更新包
   let bid = '';
   const downloadOrigin = base || 'http://152.136.100.200';
-  const downloadUrl = `${downloadOrigin}/appupdate/${(info.url || 'www.zip').replace(/^\//, '')}?t=${now}`;
+  const downloadUrl = `${downloadOrigin}/appupdate/${(info?.url || 'www.zip').replace(/^\//, '')}?t=${now}`;
   report('download_attempt', cur, latest, downloadUrl);
   try {
     const res = await tu.download({

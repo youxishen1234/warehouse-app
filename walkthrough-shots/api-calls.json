@@ -1,0 +1,117 @@
+[
+  {
+    "method": "GET",
+    "status": 200,
+    "url": "http://152.136.100.200/api/health"
+  },
+  {
+    "method": "POST",
+    "status": 200,
+    "url": "http://152.136.100.200/api/auth/guest"
+  },
+  {
+    "method": "GET",
+    "status": 200,
+    "url": "http://152.136.100.200/api/products"
+  },
+  {
+    "method": "GET",
+    "status": 200,
+    "url": "http://152.136.100.200/api/stats"
+  },
+  {
+    "method": "GET",
+    "status": 200,
+    "url": "http://152.136.100.200/api/sync?t=1790307849285"
+  },
+  {
+    "method": "GET",
+    "status": 200,
+    "url": "http://152.136.100.200/api/suppliers?keyword="
+  },
+  {
+    "method": "GET",
+    "status": 200,
+    "url": "http://152.136.100.200/api/delivery-notes"
+  },
+  {
+    "method": "GET",
+    "status": 200,
+    "url": "http://152.136.100.200/api/transactions?type=out"
+  },
+  {
+    "method": "GET",
+    "status": 200,
+    "url": "http://152.136.100.200/api/customers"
+  },
+  {
+    "method": "GET",
+    "status": 200,
+    "url": "http://152.136.100.200/api/products"
+  },
+  {
+    "method": "GET",
+    "status": 200,
+    "url": "http://152.136.100.200/api/sync?t=1790307853286"
+  },
+  {
+    "method": "GET",
+    "status": 200,
+    "url": "http://152.136.100.200/api/sync?t=1790307857286"
+  },
+  {
+    "method": "GET",
+    "status": 200,
+    "url": "http://152.136.100.200/api/sync?t=1790307861285"
+  },
+  {
+    "method": "GET",
+    "status": 200,
+    "url": "http://152.136.100.200/api/sync?t=1790307865285"
+  },
+  {
+    "method": "GET",
+    "status": 200,
+    "url": "http://152.136.100.200/api/sync?t=1790307869286"
+  },
+  {
+    "method": "GET",
+    "status": 200,
+    "url": "http://152.136.100.200/api/sync?t=1790307873286"
+  },
+  {
+    "method": "GET",
+    "status": 200,
+    "url": "http://152.136.100.200/api/sync?t=1790307877286"
+  },
+  {
+    "method": "GET",
+    "status": 200,
+    "url": "http://152.136.100.200/api/sync?t=1790307881286"
+  },
+  {
+    "method": "GET",
+    "status": 200,
+    "url": "http://152.136.100.200/api/sync?t=1790307885286"
+  },
+  {
+    "method": "GET",
+    "status": 200,
+    "url": "http://152.136.100.200/api/sync?t=1790307889286"
+  },
+  {
+    "method": "GET",
+    "status": 200,
+    "url": "http://152.136.100.200/api/sync?t=1790307893286"
+  },
+  {
+    "method": "GET",
+    "status": 200,
+    "url": "http://152.136.100.200/api/sync?t=1790307897285"
+  },
+  {
+    "method": "GET",
+    "status": 200,
+    "url": "http://152.136.100.200/api/sync?t=1790307901286"
+  }
+]

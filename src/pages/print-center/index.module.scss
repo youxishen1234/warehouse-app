@@ -1,0 +1,33 @@
+.page { min-height: 100vh; padding: 24px; background: #f5f7fb; box-sizing: border-box; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.title { font-size: 22px; font-weight: 700; }
+.printBtn { padding: 10px 14px; border-radius: 9px; color: #fff; background: #2f6bff; }
+.hint { display: block; color: #6b7280; margin-bottom: 18px; }
+.sheet { background: #fff; padding: 18px; border-radius: 12px; }
+.sheetTitle { display: block; font-size: 18px; font-weight: 700; margin-bottom: 12px; }
+.row { display: flex; gap: 12px; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eef0f4; font-size: 12px; }
+.moreBtn { margin-top: 14px; padding: 12px; color: #2f6bff; text-align: center; background: #eef4ff; border-radius: 9px; }
+.endHint { display: block; padding: 14px 0 4px; color: #9ca3af; text-align: center; font-size: 12px; }
+@media print {
+  :global(body[data-warehouse-print='transactions']) {
+    height: auto !important;
+    overflow: visible !important;
+    * { visibility: hidden !important; }
+    :global(.taro-tabbar__container), :global(.taro-tabbar__panel), :global(.taro_router), :global(.taro_page) {
+      height: auto !important;
+      min-height: 0 !important;
+      max-height: none !important;
+      overflow: visible !important;
+      position: static !important;
+      transform: none !important;
+      padding: 0 !important;
+    }
+    :global(.taro-tabbar__container) { display: block !important; }
+    :global(taro-tabbar), :global(.sg-offline-bar), :global(.taro_router) > :global(.taro_page):not([data-warehouse-print-page='transactions']) { display: none !important; }
+    .page, .page * { visibility: visible !important; }
+    .page { position: static; width: 100%; height: auto !important; min-height: 0; padding: 0; overflow: visible !important; background: #fff; }
+    .toolbar, .printBtn, .hint, .moreBtn, .endHint { display: none !important; }
+    .sheet { padding: 0; border-radius: 0; box-shadow: none; }
+    .row { break-inside: avoid; }
+  }
+}

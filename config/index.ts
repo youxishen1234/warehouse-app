@@ -2,9 +2,8 @@ import { defineConfig, type UserConfigExport } from '@tarojs/cli';
 import TsconfigPathsPlugin from 'tsconfig-paths-webpack-plugin';
 import devConfig from './dev';
 import prodConfig from './prod';
-import vitePluginImp from 'vite-plugin-imp';
 // https://taro-docs.jd.com/docs/next/config#defineconfig-辅助函数
-export default defineConfig<'webpack5'>(async (merge, { command, mode }) => {
+export default defineConfig<'webpack5'>(async (merge, { mode }) => {
   const baseConfig: UserConfigExport<'webpack5'> = {
     projectName: 'taro_template',
     date: '2025-12-10',
@@ -23,6 +22,7 @@ export default defineConfig<'webpack5'>(async (merge, { command, mode }) => {
       patterns: [
         { from: 'www/js/home-search.js', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/js/home-search.js' },
         { from: 'www/css/polish.css', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/css/polish.css' }
+        ,{ from: 'src/assets/favicon.svg', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/assets/favicon.svg' }
       ],
       options: {},
     },
@@ -57,7 +57,11 @@ export default defineConfig<'webpack5'>(async (merge, { command, mode }) => {
       },
     },
     h5: {
-      publicPath: './',
+      // Web builds must resolve assets from the site root so refreshing a
+      // deep hash/history URL cannot turn /pages/x/js/app.js into a 404.
+      // Native/desktop packaging passes TARO_PUBLIC_PATH=./ to keep file://
+      // assets relative to the bundled index.html.
+      publicPath: process.env.TARO_PUBLIC_PATH || '/',
       staticDirectory: 'static',
       output: {
         filename: 'js/[name].[hash:8].js',
@@ -90,7 +94,25 @@ export default defineConfig<'webpack5'>(async (merge, { command, mode }) => {
         },
       },
       webpackChain(chain) {
+        // Production packages are distributed to H5, Capacitor and Electron.
+        // Keep source maps out of those packages; development keeps the
+        // toolchain default for local debugging. Taro passes the build mode
+        // to this callback, so keep the policy in the H5 chain itself.
+        if (mode === 'production') chain.devtool(false);
         chain.resolve.plugin('tsconfig-paths').use(TsconfigPathsPlugin);
+        if (process.env.TARO_STATS === '1') {
+          chain.plugin('warehouse-stats').use(class WarehouseStatsPlugin {
+            apply(compiler: any) {
+              compiler.hooks.done.tap('WarehouseStatsPlugin', (stats: any) => {
+                const fs = require('node:fs');
+                const path = require('node:path');
+                const output = process.env.TARO_STATS_PATH || path.join(process.cwd(), 'release', 'webpack-stats.json');
+                fs.mkdirSync(path.dirname(output), { recursive: true });
+                fs.writeFileSync(output, JSON.stringify(stats.toJson({ all: false, assets: true, chunks: true, modules: true }), null, 2));
+              });
+            }
+          });
+        }
       },
     },
     rn: {

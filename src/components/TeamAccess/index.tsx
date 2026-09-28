@@ -1,7 +1,9 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { View, Text } from '@tarojs/components';
-import { accountApi, session, sessionOrigin, setSession, watchSession } from '@/services/session';
+import { accountApi, session, setSession, watchSession } from '@/services/session';
+import { getBaseUrl } from '@/services/request';
 import { refreshSharedData } from '@/services/shared-refresh';
+import './style.scss';
 
 export default function TeamAccess({ children }: { children: React.ReactNode }) {
   const [current, setCurrent] = useState(session());
@@ -31,21 +33,33 @@ export default function TeamAccess({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     let alive = true;
     let revision = '';
+    let etag = '';
+    let polling = false;
     const poll = async () => {
-      if (!current) return;
+      if (!current || polling || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) return;
+      polling = true;
       try {
-        const response = await fetch(`${sessionOrigin()}/api/sync?t=${Date.now()}`, { cache: 'no-store', headers: { Authorization: `Bearer ${current.token}` } });
+        const headers: Record<string, string> = { Authorization: `Bearer ${current.token}` };
+        if (etag) headers['If-None-Match'] = etag;
+        const response = await fetch(`${getBaseUrl()}/api/sync`, { cache: 'no-store', headers });
+        if (response.status === 401) { setSession(null); return; }
+        if (response.status === 304) return;
         if (!response.ok) return;
+        const serverRevision = response.headers.get('X-Warehouse-Revision');
+        if (serverRevision) etag = `"${serverRevision}"`;
         const body = await response.json();
         const next = String(body?.data?.revision ?? '');
-        if (alive && revision && next !== revision) refreshSharedData();
+        if (alive && revision && next !== revision) refreshSharedData(next);
         revision = next;
       } catch (error) { /* request layer handles transient network failures */ }
+      finally { polling = false; }
     };
     poll();
     const timer = setInterval(poll, 4000);
-    return () => { alive = false; clearInterval(timer); };
-  }, [current?.token]);
+    const onVisible = () => { if (document.visibilityState === 'visible') poll(); };
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisible);
+    return () => { alive = false; clearInterval(timer); if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisible); };
+  }, [current]);
 
   // 页面节点必须始终挂载，Taro 会在首帧查找页面实例；连接期间只覆盖一层状态提示。
   return <>{children}{booting && !current && <View className="team-boot"><Text>正在连接共享仓库…</Text></View>}</>;

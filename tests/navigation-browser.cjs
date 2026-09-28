@@ -44,13 +44,81 @@ async function verify(browser, name) {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data }) });
   });
   await page.goto('http://127.0.0.1:' + server.address().port);
-  await page.waitForSelector('.weui-tabbar__item');
+  await page.waitForSelector('.sg-glass-tab[data-tab]');
   await page.waitForFunction(() => document.querySelector('[class*="funcGrid___"]'));
   assert.equal(await page.locator('.sg-home-search').count(), 0, 'search removed');
   assert.equal(await page.locator('.sg-quick-add').count(), 0);
   assert.equal(await page.locator('.sg-corrugated-item').count(), 1, 'calculator preserved');
   const before = await page.locator('taro-tabbar').boundingBox();
   assert.ok(before.y > 700 && before.y + before.height <= 845, JSON.stringify(before));
+  assert.equal(await page.locator('.sg-glass-tab[data-tab]').count(), 4);
+  assert.equal(await page.locator('.sg-glass-search').count(), 0, 'no search button');
+  assert.deepEqual(await page.locator('.sg-glass-tab[data-tab] span').allTextContents(), ['首页', '入库', '出库', '我的']);
+  assert.ok(Math.abs((await page.locator('.sg-glass-rail').boundingBox()).width - (await page.locator('.sg-glass-dock').boundingBox()).width) < 1, 'four tabs fill the dock with no search gap');
+  assert.equal(await page.locator('.weui-tabbar').isVisible(), false, 'old rectangular dock is replaced');
+  const colors = await page.evaluate(() => ({
+    normal: getComputedStyle(document.querySelector('.sg-glass-items')).color,
+    selected: getComputedStyle(document.querySelector('.sg-glass-lens')).color,
+    glass: getComputedStyle(document.querySelector('.sg-glass-rail')).backgroundColor
+  }));
+  assert.equal(colors.normal, 'rgb(255, 255, 255)');
+  assert.equal(colors.selected, 'rgb(36, 166, 248)');
+  assert.equal(colors.glass, 'rgba(36, 37, 42, 0.78)');
+  await page.screenshot({ path: 'release/glass-' + name + '-rest.png' });
+  const restingLens = await page.locator('.sg-glass-lens').boundingBox();
+  const railBounds = await page.locator('.sg-glass-rail').boundingBox();
+  async function assertStableLens() {
+    const lens = await page.locator('.sg-glass-lens').boundingBox();
+    assert.ok(Math.abs(lens.width - restingLens.width) < .1, 'drag does not stretch the capsule');
+    assert.ok(Math.abs(lens.height - restingLens.height) < .1, 'drag does not inflate the capsule');
+    assert.ok(lens.x >= railBounds.x + 3.9 && lens.x + lens.width <= railBounds.x + railBounds.width - 3.9, 'capsule stays horizontally inset');
+    assert.ok(lens.y >= railBounds.y + 3.9 && lens.y + lens.height <= railBounds.y + railBounds.height - 3.9, 'capsule never protrudes');
+  }
+  const first = await page.locator('.sg-glass-tab[data-tab="0"]').boundingBox();
+  const last = await page.locator('.sg-glass-tab[data-tab="3"]').boundingBox();
+  await page.mouse.move(first.x + first.width / 2, first.y + first.height / 2);
+  await page.mouse.down();
+  await assertStableLens();
+  const midway = first.x + first.width * 1.85;
+  await page.mouse.move(midway, first.y + first.height / 2, { steps: 8 });
+  const progress = Number(await page.locator('.sg-glass-dock').getAttribute('data-position'));
+  assert.ok(progress > 1.2 && progress < 1.5, 'lens follows continuous finger position: ' + progress);
+  assert.equal(await page.locator('.sg-glass-dock').evaluate(el => el.classList.contains('sg-glass-pressed')), true);
+  await assertStableLens();
+  assert.equal(await page.locator('.sg-glass-lens-ink').evaluate(el => getComputedStyle(el).filter), 'none', 'icons are not distorted');
+  assert.match(page.url(), /home/, 'drag previews without navigating until release');
+  await page.screenshot({ path: 'release/glass-' + name + '-drag.png' });
+  await page.mouse.move(last.x + last.width / 2, last.y + last.height / 2, { steps: 12 });
+  await assertStableLens();
+  await page.mouse.up();
+  await page.waitForURL(/mine/);
+  await page.waitForFunction(() => document.querySelector('[data-tab="3"]').getAttribute('aria-current') === 'page');
+  await page.locator('.sg-glass-tab[data-tab="0"]').click();
+  await page.waitForURL(/home/);
+  await page.waitForTimeout(400);
+  if (name === 'chromium') {
+    const touch = await page.context().newCDPSession(page);
+    const point = { x: first.x + first.width / 2, y: first.y + first.height / 2 };
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ ...point, x: point.x + first.width * 2.35 }] });
+    assert.ok(Number(await page.locator('.sg-glass-dock').getAttribute('data-position')) > 2.2, 'real touch follows the dock, not the page swipe handler');
+    assert.match(page.url(), /home/);
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForURL(/outbound/);
+    await page.locator('.sg-glass-tab[data-tab="0"]').click();
+    await page.waitForURL(/home/);
+    await touch.detach();
+    await page.waitForTimeout(400);
+  }
+  // Cancelled capture restores the acknowledged tab, including after crossing cells.
+  await page.mouse.move(first.x + first.width / 2, first.y + first.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(last.x, last.y + last.height / 2);
+  await page.locator('.sg-glass-rail').evaluate(rail => rail.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1, bubbles: true })));
+  await page.mouse.up();
+  await page.waitForTimeout(450);
+  assert.match(page.url(), /home/);
+  await page.waitForFunction(() => Math.abs(Number(document.querySelector('.sg-glass-dock').dataset.position)) < .001);
   assert.notEqual(await swipe(page, -110), 'none', 'gesture follows finger');
   await page.waitForURL(/inbound/);
   await page.waitForTimeout(500);
@@ -94,7 +162,9 @@ async function verify(browser, name) {
     await page.waitForFunction(route => window.__nativeMessages.at(-1)?.route === route, route);
   }
   const pageText = await page.locator('body').innerText();
-  assert.ok(pageText.includes('客户订单') && pageText.includes('新增商品') && pageText.includes('瓦楞计算'));
+  for (const label of ['库存查询', '商品管理', '客户管理', '供应商管理', '出入库记录', '新增商品', '流水', '客户订单', '纸箱尺寸换算', '瓦楞计算']) {
+    assert.ok(pageText.includes(label), `homepage shortcut missing: ${label}`);
+  }
   await page.locator('.sg-corrugated-item').click();
   await page.waitForSelector('.sg-calc-dialog');
   await page.waitForFunction(() => window.__nativeMessages.at(-1)?.modal === true);
@@ -105,6 +175,17 @@ async function verify(browser, name) {
     window.dispatchEvent(new Event('sg-native-ready'));
   });
   await page.waitForFunction(() => !document.documentElement.classList.contains('sg-native-ios'));
+  await page.evaluate(() => {
+    window.__sgNativeDock = { api: 0, material: 'web-glass' };
+    window.dispatchEvent(new Event('sg-native-ready'));
+  });
+  await page.waitForFunction(() => window.__nativeMessages.at(-1)?.ready === true);
+  assert.equal(await page.locator('.sg-glass-dock').isVisible(), true, 'older iOS keeps the web glass dock');
+  await page.locator('[data-tab="0"]').focus();
+  await page.keyboard.press('ArrowRight');
+  await page.waitForURL(/inbound/);
+  await page.keyboard.press('Home');
+  await page.waitForURL(/home/);
   await page.locator('.sg-corrugated-item').scrollIntoViewIfNeeded();
   await page.evaluate(() => {
     const item = document.querySelector('.sg-corrugated-item');
@@ -119,7 +200,7 @@ async function verify(browser, name) {
   await page.screenshot({ path: 'release/navigation-' + name + '.png', fullPage: false });
   await page.setViewportSize({ width: 844, height: 390 });
   const rotated = await page.locator('taro-tabbar').boundingBox();
-  assert.ok(rotated.y + rotated.height <= 391 && rotated.y >= 320);
+  assert.ok(rotated.y + rotated.height <= 391 && rotated.y >= 300);
   assert.deepEqual(errors, [], name + ' page errors');
   await page.close();
   console.log(name + ': startup, 4-tab navigation, native handshake, gestures, edges, cancellation, calculator and layout passed');
