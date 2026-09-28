@@ -9,7 +9,9 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="white" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
     <title>曙光</title>
-    <script>
+    <link rel="icon" type="image/svg+xml" href="./assets/favicon.svg" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'nonce-sg-bootstrap'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://youxishen.online http://localhost:* https://localhost:* http://127.0.0.1:* https://127.0.0.1:*; font-src 'self' data:; connect-src 'self' capacitor://localhost https://youxishen.online http://152.136.100.200:* http://localhost:* https://localhost:* http://127.0.0.1:* https://127.0.0.1:*; worker-src 'self' blob:;" />
+    <script nonce="sg-bootstrap">
       // H5 页面可能被直接打开在任意深层 URL；网页端资源始终从站点根目录解析。
       // Electron/Capacitor 使用 file:// 加载时保留相对路径，避免破坏本地打包资源。
       (function() {
@@ -25,7 +27,7 @@
         document.write('<base href="' + href + '">');
       })();
     </script>
-    <script>
+    <script nonce="sg-bootstrap">
       // 按设备宽度自适应 rem：750rpx = 20rem = 视口宽度（所有端等比缩放）
       (function() {
         var set = function() {
@@ -36,7 +38,7 @@
         window.addEventListener('resize', set);
       })();
     </script>
-    <script>
+    <script nonce="sg-bootstrap">
       // App 内热更新（仅原生环境生效）：启动时向服务器检查版本，后台静默下载，下次启动生效；全过程上报服务器
       (function() {
         try {
@@ -174,7 +176,7 @@
         } catch (e) {}
       })();
     </script>
-    <script>
+    <script nonce="sg-bootstrap">
       // These two auxiliary assets are inserted after the URL base is known;
       // keeping them out of static HTML prevents the browser preload scanner
       // from resolving ./js and ./css against a deep route.

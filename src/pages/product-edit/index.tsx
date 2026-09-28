@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { View, Text, Input, Picker, ScrollView } from '@tarojs/components';
 import Taro, { useRouter } from '@tarojs/taro';
-import { getProduct, getProducts, addProduct, updateProduct } from '@/services/api';
+import { getProduct, addProduct, updateProduct } from '@/services/api';
 import type { ProductForm } from '@/types';
-import { numberValue } from '@/utils/stock-math';
+import { numberValue, sanitizeDecimalInput } from '@/utils/stock-math';
+import { invalidateProducts, loadProducts } from '@/services/product-store';
 import styles from './index.module.scss';
 
 const units = ['件', '箱', '个', '千克'];
@@ -32,17 +33,22 @@ const ProductEditPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [historySpecs, setHistorySpecs] = useState<string[]>([]);
   const [historyMaterials, setHistoryMaterials] = useState<string[]>([]);
+  const [specQuery, setSpecQuery] = useState('');
+  const [materialQuery, setMaterialQuery] = useState('');
   const [showSpecs, setShowSpecs] = useState(false);
   const [showMaterials, setShowMaterials] = useState(false);
   const savingRef = useRef(false);
-  const filteredSpecs = historySpecs.filter(value => !specification.trim() || value.toLowerCase().includes(specification.trim().toLowerCase()));
-  const filteredMaterials = historyMaterials.filter(value => !material.trim() || value.toLowerCase().includes(material.trim().toLowerCase()));
+  const specTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const materialTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (specTimer.current) clearTimeout(specTimer.current); if (materialTimer.current) clearTimeout(materialTimer.current); }, []);
+  const filteredSpecs = useMemo(() => historySpecs.filter(value => !specQuery.trim() || value.toLowerCase().includes(specQuery.trim().toLowerCase())), [historySpecs, specQuery]);
+  const filteredMaterials = useMemo(() => historyMaterials.filter(value => !materialQuery.trim() || value.toLowerCase().includes(materialQuery.trim().toLowerCase())), [historyMaterials, materialQuery]);
 
   useEffect(() => {
     let localSpecs: string[] = [], localMaterials: string[] = [];
     try { const saved = Taro.getStorageSync(HISTORY_KEY) || {}; localSpecs = Array.isArray(saved.specs) ? saved.specs : []; localMaterials = Array.isArray(saved.materials) ? saved.materials : []; } catch (e) { /* ignore */ }
     setHistorySpecs(unique(localSpecs)); setHistoryMaterials(unique(localMaterials));
-    getProducts().then(products => {
+    loadProducts().then(products => {
       setHistorySpecs(unique([...localSpecs, ...products.map(product => product.specification || '')]));
       setHistoryMaterials(unique([...localMaterials, ...products.map(product => product.material || '')]));
     }).catch(() => {});
@@ -92,6 +98,7 @@ const ProductEditPage: React.FC = () => {
       } else {
         await addProduct(data);
       }
+      invalidateProducts();
       const saved = { specs: unique([data.specification || '', ...historySpecs]), materials: unique([data.material || '', ...historyMaterials]) };
       Taro.setStorageSync(HISTORY_KEY, saved);
       Taro.showToast({ title: '保存成功', icon: 'success' });
@@ -104,18 +111,18 @@ const ProductEditPage: React.FC = () => {
       <View className={styles.form}>
         <View className={styles.field}>
           <Text className={styles.label}>商品名称 *</Text>
-          <Input className={styles.input} placeholder="请输入商品名称" value={name} onInput={e => setName(e.detail.value)} />
+          <Input className={styles.input} maxlength={50} placeholder="请输入商品名称" value={name} onInput={e => setName(e.detail.value)} />
         </View>
-        <View className={styles.row}><View className={styles.rowItem}><View className={styles.field}><Text className={styles.label}>规格（可选）</Text><View className={styles.combo}><Input className={styles.input} placeholder="输入或选择规格" value={specification} onFocus={() => setShowSpecs(true)} onInput={e=>{setSpecification(e.detail.value);setShowSpecs(true)}} /><Text className={styles.comboArrow} onClick={() => setShowSpecs(!showSpecs)}>⌄</Text></View>{showSpecs && filteredSpecs.length > 0 && <View className={styles.historyDropdown}>{filteredSpecs.map(value => <Text key={value} onClick={() => {setSpecification(value);setShowSpecs(false)}}>{value}</Text>)}</View>}</View></View><View className={styles.rowItem}><View className={styles.field}><Text className={styles.label}>材质（可选）</Text><View className={styles.combo}><Input className={styles.input} placeholder="输入或选择材质" value={material} onFocus={() => setShowMaterials(true)} onInput={e=>{setMaterial(e.detail.value);setShowMaterials(true)}} /><Text className={styles.comboArrow} onClick={() => setShowMaterials(!showMaterials)}>⌄</Text></View>{showMaterials && filteredMaterials.length > 0 && <View className={styles.historyDropdown}>{filteredMaterials.map(value => <Text key={value} onClick={() => {setMaterial(value);setShowMaterials(false)}}>{value}</Text>)}</View>}</View></View></View>
+        <View className={styles.row}><View className={styles.rowItem}><View className={styles.field}><Text className={styles.label}>规格（可选）</Text><View className={styles.combo}><Input className={styles.input} maxlength={100} placeholder="输入或选择规格" value={specification} onFocus={() => {setSpecQuery(specification);setShowSpecs(true)}} onInput={e=>{const value=e.detail.value;setSpecification(value);setShowSpecs(true);if(specTimer.current)clearTimeout(specTimer.current);specTimer.current=setTimeout(()=>setSpecQuery(value),300)}} /><Text className={styles.comboArrow} onClick={() => setShowSpecs(!showSpecs)}>⌄</Text></View>{showSpecs && filteredSpecs.length > 0 && <View className={styles.historyDropdown}>{filteredSpecs.map(value => <Text key={value} onClick={() => {setSpecification(value);setSpecQuery(value);setShowSpecs(false)}}>{value}</Text>)}</View>}</View></View><View className={styles.rowItem}><View className={styles.field}><Text className={styles.label}>材质（可选）</Text><View className={styles.combo}><Input className={styles.input} maxlength={100} placeholder="输入或选择材质" value={material} onFocus={() => {setMaterialQuery(material);setShowMaterials(true)}} onInput={e=>{const value=e.detail.value;setMaterial(value);setShowMaterials(true);if(materialTimer.current)clearTimeout(materialTimer.current);materialTimer.current=setTimeout(()=>setMaterialQuery(value),300)}} /><Text className={styles.comboArrow} onClick={() => setShowMaterials(!showMaterials)}>⌄</Text></View>{showMaterials && filteredMaterials.length > 0 && <View className={styles.historyDropdown}>{filteredMaterials.map(value => <Text key={value} onClick={() => {setMaterial(value);setMaterialQuery(value);setShowMaterials(false)}}>{value}</Text>)}</View>}</View></View></View>
 
         <View className={styles.field}>
           <Text className={styles.label}>分类</Text>
-          <Input className={styles.input} placeholder="如：食品、日用品" value={category} onInput={e => setCategory(e.detail.value)} />
+          <Input className={styles.input} maxlength={50} placeholder="如：食品、日用品" value={category} onInput={e => setCategory(e.detail.value)} />
         </View>
 
-        <View className={styles.row}><View className={styles.rowItem}><View className={styles.field}><Text className={styles.label}>楞型</Text><Input className={styles.input} placeholder="如：B楞、E楞、BC楞" value={corrugation} onInput={e => setCorrugation(e.detail.value)} /></View></View><View className={styles.rowItem}><View className={styles.field}><Text className={styles.label}>层数</Text><Input className={styles.input} type="number" value={layers} onInput={e => setLayers(e.detail.value)} /></View></View></View>
-        <View className={styles.row}><View className={styles.rowItem}><View className={styles.field}><Text className={styles.label}>克重（g/㎡）</Text><Input className={styles.input} type="digit" value={weight} onInput={e => setWeight(e.detail.value)} /></View></View><View className={styles.rowItem}><View className={styles.field}><Text className={styles.label}>长（mm）</Text><Input className={styles.input} type="digit" value={length} onInput={e => setLength(e.detail.value)} /></View></View></View>
-        <View className={styles.row}><View className={styles.rowItem}><View className={styles.field}><Text className={styles.label}>宽（mm）</Text><Input className={styles.input} type="digit" value={width} onInput={e => setWidth(e.detail.value)} /></View></View></View>
+        <View className={styles.row}><View className={styles.rowItem}><View className={styles.field}><Text className={styles.label}>楞型</Text><Input className={styles.input} maxlength={100} placeholder="如：B楞、E楞、BC楞" value={corrugation} onInput={e => setCorrugation(e.detail.value)} /></View></View><View className={styles.rowItem}><View className={styles.field}><Text className={styles.label}>层数</Text><Input className={styles.input} type="number" value={layers} onInput={e => setLayers(sanitizeDecimalInput(e.detail.value, 0))} /></View></View></View>
+        <View className={styles.row}><View className={styles.rowItem}><View className={styles.field}><Text className={styles.label}>克重（g/㎡）</Text><Input className={styles.input} type="digit" value={weight} onInput={e => setWeight(sanitizeDecimalInput(e.detail.value, 6))} /></View></View><View className={styles.rowItem}><View className={styles.field}><Text className={styles.label}>长（mm）</Text><Input className={styles.input} type="digit" value={length} onInput={e => setLength(sanitizeDecimalInput(e.detail.value, 6))} /></View></View></View>
+        <View className={styles.row}><View className={styles.rowItem}><View className={styles.field}><Text className={styles.label}>宽（mm）</Text><Input className={styles.input} type="digit" value={width} onInput={e => setWidth(sanitizeDecimalInput(e.detail.value, 6))} /></View></View></View>
 
         <View className={styles.field}>
           <Text className={styles.label}>单位</Text>
@@ -132,13 +139,13 @@ const ProductEditPage: React.FC = () => {
           <View className={styles.rowItem}>
             <View className={styles.field}>
               <Text className={styles.label}>单价</Text>
-              <Input className={styles.input} type="digit" value={price} onInput={e => setPrice(e.detail.value)} />
+              <Input className={styles.input} type="digit" value={price} onInput={e => setPrice(sanitizeDecimalInput(e.detail.value, 2))} />
             </View>
           </View>
           <View className={styles.rowItem}>
             <View className={styles.field}>
               <Text className={styles.label}>安全库存</Text>
-              <Input className={styles.input} type="number" value={safety} onInput={e => setSafety(e.detail.value)} />
+              <Input className={styles.input} type="number" value={safety} onInput={e => setSafety(sanitizeDecimalInput(e.detail.value, 6))} />
             </View>
           </View>
         </View>
@@ -146,7 +153,7 @@ const ProductEditPage: React.FC = () => {
         {!isEdit && (
           <View className={styles.field}>
             <Text className={styles.label}>初始库存</Text>
-            <Input className={styles.input} type="number" value={stock} onInput={e => setStock(e.detail.value)} />
+            <Input className={styles.input} type="number" value={stock} onInput={e => setStock(sanitizeDecimalInput(e.detail.value, 6))} />
           </View>
         )}
 

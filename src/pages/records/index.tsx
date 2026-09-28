@@ -1,12 +1,63 @@
 import { useSharedRefresh } from '@/services/shared-refresh';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { View, Text, ScrollView, Picker, Switch } from '@tarojs/components';
 import Taro, { useRouter } from '@tarojs/taro';
-import { getTransactions, getProducts } from '@/services/api';
+import { getTransactions } from '@/services/api';
+import { loadProducts } from '@/services/product-store';
 import { downloadCsv } from '@/services/download';
-import { formatShortTime } from '@/utils/format';
+import { getCopy } from '@/services/copy';
+import { formatMoney, formatShortTime } from '@/utils/format';
 import type { Transaction, Product } from '@/types';
 import styles from './index.module.scss';
+
+type RecordListRowProps = {
+  transaction: Transaction;
+  productLabel: string;
+};
+
+// Transaction rows are read-only. Memoizing one row prevents filter/export
+// controls and product lookups from re-rendering every unchanged record.
+const RecordListRow = React.memo(function RecordListRow({ transaction: t, productLabel }: RecordListRowProps) {
+  return (
+    <View className={styles.listItem}>
+      <View className={styles.itemTop}>
+        <View className={styles.titleWrap}>
+          <Text className={styles.itemName}>{productLabel}</Text>
+          {!!t.voided_at && <Text className={styles.tagOut}>已作废 · 不计库存及金额</Text>}
+          {(t.customer_name || t.supplier_name) && (
+            <Text className={styles.customerName}>
+              {t.customer_name || t.supplier_name}
+              {(t.customer_name ? t.customer_current_name && t.customer_current_name !== t.customer_name : t.supplier_current_name && t.supplier_current_name !== t.supplier_name)
+                ? `（${getCopy('currentPartyName')}：${t.customer_name ? t.customer_current_name : t.supplier_current_name}）` : ''}
+            </Text>
+          )}
+        </View>
+        {t.type === 'in'
+          ? <Text className={styles.tagIn}>入库</Text>
+          : t.type === 'adjustment' ? <Text className={styles.tagIn}>盘点</Text> : <Text className={styles.tagOut}>出库</Text>}
+      </View>
+
+      <View className={styles.metaBlock}>
+        <Text className={styles.itemTime}>{formatShortTime(t.created_at)}</Text>
+        <Text className={styles.itemRemark}>
+          {t.operator || t.remark
+            ? `${t.operator ? `操作人：${t.operator}` : ''}${t.operator && t.remark ? ' · ' : ''}${t.remark ? `备注：${t.remark}` : ''}`
+            : '暂无备注'}
+        </Text>
+        <Text className={styles.itemRemark}>规格：{t.specification || '无'} · 材质：{t.material || '无'} · {t.unit || ''} · 单价 {formatMoney(t.unit_price || 0)} · 金额 {formatMoney(t.amount || 0)}</Text>
+      </View>
+
+      <View className={styles.itemBottom}>
+        <Text className={styles.itemQtyLabel}>数量</Text>
+        <View className={styles.itemBottomRight}>
+          <Text className={styles.itemQty} style={{ color: t.type === 'out' ? '#dc2626' : '#16a34a' }}>
+            {t.type === 'adjustment' ? `${Number(t.adjustment) >= 0 ? '+' : ''}${t.adjustment ?? t.quantity}` : `${t.type === 'out' ? '-' : '+'}${t.quantity}`}{t.unit}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+});
 
 const RecordsPage: React.FC = () => {
   const router = useRouter();
@@ -22,15 +73,28 @@ const RecordsPage: React.FC = () => {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [includeVoided, setIncludeVoided] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const loadSequence = useRef(0);
+  const lastLoadAt = useRef(0);
 
   const types = ['全部', '入库', '出库'];
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (forceOrRevision: boolean | string | object = false) => {
+    const startedAt = Date.now();
+    const force = forceOrRevision === true || typeof forceOrRevision === 'string';
+    if (!force && startedAt - lastLoadAt.current < 250) return;
+    lastLoadAt.current = startedAt;
+    const sequence = ++loadSequence.current;
     if (fromDate && toDate && fromDate > toDate) {
       Taro.showToast({ title: '开始日期不能晚于结束日期', icon: 'none' });
       setList([]);
+      setLoadError(getCopy('recordsInvalidDates'));
+      setLoading(false);
       return;
     }
+    setLoading(true);
+    setLoadError('');
     try {
       const [tx, prods] = await Promise.all([
         getTransactions({
@@ -41,17 +105,23 @@ const RecordsPage: React.FC = () => {
           , from: fromDate ? new Date(`${fromDate}T00:00:00`).getTime() : undefined
           , to: toDate ? new Date(`${toDate}T00:00:00`).getTime() : undefined
         }),
-        getProducts()
+        loadProducts(force)
       ]);
+      if (sequence !== loadSequence.current) return;
       setList(tx);
       setProducts(prods);
-    } catch (e) { console.error('[Records] load failed', e); }
+    } catch (e) {
+      if (sequence === loadSequence.current) setLoadError(getCopy('recordsLoadFailed'));
+    } finally {
+      if (sequence === loadSequence.current) setLoading(false);
+    }
   }, [type, filterCustomerId, filterSupplierId, fromDate, toDate, includeVoided]);
 
   useSharedRefresh(load);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => () => { loadSequence.current += 1; }, []);
 
-  const productName = (id: number, fallback?: string) => fallback || products.find(p => p.id === id)?.name || '(已停用商品)';
+  const productNames = useMemo(() => new Map(products.map(product => [product.id, product.name])), [products]);
   const exportCsv = async () => {
     try {
       if (fromDate && toDate && fromDate > toDate) throw new Error('开始日期不能晚于结束日期');
@@ -89,44 +159,18 @@ const RecordsPage: React.FC = () => {
         </View>
       )}
 
-      {list.length === 0 ? (
+      {loading ? (
+        <View className={styles.empty}>{getCopy('recordsLoading')}</View>
+      ) : loadError ? (
+        <View className={styles.empty} onClick={load}>{loadError}</View>
+      ) : list.length === 0 ? (
         <View className={styles.empty}>暂无记录</View>
       ) : (
-        list.map(t => (
-          <View key={t.id} className={styles.listItem}>
-            <View className={styles.itemTop}>
-              <View className={styles.titleWrap}>
-                <Text className={styles.itemName}>{productName(t.product_id, t.product_name)}</Text>
-                {!!t.voided_at && <Text className={styles.tagOut}>已作废 · 不计库存及金额</Text>}
-                {t.customer_name && (
-                  <Text className={styles.customerName}>{t.customer_name}</Text>
-                )}
-              </View>
-              {t.type === 'in'
-                ? <Text className={styles.tagIn}>入库</Text>
-                : t.type === 'adjustment' ? <Text className={styles.tagIn}>盘点</Text> : <Text className={styles.tagOut}>出库</Text>}
-            </View>
-
-            <View className={styles.metaBlock}>
-              <Text className={styles.itemTime}>{formatShortTime(t.created_at)}</Text>
-              <Text className={styles.itemRemark}>
-                {t.operator || t.remark
-                  ? `${t.operator ? `操作人：${t.operator}` : ''}${t.operator && t.remark ? ' · ' : ''}${t.remark ? `备注：${t.remark}` : ''}`
-                  : '暂无备注'}
-              </Text>
-              <Text className={styles.itemRemark}>规格：{t.specification || '无'} · 材质：{t.material || '无'} · {t.unit || ''} · 单价 ¥{Number(t.unit_price || 0).toFixed(2)} · 金额 ¥{Number(t.amount || 0).toFixed(2)}</Text>
-            </View>
-
-            <View className={styles.itemBottom}>
-              <Text className={styles.itemQtyLabel}>数量</Text>
-              <View className={styles.itemBottomRight}>
-                <Text className={styles.itemQty} style={{ color: t.type === 'out' ? '#dc2626' : '#16a34a' }}>
-                  {t.type === 'adjustment' ? `${Number(t.adjustment) >= 0 ? '+' : ''}${t.adjustment ?? t.quantity}` : `${t.type === 'out' ? '-' : '+'}${t.quantity}`}{t.unit}
-                </Text>
-              </View>
-            </View>
-          </View>
-        ))
+        list.map(transaction => <RecordListRow
+          key={transaction.id}
+          transaction={transaction}
+          productLabel={transaction.product_name || productNames.get(transaction.product_id) || '(?????)'}
+        />)
       )}
     </ScrollView>
   );

@@ -3,6 +3,7 @@ import { View, Text, Input, Textarea, ScrollView } from '@tarojs/components';
 import Taro, { useRouter } from '@tarojs/taro';
 import { getCustomer, addCustomer, updateCustomer, getSupplier, addSupplier, updateSupplier } from '@/services/api';
 import type { CustomerForm } from '@/types';
+import { sanitizeNonNegativeMoneyInput } from '@/utils/form-input';
 import styles from './index.module.scss';
 
 const CustomerEditPage: React.FC = () => {
@@ -31,7 +32,7 @@ const CustomerEditPage: React.FC = () => {
         setRemark(c.remark || '');
       }).catch(e => console.error('[CustomerEdit] load failed', e));
     }
-  }, [isEdit, editId]);
+  }, [isEdit, editId, supplier]);
 
   const handleSave = async () => {
     if (saving) return;
@@ -65,30 +66,30 @@ const CustomerEditPage: React.FC = () => {
       <View className={styles.form}>
         <View className={styles.field}>
           <Text className={styles.label}>{label}名称 *</Text>
-          <Input className={styles.input} placeholder="如：晨光文具店" value={name} onInput={e => setName(e.detail.value)} />
+          <Input className={styles.input} maxlength={50} placeholder="如：晨光文具店" value={name} onInput={e => setName(e.detail.value)} />
         </View>
 
         <View className={styles.field}>
           <Text className={styles.label}>联系人</Text>
-          <Input className={styles.input} placeholder="如：李老板" value={contact} onInput={e => setContact(e.detail.value)} />
+          <Input className={styles.input} maxlength={50} placeholder="如：李老板" value={contact} onInput={e => setContact(e.detail.value)} />
         </View>
 
         <View className={styles.field}>
           <Text className={styles.label}>联系电话</Text>
-          <Input className={styles.input} type="number" placeholder="客户手机号" value={phone} onInput={e => setPhone(e.detail.value)} />
+          <Input className={styles.input} type="number" maxlength={20} placeholder="客户手机号" value={phone} onInput={e => setPhone(e.detail.value)} />
         </View>
 
         <View className={styles.field}>
           <Text className={styles.label}>地址</Text>
-          <Input className={styles.input} placeholder="选填" value={address} onInput={e => setAddress(e.detail.value)} />
+          <Input className={styles.input} maxlength={200} placeholder="选填" value={address} onInput={e => setAddress(e.detail.value)} />
         </View>
 
         <View className={styles.field}>
           <Text className={styles.label}>备注</Text>
-          <Textarea className={styles.textarea} placeholder="选填，如结算方式、偏好等" value={remark} onInput={e => setRemark(e.detail.value)} />
+          <Textarea className={styles.textarea} maxlength={500} placeholder="选填，如结算方式、偏好等" value={remark} onInput={e => setRemark(e.detail.value)} />
         </View>
 
-        <View className={styles.field}><Text className={styles.label}>{supplier ? '应付款（元）' : '当前欠款（元）'}</Text><Input className={styles.input} type="digit" value={balance} onInput={e => setBalance(e.detail.value)} /></View>
+        <View className={styles.field}><Text className={styles.label}>{supplier ? '应付款（元）' : '当前欠款（元）'}</Text><Input className={styles.input} type="digit" value={balance} onInput={e => setBalance(sanitizeNonNegativeMoneyInput(e.detail.value))} /></View>
         <View className={styles.btnPrimary} onClick={handleSave}>{saving ? '保存中' : '保存'}</View>
       </View>
     </ScrollView>

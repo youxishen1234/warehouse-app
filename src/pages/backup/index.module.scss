@@ -1,8 +1,7 @@
-.page { min-height: 100vh; padding: 32px; background: #f5f7fb; box-sizing: border-box; }
+﻿.page { min-height: 100vh; padding: 32px; background: #f5f7fb; box-sizing: border-box; }
 .title { display: block; font-size: 22px; font-weight: 700; color: #202124; margin-bottom: 12px; }
 .hint { display: block; color: #6b7280; line-height: 1.7; margin-bottom: 20px; }
 .actions { display: flex; gap: 12px; margin-bottom: 16px; }
-.primary, .secondary { padding: 12px 16px; border-radius: 10px; text-align: center; }
+.primary, .secondary { flex: 1; padding: 12px 16px; border-radius: 10px; text-align: center; }
 .primary { color: #fff; background: #2f6bff; }
 .secondary { color: #2f6bff; background: #eaf1ff; }
-.textarea { width: 100%; min-height: 520px; padding: 14px; background: #fff; border-radius: 12px; box-sizing: border-box; font-size: 12px; }

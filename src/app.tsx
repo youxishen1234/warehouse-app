@@ -60,7 +60,6 @@ function TabSwipeNavigator() {
 
 function App(props) {
   // 可以使用所有的 React Hooks
-  useEffect(() => {});
 
   return (
     <TeamAccess>

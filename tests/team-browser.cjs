@@ -2,7 +2,7 @@ const { chromium, webkit } = require('playwright');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 (async () => {
-  const { server } = await require('../scripts/team-preview.cjs')();
+  const { server, db } = await require('../scripts/team-preview.cjs')();
   const base = 'http://127.0.0.1:4186';
   // 应用启动会自动以游客身份连接共享仓库（无登录表单），请求会按 sessionOrigin 顺序
   // 尝试 152.136.100.200 / youxishen.online；测试将两个来源都重写到本地预览后端，
@@ -65,6 +65,18 @@ const fs = require('node:fs/promises');
     await a.getByText('Shared carton', { exact: true }).last().waitFor({ timeout: 15000 });
     await a.screenshot({ path: 'release/team-product-added.png', fullPage: true });
     console.log('Guest added a product through the UI');
+
+    // Mobile: partial settlement uses the in-page modal and records the new balance.
+    const partialCustomer = db.addCustomer({ name: 'Partial settlement customer', debt: 100 });
+    await a.goto(base + '/pages/customers/index');
+    await a.getByText('Partial settlement customer', { exact: true }).waitFor({ timeout: 15000 });
+    await a.getByText('结算', { exact: true }).click();
+    await a.locator('input').first().fill('40');
+    await a.getByText('确认结算', { exact: true }).click();
+    for (let attempt = 0; attempt < 30 && db.getCustomer(partialCustomer.id).debt !== 60; attempt++) await new Promise(resolve => setTimeout(resolve, 50));
+    assert.equal(db.getCustomer(partialCustomer.id).debt, 60);
+    assert(db.listLedger({ type: 'settlement' }).some(row => row.party_id === partialCustomer.id && row.amount === 40));
+    console.log('Partial customer settlement through the UI passed');
 
     // 桌面端：新会话再次打开，能读取到共享数据（商品已持久化到后端）
     const b = await page({ width: 1280, height: 900 });

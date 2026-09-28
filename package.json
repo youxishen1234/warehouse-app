@@ -29,8 +29,16 @@
     "dev:qq": "npm run build:qq -- --watch",
     "dev:jd": "npm run build:jd -- --watch",
     "dev:quickapp": "npm run build:quickapp -- --watch",
-    "build:android": "powershell -NoProfile -Command \"$env:TARO_PUBLIC_PATH='./'; npm run build:h5\" && powershell -NoProfile -Command \"Copy-Item -Path dist\\* -Destination www -Recurse -Force\" && cap sync android && cd android && gradlew.bat assembleRelease",
-    "build:windows": "powershell -NoProfile -Command \"$env:TARO_PUBLIC_PATH='./'; npm run build:h5\" && powershell -NoProfile -Command \"Copy-Item -Path dist\\* -Destination www -Recurse -Force\" && electron-builder --win nsis"
+    "build:android": "powershell -NoProfile -Command \"$env:TARO_PUBLIC_PATH='./'; npm run build:h5\" && powershell -NoProfile -Command \"powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\sync-native-assets.ps1\" && cap sync android && cd android && gradlew.bat assembleRelease",
+    "build:windows": "powershell -NoProfile -Command \"$env:TARO_PUBLIC_PATH='./'; npm run build:h5\" && powershell -NoProfile -Command \"powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\sync-native-assets.ps1\" && electron-builder --win nsis",
+    "test:backend": "node --test backend/*.test.cjs",
+    "test:artifacts": "node --test tests/*.test.cjs",
+    "test:browser": "node tests/navigation-browser.cjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src backend tests --ext .ts,.tsx,.js,.cjs",
+    "verify:fast": "npm run typecheck && npm run lint && npm run test:backend && npm run test:artifacts",
+    "verify:release-artifacts": "node scripts/verify-release-artifacts.cjs",
+    "verify:release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\verify-release.ps1"
   },
   "browserslist": [
     "last 3 versions",
@@ -59,14 +67,12 @@
     "@tarojs/taro": "4.2.1",
     "ajv": "^8.20.0",
     "classnames": "^2.5.0",
-    "dayjs": "^1.11.10",
     "react": "^18.0.0",
-    "react-dom": "^18.0.0",
-    "zustand": "^4.5.0"
+    "react-dom": "^18.0.0"
   },
   "build": {
     "appId": "com.warehouse.app.desktop",
-    "productName": "曙光库存",
+    "productName": "閺囨瑥鍘滄惔鎾崇摠",
     "directories": {
       "output": "release/windows"
     },

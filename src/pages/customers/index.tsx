@@ -1,11 +1,13 @@
-import { useSharedRefresh } from '@/services/shared-refresh';
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView } from '@tarojs/components';
+﻿import { useSharedRefresh } from '@/services/shared-refresh';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { View, Text, Input, ScrollView } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
 import { getCustomers, deleteCustomer, getTransactions, getSuppliers, deleteSupplier, updateCustomer, updateSupplier } from '@/services/api';
 import type { Customer, Transaction } from '@/types';
 import Icon from '@/components/Icon';
 import SwipeRow from '@/components/SwipeRow';
+import { numberValue, roundDecimal } from '@/utils/stock-math';
+import { formatMoney, formatMoneyInput } from '@/utils/format';
 import styles from './index.module.scss';
 
 // 跨页联动中转键：tabBar 页（入库/出库）无法通过 URL 传参，用 storage 中转
@@ -18,37 +20,117 @@ const goOutbound = (c: Customer) => {
   Taro.switchTab({ url: '/pages/outbound/index' });
 };
 
+type CustomerStats = { outQty: number; inQty: number; count: number };
+const EMPTY_PARTY_STATS: CustomerStats = { outQty: 0, inQty: 0, count: 0 };
+
+type CustomerListRowProps = {
+  party: Customer;
+  stats: CustomerStats;
+  supplier: boolean;
+  open: boolean;
+  onOpenChange: (id: number, open: boolean) => void;
+  handleRecords: (party: Customer) => void;
+  handleEdit: (id: number) => void;
+  handleDelete: (party: Customer) => void;
+  openSettlement: (party: Customer) => void;
+};
+
+// Keep customer and supplier rows isolated from settlement modal input state.
+const CustomerListRow = React.memo(function CustomerListRow({ party, stats, supplier, open, onOpenChange, handleRecords, handleEdit, handleDelete, openSettlement }: CustomerListRowProps) {
+  return <SwipeRow
+    open={open}
+    onOpenChange={nextOpen => onOpenChange(party.id, nextOpen)}
+    onTap={() => handleRecords(party)}
+    actions={[
+      { text: '??', bg: '#64748b', onClick: () => handleRecords(party) },
+      { text: '??', bg: '#2f6bff', onClick: () => handleEdit(party.id) },
+      { text: '??', bg: '#dc2626', onClick: () => handleDelete(party) }
+    ]}
+  >
+    <View className={styles.listItem}>
+      <View className={styles.itemTop}>
+        <Text className={styles.itemName}>{party.name}</Text>
+        <Text className={styles.itemBadge}>{stats.count} ???</Text>
+      </View>
+      <View className={styles.itemMeta}>
+        {party.contact ? `????${party.contact}` : '?????'}
+        {party.phone ? ` ? ???${party.phone}` : ''}
+        {party.address ? `\n???${party.address}` : ''}
+        {party.remark ? `\n???${party.remark}` : ''}
+      </View>
+      <View className={styles.itemStats}>
+        <Text className={styles.statItem}>{supplier ? '???' : '??'} {formatMoney(Number(supplier ? party.payable || 0 : party.debt || 0))}</Text>
+        <Text className={styles.statItem}>??<Text className={`${styles.statNum} ${styles.statNumOut}`}>{stats.outQty}</Text></Text>
+        <Text className={styles.statItem}>??<Text className={`${styles.statNum} ${styles.statNumIn}`}>{stats.inQty}</Text></Text>
+      </View>
+      <View className={styles.itemActions}>
+        <View className={styles.btnOut} onClick={event => { event.stopPropagation(); openSettlement(party); }}>??</View>
+        <View className={styles.btnIn} onClick={event => { event.stopPropagation(); handleEdit(party.id); }}>??</View>
+        {!supplier && <View className={styles.btnOut} onClick={event => { event.stopPropagation(); goOutbound(party); }}>??</View>}
+        {supplier && <View className={styles.btnIn} onClick={event => { event.stopPropagation(); Taro.setStorageSync(TRANSIT_KEY, { supplier_id: party.id, supplier_name: party.name }); Taro.switchTab({ url: '/pages/inbound/index' }); }}>??</View>}
+      </View>
+    </View>
+  </SwipeRow>;
+});
+
 const CustomersPage: React.FC<{ supplier?: boolean }> = ({ supplier = false }) => {
   const label = supplier ? '供应商' : '客户';
   const [list, setList] = useState<Customer[]>([]);
   const [txList, setTxList] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   // 当前左滑展开的行（一次只开一行）
   const [activeId, setActiveId] = useState<number | null>(null);
+  const handleActiveChange = useCallback((id: number, open: boolean) => { setActiveId(open ? id : null); }, []);
+  const [settling, setSettling] = useState<{ party: Customer; balance: number } | null>(null);
+  const [settleAmount, setSettleAmount] = useState('');
+  const [settleRemark, setSettleRemark] = useState('');
+  const settleSaving = useRef(false);
+  const loadSequence = useRef(0);
+  const lastLoadAt = useRef(0);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (forceOrRevision: boolean | string = false) => {
+    const startedAt = Date.now();
+    const force = forceOrRevision === true || typeof forceOrRevision === 'string';
+    if (!force && startedAt - lastLoadAt.current < 250) return;
+    lastLoadAt.current = startedAt;
+    const sequence = ++loadSequence.current;
+    setLoading(true);
+    setLoadError('');
     try {
       const [customers, txs] = await Promise.all([
         supplier ? getSuppliers() : getCustomers(),
         getTransactions()
       ]);
+      if (sequence !== loadSequence.current) return;
       setList(customers);
       setTxList(txs);
-    } catch (e) { console.error('[Customers] load failed', e); }
-  }, [supplier]);
+    } catch (error) {
+      if (sequence === loadSequence.current) setLoadError(error instanceof Error ? error.message : `${label}加载失败，请点击重试`);
+    } finally {
+      if (sequence === loadSequence.current) setLoading(false);
+    }
+  }, [label, supplier]);
 
   useSharedRefresh(load);
   useEffect(() => { load(); }, [load]);
-  useDidShow(() => { load(); });
+  useEffect(() => () => { loadSequence.current += 1; }, []);
+  useDidShow(() => { load(true); });
 
   // 该客户的出入库统计（入库=进货额参考，出库=销售给该客户）
-  const statsOf = (id: number) => {
-    const mine = txList.filter(t => t.customer_id === id);
-    return {
-      outQty: mine.filter(t => t.type === 'out').reduce((s, t) => s + t.quantity, 0),
-      inQty: mine.filter(t => t.type === 'in').reduce((s, t) => s + t.quantity, 0),
-      count: mine.length
-    };
-  };
+  const statsByParty = useMemo(() => {
+    const map = new Map<number, { outQty: number; inQty: number; count: number }>();
+    txList.forEach(transaction => {
+      const id = transaction.customer_id;
+      if (id == null) return;
+      const current = map.get(id) || { outQty: 0, inQty: 0, count: 0 };
+      current.count += 1;
+      if (transaction.type === 'out') current.outQty += transaction.quantity;
+      if (transaction.type === 'in') current.inQty += transaction.quantity;
+      map.set(id, current);
+    });
+    return map;
+  }, [txList]);
 
   const handleAdd = () => {
     Taro.navigateTo({ url: `/pages/customer-edit/index?party=${supplier ? 'supplier' : 'customer'}` });
@@ -70,16 +152,42 @@ const CustomersPage: React.FC<{ supplier?: boolean }> = ({ supplier = false }) =
     Taro.switchTab({ url: '/pages/outbound/index' });
   };
 
-  const handleEdit = (id: number) => {
+  const handleEdit = useCallback((id: number) => {
     Taro.navigateTo({ url: `/pages/customer-edit/index?id=${id}&party=${supplier ? 'supplier' : 'customer'}` });
-  };
+  }, [supplier]);
 
-  const handleRecords = (c: Customer) => {
+  const handleRecords = useCallback((c: Customer) => {
     // 跳出入库记录页并带上客户筛选（记录页读取 customer_id 参数）
     Taro.navigateTo({ url: `/pages/records/index?${supplier ? 'supplier_id' : 'customer_id'}=${c.id}&customer_name=${encodeURIComponent(c.name)}` });
+  }, [supplier]);
+
+  const openSettlement = useCallback((party: Customer) => {
+    const balance = Number(supplier ? party.payable || 0 : party.debt || 0);
+    if (!(balance > 0) || settleSaving.current) return;
+    setSettling({ party, balance });
+    setSettleAmount(formatMoneyInput(balance));
+    setSettleRemark('');
+  }, [supplier]);
+
+  const submitSettlement = async () => {
+    if (!settling || settleSaving.current) return;
+    let amount: number;
+    try { amount = numberValue(settleAmount, '结算金额', true); }
+    catch (error) { Taro.showToast({ title: error instanceof Error ? error.message : '请输入有效结算金额', icon: 'none' }); return; }
+    if (amount > settling.balance) { Taro.showToast({ title: '结算金额不能超过当前余额', icon: 'none' }); return; }
+    const next = roundDecimal(settling.balance - amount, 2);
+    settleSaving.current = true;
+    try {
+      if (supplier) await updateSupplier(settling.party.id, { payable: next, settlement_remark: settleRemark.trim() });
+      else await updateCustomer(settling.party.id, { debt: next, settlement_remark: settleRemark.trim() });
+      setSettling(null); setSettleAmount(''); setSettleRemark('');
+      Taro.showToast({ title: next === 0 ? '已全部结清' : '部分结算成功', icon: 'success' });
+      await load();
+    } catch (error) { Taro.showToast({ title: error?.message || '结算失败', icon: 'none' }); }
+    finally { settleSaving.current = false; }
   };
 
-  const handleDelete = async (c: Customer) => {
+  const handleDelete = useCallback(async (c: Customer) => {
     const res = await Taro.showModal({
       title: '停用确认',
       content: `确定停用${label}「${c.name}」？历史流水会保留。`,
@@ -92,10 +200,10 @@ const CustomersPage: React.FC<{ supplier?: boolean }> = ({ supplier = false }) =
         load();
       } catch (e) { console.error('[Customers] delete failed', e); }
     }
-  };
+  }, [label, supplier, load]);
 
   return (
-    <ScrollView scrollY className={styles.container} onRefresherRefresh={load} refresherEnabled refresherTriggered={false}>
+    <ScrollView scrollY className={styles.container} onRefresherRefresh={() => load(true)} refresherEnabled refresherTriggered={false}>
       <View className={styles.toolbar}><View className={styles.addBtn} onClick={handleAdd}>+ 新增</View></View>
 
       <View className={styles.quickLinks}>
@@ -117,56 +225,27 @@ const CustomersPage: React.FC<{ supplier?: boolean }> = ({ supplier = false }) =
         </View>
       </View>
 
-      {list.length === 0 ? (
+      {loading ? (
+        <View className={styles.empty}>正在加载{label}资料…</View>
+      ) : loadError ? (
+        <View className={styles.empty} onClick={() => load(true)}>{loadError} · 点击重试</View>
+      ) : list.length === 0 ? (
         <View className={styles.empty}>暂无{label}</View>
       ) : (
-        list.map(c => {
-          const s = statsOf(c.id);
-          return (
-            <SwipeRow
-              key={c.id}
-              open={activeId === c.id}
-              onOpenChange={o => setActiveId(o ? c.id : null)}
-              onTap={() => handleRecords(c)}
-              actions={[
-                { text: '流水', bg: '#64748b', onClick: () => handleRecords(c) },
-                { text: '编辑', bg: '#2f6bff', onClick: () => handleEdit(c.id) },
-                { text: '停用', bg: '#dc2626', onClick: () => handleDelete(c) }
-              ]}
-            >
-              <View className={styles.listItem}>
-                <View className={styles.itemTop}>
-                  <Text className={styles.itemName}>{c.name}</Text>
-                  <Text className={styles.itemBadge}>{s.count} 笔流水</Text>
-                </View>
-                <View className={styles.itemMeta}>
-                  {c.contact ? `联系人：${c.contact}` : '未填联系人'}
-                  {c.phone ? ` · 电话：${c.phone}` : ''}
-                  {c.address ? `\n地址：${c.address}` : ''}
-                  {c.remark ? `\n备注：${c.remark}` : ''}
-                </View>
-                <View className={styles.itemStats}>
-                  <Text className={styles.statItem}>{supplier ? '应付款' : '欠款'} ¥{Number(supplier ? c.payable || 0 : c.debt || 0).toFixed(2)}</Text>
-                  <Text className={styles.statItem}>出库<Text className={`${styles.statNum} ${styles.statNumOut}`}>{s.outQty}</Text></Text>
-                  <Text className={styles.statItem}>入库<Text className={`${styles.statNum} ${styles.statNumIn}`}>{s.inQty}</Text></Text>
-                </View>
-                <View className={styles.itemActions}>
-                  <View className={styles.btnOut} onClick={async e => {
-                    e.stopPropagation();
-                    if (!Number(supplier ? c.payable : c.debt)) return;
-                    const choice = await Taro.showModal({ title: '确认结清', content: `结清「${c.name}」全部${supplier ? '应付款' : '欠款'}？` });
-                    if (!choice.confirm) return;
-                    try { await (supplier ? updateSupplier(c.id, { payable: 0 }) : updateCustomer(c.id, { debt: 0 })); Taro.showToast({ title: '结清成功', icon: 'success' }); await load(); } catch (error) { Taro.showToast({ title: error?.message || '结清失败', icon: 'none' }); }
-                  }}>结清</View>
-                  <View className={styles.btnIn} onClick={e => { e.stopPropagation(); handleEdit(c.id); }}>编辑</View>
-                  {!supplier && <View className={styles.btnOut} onClick={e => { e.stopPropagation(); goOutbound(c); }}>出库</View>}
-                  {supplier && <View className={styles.btnIn} onClick={e => { e.stopPropagation(); Taro.setStorageSync(TRANSIT_KEY, { supplier_id: c.id, supplier_name: c.name }); Taro.switchTab({ url: '/pages/inbound/index' }); }}>入库</View>}
-                </View>
-              </View>
-            </SwipeRow>
-          );
-        })
+        list.map(party => <CustomerListRow
+          key={party.id}
+          party={party}
+          stats={statsByParty.get(party.id) || EMPTY_PARTY_STATS}
+          supplier={supplier}
+          open={activeId === party.id}
+          onOpenChange={handleActiveChange}
+          handleRecords={handleRecords}
+          handleEdit={handleEdit}
+          handleDelete={handleDelete}
+          openSettlement={openSettlement}
+        />)
       )}
+      {settling && <View className={styles.settleMask} onClick={() => { if (!settleSaving.current) setSettling(null); }}><View className={styles.settleDialog} onClick={e => e.stopPropagation()}><Text className={styles.settleTitle}>{supplier ? '供应商结算' : '客户结算'} · {settling.party.name}</Text><Text className={styles.settleHint}>当前余额 {formatMoney(settling.balance)}，支持部分结算</Text><Input className={styles.settleInput} type="digit" value={settleAmount} placeholder="结算金额" onInput={e => setSettleAmount(e.detail.value)} disabled={settleSaving.current} /><Input className={styles.settleInput} value={settleRemark} placeholder="结算备注（可选）" onInput={e => setSettleRemark(e.detail.value)} disabled={settleSaving.current} /><View className={styles.settleActions}><View className={styles.settleCancel} onClick={() => { if (!settleSaving.current) setSettling(null); }}>取消</View><View className={styles.settleConfirm} onClick={submitSettlement}>{settleSaving.current ? '保存中…' : '确认结算'}</View></View></View></View>}
     </ScrollView>
   );
 };

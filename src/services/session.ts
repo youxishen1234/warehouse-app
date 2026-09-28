@@ -13,7 +13,19 @@ type Session = { token: string; user: Member };
 const key = 'warehouse_session_v1';
 const subscribers = new Set<() => void>();
 const deviceKey = 'warehouse_device_id_v1';
-export function deviceId(): string { let value = Taro.getStorageSync(deviceKey); if (!value) { value = `device-${Date.now()}-${Math.random().toString(36).slice(2)}`; Taro.setStorageSync(deviceKey, value); } return String(value); }
+export function deviceId(): string {
+  let value = Taro.getStorageSync(deviceKey);
+  if (!value) {
+    try {
+      const legacy = globalThis.localStorage?.getItem('sg_did');
+      if (legacy) value = legacy;
+    } catch (error) { /* native runtimes may not expose localStorage */ }
+  }
+  if (!value) value = `device-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  try { Taro.setStorageSync(deviceKey, String(value)); } catch (error) { /* best effort */ }
+  try { globalThis.localStorage?.setItem('sg_did', String(value)); } catch (error) { /* best effort */ }
+  return String(value);
+}
 export function session(): Session | null { return Taro.getStorageSync(key) || null; }
 export function setSession(value: Session | null) {
   if (value) Taro.setStorageSync(key, value); else Taro.removeStorageSync(key);

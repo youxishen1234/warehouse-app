@@ -1,22 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { Input, ScrollView, Text, View } from '@tarojs/components';
 import styles from './index.module.scss';
+import { sanitizeDimensionInput } from './math';
+import { calculateTargetDimension, formatDimension, parseDimension, type DimensionMode } from './math';
 
-type DimensionMode = 'inner' | 'outer';
 type DimensionKey = 'length' | 'width' | 'height';
 
 const labels: Record<DimensionKey, string> = { length: '长', width: '宽', height: '高' };
 const thicknessOptions = [1.5, 3, 4, 5, 6];
-
-function parseDimension(value: string): number | null {
-  if (!value.trim()) return null;
-  const result = Number(value);
-  return Number.isFinite(result) && result > 0 ? result : null;
-}
-
-function format(value: number): string {
-  return Number(value.toFixed(2)).toString();
-}
 
 export default function CartonCalculator() {
   const [mode, setMode] = useState<DimensionMode>('inner');
@@ -33,9 +24,9 @@ export default function CartonCalculator() {
   const complete = values.length !== null && values.width !== null && values.height !== null && values.thickness !== null;
   const targetMode: DimensionMode = mode === 'inner' ? 'outer' : 'inner';
   const target = complete ? {
-    length: mode === 'inner' ? values.length! + values.thickness! * 2 : values.length! - values.thickness! * 2,
-    width: mode === 'inner' ? values.width! + values.thickness! * 2 : values.width! - values.thickness! * 2,
-    height: mode === 'inner' ? values.height! + values.thickness! * 2 : values.height! - values.thickness! * 2
+    length: calculateTargetDimension(values.length!, values.thickness!, mode),
+    width: calculateTargetDimension(values.width!, values.thickness!, mode),
+    height: calculateTargetDimension(values.height!, values.thickness!, mode)
   } : null;
   const invalidOuter = target && (target.length <= 0 || target.width <= 0 || target.height <= 0);
 
@@ -61,7 +52,7 @@ export default function CartonCalculator() {
         {(Object.keys(labels) as DimensionKey[]).map((key, index) => <React.Fragment key={key}>
           <View className={styles.field}>
             <Text>{labels[key]}</Text>
-            <Input type="digit" value={dimensions[key]} placeholder="0" onInput={event => setDimensions(current => ({ ...current, [key]: event.detail.value }))} />
+            <Input type="digit" value={dimensions[key]} placeholder="0" onInput={event => setDimensions(current => ({ ...current, [key]: sanitizeDimensionInput(event.detail.value) }))} />
           </View>
           {index < 2 && <Text className={styles.separator}>×</Text>}
         </React.Fragment>)}
@@ -75,7 +66,7 @@ export default function CartonCalculator() {
       </View>
       <View className={styles.customThickness}>
         <Text>自定义厚度</Text>
-        <Input type="digit" value={thickness} onInput={event => setThickness(event.detail.value)} />
+        <Input type="digit" value={thickness} onInput={event => setThickness(sanitizeDimensionInput(event.detail.value))} />
         <Text>mm</Text>
       </View>
     </View>
@@ -90,7 +81,7 @@ export default function CartonCalculator() {
       {target && !invalidOuter && <View className={styles.resultGrid}>
         {(Object.keys(labels) as DimensionKey[]).map(key => <View key={key}>
           <Text>{targetMode === 'inner' ? `内${labels[key]}` : `外${labels[key]}`}</Text>
-          <Text>{format(target[key])}<Text> mm</Text></Text>
+          <Text>{formatDimension(target[key])}<Text> mm</Text></Text>
         </View>)}
       </View>}
     </View>
