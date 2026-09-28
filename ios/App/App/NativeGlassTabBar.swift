@@ -275,7 +275,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         view.layoutIfNeeded()
         guard bridgeController.parent === hosts[selectedIndex],
               bridgeController.view.bounds.height > view.bounds.height / 2,
-              dock.isHidden != nativeGlass else {
+              dock.isHidden == !nativeGlass else {
             finishSmokeTest("Tab host, bridge containment or dock visibility failed")
             return
         }
