@@ -189,13 +189,13 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     }
 
     #if compiler(>=6.2)
-    @available(iOS 26.0, *)
+    @available(iOS 18.0, *)
     func tabBarController(_ tabBarController: UITabBarController, shouldSelectTab tab: UITab) -> Bool {
         guard webReady, !modalVisible else { return false }
         return true
     }
 
-    @available(iOS 26.0, *)
+    @available(iOS 18.0, *)
     func tabBarController(_ tabBarController: UITabBarController, didSelectTab selectedTab: UITab, previousTab: UITab?) {
         guard let index = routes.firstIndex(of: selectedTab.identifier) else { return }
         mountBridge(in: hosts[index])
