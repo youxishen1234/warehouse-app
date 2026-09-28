@@ -12,6 +12,24 @@ const AUTO_BACKUP_KEEP = Math.max(1, Math.min(100, Number(process.env.WAREHOUSE_
 const AUTO_BACKUP_MAX_DAYS = Math.max(1, Math.min(3650, Number(process.env.WAREHOUSE_BACKUP_MAX_DAYS) || 30));
 let loadWarnings = [];
 
+function normalizeTimestampFields(data) {
+  const fields = ['created_at', 'updated_at', 'profile_updated_at', 'stock_updated_at', 'balance_updated_at', 'counted_at', 'voided_at'];
+  const collections = ['products', 'customers', 'suppliers', 'transactions', 'ledger', 'orders', 'order_events', 'stocktakes', 'delivery_notes'];
+  let converted = 0;
+  for (const collection of collections) for (const row of data[collection] || []) for (const field of fields) {
+    const value = row[field];
+    if (typeof value !== 'string' || value.trim() === '') continue;
+    const numeric = Number(value);
+    const timestamp = Number.isFinite(numeric) ? numeric : Date.parse(value);
+    if (Number.isSafeInteger(timestamp) && timestamp >= 0) {
+      row[field] = timestamp;
+      converted += 1;
+    }
+  }
+  if (converted) loadWarnings.push(`timestamp migration converted ${converted} string values`);
+  return converted;
+}
+
 function scanReferenceWarnings(data) {
   const warnings = [];
   const products = new Set((data.products || []).map(row => Number(row.id)));
@@ -125,9 +143,10 @@ function load() {
       if (t.product_name === undefined) t.product_name = d.products.find(p => p.id === Number(t.product_id))?.name || '';
     });
     d.stocktakes.forEach(t => { if (t.counted_at === undefined) t.counted_at = Number(t.created_at) || Date.now(); });
+    normalizeTimestampFields(d);
     if (!d._meta.nextDeliveryNoteId) d._meta.nextDeliveryNoteId = d.delivery_notes.length + 1;
     d._meta.nextDeliveryNoteId = d.delivery_notes.reduce((next, row) => Math.max(next, Number(row.id) + 1), Number(d._meta.nextDeliveryNoteId) || 1);
-    loadWarnings = scanReferenceWarnings(d);
+    loadWarnings = loadWarnings.concat(scanReferenceWarnings(d));
     if (loadWarnings.length) console.warn(`[db] startup reference warnings: ${loadWarnings.length}`);
     return d;
   } catch (e) { throw new Error(`数据库读取失败，已保护原文件: ${e.message}`); }
@@ -342,6 +361,10 @@ function listDeliveryNotes(){return cache.delivery_notes.slice().sort((a,b)=>b.c
 function getDeliveryNote(id){return cache.delivery_notes.find(note=>note.id===Number(id))||null;}
 function addDeliveryNote(data) {
   if (!Array.isArray(data.lines) || !data.lines.length) throw new Error('至少添加一行商品');
+  const workOrderNo = String(data.work_order_no || '').trim();
+  if (workOrderNo && cache.delivery_notes.some(note => !note.voided_at && String(note.work_order_no || '').trim() === workOrderNo) && data.confirm_duplicate_work_order !== true) {
+    throw new Error(`工单编号「${workOrderNo}」已有未作废送货单，请确认后再重复开单`);
+  }
   const now = Date.now(); const supplier = activeParty(data.supplier_id, 'supplier');
   const freight = numberValue(data.freight === undefined ? 0 : data.freight, '运费');
   const date = data.date === undefined ? localDate() : String(data.date);
@@ -363,7 +386,7 @@ function addDeliveryNote(data) {
     return { product, quantity, delivered, ...values, specification, length, width, square };
   });
   return atomicMutation(() => {
-    const note = { id: cache._meta.nextDeliveryNoteId++, date, work_order_no: String(data.work_order_no || '').trim(), supplier_id: supplier?.id || null, supplier_name: supplier?.name || '', driver_phone: String(data.driver_phone || '').trim(), vehicle_no: String(data.vehicle_no || '').trim(), operator: String(data.operator || '').trim(), freight, remark: String(data.remark || '').trim(), lines: [], total_square_meters: 0, total_amount: 0, created_at: now };
+    const note = { id: cache._meta.nextDeliveryNoteId++, date, work_order_no: workOrderNo, supplier_id: supplier?.id || null, supplier_name: supplier?.name || '', driver_phone: String(data.driver_phone || '').trim(), vehicle_no: String(data.vehicle_no || '').trim(), operator: String(data.operator || '').trim(), freight, remark: String(data.remark || '').trim(), lines: [], total_square_meters: 0, total_amount: 0, created_at: now };
     for (const item of prepared) {
       const { product, quantity, delivered, unit, unitPrice, amount, specification, length, width, square } = item;
       const result = delivered > 0 ? stockIn(product.id, delivered, note.operator, note.remark || `送货单 ${note.work_order_no}`, note.supplier_id, { specification, unit, unit_price: unitPrice, delivery_note_id: note.id, work_order_no: note.work_order_no, delivered_qty: delivered, square_meters: square }) : null;
@@ -394,6 +417,7 @@ function atomicMutation(action) {
 }
 function validateNonNegativeState(data) {
   const check = (rows, field, label) => (rows || []).forEach(row => {
+    if (row[field] === undefined || row[field] === null) return;
     const value = Number(row[field]);
     if (!Number.isFinite(value) || value < 0) throw new Error(`${label}无效`);
   });
@@ -401,6 +425,25 @@ function validateNonNegativeState(data) {
   check(data.products, 'price', '商品单价');
   check(data.customers, 'debt', '客户应收');
   check(data.suppliers, 'payable', '供应商应付');
+  check(data.transactions, 'quantity', '流水数量');
+  check(data.transactions, 'unit_price', '流水单价');
+  check(data.transactions, 'amount', '流水金额');
+  check(data.ledger, 'amount', '账本金额');
+  check(data.orders, 'quantity', '订单数量');
+  check(data.orders, 'unit_price', '订单单价');
+  check(data.orders, 'amount', '订单金额');
+  check(data.stocktakes, 'before_stock', '盘点前库存');
+  check(data.stocktakes, 'counted_stock', '盘点库存');
+  check(data.delivery_notes, 'freight', '送货运费');
+  check(data.delivery_notes, 'total_amount', '送货单金额');
+  check(data.delivery_notes, 'total_square_meters', '送货单面积');
+  (data.delivery_notes || []).forEach(note => (note.lines || []).forEach(line => {
+    for (const [field, label] of [['quantity', '送货计划数量'], ['delivered_qty', '送货实收数量'], ['unit_price', '送货单价'], ['amount', '送货金额'], ['square_meters', '送货面积']]) {
+      if (line[field] === undefined || line[field] === null) continue;
+      const value = Number(line[field]);
+      if (!Number.isFinite(value) || value < 0) throw new Error(`${label}无效`);
+    }
+  }));
 }
 function normalizeGhostStock(data, source) {
   const products = Array.isArray(data?.products) ? data.products : [];
@@ -454,6 +497,7 @@ function transact(actor, key, fingerprint, expected, operation, action) {
     for (const [collection, field] of [['products','stock'], ['products','price'], ['customers','debt'], ['suppliers','payable'], ['orders','quantity'], ['orders','amount']]) {
       if (cache[collection].some(row => row[field] !== undefined && (!Number.isFinite(row[field]) || row[field] < 0))) throw new Error('数量、库存或金额无效');
     }
+    validateNonNegativeState(cache);
     validateAccountingDelta(JSON.parse(previous), cache);
     state.revision++;
     state.audit.push({ id: state.revision, actor_id: actor.id, actor_name: actor.username, operation, time: Date.now(), record_id: data?.id || data?.transaction?.id || null });
@@ -714,6 +758,46 @@ function listTx(f={}) {
     supplier_current_name: supplierNames.get(t.supplier_id) ?? ''
   }));
 }
+function streamTx(f = {}) {
+  const includeVoided = f.include_voided === 'true';
+  const from = f.from === undefined ? undefined : parseDateQuery(String(f.from));
+  const to = f.to === undefined ? undefined : parseDateQuery(String(f.to), true);
+  const keyword = f.keyword ? String(f.keyword).toLowerCase() : '';
+  const matches = tx => {
+    if (!includeVoided && tx.voided_at) return false;
+    if (f.type && tx.type !== f.type) return false;
+    if (f.product_id && tx.product_id !== Number(f.product_id)) return false;
+    if (f.customer_id && tx.customer_id !== Number(f.customer_id)) return false;
+    if (f.supplier_id && tx.supplier_id !== Number(f.supplier_id)) return false;
+    if (from !== undefined && tx.created_at < from) return false;
+    if (to !== undefined && tx.created_at > to) return false;
+    if (keyword) { const product = getProduct(tx.product_id); if (!((product && product.name.toLowerCase().includes(keyword)) || (tx.remark && tx.remark.toLowerCase().includes(keyword)) || (tx.customer_name && tx.customer_name.toLowerCase().includes(keyword)) || (tx.supplier_name && tx.supplier_name.toLowerCase().includes(keyword)))) return false; }
+    return true;
+  };
+  const customerNames = new Map(cache.customers.map(party => [party.id, party.name]));
+  const supplierNames = new Map(cache.suppliers.map(party => [party.id, party.name]));
+  const decorate = tx => ({ ...tx, product_name: tx.product_name ?? getProduct(tx.product_id)?.name ?? '', customer_current_name: customerNames.get(tx.customer_id) ?? '', supplier_current_name: supplierNames.get(tx.supplier_id) ?? '' });
+  let count = 0;
+  for (let index = cache.transactions.length - 1; index >= 0; index -= 1) if (matches(cache.transactions[index])) count += 1;
+  function* rows() { for (let index = cache.transactions.length - 1; index >= 0; index -= 1) { const tx = cache.transactions[index]; if (matches(tx)) yield decorate(tx); } }
+  return { count, rows: rows() };
+}
+
+function streamLedger(f = {}) {
+  const includeVoided = f.include_voided === 'true';
+  const from = f.from === undefined ? undefined : parseDateQuery(String(f.from));
+  const to = f.to === undefined ? undefined : parseDateQuery(String(f.to), true);
+  const keyword = f.keyword ? String(f.keyword).toLowerCase() : '';
+  const matches = entry => (!includeVoided && entry.voided_at) ? false : f.type && entry.type !== f.type ? false : from !== undefined && entry.created_at < from ? false : to !== undefined && entry.created_at > to ? false : keyword && !(`${entry.remark || ''} ${entry.party_name || ''}`.toLowerCase().includes(keyword)) ? false : true;
+  const customers = new Map(cache.customers.map(party => [Number(party.id), String(party.name || '')]));
+  const suppliers = new Map(cache.suppliers.map(party => [Number(party.id), String(party.name || '')]));
+  const decorate = entry => ({ ...entry, party_current_name: entry.party_id == null ? '' : (ledgerPartyType(entry, { customers: cache.customers, suppliers: cache.suppliers }) === 'supplier' ? suppliers.get(Number(entry.party_id)) || '' : customers.get(Number(entry.party_id)) || '') });
+  let count = 0;
+  for (let index = cache.ledger.length - 1; index >= 0; index -= 1) if (matches(cache.ledger[index])) count += 1;
+  function* rows() { for (let index = cache.ledger.length - 1; index >= 0; index -= 1) { const entry = cache.ledger[index]; if (matches(entry)) yield decorate(entry); } }
+  return { count, rows: rows() };
+}
+
 function reverseTransaction(tx) {
   if (tx.voided_at) throw new Error('记录已作废，不能重复作废');
   const p = getProduct(tx.product_id);
@@ -817,7 +901,27 @@ function stockOutBatch(lines, op='', rmk='', customerId=null) {
   return atomicMutation(() => normalized.map(line => stockOut(line.product_id, line.quantity, op, line.remark || rmk, customerId, line)));
 }
 
-function backupData() { return JSON.parse(JSON.stringify(cache)); }
+function orderToOutbound(orderId, lines, op='', rmk='') {
+  const order = cache.orders.find(item => item.id === Number(orderId));
+  if (!order) throw new Error('?????');
+  if (order.status === '\u5df2\u53d6\u6d88' || order.status === '\u5f85\u751f\u4ea7') throw new Error('当前订单状态不能出库');
+  if (!Array.isArray(lines) || !lines.length) throw new Error('??????????');
+  const customerId = order.customer_id || null;
+  const result = stockOutBatch(lines.map(line => ({ ...line, remark: line.remark || rmk })), op, rmk || ('???? ' + order.order_no), customerId);
+  if (order.status !== '\u5df2\u5b8c\u6210') updateOrder(order.id, { status: '\u5df2\u53d1\u8d27' });
+  return { order, transactions: result };
+}
+
+function portableImageUrl(value) {
+  const raw = String(value || '').trim();
+  const match = raw.match(/(?:^|[\\/])uploads[\\/]products[\\/]([A-Za-z0-9._-]+)$/i);
+  return match ? `/uploads/products/${match[1]}` : (raw.startsWith('/uploads/products/') && /^[A-Za-z0-9._/-]+$/.test(raw) ? raw : '');
+}
+function backupData() {
+  const snapshot = JSON.parse(JSON.stringify(cache));
+  snapshot.products = (snapshot.products || []).map(product => ({ ...product, image_url: portableImageUrl(product.image_url) }));
+  return snapshot;
+}
 function health() {
   let readable = false; let writable = false;
   try { fs.accessSync(DB_PATH, fs.constants.R_OK); readable = true; } catch {}
@@ -982,6 +1086,7 @@ function restoreData(value) {
   const next = JSON.parse(JSON.stringify(value));
   const collaboration = cache._collaboration || { revision: 0, audit: [], receipts: {} };
   next.orders = Array.isArray(next.orders) ? next.orders : []; next.order_events = Array.isArray(next.order_events) ? next.order_events : []; next.stocktakes = Array.isArray(next.stocktakes) ? next.stocktakes : []; next.delivery_notes = Array.isArray(next.delivery_notes) ? next.delivery_notes : [];
+  next.products = (next.products || []).map(product => ({ ...product, image_url: portableImageUrl(product.image_url) }));
   if (!next._meta) next._meta = {};
   next._meta.schemaVersion = SCHEMA_VERSION;
   for (const [collection, counter] of [['products','nextProductId'],['customers','nextCustomerId'],['suppliers','nextSupplierId'],['transactions','nextTransactionId'],['ledger','nextLedgerId'],['orders','nextOrderId'],['delivery_notes','nextDeliveryNoteId'],['order_events','nextOrderEventId'],['stocktakes','nextStocktakeId']]) { next[collection] = Array.isArray(next[collection]) ? next[collection] : []; next._meta[counter] = next[collection].reduce((n, row) => Math.max(n, Number(row.id) + 1), Number(next._meta[counter]) || 1); }
@@ -993,4 +1098,4 @@ function restoreData(value) {
 module.exports = { listProducts, getProduct, addProduct, updateProduct, deleteProduct,
   listCustomers, getCustomer, addCustomer, updateCustomer, deleteCustomer,
   listSuppliers, getSupplier, addSupplier, updateSupplier, deleteSupplier,
-  stockIn, stockOut, stockOutBatch, listTx, deleteTransaction, listLedger, addLedger, deleteLedger, listOrders, listOrderEvents, addOrder, updateOrder, addStocktake, listStocktakes, listDeliveryNotes, getDeliveryNote, addDeliveryNote, voidDeliveryNote, backupData, restoreData, health, stats, transact, revision, audit, receipt };
+  stockIn, stockOut, stockOutBatch, orderToOutbound, listTx, streamTx, deleteTransaction, listLedger, streamLedger, addLedger, deleteLedger, listOrders, listOrderEvents, addOrder, updateOrder, addStocktake, listStocktakes, listDeliveryNotes, getDeliveryNote, addDeliveryNote, voidDeliveryNote, backupData, restoreData, health, stats, transact, revision, audit, receipt };

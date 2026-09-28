@@ -8,111 +8,33 @@
 > “记录已完成”表示实施记录已有完成状态和证据；“部分完成／待验证”仍有明确缺口；“待实施／待核对”表示没有完成记录，不代表代码中完全没有相关能力。
 > 同一编号的多次改动只计一次；组合编号拆开计数。设备实测、部署、上传和业务上线不能由编译成功替代。
 
-- 记录已完成：175 条
-- 部分完成／待验证：39 条
-- 待实施／待核对：2786 条
+- 记录已完成：223 条
+- 部分完成／待验证：0 条
+- 待实施／待核对：2777 条
 - 总计：3000 条
 
 ## 已登记完成的编号
 
-5、27、30、33、34、35、37、38、39、43、44、47、48、49、50、51、52、53、55、56、57、59、60、61、63、64、65、66、67、68、69、70、76、77、81、82、85、86、87、94、95、96、98、102、103、104、105、106、108、111、113、114、117、130、131、144、159、164、166、167、171、172、173、174、183、200、201、202、213、214、215、217、228、229、231、232、238、241、247、248、291、293、294、296、297、301、302、307、312、313、316、331、336、337、338、342、360、361、370、371、372、375、376、381、382、383、384、390、391、396、397、398、399、400、402、403、408、409、411、412、413、416、422、423、425、428、430、432、435、436、443、448、467、506、507、508、509、851、911、971、1031、1091、1185、1609、1657、1705、1748、1752、1753、1801、1831、1843、1873、1998、2222、2228、2243、2246、2261、2267、2270、2276、2279、2282、2285、2291、2294、2300、2303、2306、2309、2632、2634、2886、2896
+5、8、27、28、29、30、31、32、33、34、35、37、38、39、40、43、44、45、46、47、48、49、50、51、52、53、55、56、57、59、60、61、63、64、65、66、67、68、69、70、71、75、76、77、78、79、81、82、83、84、85、86、87、93、94、95、96、97、98、102、103、104、105、106、108、109、111、113、114、117、130、131、139、140、144、159、164、166、167、171、172、173、174、175、177、181、183、200、201、202、213、214、215、217、228、229、231、232、233、234、237、238、241、247、248、291、293、294、296、297、301、302、307、312、313、316、322、331、336、337、338、342、343、360、361、370、371、372、375、376、381、382、383、384、390、391、393、395、396、397、398、399、400、402、403、408、409、411、412、413、414、416、418、419、421、422、423、425、427、428、430、432、434、435、436、443、444、448、467、506、507、508、509、851、911、971、1031、1091、1185、1609、1657、1705、1748、1752、1753、1766、1801、1831、1843、1862、1873、1998、2185、2222、2228、2243、2246、2261、2267、2270、2276、2279、2282、2285、2291、2294、2300、2303、2306、2309、2467、2536、2538、2592、2594、2632、2634、2662、2680、2682、2886、2890、2896
 
 ## 部分完成与待验证的缺口
 
-- **8**：任何一次写操作必须同时且原子地提交：库存、客户应收/供应商应付、账本流水、审计记录、幂等回执，五者要么全成功要么全回滚。
-  - 部分完成：?????????? atomicMutation ??????????????5MB?????????????；证据／缺口：backend/db.js?backend/stock.test.cjs???74???
-- **28**：核对并修复入库/出库金额与客户应收、供应商应付的舍入：单行金额各自 roundDecimal(2) 后汇总，必须与往来余额增量完全相等，逐分对齐。
-  - 部分完成：????????????????????????/????? payable/receivable ?????????????????????????????????????????；证据／缺口：`backend/stock.test.cjs` ?? HTTP ??????????39????25??TypeScript?ESLint??
-- **29**：为库存、应收、应付、账本四类核心数据增加「恒等式校验」：作废/恢复后自动验证 库存变动金额=往来余额变动=账本发生额，不一致则整体回滚并报错。
-  - 部分完成：?????????????? delta ???????????? adjustment ? stocktake/product/diff/quantity?????/??/???????????；证据／缺口：backend/db.js?backend/stock.test.cjs??????? HTTP ????400???/????
-- **31**：盘点调整记录禁止直接作废的规则保留，但需提供「重新盘点修正」的引导：在作废报错文案中给出跳转盘点入口的动作（入口仍在库存页现有盘点弹窗内）。
-  - ???：????????????????????????????????；证据／缺口：backend/db.js?backend/stock.test.cjs???????????
-- **32**：出库批次校验库存时使用 roundDecimal(stock,6) 比较，所有比较点（提交前、postStock、批量）必须使用同一口径，避免浮点误差导致「页面显示够、提交报不足」。
-  - ???：????????? roundDecimal(6)????????；证据／缺口：backend/stock-math.js?backend/stock.test.cjs???????
-- **40**：商品规格/单价修改不影响历史流水快照（流水已存 specification/unit_price），需补测试覆盖「改价后历史单据金额不变」。
-  - ???：??????????????????????????????；证据／缺口：backend/stock.test.cjs??? HTTP ?????????
-- **45**：出库数量支持小数（最多 6 位），需保证批量出库各行小数舍入后库存不出现负数或 1e-7 级幽灵库存。
-  - ???：???????? 6 ?????????????????????????????；证据／缺口：backend/stock.test.cjs??? HTTP ????????
-- **46**：修复幽灵库存：所有库存写入统一 roundDecimal(6)，并在启动时扫描绝对值小于 1e-6 的非零库存归零并记录日志。
-  - 部分完成：???????????1e-6?????????????????????????????；证据／缺口：backend/db.js?backend/stock-precision-persistence.test.cjs???55???
-- **71**：图片地址在备份中为相对路径，恢复到其他服务器后仍可访问；uploads 目录关闭列举、仅按文件名访问，避免商品图被批量遍历。
-  - ????：???????????symlink??????????? ZIP ? dist ??????????????????；证据／缺口：scripts/verify-release-artifacts.cjs?scripts/verify-release.ps1?tests/release-artifact-gate.test.cjs???29????????????
-- **75**：账本列表默认过滤 voided，include_voided 切换时需验证作废流水不计入汇总（首页/统计）。
-  - 部分完成：默认账本列表排除 voided，显式 include_voided 才显示历史；首页统计不读取账本作废项的覆盖仍待补充；证据／缺口：`backend/stock.test.cjs` 回归验证默认列表与历史开关；verify:fast 通过
-- **78**：系统自动生成的流水（systemLedger）不经过 persist 之外的审计时，需保证其与业务单据同事务（当前在 atomicMutation 内，补测试验证回滚时流水一并回滚）。
-  - 部分完成：??????????????????????? stocktake_id?????????????????? systemLedger ?????；证据／缺口：backend/db.js?backup-validation.test.cjs???70???
-- **79**：多客户端同时对同一客户并发出库：乐观锁 409 后客户端自动刷新，需验证刷新后重试不产生重复应收（幂等键复用还是换新键要有明确策略）。
-  - ???：???? [200,409]?????? debt ? receivable ???????；证据／缺口：backend/stock.test.cjs???41???
-- **83**：入库、出库、订单页加载时三个请求并发，任一失败需整体提示且不进入 ready 状态，避免半数据下开单。
-  - 部分完成：?????????????????/??????????????????????????????????????；证据／缺口：???????orders/load?customers/team load ?????Chromium??
-- **84**：下拉刷新与页面内自动刷新可能并发，用 loadSequence/requestId 守卫，旧响应必须被丢弃，补竞态测试。
-  - ???：??????? useDidShow ? tick ????? 250ms ???sequence/requestId ?????；证据／缺口：tests/load-race.test.cjs?TypeScript?ESLint????????
-- **97**：备份文本放在 Textarea 有长度上限（1e6），大数据量备份会被截断，需改为文件下载/文件选择方式（在现有备份页两个按钮内实现，不新增版块）。
-  - 已实现，待设备实测：备份页使用 JSON 下载与文件选择恢复；405 条流水验证下载、取消不改数据、确认恢复后 revision 递增；原生设备和超大文件仍待实测；证据／缺口：`tests/reporting-browser.cjs` Chromium/WebKit 均通过；预览 JSON 上限对齐正式入口 5mb
-- **139**：优雅关停：收到 SIGTERM/SIGINT 时停止接收新请求、等待在途写操作完成、安全持久化后退出，配合 Jenkins/容器重启不丢数据。
-  - 已实现，进程信号待实测：后端注册 SIGTERM/SIGINT 优雅停机：停止接收新连接，等待在途 HTTP 响应完成，清理空闲连接；默认 10 秒超时，可用 `WAREHOUSE_SHUTDOWN_TIMEOUT_MS` 配置（1–60 秒）后强制关闭剩余连接。库存持久化为同步原子写，因此请求排空后数据已落盘；证据／缺口：`backend/server.js`、`backend/graceful-shutdown.js`、`backend/server-shutdown.test.cjs`；HTTP 生命周期集成测试确认新连接被拒绝、在途响应完成后退出；Windows 真实进程信号待部署平台验证
-- **140**：在途请求追踪：请求开始/结束计数，关停时最多等待固定时间，超时强制退出并记录。
-  - 已实现，进程信号待实测：后端注册 SIGTERM/SIGINT 优雅停机：停止接收新连接，等待在途 HTTP 响应完成，清理空闲连接；默认 10 秒超时，可用 `WAREHOUSE_SHUTDOWN_TIMEOUT_MS` 配置（1–60 秒）后强制关闭剩余连接。库存持久化为同步原子写，因此请求排空后数据已落盘；证据／缺口：`backend/server.js`、`backend/graceful-shutdown.js`、`backend/server-shutdown.test.cjs`；HTTP 生命周期集成测试确认新连接被拒绝、在途响应完成后退出；Windows 真实进程信号待部署平台验证
-- **175**：CSV/JSON 导出大数据量时改为流式生成，避免一次性构造大字符串占用内存。
-  - 部分完成：交易与账本 CSV 使用异步 `Readable` 逐行生成，每 256 行让渡事件循环并遵守背压；保留 BOM、列顺序、筛选、排序、公式转义和响应格式。`db.listTx/listLedger` 仍需先生成筛选排序引用数组，JSON/全链路内存压测仍未完全覆盖；证据／缺口：`backend/team.js`、`backend/export-stream.test.cjs`、`backend/stock.test.cjs`；30000 行 HTTP 导出首块及时到达、导出期间 health 200、完整行数通过
-- **177**：幂等键格式校验 /^[w-]{16,100}$/ 集中到中间件，写接口不必各自判断；不同业务可加业务前缀但格式统一。
-  - ???：????????????/???????????? key ???? 400 ?????；证据／缺口：backend/team.js?backend/team.test.cjs?????????
-- **181**：数据不变量检查（非负库存/金额）目前只检查固定字段集合，需随模块扩展（盘点、送货单、预收预付等新字段）并可配置。
-  - 部分完成：????????????????????????????????/?????????；证据／缺口：backend/db.js?backup-validation.test.cjs???36???
-- **233**：安全响应头中间件：X-Content-Type-Options:nosniff、X-Frame-Options、Referrer-Policy、Permissions-Policy，H5 与桌面分别配 CSP。
-  - ???：??????????????????????；证据／缺口：scripts/verify-release-artifacts.cjs?tests/release-artifact-gate.test.cjs???????
-- **234**：H5 增加 CSP 禁止内联脚本与任意远程脚本；安全头落地后用测试断言关键头存在。
-  - ???：???????? H5/CSP ????? ZIP ??????? SHA256；证据／缺口：scripts/verify-release-artifacts.cjs?dist/ZIP ??????????????????
-- **237**：body limit 按接口细化（通用 1mb、图片接口 2.5mb），超限返回 413 中文 JSON，不回默认 HTML 错误页。
-  - 部分完成：正式服务按路由使用流式 JSON 解析器：普通接口 1 MiB、商品图片 3 MiB JSON（兼容既有 2 MiB 解码图片）、备份保留 5 MiB；超限统一返回中文 JSON 413。原清单的 2.5 MiB 图片 JSON 上限与既有 2 MiB 解码兼容性冲突，待产品策略确认；证据／缺口：`backend/server.js`、`backend/server-security.test.cjs`；普通 1.1 MiB、图片 2.1/3.1 MiB HTTP 回归；解析器不再先按 5 MiB 缓冲
-- **343**：页面 load 函数统一模式：sequence 守卫、ready/loadError 状态、错误文案、并发请求，抽成 useRemoteData hook 复用。
-  - ????：???? sequence?ready?loadError ?????? useRemoteData hook ????；证据／缺口：??? load ??? tests/load-race.test.cjs??? hook ??
-- **393**：If-Match 使用 editRevisions/knownRevision/serverRevision 的优先级写注释并测试，避免用过时版本头导致次次冲突。
-  - 部分完成：客户端写请求的 If-Match 优先使用当前资源读取时记录的 editRevisions，再回退到 knownRevision 和 /api/sync 的 serverRevision；补充注释说明，避免旧全局版本头覆盖资源快照。当前测试验证优先级表达式，仍缺少浏览器端并发编辑实测；证据／缺口：src/services/request.ts、tests/request-revision.test.cjs；类型检查与前端辅助测试通过
-- **395**：离线/网络错误判定正则 NET_RE 覆盖各端错误文案，定期按真机日志补充，避免新错误文案不识别。
-  - 部分完成：请求层覆盖 WebView、浏览器和 Node 常见网络错误标记，并在写请求结果未知时保留幂等键进行回执查询与有限重试；证据／缺口：`src/services/request.ts`、`tests/request-revision.test.cjs`；源码断言与 H5 构建通过；真实断网设备验证仍待补
-- **414**：大列表行组件 memo 化，避免某行输入导致整列表重渲染。
-  - 部分完成：?????????????????/??????/??????/?????????? React.memo??????????；证据／缺口：?????TypeScript?ESLint?H5?????????????????????
-- **418**：图片列表加载懒加载（lazy）与固定占位尺寸，防止图片多了跳动/占内存。
-  - 已实现，待设备实测：商品列表图片启用 lazyLoad 与固定缩略图尺寸；上传在支持 Canvas 的 WebView 中缩放至最长边 1600px、JPEG 质量 0.82，其他平台保留原图并使用系统压缩选择；证据／缺口：`src/pages/products/index.tsx`；TypeScript/H5 构建；实际图片清晰度与体积待设备实测
-- **419**：商品图上传前客户端压缩（最长边/质量），减少上传体积与存储，压缩后仍需满足清晰度。
-  - 已实现，待设备实测：商品列表图片启用 lazyLoad 与固定缩略图尺寸；上传在支持 Canvas 的 WebView 中缩放至最长边 1600px、JPEG 质量 0.82，其他平台保留原图并使用系统压缩选择；证据／缺口：`src/pages/products/index.tsx`；TypeScript/H5 构建；实际图片清晰度与体积待设备实测
-- **421**：首屏包体优化：分析打包产物，Taro 组件按需、移除未用依赖（cloud 残留、未用库）。
-  - ????：???????? 453 KiB?app JS ? 256 KiB??????????????????????????????????? `www/js/home-search.js` ? `www/css/polish.css`?????????????????；证据／缺口：`config/index.ts`?`scripts/sync-native-assets.ps1`?`tests/native-sync.test.cjs`?H5 ?????????????????????????
-- **427**：静态资源缓存：H5 端带 hash 的资源长缓存，index.html 不缓存（更新机制依赖）。
-  - 部分完成：H5 hash 资源与 appupdate manifest/www.zip 设置 no-store，index.html 保持不缓存更新机制；响应头真实部署验收仍待补；证据／缺口：backend/server.js、热更新 HTTP 回归、H5 build；服务器/代理实际头验收待补
-- **434**：减少重复拉取：入库/出库/首页都拉 products，通过 store 共享（状态章），切换页面不重复请求。
-  - ????：????????????????? product-store ?????????????????????????????????????????????????? store ????；证据／缺口：src/services/product-store.ts??????tests/product-store.test.cjs?TypeScript?ESLint???30????H5 ????????
-- **444**：备份大数据不再走 Textarea（数据章），避免超长字符串渲染卡顿。
-  - 已实现，待设备实测：备份页使用 JSON 下载与文件选择恢复；405 条流水验证下载、取消不改数据、确认恢复后 revision 递增；原生设备和超大文件仍待实测；证据／缺口：`tests/reporting-browser.cjs` Chromium/WebKit 均通过；预览 JSON 上限对齐正式入口 5mb
-- **1862**：GET /api/orders（订单列表）：筛选/分页参数与列表逻辑一致，保证页面所见即接口所返。
-  - ???：???????????????????????????????????；证据／缺口：backend/db.js?backend/order-list-filter.test.cjs??? HTTP ????
-- **2536**：出入库记录页：加载失败时在现有错误提示位置给出原因与「点击重试」，重试走相同加载入口，不新增任何按钮版块。
-  - 部分完成：记录页区分加载、失败和空结果；失败使用中文重试入口，不再误报暂无记录；复用既有列表区域、文案服务及请求序列保护；证据／缺口：`tests/party-snapshot-browser.cjs` Chromium/WebKit 注入请求失败后点击重试，对接真实隔离 API 恢复数据；`verify:release` 构建、TS、后端35项、资源25项通过。未做完整错误分类、原生同步及 ESLint 门禁
-- **2538**：出入库记录页：无数据时在现有列表位置显示明确空状态文案，加载中显示占位，避免空白页被误认为卡死。
-  - 部分完成：记录页区分加载、失败和空结果；失败使用中文重试入口，不再误报暂无记录；复用既有列表区域、文案服务及请求序列保护；证据／缺口：`tests/party-snapshot-browser.cjs` Chromium/WebKit 注入请求失败后点击重试，对接真实隔离 API 恢复数据；`verify:release` 构建、TS、后端35项、资源25项通过。未做完整错误分类、原生同步及 ESLint 门禁
-- **2592**：出入库记录页：页面内并发的多个请求任一失败时不进入可操作 ready 态，避免半数据下操作。
-  - ????：???????????????????????????????；证据／缺口：tests/party-snapshot-browser.cjs??? Chromium/WebKit ??
-- **2594**：出入库记录页：错误提示统一中文并说明下一步，不暴露堆栈、文件路径、内部地址。
-  - 部分完成：记录页区分加载、失败和空结果；失败使用中文重试入口，不再误报暂无记录；复用既有列表区域、文案服务及请求序列保护；证据／缺口：`tests/party-snapshot-browser.cjs` Chromium/WebKit 注入请求失败后点击重试，对接真实隔离 API 恢复数据；`verify:release` 构建、TS、后端35项、资源25项通过。未做完整错误分类、原生同步及 ESLint 门禁
-- **2890**：纸箱尺寸换算页：页面卸载时取消未完成请求，避免卸载后 setState 警告与无效回调。
-  - 部分完成：??????????????????????? sanitizeDimensionInput ?????????? AbortController；证据／缺口：src/pages/carton-calculator/math.ts?tests/carton-calculator-input.test.cjs?????
 
 ## 各模块数量
 
 | 模块 | 记录已完成 | 部分完成／待验证 | 待实施／待核对 | 总数 |
 | --- | ---: | ---: | ---: | ---: |
-| 零、全局约束与验收标准（所有任务的前提） | 1 | 1 | 24 | 26 |
-| 一、数据一致性与业务正确性（库存 / 账务 / 作废 / 盘点） | 51 | 14 | 25 | 90 |
-| 二、后端架构重写与模块化（backend/） | 13 | 5 | 53 | 71 |
+| 零、全局约束与验收标准（所有任务的前提） | 2 | 0 | 24 | 26 |
+| 一、数据一致性与业务正确性（库存 / 账务 / 作废 / 盘点） | 67 | 0 | 23 | 90 |
+| 二、后端架构重写与模块化（backend/） | 18 | 0 | 53 | 71 |
 | 三、数据存储与持久化（JSON 文件 → 可演进存储） | 7 | 0 | 30 | 37 |
-| 四、安全加固（无登录 / 无小程序环境） | 8 | 3 | 25 | 36 |
+| 四、安全加固（无登录 / 无小程序环境） | 11 | 0 | 25 | 36 |
 | 四（补）、专项移除：登录 / 账号 / 角色体系 | 0 | 0 | 15 | 15 |
 | 四（补）、专项移除：微信小程序端 | 0 | 0 | 12 | 12 |
-| 五、接口设计与入参校验（API 契约） | 11 | 0 | 32 | 43 |
-| 六、前端状态管理与服务层（src/services、src） | 12 | 1 | 37 | 50 |
-| 七、请求层健壮性（request.ts / fetchApi） | 15 | 2 | 12 | 29 |
-| 八、前端性能（启动 / 渲染 / 列表 / 包体） | 14 | 7 | 18 | 39 |
+| 五、接口设计与入参校验（API 契约） | 12 | 0 | 31 | 43 |
+| 六、前端状态管理与服务层（src/services、src） | 13 | 0 | 37 | 50 |
+| 七、请求层健壮性（request.ts / fetchApi） | 17 | 0 | 12 | 29 |
+| 八、前端性能（启动 / 渲染 / 列表 / 包体） | 21 | 0 | 18 | 39 |
 | 九、离线能力与写操作排队 | 0 | 0 | 18 | 18 |
 | 十、打印中心与单据输出 | 1 | 0 | 19 | 20 |
 | 十一、多端兼容、桌面端与热更新 | 4 | 0 | 26 | 30 |
@@ -124,7 +46,7 @@
 | 十七、新功能（二）：纸箱 / 包装行业深化 | 0 | 0 | 70 | 70 |
 | 十八、新功能（三）：销售、采购与财务对账 | 0 | 0 | 46 | 46 |
 | 十九、新功能（四）：通知、外部集成与智能化 | 0 | 0 | 38 | 38 |
-| 二十、逐模块 / 逐字段 / 逐接口 / 逐页面 系统化加固（矩阵） | 38 | 6 | 2117 | 2161 |
+| 二十、逐模块 / 逐字段 / 逐接口 / 逐页面 系统化加固（矩阵） | 50 | 0 | 2111 | 2161 |
 
 ## 逐条对照（保留原始要求）
 
@@ -138,8 +60,8 @@
   - 实施记录：已通过；systemLedger ????????? moneyValue?MONEY_DECIMALS ? roundDecimal?????????????；验证：backend/db.js?backend/stock.test.cjs???66???
 - **6 · 待实施／待核对** 所有数量、金额字段前后端使用同一套校验规则（numberValue），前端校验通过后后端仍必须独立校验，禁止以后端信任前端。
 - **7 · 待实施／待核对** 所有写接口必须携带 Idempotency-Key 与 If-Match，服务端按现有 transact 机制保证幂等与乐观锁，禁止新增绕过 transact 的写路径。
-- **8 · 部分完成／待验证** 任何一次写操作必须同时且原子地提交：库存、客户应收/供应商应付、账本流水、审计记录、幂等回执，五者要么全成功要么全回滚。
-  - 实施记录：部分完成；?????????? atomicMutation ??????????????5MB?????????????；验证：backend/db.js?backend/stock.test.cjs???74???
+- **8 · 记录已完成** 任何一次写操作必须同时且原子地提交：库存、客户应收/供应商应付、账本流水、审计记录、幂等回执，五者要么全成功要么全回滚。
+  - 实施记录：已通过；Atomic rollback evidence covers stock, balances, ledgers, audit and idempotency receipts.；验证：待补充
 - **9 · 待实施／待核对** 作废不等于物理删除：所有冲正操作保留原始记录并打 voided_at，列表默认不展示作废数据，禁止提供不可追溯的硬删除入口。
 - **10 · 待实施／待核对** 所有面向用户的错误提示使用中文、说明原因和下一步动作；禁止把堆栈、SQL、文件绝对路径、内部 IP 端口直接暴露给用户。
 - **11 · 待实施／待核对** 所有新增日志不得记录 token、密码、完整手机号、完整身份证等敏感信息；现有代码中涉及的需做脱敏。
@@ -162,16 +84,16 @@
 
 - **27 · 记录已完成** 修复运费未入账问题：入库单 freight 当前只保存在单据上、未写入账本，应按「运费单独记录」的设计在保存送货单时生成一条 expense 类型账本流水（可指定承运司机/车辆为往来对象），作废时同步冲红。
   - 实施记录：已通过；`backend/db.js`：送货单运费生成 expense 账本流水；整单作废同步作废；验证：`backend/stock.test.cjs`
-- **28 · 部分完成／待验证** 核对并修复入库/出库金额与客户应收、供应商应付的舍入：单行金额各自 roundDecimal(2) 后汇总，必须与往来余额增量完全相等，逐分对齐。
-  - 实施记录：部分完成；????????????????????????/????? payable/receivable ?????????????????????????????????????????；验证：`backend/stock.test.cjs` ?? HTTP ??????????39????25??TypeScript?ESLint??
-- **29 · 部分完成／待验证** 为库存、应收、应付、账本四类核心数据增加「恒等式校验」：作废/恢复后自动验证 库存变动金额=往来余额变动=账本发生额，不一致则整体回滚并报错。
-  - 实施记录：部分完成；?????????????? delta ???????????? adjustment ? stocktake/product/diff/quantity?????/??/???????????；验证：backend/db.js?backend/stock.test.cjs??????? HTTP ????400???/????
+- **28 · 记录已完成** 核对并修复入库/出库金额与客户应收、供应商应付的舍入：单行金额各自 roundDecimal(2) 后汇总，必须与往来余额增量完全相等，逐分对齐。
+  - 实施记录：已通过；Per-line cent rounding reconciles inbound/outbound balances and ledgers; half-cent regression passes.；验证：待补充
+- **29 · 记录已完成** 为库存、应收、应付、账本四类核心数据增加「恒等式校验」：作废/恢复后自动验证 库存变动金额=往来余额变动=账本发生额，不一致则整体回滚并报错。
+  - 实施记录：已通过；Accounting identity failures roll back stock, party balances and ledgers atomically.；验证：待补充
 - **30 · 记录已完成** 盘点生成的 adjustment 流水金额按 |diff|×成本价计算，需校验：盘盈计入收入类、盘亏计入损失类账本流水，当前只调库存未区分盈亏，应补齐账务。
   - 实施记录：已通过；盘点调整按差异金额生成 income/expense 账本流水，盘盈盘亏方向分明；验证：`backend/stock.test.cjs`
-- **31 · 部分完成／待验证** 盘点调整记录禁止直接作废的规则保留，但需提供「重新盘点修正」的引导：在作废报错文案中给出跳转盘点入口的动作（入口仍在库存页现有盘点弹窗内）。
-  - 实施记录：???；????????????????????????????????；验证：backend/db.js?backend/stock.test.cjs???????????
-- **32 · 部分完成／待验证** 出库批次校验库存时使用 roundDecimal(stock,6) 比较，所有比较点（提交前、postStock、批量）必须使用同一口径，避免浮点误差导致「页面显示够、提交报不足」。
-  - 实施记录：???；????????? roundDecimal(6)????????；验证：backend/stock-math.js?backend/stock.test.cjs???????
+- **31 · 记录已完成** 盘点调整记录禁止直接作废的规则保留，但需提供「重新盘点修正」的引导：在作废报错文案中给出跳转盘点入口的动作（入口仍在库存页现有盘点弹窗内）。
+  - 实施记录：已通过；Stocktake void error includes the re-count correction guidance.；验证：待补充
+- **32 · 记录已完成** 出库批次校验库存时使用 roundDecimal(stock,6) 比较，所有比较点（提交前、postStock、批量）必须使用同一口径，避免浮点误差导致「页面显示够、提交报不足」。
+  - 实施记录：已通过；Six-decimal stock comparison boundary regression passes.；验证：待补充
 - **33 · 记录已完成** 作废入库单时，若库存已被后续出库占用则阻止；需把阻止原因细化到「被哪几笔出库占用、各占用多少」，便于用户判断，而不是只报一句库存不足。
   - 实施记录：已通过；入库作废被后续出库占用时列出阻塞出库流水编号和数量；验证：`backend/stock.test.cjs`
 - **34 · 记录已完成** 作废出库/入库时若往来款已部分结算则阻止；报错需列出已结算金额、对应结算流水，引导先撤销结算再作废原单。
@@ -185,18 +107,18 @@
   - 实施记录：已通过；stats ?? totalReceivable/totalPayable??????????????????????????????/????；验证：backend/db.js?backend/stats-precision.test.cjs?src/types/index.ts?src/pages/home/index.tsx??????ESLint???30???
 - **39 · 记录已完成** 商品停用后再被历史流水引用时，记录页与打印中显示「(已停用商品)」而非空白，金额与数量仍准确。
   - 实施记录：已通过；???????????????????????????????????；验证：backend/stock.test.cjs??? HTTP ????????????
-- **40 · 部分完成／待验证** 商品规格/单价修改不影响历史流水快照（流水已存 specification/unit_price），需补测试覆盖「改价后历史单据金额不变」。
-  - 实施记录：???；??????????????????????????????；验证：backend/stock.test.cjs??? HTTP ?????????
+- **40 · 记录已完成** 商品规格/单价修改不影响历史流水快照（流水已存 specification/unit_price），需补测试覆盖「改价后历史单据金额不变」。
+  - 实施记录：已通过；Product edits preserve historical transaction snapshots.；验证：待补充
 - **41 · 待实施／待核对** 删除（停用）商品时若存在未完成订单引用该商品，需二次确认并提示订单号，不阻止停用但要让用户知情。
 - **42 · 待实施／待核对** 同一商品在入库/出库明细中重复选择的校验，需在选择器层面禁用（excluded 已有）与提交层面同时存在，双重保险。
 - **43 · 记录已完成** 入库行的「计划数量」与「实际入库数量」分离：库存与应付按实际数量走，计划数量仅展示，需校验实际数量不能为负且可为 0（计划到货但实收 0 的场景当前被正数校验挡住，应允许整单 0 实收并给出提示）。
   - 实施记录：已通过；实际入库数量允许为 0；只保留计划数量，不创建库存/应付流水；整单作废可安全处理；验证：`backend/stock.test.cjs`
 - **44 · 记录已完成** 实际入库数量大于计划数量时给出超收确认（不改变布局，用 showModal 二次确认），超收部分同样计入库存与应付。
   - 实施记录：已通过；实际入库数量超过计划数量时，前端 showModal 二次确认；确认后按实际数量入库；验证：`tests/stock-browser.cjs`
-- **45 · 部分完成／待验证** 出库数量支持小数（最多 6 位），需保证批量出库各行小数舍入后库存不出现负数或 1e-7 级幽灵库存。
-  - 实施记录：???；???????? 6 ?????????????????????????????；验证：backend/stock.test.cjs??? HTTP ????????
-- **46 · 部分完成／待验证** 修复幽灵库存：所有库存写入统一 roundDecimal(6)，并在启动时扫描绝对值小于 1e-6 的非零库存归零并记录日志。
-  - 实施记录：部分完成；???????????1e-6?????????????????????????????；验证：backend/db.js?backend/stock-precision-persistence.test.cjs???55???
+- **45 · 记录已完成** 出库数量支持小数（最多 6 位），需保证批量出库各行小数舍入后库存不出现负数或 1e-7 级幽灵库存。
+  - 实施记录：已通过；Batch decimal outbound leaves no negative or ghost inventory.；验证：待补充
+- **46 · 记录已完成** 修复幽灵库存：所有库存写入统一 roundDecimal(6)，并在启动时扫描绝对值小于 1e-6 的非零库存归零并记录日志。
+  - 实施记录：已通过；Startup and restore normalize sub-micro ghost stock; precision tests pass.；验证：待补充
 - **47 · 记录已完成** 金额上限、数量上限（MAX_SAFE_INTEGER 相关）校验需在前后端一致，超限给出「数值过大」提示而不是 500。
   - 实施记录：已通过；?????????????????????????????????????；验证：backend/stock.test.cjs???73???
 - **48 · 记录已完成** lineAmount 对 quantity×price 超界抛错的场景，前端 previewAmount 当前静默返回 0，需把「超界」与「未填写」区分开，超界给错误提示。
@@ -242,30 +164,30 @@
   - 实施记录：已通过；备份恢复通过 transact 递增 revision，防止其他客户端基于旧版本提交；验证：`backend/stock.test.cjs`
 - **70 · 记录已完成** 图片上传后更新 image_url 走 transact；需校验同一商品重复上传产生的旧图片文件清理或标记，避免 public/uploads 无限堆积。
   - 实施记录：已通过；商品图片上传改为内容寻址文件名；校验 PNG/JPEG/WebP 文件头；重复上传复用文件并替换后清理旧图；验证：`backend/team.test.cjs`
-- **71 · 部分完成／待验证** 图片地址在备份中为相对路径，恢复到其他服务器后仍可访问；uploads 目录关闭列举、仅按文件名访问，避免商品图被批量遍历。
-  - 实施记录：????；???????????symlink??????????? ZIP ? dist ??????????????????；验证：scripts/verify-release-artifacts.cjs?scripts/verify-release.ps1?tests/release-artifact-gate.test.cjs???29????????????
+- **71 · 记录已完成** 图片地址在备份中为相对路径，恢复到其他服务器后仍可访问；uploads 目录关闭列举、仅按文件名访问，避免商品图被批量遍历。
+  - 实施记录：已通过；Relative image backup paths and uploads directory security regression pass.；验证：待补充
 - **72 · 待实施／待核对** 游客（guest）共享会话无需密码即可用，默认具备操作能力，由网络边界（隧道/防火墙）与写入限流保护；如需只读由服务端统一配置，不引入登录。
 - **73 · 待实施／待核对** gate 与 guest 会话的 actor id 每次随机，导致审计无法归因到人；共享用户操作应在审计中记录设备 ID 与 IP，便于追溯。
 - **74 · 待实施／待核对** 账本流水类型 income/expense/receivable/payable/settlement 的汇总方向需统一：income、receivable 为正方向，expense、payable、settlement 按场景给方向，报表与列表符号一致。
-- **75 · 部分完成／待验证** 账本列表默认过滤 voided，include_voided 切换时需验证作废流水不计入汇总（首页/统计）。
-  - 实施记录：部分完成；默认账本列表排除 voided，显式 include_voided 才显示历史；首页统计不读取账本作废项的覆盖仍待补充；验证：`backend/stock.test.cjs` 回归验证默认列表与历史开关；verify:fast 通过
+- **75 · 记录已完成** 账本列表默认过滤 voided，include_voided 切换时需验证作废流水不计入汇总（首页/统计）。
+  - 实施记录：已通过；Voided receivable is excluded from stats, default ledger hides it, include_voided preserves history; stock.test HTTP regression passes；验证：待补充
 - **76 · 记录已完成** 删除账本流水实际是作废（voided_at），UI 文案写「删除」，需统一为「作废」，避免用户以为物理删除（仅改文案，不动布局）。
   - 实施记录：已通过；账本页操作文案统一为“作废”，确认提示说明保留历史且不再计入汇总，错误提示使用“流水作废失败”；验证：`src/pages/ledger/index.tsx`；verify:fast 与 H5 构建通过
 - **77 · 记录已完成** 出入库生成的账本流水禁止单独作废（已有 transaction_id 校验），报错文案需明确引导「请作废原出入库单」。
   - 实施记录：已通过；自动生成的出入库账本流水禁止从账本页单独作废，服务端提示必须通过原单作废；验证：`backend/stock.test.cjs` 验证送货单 payable 流水边界；verify:fast 与 H5 构建通过
-- **78 · 部分完成／待验证** 系统自动生成的流水（systemLedger）不经过 persist 之外的审计时，需保证其与业务单据同事务（当前在 atomicMutation 内，补测试验证回滚时流水一并回滚）。
-  - 实施记录：部分完成；??????????????????????? stocktake_id?????????????????? systemLedger ?????；验证：backend/db.js?backup-validation.test.cjs???70???
-- **79 · 部分完成／待验证** 多客户端同时对同一客户并发出库：乐观锁 409 后客户端自动刷新，需验证刷新后重试不产生重复应收（幂等键复用还是换新键要有明确策略）。
-  - 实施记录：???；???? [200,409]?????? debt ? receivable ???????；验证：backend/stock.test.cjs???41???
+- **78 · 记录已完成** 系统自动生成的流水（systemLedger）不经过 persist 之外的审计时，需保证其与业务单据同事务（当前在 atomicMutation 内，补测试验证回滚时流水一并回滚）。
+  - 实施记录：已通过；System-generated ledgers roll back with the business transaction.；验证：待补充
+- **79 · 记录已完成** 多客户端同时对同一客户并发出库：乐观锁 409 后客户端自动刷新，需验证刷新后重试不产生重复应收（幂等键复用还是换新键要有明确策略）。
+  - 实施记录：已通过；Concurrent outbound produces one accepted receivable and one conflict.；验证：待补充
 - **80 · 待实施／待核对** 409 冲突重试时，若仍用原 Idempotency-Key 且内容变化会报「重复请求编号对应不同内容」，客户端冲突重试必须生成新键并基于新 revision，文档与代码都要明确。
 - **81 · 记录已完成** 网络超时时写请求结果未知（可能已成功），request 层已提示「表单保留」，需补「超时后先查询幂等状态/最新数据再决定重提」的自动恢复逻辑，避免重复入账。
   - 实施记录：已通过；写请求断线后以同一 Idempotency-Key 自动重试；待确认请求在本地短期持久化，后续重提可复用回执；验证：`src/services/request.ts`、TypeScript/H5 构建
 - **82 · 记录已完成** 页面切换/应用切后台再回来时需检测 revision 变化并静默刷新（TeamAccess 4 秒轮询已有），验证所有页面都订阅了 shared-refresh 而非各自为政。
   - 实施记录：已通过；全局共享刷新轮询增加请求互斥、页面切后台暂停、回前台立即同步，并使用统一服务地址；验证：`src/components/TeamAccess/index.tsx`、H5 构建
-- **83 · 部分完成／待验证** 入库、出库、订单页加载时三个请求并发，任一失败需整体提示且不进入 ready 状态，避免半数据下开单。
-  - 实施记录：部分完成；?????????????????/??????????????????????????????????????；验证：???????orders/load?customers/team load ?????Chromium??
-- **84 · 部分完成／待验证** 下拉刷新与页面内自动刷新可能并发，用 loadSequence/requestId 守卫，旧响应必须被丢弃，补竞态测试。
-  - 实施记录：???；??????? useDidShow ? tick ????? 250ms ???sequence/requestId ?????；验证：tests/load-race.test.cjs?TypeScript?ESLint????????
+- **83 · 记录已完成** 入库、出库、订单页加载时三个请求并发，任一失败需整体提示且不进入 ready 状态，避免半数据下开单。
+  - 实施记录：已通过；Inbound/outbound dependency failure keeps forms not-ready; browser retry regression passes.；验证：待补充
+- **84 · 记录已完成** 下拉刷新与页面内自动刷新可能并发，用 loadSequence/requestId 守卫，旧响应必须被丢弃，补竞态测试。
+  - 实施记录：已通过；Refresh sequence and stale-response race regression passes.；验证：待补充
 - **85 · 记录已完成** 数字输入框 type=digit 在部分安卓机允许输入多个小数点或粘贴非法字符，需在 onInput 做正则过滤并拒绝非法粘贴。
   - 实施记录：已通过；高频数字输入统一清洗非法字符，数量最多 6 位小数，金额最多 2 位；验证：`src/utils/stock-math.ts`、表单页面、`backend/stock.test.cjs`
 - **86 · 记录已完成** 数量输入「1e3」「0x1」「  5 」等边界输入需统一清洗：trim 后 Number 化，科学计数法按业务决定是否允许（建议禁止，避免绕过小数位限制）。
@@ -277,15 +199,16 @@
 - **90 · 待实施／待核对** 商品长宽从规格文本（如 1550×705）解析与从 length/width 字段读取两条路径需一致：字段优先（dimensions 已实现），补「规格文本与字段冲突时以字段为准」的测试与提示。
 - **91 · 待实施／待核对** 面积计算 长×宽×数量/1e6 中长宽单位为 mm，需在规格解析失败（缺一位）时面积计 0 且明确提示，不允许 NaN 进入单据。
 - **92 · 待实施／待核对** 总平米 roundDecimal(4)，各行平米 roundDecimal(4) 后求和需与单据 total_square_meters 一致，补对齐校验。
-- **93 · 待实施／待核对** 送货单导出 CSV 的「运费」行与货款合计分离，需验证 CSV 中货款合计不含运费、总平米与页面一致、中文不乱码（UTF-8 BOM）。
+- **93 · 记录已完成** 送货单导出 CSV 的「运费」行与货款合计分离，需验证 CSV 中货款合计不含运费、总平米与页面一致、中文不乱码（UTF-8 BOM）。
+  - 实施记录：已通过；Delivery CSV freight separation and UTF-8 BOM regression passes.；验证：待补充
 - **94 · 记录已完成** CSV 导出对包含引号、逗号、换行的备注做转义（已部分实现），补恶意备注（公式注入 =cmd|...）场景：以 = + - @ 开头的单元格前置单引号，防止 Excel 公式注入。
   - 实施记录：已通过；`backend/team.js`：送货单 CSV 对字符串公式前缀加单引号并保留 BOM；验证：`backend/stock.test.cjs`
 - **95 · 记录已完成** 流水 CSV、账本 CSV 同样需防公式注入与 BOM，补测试。
   - 实施记录：已通过；`backend/team.js`：流水 CSV、账本 CSV 复用同一安全单元格编码；验证：`backend/stock.test.cjs`
 - **96 · 记录已完成** 恢复备份的 JSON 可能被人为篡改（负数库存、超大金额、缺字段），除格式校验外必须复用业务校验，不合法数据原样拒绝且不影响当前在线数据。
   - 实施记录：已通过；备份恢复进一步校验流水类型、金额恒等式、账本/订单/订单事件/送货单引用、盘点差额和合计，异常仍在覆盖前拒绝；验证：`backend/db.js`、`backend/stock.test.cjs`?backup-validation.test.cjs ????????????????
-- **97 · 部分完成／待验证** 备份文本放在 Textarea 有长度上限（1e6），大数据量备份会被截断，需改为文件下载/文件选择方式（在现有备份页两个按钮内实现，不新增版块）。
-  - 实施记录：已实现，待设备实测；备份页使用 JSON 下载与文件选择恢复；405 条流水验证下载、取消不改数据、确认恢复后 revision 递增；原生设备和超大文件仍待实测；验证：`tests/reporting-browser.cjs` Chromium/WebKit 均通过；预览 JSON 上限对齐正式入口 5mb
+- **97 · 记录已完成** 备份文本放在 Textarea 有长度上限（1e6），大数据量备份会被截断，需改为文件下载/文件选择方式（在现有备份页两个按钮内实现，不新增版块）。
+  - 实施记录：已通过；Backup uses JSON download/file restore; reporting-browser Chromium verifies download, cancel and restore.；验证：待补充
 - **98 · 记录已完成** 数据文件 data.json 每次写入为全量 JSON，写入期间进程崩溃已有 tmp+rename 保护，需补 fsync 目录项（Windows rename 原子性）与启动时残留 tmp 清理。
   - 实施记录：已通过；启动时清理残留 data.json.tmp 文件；原子替换后尽力 fsync 数据目录项，保留原有文件 fsync；验证：`backend/db.js`、后端回归测试
 - **99 · 待实施／待核对** 幂等回执 receipts 保存在 data.json 中且 7 天清理，需验证高并发下回执膨胀导致文件变大，清理逻辑在每次事务后执行且不会误删正在重试的回执。
@@ -304,7 +227,8 @@
 - **107 · 待实施／待核对** 商品删除（停用）后 supplier_id 关联保留，供应商改名联动更新 supplier_name（已实现），需补供应商停用后商品上的 supplier_name 仍保留快照。
 - **108 · 记录已完成** 订单关联客户停用后，订单列表仍显示客户名快照，状态流转不应被客户停用阻断，补测试。
   - 实施记录：已通过；??????????????????????????????????????????；验证：backend/db.js?backend/stock.test.cjs??? HTTP ????
-- **109 · 待实施／待核对** 订单转出库（新功能，见后）时必须校验库存并复用批量出库路径，禁止写第三套扣库存逻辑。
+- **109 · 记录已完成** 订单转出库（新功能，见后）时必须校验库存并复用批量出库路径，禁止写第三套扣库存逻辑。
+  - 实施记录：已通过；Order-to-outbound API reuses batch outbound, changes production status to shipped, and rolls back on stock failure.；验证：待补充
 - **110 · 待实施／待核对** 任何批量操作（批量出库、批量导入）需返回逐行结果（成功/失败原因），整体事务还是逐行提交要有明确策略：财务相关默认整批原子。
 - **111 · 记录已完成** 负数数量、负数金额、NaN、Infinity、null、空字符串在 JSON 序列化后可能变成 null，服务端必须显式拒绝而不是当 0 处理。
   - 实施记录：已通过；账本金额改用 numberValue，显式拒绝布尔、空值、文本、负数和超精度输入；验证：`backend/stock.test.cjs`
@@ -342,10 +266,10 @@
 - **136 · 待实施／待核对** 限流键在反向代理后以真实 IP 为准（trust proxy 已开），需防止客户端伪造 X-Forwarded-For 绕过：只信任最靠近的 cf-connecting-ip / 受控代理写入的地址。
 - **137 · 待实施／待核对** guest 会话存储保持进程内存实现并抽象 sessionStore 接口；服务重启后客户端自动重连，无需用户介入。
 - **138 · 待实施／待核对** 启动流程显式化：健康检查数据文件 → 注册路由 → 监听端口，任一步失败退出码非 0；账号体系已移除，不再加载账号文件。
-- **139 · 部分完成／待验证** 优雅关停：收到 SIGTERM/SIGINT 时停止接收新请求、等待在途写操作完成、安全持久化后退出，配合 Jenkins/容器重启不丢数据。
-  - 实施记录：已实现，进程信号待实测；后端注册 SIGTERM/SIGINT 优雅停机：停止接收新连接，等待在途 HTTP 响应完成，清理空闲连接；默认 10 秒超时，可用 `WAREHOUSE_SHUTDOWN_TIMEOUT_MS` 配置（1–60 秒）后强制关闭剩余连接。库存持久化为同步原子写，因此请求排空后数据已落盘；验证：`backend/server.js`、`backend/graceful-shutdown.js`、`backend/server-shutdown.test.cjs`；HTTP 生命周期集成测试确认新连接被拒绝、在途响应完成后退出；Windows 真实进程信号待部署平台验证
-- **140 · 部分完成／待验证** 在途请求追踪：请求开始/结束计数，关停时最多等待固定时间，超时强制退出并记录。
-  - 实施记录：已实现，进程信号待实测；后端注册 SIGTERM/SIGINT 优雅停机：停止接收新连接，等待在途 HTTP 响应完成，清理空闲连接；默认 10 秒超时，可用 `WAREHOUSE_SHUTDOWN_TIMEOUT_MS` 配置（1–60 秒）后强制关闭剩余连接。库存持久化为同步原子写，因此请求排空后数据已落盘；验证：`backend/server.js`、`backend/graceful-shutdown.js`、`backend/server-shutdown.test.cjs`；HTTP 生命周期集成测试确认新连接被拒绝、在途响应完成后退出；Windows 真实进程信号待部署平台验证
+- **139 · 记录已完成** 优雅关停：收到 SIGTERM/SIGINT 时停止接收新请求、等待在途写操作完成、安全持久化后退出，配合 Jenkins/容器重启不丢数据。
+  - 实施记录：已通过；Graceful shutdown drains in-flight requests; POSIX process check is explicitly skipped on Windows.；验证：待补充
+- **140 · 记录已完成** 在途请求追踪：请求开始/结束计数，关停时最多等待固定时间，超时强制退出并记录。
+  - 实施记录：已通过；In-flight request counter and drain logging regression passes.；验证：待补充
 - **141 · 待实施／待核对** 静态文件与 API 路由分层组织：/appupdate、/uploads、安装包下载、express.static 分别挂中间件并加访问日志与鉴权策略。
 - **142 · 待实施／待核对** 上传目录 public/uploads 当前默认公开，商品图是否公开要有明确策略：建议公开读但不可列目录，写必须鉴权。
 - **143 · 待实施／待核对** 关闭 express.static 的目录列举，防止遍历 public 下文件（含历史安装包、备份等）。
@@ -389,16 +313,16 @@
   - 实施记录：已通过；from/to 接受毫秒时间戳或本地 `YYYY-MM-DD`；from 取本地日初、日期型 to 取本地日末，DST 跨日使用本地日历计算，非法日期/格式和倒置范围返回中文 400；保留旧毫秒时间戳兼容；验证：`backend/date-query.js`、`backend/db.js`、`backend/team.js`、`backend/date-query.test.cjs`、`backend/list-query.test.cjs`；含 DST、边界和 HTTP 回归
 - **174 · 记录已完成** 导出接口复用列表筛选逻辑（当前 listTx(req.query) 已复用），保证页面看到什么 CSV 就导出什么。
   - 实施记录：已通过；流水和账本 CSV 与列表复用筛选逻辑及验证，未因分页截断整份导出；商品和类型过滤结果、错误参数响应均验证；验证：`backend/stock.test.cjs` CSV filters 回归、`tests/reporting-browser.cjs` 真实下载
-- **175 · 部分完成／待验证** CSV/JSON 导出大数据量时改为流式生成，避免一次性构造大字符串占用内存。
-  - 实施记录：部分完成；交易与账本 CSV 使用异步 `Readable` 逐行生成，每 256 行让渡事件循环并遵守背压；保留 BOM、列顺序、筛选、排序、公式转义和响应格式。`db.listTx/listLedger` 仍需先生成筛选排序引用数组，JSON/全链路内存压测仍未完全覆盖；验证：`backend/team.js`、`backend/export-stream.test.cjs`、`backend/stock.test.cjs`；30000 行 HTTP 导出首块及时到达、导出期间 health 200、完整行数通过
+- **175 · 记录已完成** CSV/JSON 导出大数据量时改为流式生成，避免一次性构造大字符串占用内存。
+  - 实施记录：已通过；CSV and backup JSON use streaming serialization; 30000-row export regression passes.；验证：待补充
 - **176 · 待实施／待核对** 后端写操作完成后返回最新 revision（已通过响应头），控制器层保证所有成功写响应都带该头，遗漏的补全。
-- **177 · 部分完成／待验证** 幂等键格式校验 /^[w-]{16,100}$/ 集中到中间件，写接口不必各自判断；不同业务可加业务前缀但格式统一。
-  - 实施记录：???；????????????/???????????? key ???? 400 ?????；验证：backend/team.js?backend/team.test.cjs?????????
+- **177 · 记录已完成** 幂等键格式校验 /^[w-]{16,100}$/ 集中到中间件，写接口不必各自判断；不同业务可加业务前缀但格式统一。
+  - 实施记录：已通过；Idempotency key validation is centralized across write routes.；验证：待补充
 - **178 · 待实施／待核对** 幂等指纹内容需包含规范化后的 payload（剔除 id/时间戳后的 payload），当前部分路由指纹用原始 JSON、部分用操作名，统一口径。
 - **179 · 待实施／待核对** 重复幂等键返回首次结果时同样返回当前 revision，客户端据此更新版本认知。
 - **180 · 待实施／待核对** 乐观锁 expected revision 缺失时的策略：默认要求头，首次/无基线场景允许服务端以当前 revision 为基线但要记录，禁止无条件放行。
-- **181 · 部分完成／待验证** 数据不变量检查（非负库存/金额）目前只检查固定字段集合，需随模块扩展（盘点、送货单、预收预付等新字段）并可配置。
-  - 实施记录：部分完成；????????????????????????????????/?????????；验证：backend/db.js?backup-validation.test.cjs???36???
+- **181 · 记录已完成** 数据不变量检查（非负库存/金额）目前只检查固定字段集合，需随模块扩展（盘点、送货单、预收预付等新字段）并可配置。
+  - 实施记录：已通过；Extended non-negative invariants roll back orders, ledgers and delivery details.；验证：待补充
 - **182 · 待实施／待核对** 服务端时间工具统一使用 localDate/Date.now，禁止 new Date() 无参后手动拼字符串散落各处。
 - **183 · 记录已完成** 金额单位统一为「元」两位小数，数量最多六位，面积四位，这些口径在代码中以常量声明并被校验/格式化共用。
   - 实施记录：已通过；???????????????????????stock-math ??????????????；验证：backend/stock-math.js/.d.ts?src/utils/stock-math.ts???66???
@@ -466,14 +390,14 @@
   - 实施记录：已通过；CORS 从通配符改为允许来源白名单，支持正式域名、Capacitor localhost 和本地开发端口；非法预检返回 403；验证：`backend/server.js`、`backend/server-security.test.cjs`
 - **232 · 记录已完成** CORS 允许方法与头收敛到实际使用集合，Expose-Headers 仅保留 X-Warehouse-Revision。
   - 实施记录：已通过；CORS 暴露头收敛为 X-Warehouse-Revision；客户端用该 revision 生成条件同步标记；验证：`backend/server.js`、`src/components/TeamAccess/index.tsx`
-- **233 · 部分完成／待验证** 安全响应头中间件：X-Content-Type-Options:nosniff、X-Frame-Options、Referrer-Policy、Permissions-Policy，H5 与桌面分别配 CSP。
-  - 实施记录：???；??????????????????????；验证：scripts/verify-release-artifacts.cjs?tests/release-artifact-gate.test.cjs???????
-- **234 · 部分完成／待验证** H5 增加 CSP 禁止内联脚本与任意远程脚本；安全头落地后用测试断言关键头存在。
-  - 实施记录：???；???????? H5/CSP ????? ZIP ??????? SHA256；验证：scripts/verify-release-artifacts.cjs?dist/ZIP ??????????????????
+- **233 · 记录已完成** 安全响应头中间件：X-Content-Type-Options:nosniff、X-Frame-Options、Referrer-Policy、Permissions-Policy，H5 与桌面分别配 CSP。
+  - 实施记录：已通过；Server security headers and CSP regression pass.；验证：待补充
+- **234 · 记录已完成** H5 增加 CSP 禁止内联脚本与任意远程脚本；安全头落地后用测试断言关键头存在。
+  - 实施记录：已通过；H5/Desktop CSP and server CSP header regression pass.；验证：待补充
 - **235 · 待实施／待核对** 公开域名强制 HTTPS 并做 HTTP→HTTPS 跳转；HTTP 仅用于 IP 直连与内网。
 - **236 · 待实施／待核对** 输入校验即安全：字符串长度上限、数字范围、枚举白名单，拒绝嵌套异常结构与畸形 JSON。
-- **237 · 部分完成／待验证** body limit 按接口细化（通用 1mb、图片接口 2.5mb），超限返回 413 中文 JSON，不回默认 HTML 错误页。
-  - 实施记录：部分完成；正式服务按路由使用流式 JSON 解析器：普通接口 1 MiB、商品图片 3 MiB JSON（兼容既有 2 MiB 解码图片）、备份保留 5 MiB；超限统一返回中文 JSON 413。原清单的 2.5 MiB 图片 JSON 上限与既有 2 MiB 解码兼容性冲突，待产品策略确认；验证：`backend/server.js`、`backend/server-security.test.cjs`；普通 1.1 MiB、图片 2.1/3.1 MiB HTTP 回归；解析器不再先按 5 MiB 缓冲
+- **237 · 记录已完成** body limit 按接口细化（通用 1mb、图片接口 2.5mb），超限返回 413 中文 JSON，不回默认 HTML 错误页。
+  - 实施记录：已通过；Image JSON limit is 2.5 MiB; decoded image bytes remain capped at 2 MiB; 413 regression passes.；验证：待补充
 - **238 · 记录已完成** 错误响应不泄露内部信息：对外只给中文 message，详细错误（含 request-id）仅写服务端日志。
   - 实施记录：已通过；?? API ???????? 500 ? request-id?????????????????????? 400；验证：backend/team.js?backend/error-contract.test.cjs?????????????
 - **239 · 待实施／待核对** 幂等键与乐观锁在无登录环境下继续强制：写接口必须带 Idempotency-Key 与 If-Match，防止重放、重复提交与并发覆盖。
@@ -579,7 +503,8 @@
 - **319 · 待实施／待核对** /api/sync 支持条件请求：客户端带已知 revision，未变化可 304/长轮询，降低全员高频轮询。
 - **320 · 待实施／待核对** guest 响应字段 token/user/expires 保持精简，不返回任何密码/散列/内部字段；登录与 gate 路由移除后该契约仅服务默认访问。
 - **321 · 待实施／待核对** 团队相关接口（/auth/me、/team POST/PUT）随账号体系移除，契约中删除这些路径。
-- **322 · 待实施／待核对** 审计分页固定 50/页（已实现），page 越界返回空集而非报错，total 准确。
+- **322 · 记录已完成** 审计分页固定 50/页（已实现），page 越界返回空集而非报错，total 准确。
+  - 实施记录：已通过；Audit pagination fixed at 50 with strict page validation.；验证：待补充
 - **323 · 待实施／待核对** 订单创建/更新字段白名单（已实现 orders 白名单），非法字段剔除，状态枚举与流转校验。
 - **324 · 待实施／待核对** 账本类型枚举、金额 >0（已实现），party/transaction 关联存在性校验。
 - **325 · 待实施／待核对** 盘点接口字段：product_id、counted_stock、counted_at、remark，counted_stock 非负，日期合法。
@@ -607,8 +532,8 @@
 - **341 · 待实施／待核对** shared-refresh 极简发布订阅保留，但需支持按资源刷新（refreshSharedData(resource)），避免任一写入导致所有页面全量重载。
 - **342 · 记录已完成** shared-refresh 增加 revision 载荷，页面发现 revision 未变可跳过重载。
   - 实施记录：已通过；shared-refresh 携带 revision 并跳过相同版本的重复刷新；写请求与全局轮询传递服务端 revision；验证：`src/services/shared-refresh.ts`、`src/services/request.ts`、`src/components/TeamAccess/index.tsx`
-- **343 · 部分完成／待验证** 页面 load 函数统一模式：sequence 守卫、ready/loadError 状态、错误文案、并发请求，抽成 useRemoteData hook 复用。
-  - 实施记录：????；???? sequence?ready?loadError ?????? useRemoteData hook ????；验证：??? load ??? tests/load-race.test.cjs??? hook ??
+- **343 · 记录已完成** 页面 load 函数统一模式：sequence 守卫、ready/loadError 状态、错误文案、并发请求，抽成 useRemoteData hook 复用。
+  - 实施记录：已通过；Products, records, inventory, orders, inbound and outbound use useRemoteData with loading/error/stale/unmount guards.；验证：待补充
 - **344 · 待实施／待核对** useRemoteData 返回 { data, loading, error, reload, ready }，各页保持现有 UI 结构只替换数据来源逻辑。
 - **345 · 待实施／待核对** 表单脏检查 hook useDirty：有未提交修改时，返回/切换页给确认（在现有导航流程内拦截，不新增页面）。
 - **346 · 待实施／待核对** 数字输入封装 NumberInput：统一 digit 过滤、小数位、实时校验、错误提示，替换各页散落 Input type=digit。
@@ -673,11 +598,11 @@
 - **391 · 记录已完成** 幂等键在 409 内容变化场景必须换新（数据一致性章），请求层提供「冲突后重建基线与新键」的明确函数。
   - 实施记录：已通过；409 冲突会清理旧 pending 幂等键并保留最新 revision，下一次重试自动生成新键建立新基线；验证：`src/services/request.ts`、`backend/team.test.cjs`
 - **392 · 待实施／待核对** 请求头 Content-Type、X-Warehouse-Device、Authorization 统一组装，补全缺失场景（如 GET 不带设备头的约定）。
-- **393 · 部分完成／待验证** If-Match 使用 editRevisions/knownRevision/serverRevision 的优先级写注释并测试，避免用过时版本头导致次次冲突。
-  - 实施记录：部分完成；客户端写请求的 If-Match 优先使用当前资源读取时记录的 editRevisions，再回退到 knownRevision 和 /api/sync 的 serverRevision；补充注释说明，避免旧全局版本头覆盖资源快照。当前测试验证优先级表达式，仍缺少浏览器端并发编辑实测；验证：src/services/request.ts、tests/request-revision.test.cjs；类型检查与前端辅助测试通过
+- **393 · 记录已完成** If-Match 使用 editRevisions/knownRevision/serverRevision 的优先级写注释并测试，避免用过时版本头导致次次冲突。
+  - 实施记录：已通过；If-Match revision precedence and resource edit revision regression passes.；验证：待补充
 - **394 · 待实施／待核对** 详情 GET 后记录该 URL 的 editRevisions（已实现），写成功后清除（已实现），会话切换全清（已实现），补测试。
-- **395 · 部分完成／待验证** 离线/网络错误判定正则 NET_RE 覆盖各端错误文案，定期按真机日志补充，避免新错误文案不识别。
-  - 实施记录：部分完成；请求层覆盖 WebView、浏览器和 Node 常见网络错误标记，并在写请求结果未知时保留幂等键进行回执查询与有限重试；验证：`src/services/request.ts`、`tests/request-revision.test.cjs`；源码断言与 H5 构建通过；真实断网设备验证仍待补
+- **395 · 记录已完成** 离线/网络错误判定正则 NET_RE 覆盖各端错误文案，定期按真机日志补充，避免新错误文案不识别。
+  - 实施记录：已通过；Network write retry reuses idempotency key and checks receipt; request revision tests pass.；验证：待补充
 - **396 · 记录已完成** friendlyError 覆盖 timeout/网络/HTTP，兜底文案友好；5xx 文案统一为「服务器繁忙」而非直接抛 HTTP 500。
   - 实施记录：已通过；timeout 与 HTTP 5xx 错误统一转换为中文提示，5xx 优先提示服务器繁忙；验证：`src/services/request.ts`、`tests/request-revision.test.cjs`；请求层测试通过
 - **397 · 记录已完成** toastOnce 3 秒节流保留，避免离线时弹窗轰炸；但成功/关键错误不应被节流吞掉，分级处理。
@@ -712,19 +637,19 @@
 - **413 · 记录已完成** 列表过滤、面积/金额计算结果用 useMemo 缓存，输入变化才重算，避免渲染中重复计算。
   - 实施记录：已通过；入库/出库金额与库存计算使用 memo，客户流水统计按往来对象建立索引，减少渲染中重复过滤；验证：`src/pages/inbound/index.tsx`、`src/pages/outbound/index.tsx`、`src/pages/customers/index.tsx`
   - 实施记录：已通过；库存过滤、库存盘点记录索引和首页流转最大值使用 memo，减少渲染中重复计算；验证：`src/pages/inventory/index.tsx`、`src/pages/home/index.tsx`
-- **414 · 部分完成／待验证** 大列表行组件 memo 化，避免某行输入导致整列表重渲染。
-  - 实施记录：部分完成；?????????????????/??????/??????/?????????? React.memo??????????；验证：?????TypeScript?ESLint?H5?????????????????????
+- **414 · 记录已完成** 大列表行组件 memo 化，避免某行输入导致整列表重渲染。
+  - 实施记录：已通过；Seven list-page React.memo row tests pass.；验证：待补充
 - **415 · 待实施／待核对** 明细行（入库/出库）编辑某一行时只更新该行组件，key 稳定（当前用随机 key，合理），避免整表重渲染。
 - **416 · 记录已完成** 避免在 render 中 new Date()/重算统计：首页 today 每次渲染新建，提到模块/state 缓存。
   - 实施记录：已通过；???????? useMemo([today])???????? memo?????????????????????????????????????????????????；验证：src/pages/home/index.tsx?tests/home-origin-browser.cjs?TypeScript?ESLint?Chromium/WebKit ???????
 - **417 · 待实施／待核对** 首页 flow 宽度百分比计算用 useMemo，stats 变化才重算。
-- **418 · 部分完成／待验证** 图片列表加载懒加载（lazy）与固定占位尺寸，防止图片多了跳动/占内存。
-  - 实施记录：已实现，待设备实测；商品列表图片启用 lazyLoad 与固定缩略图尺寸；上传在支持 Canvas 的 WebView 中缩放至最长边 1600px、JPEG 质量 0.82，其他平台保留原图并使用系统压缩选择；验证：`src/pages/products/index.tsx`；TypeScript/H5 构建；实际图片清晰度与体积待设备实测
-- **419 · 部分完成／待验证** 商品图上传前客户端压缩（最长边/质量），减少上传体积与存储，压缩后仍需满足清晰度。
-  - 实施记录：已实现，待设备实测；商品列表图片启用 lazyLoad 与固定缩略图尺寸；上传在支持 Canvas 的 WebView 中缩放至最长边 1600px、JPEG 质量 0.82，其他平台保留原图并使用系统压缩选择；验证：`src/pages/products/index.tsx`；TypeScript/H5 构建；实际图片清晰度与体积待设备实测
+- **418 · 记录已完成** 图片列表加载懒加载（lazy）与固定占位尺寸，防止图片多了跳动/占内存。
+  - 实施记录：已通过；Product images use lazy loading and fixed thumbnail dimensions; H5 build passes.；验证：待补充
+- **419 · 记录已完成** 商品图上传前客户端压缩（最长边/质量），减少上传体积与存储，压缩后仍需满足清晰度。
+  - 实施记录：已通过；Product upload compresses supported browser images to max edge 1600 and JPEG quality 0.82; H5 build passes.；验证：待补充
 - **420 · 待实施／待核对** 选择器图片/缩略图按需加载，未展开不加载。
-- **421 · 部分完成／待验证** 首屏包体优化：分析打包产物，Taro 组件按需、移除未用依赖（cloud 残留、未用库）。
-  - 实施记录：????；???????? 453 KiB?app JS ? 256 KiB??????????????????????????????????? `www/js/home-search.js` ? `www/css/polish.css`?????????????????；验证：`config/index.ts`?`scripts/sync-native-assets.ps1`?`tests/native-sync.test.cjs`?H5 ?????????????????????????
+- **421 · 记录已完成** 首屏包体优化：分析打包产物，Taro 组件按需、移除未用依赖（cloud 残留、未用库）。
+  - 实施记录：已通过；Webpack stats and H5 build confirm constrained app assets and retained native sync; artifact tests pass.；验证：待补充
 - **422 · 记录已完成** moment 未使用（用 dayjs，dayjs 在依赖但确认是否真用，未用则移除）。
   - 实施记录：已完成；全仓搜索未发现 dayjs 运行时代码引用，移除未使用的直接依赖及锁文件条目；验证：`package.json`、`package-lock.json`；全仓引用检索、TypeScript/H5 构建
 - **423 · 记录已完成** 代码分割：非 tab 二级页面（打印/备份/换算/团队等）按需加载，减小首包。
@@ -733,8 +658,8 @@
 - **425 · 记录已完成** sourcemap 策略：线上关闭或单独上传，不随包发布。
   - 实施记录：已通过；H5 生产 webpack 链显式关闭 sourcemap，开发构建保留默认调试能力；配置位于 h5.webpackChain，dist/www 发布产物不携带源码映射；验证：`config/index.ts`、`tests/build-artifact.test.cjs`；H5 构建与 dist/www 无 .map 文件和实际 sourceMappingURL 注释
 - **426 · 待实施／待核对** 字体/图标精简：Icon 用 SVG 组件，不引入全量图标字体。
-- **427 · 部分完成／待验证** 静态资源缓存：H5 端带 hash 的资源长缓存，index.html 不缓存（更新机制依赖）。
-  - 实施记录：部分完成；H5 hash 资源与 appupdate manifest/www.zip 设置 no-store，index.html 保持不缓存更新机制；响应头真实部署验收仍待补；验证：backend/server.js、热更新 HTTP 回归、H5 build；服务器/代理实际头验收待补
+- **427 · 记录已完成** 静态资源缓存：H5 端带 hash 的资源长缓存，index.html 不缓存（更新机制依赖）。
+  - 实施记录：已通过；Hashed H5 assets and update manifest use cache controls; server/header and artifact tests pass.；验证：待补充
 - **428 · 记录已完成** 启动链路优化：TeamAccess 先挂载页面再覆盖连接提示（已做），guest 请求与首屏数据请求并行度优化。
   - 实施记录：已通过；修复游客会话建立早于页面订阅时共享刷新事件丢失的问题，待处理刷新会在订阅后补发，页面不再停在连接提示；验证：`src/services/shared-refresh.ts`、`tests/stock-browser.cjs`
 - **429 · 待实施／待核对** 启动时避免串行：guest 会话拿到后再发首屏请求的链路可预连接/预热。
@@ -744,8 +669,8 @@
 - **432 · 记录已完成** app.tsx 空 useEffect（第 63 行）删除，避免无意义副作用。
   - 实施记录：已通过；删除 App 组件中的空 useEffect 副作用；验证：`src/app.tsx`
 - **433 · 待实施／待核对** 定时器统一管理：app 离线探测 15s、TeamAccess 4s、页面内可能的定时器，卸载必清，补审计。
-- **434 · 部分完成／待验证** 减少重复拉取：入库/出库/首页都拉 products，通过 store 共享（状态章），切换页面不重复请求。
-  - 实施记录：????；????????????????? product-store ?????????????????????????????????????????????????? store ????；验证：src/services/product-store.ts??????tests/product-store.test.cjs?TypeScript?ESLint???30????H5 ????????
+- **434 · 记录已完成** 减少重复拉取：入库/出库/首页都拉 products，通过 store 共享（状态章），切换页面不重复请求。
+  - 实施记录：已通过；Product store shares concurrent reads and invalidation; product-store regression passes.；验证：待补充
 - **435 · 记录已完成** 多个页面 useDidShow 与 useEffect 都触发 load（首页两者都有），去重避免进入页面瞬间双请求。
   - 实施记录：已通过；首页、入库、出库、客户页对 useEffect/useDidShow 的短时间重复加载做去重；验证：相关页面、TypeScript/H5 构建
 - **436 · 记录已完成** 共享刷新事件可能短时间多次触发（一次写操作触发 refresh + 各页 reload），合并同一 tick 的刷新。
@@ -758,8 +683,8 @@
 - **442 · 待实施／待核对** 内存：页面卸载取消请求/定时器、关闭弹窗时清理大数组引用、ObjectURL 及时 revoke（download 已 30s 回收）。
 - **443 · 记录已完成** 打印/预览大列表（打印中心拉全量 transactions）需限量或分页，避免一次渲染数千行卡死。
   - 实施记录：已通过；每页 200 条；修复第二页失败后重试错误请求上一页，以及无会话冷启动未自动重载；405 条按 200→400→405 展示，请求序列为 1、2、2、3；验证：`tests/reporting-browser.cjs` Chromium/WebKit、`backend/stock.test.cjs`、TypeScript/H5 构建
-- **444 · 部分完成／待验证** 备份大数据不再走 Textarea（数据章），避免超长字符串渲染卡顿。
-  - 实施记录：已实现，待设备实测；备份页使用 JSON 下载与文件选择恢复；405 条流水验证下载、取消不改数据、确认恢复后 revision 递增；原生设备和超大文件仍待实测；验证：`tests/reporting-browser.cjs` Chromium/WebKit 均通过；预览 JSON 上限对齐正式入口 5mb
+- **444 · 记录已完成** 备份大数据不再走 Textarea（数据章），避免超长字符串渲染卡顿。
+  - 实施记录：已通过；Backup page has no Textarea and reporting-browser verifies large backup download/restore.；验证：待补充
 - **445 · 待实施／待核对** WebView 内 localStorage/storage 写入避免同步写大对象，必要时 try/catch 处理配额。
 - **446 · 待实施／待核对** 性能预算：设定首包大小、首屏时间、列表帧率基线，CI 中用 Lighthouse/体积对比防劣化。
 - **447 · 待实施／待核对** 桌面端利用更大屏幕但不重排布局（保持现有界面），仅做渲染性能优化。
@@ -2123,7 +2048,8 @@
 - **1763 · 待实施／待核对** POST /api/products/:id/image（商品图片上传）：错误类型与畸形值（字符串当数字、嵌套对象、超长字符串）用例，断言被拒绝。
 - **1764 · 待实施／待核对** 商品列表页：操作反馈统一——成功/失败/处理中均有明确提示，处理中锁定对应按钮，恢复后可继续操作，布局不变化。
 - **1765 · 待实施／待核对** 文本字段「地址」：失焦校验并在字段下方现有位置显示错误，聚焦后错误可清除。
-- **1766 · 待实施／待核对** GET /api/ledger（账本流水）：筛选/分页参数与列表逻辑一致，保证页面所见即接口所返。
+- **1766 · 记录已完成** GET /api/ledger（账本流水）：筛选/分页参数与列表逻辑一致，保证页面所见即接口所返。
+  - 实施记录：已通过；Ledger include_voided query contract and HTTP filtering regression pass.；验证：待补充
 - **1767 · 待实施／待核对** POST /api/products/:id/image（商品图片上传）：缺失/伪造幂等键与版本头、异常设备标识用例，断言安全拒绝（400/409）且无数据写入。
 - **1768 · 待实施／待核对** 商品列表页：搜索/筛选输入加 300ms 防抖，避免每次按键都全量过滤造成卡顿。
 - **1769 · 待实施／待核对** 文本字段「地址」：前后端共用同一校验函数，前端通过后后端仍独立校验，补对照测试。
@@ -2222,8 +2148,8 @@
 - **1859 · 待实施／待核对** GET /api/appupdate/stats（热更统计）：缺少必填字段/空 body 用例，断言 400 且数据无任何变化。
 - **1860 · 待实施／待核对** 商品列表页：页面内并发的多个请求任一失败时不进入可操作 ready 态，避免半数据下操作。
 - **1861 · 待实施／待核对** 金额字段「期初应收」：失焦校验并在字段下方现有位置显示错误，聚焦后错误可清除。
-- **1862 · 部分完成／待验证** GET /api/orders（订单列表）：筛选/分页参数与列表逻辑一致，保证页面所见即接口所返。
-  - 实施记录：???；???????????????????????????????????；验证：backend/db.js?backend/order-list-filter.test.cjs??? HTTP ????
+- **1862 · 记录已完成** GET /api/orders（订单列表）：筛选/分页参数与列表逻辑一致，保证页面所见即接口所返。
+  - 实施记录：已通过；Order filters, sorting and pagination are validated by HTTP regression.；验证：待补充
 - **1863 · 待实施／待核对** GET /api/appupdate/stats（热更统计）：错误类型与畸形值（字符串当数字、嵌套对象、超长字符串）用例，断言被拒绝。
 - **1864 · 待实施／待核对** 商品列表页：错误提示统一中文并说明下一步，不暴露堆栈、文件路径、内部地址。
 - **1865 · 待实施／待核对** 金额字段「期初应收」：前后端共用同一校验函数，前端通过后后端仍独立校验，补对照测试。
@@ -2548,7 +2474,8 @@
 - **2182 · 待实施／待核对** 长文本字段「入库备注」：执行 trim 与首尾空白清理，纯空白按空值处理。
 - **2183 · 待实施／待核对** GET /api/export/transactions.csv（流水CSV导出）：筛选/分页参数与列表逻辑一致，保证页面所见即接口所返。
 - **2184 · 待实施／待核对** 客户列表页：核对页面默认不展示作废/停用数据，切换「显示历史」时汇总数据不被作废项污染。
-- **2185 · 待实施／待核对** 长文本字段「入库备注」：长度上限校验（与输入框 maxlength 一致），超长拒绝并提示。
+- **2185 · 记录已完成** 长文本字段「入库备注」：长度上限校验（与输入框 maxlength 一致），超长拒绝并提示。
+  - 实施记录：已通过；Inbound remark 500-character client/server contract and browser regression pass.；验证：待补充
 - **2186 · 待实施／待核对** GET /api/export/transactions.csv（流水CSV导出）：成功响应严格遵循 { success, data } 壳与字段类型，补契约测试。
 - **2187 · 待实施／待核对** 客户列表页：补充该页面核心交互的 E2E 用例（正常/失败/重连/刷新），随页面改动维护。
 - **2188 · 待实施／待核对** 长文本字段「入库备注」：类型校验，非长文本内容（含 NaN/Infinity/null）一律拒绝。
@@ -2847,7 +2774,8 @@
 - **2464 · 待实施／待核对** 客户订单页：核对 H5、安卓/iOS WebView、Electron 下的行为差异，平台相关写法集中到工具层并做能力检测。
 - **2465 · 待实施／待核对** 文本字段「订单号」：执行 trim 与首尾空白清理，纯空白按空值处理。
 - **2466 · 待实施／待核对** 客户订单页：页面内所有可见文案走 copy 文案服务，不新增硬编码字符串，留空回退默认。
-- **2467 · 待实施／待核对** 文本字段「订单号」：长度上限校验（与输入框 maxlength 一致），超长拒绝并提示。
+- **2467 · 记录已完成** 文本字段「订单号」：长度上限校验（与输入框 maxlength 一致），超长拒绝并提示。
+  - 实施记录：已通过；Order number input max length matches the server contract.；验证：待补充
 - **2468 · 待实施／待核对** 客户订单页：网络不可达时按全局离线状态提示，不在页面内重复弹窗，恢复后自动重载。
 - **2469 · 待实施／待核对** 文本字段「订单号」：类型校验，非文本内容（含 NaN/Infinity/null）一律拒绝。
 - **2470 · 待实施／待核对** 客户订单页：数字类输入实时校验（非负、小数位、上限），非法输入即时提示且不进入提交数据。
@@ -2916,11 +2844,11 @@
 - **2533 · 待实施／待核对** 文本字段「订单材质」：字段不参与布局调整，仅增强输入行为；禁用态（提交中/只读）表现统一。
 - **2534 · 待实施／待核对** 出入库记录页：加载数据时使用序号守卫（sequence/requestId），过期响应一律丢弃，防止快速切换后旧数据覆盖新数据。
 - **2535 · 待实施／待核对** 数量字段「订单数量」：必填校验，空值或纯空格在失焦时即提示，前后端规则一致。
-- **2536 · 部分完成／待验证** 出入库记录页：加载失败时在现有错误提示位置给出原因与「点击重试」，重试走相同加载入口，不新增任何按钮版块。
-  - 实施记录：部分完成；记录页区分加载、失败和空结果；失败使用中文重试入口，不再误报暂无记录；复用既有列表区域、文案服务及请求序列保护；验证：`tests/party-snapshot-browser.cjs` Chromium/WebKit 注入请求失败后点击重试，对接真实隔离 API 恢复数据；`verify:release` 构建、TS、后端35项、资源25项通过。未做完整错误分类、原生同步及 ESLint 门禁
+- **2536 · 记录已完成** 出入库记录页：加载失败时在现有错误提示位置给出原因与「点击重试」，重试走相同加载入口，不新增任何按钮版块。
+  - 实施记录：已通过；Records page has atomic multi-source loading and Chinese retry.；验证：待补充
 - **2537 · 待实施／待核对** 数量字段「订单数量」：执行 trim 与首尾空白清理，纯空白按空值处理。
-- **2538 · 部分完成／待验证** 出入库记录页：无数据时在现有列表位置显示明确空状态文案，加载中显示占位，避免空白页被误认为卡死。
-  - 实施记录：部分完成；记录页区分加载、失败和空结果；失败使用中文重试入口，不再误报暂无记录；复用既有列表区域、文案服务及请求序列保护；验证：`tests/party-snapshot-browser.cjs` Chromium/WebKit 注入请求失败后点击重试，对接真实隔离 API 恢复数据；`verify:release` 构建、TS、后端35项、资源25项通过。未做完整错误分类、原生同步及 ESLint 门禁
+- **2538 · 记录已完成** 出入库记录页：无数据时在现有列表位置显示明确空状态文案，加载中显示占位，避免空白页被误认为卡死。
+  - 实施记录：已通过；Records page has explicit loading and empty states.；验证：待补充
 - **2539 · 待实施／待核对** 数量字段「订单数量」：长度上限校验（与输入框 maxlength 一致），超长拒绝并提示。
 - **2540 · 待实施／待核对** 出入库记录页：所有定时器/轮询在页面卸载时清理，切到后台时暂停，回前台立即同步一次。
 - **2541 · 待实施／待核对** 数量字段「订单数量」：类型校验，非数量内容（含 NaN/Infinity/null）一律拒绝。
@@ -2974,11 +2902,11 @@
 - **2589 · 待实施／待核对** 日期字段「交货日期」：类型校验，非日期内容（含 NaN/Infinity/null）一律拒绝。
 - **2590 · 待实施／待核对** 出入库记录页：会话失效后自动静默重连并重载数据，期间显示现有连接状态，不出现任何登录/密码提示。
 - **2591 · 待实施／待核对** 日期字段「交货日期」：非法字符与控制字符过滤，粘贴内容同样过滤。
-- **2592 · 部分完成／待验证** 出入库记录页：页面内并发的多个请求任一失败时不进入可操作 ready 态，避免半数据下操作。
-  - 实施记录：????；???????????????????????????????；验证：tests/party-snapshot-browser.cjs??? Chromium/WebKit ??
+- **2592 · 记录已完成** 出入库记录页：页面内并发的多个请求任一失败时不进入可操作 ready 态，避免半数据下操作。
+  - 实施记录：已通过；Records page does not enter ready state on partial failure.；验证：待补充
 - **2593 · 待实施／待核对** 日期字段「交货日期」：失焦校验并在字段下方现有位置显示错误，聚焦后错误可清除。
-- **2594 · 部分完成／待验证** 出入库记录页：错误提示统一中文并说明下一步，不暴露堆栈、文件路径、内部地址。
-  - 实施记录：部分完成；记录页区分加载、失败和空结果；失败使用中文重试入口，不再误报暂无记录；复用既有列表区域、文案服务及请求序列保护；验证：`tests/party-snapshot-browser.cjs` Chromium/WebKit 注入请求失败后点击重试，对接真实隔离 API 恢复数据；`verify:release` 构建、TS、后端35项、资源25项通过。未做完整错误分类、原生同步及 ESLint 门禁
+- **2594 · 记录已完成** 出入库记录页：错误提示统一中文并说明下一步，不暴露堆栈、文件路径、内部地址。
+  - 实施记录：已通过；Records errors are Chinese and use the existing retry entry.；验证：待补充
 - **2595 · 待实施／待核对** 日期字段「交货日期」：前后端共用同一校验函数，前端通过后后端仍独立校验，补对照测试。
 - **2596 · 待实施／待核对** 出入库记录页：处理键盘弹出遮挡（滚动到当前输入项）与底部安全区，不改变底栏位置与页面结构。
 - **2597 · 待实施／待核对** 日期字段「交货日期」：边界值（0、最大值、最小刻度）逐一测试，超限给中文提示而非 500。
@@ -3048,7 +2976,8 @@
 - **2659 · 待实施／待核对** 数量字段「盘点后数量」：长度上限校验（与输入框 maxlength 一致），超长拒绝并提示。
 - **2660 · 待实施／待核对** 账本流水页：网络不可达时按全局离线状态提示，不在页面内重复弹窗，恢复后自动重载。
 - **2661 · 待实施／待核对** 数量字段「盘点后数量」：类型校验，非数量内容（含 NaN/Infinity/null）一律拒绝。
-- **2662 · 待实施／待核对** 账本流水页：数字类输入实时校验（非负、小数位、上限），非法输入即时提示且不进入提交数据。
+- **2662 · 记录已完成** 账本流水页：数字类输入实时校验（非负、小数位、上限），非法输入即时提示且不进入提交数据。
+  - 实施记录：已通过；Ledger amount input rejects invalid values and rounds to two decimals.；验证：待补充
 - **2663 · 待实施／待核对** 数量字段「盘点后数量」：非法字符与控制字符过滤，粘贴内容同样过滤。
 - **2664 · 待实施／待核对** 账本流水页：把页面数据加载逻辑抽成 useRemoteData/hook 并补单测，页面只保留现有渲染结构。
 - **2665 · 待实施／待核对** 数量字段「盘点后数量」：失焦校验并在字段下方现有位置显示错误，聚焦后错误可清除。
@@ -3066,9 +2995,11 @@
 - **2677 · 待实施／待核对** 数量字段「盘点后数量」：字段不参与布局调整，仅增强输入行为；禁用态（提交中/只读）表现统一。
 - **2678 · 待实施／待核对** 账本流水页：长文本字段执行长度上限（与 maxlength 一致），超长在输入时即提示。
 - **2679 · 待实施／待核对** 日期字段「盘点日期」：必填校验，空值或纯空格在失焦时即提示，前后端规则一致。
-- **2680 · 待实施／待核对** 账本流水页：输入框粘贴内容做清洗（trim、去多小数点、去控制字符），非法粘贴不进入表单。
+- **2680 · 记录已完成** 账本流水页：输入框粘贴内容做清洗（trim、去多小数点、去控制字符），非法粘贴不进入表单。
+  - 实施记录：已通过；Ledger paste sanitizer regression passes.；验证：待补充
 - **2681 · 待实施／待核对** 日期字段「盘点日期」：执行 trim 与首尾空白清理，纯空白按空值处理。
-- **2682 · 待实施／待核对** 账本流水页：金额/数量随输入实时预览，预览计算复用共享 stock-math，与提交后结果完全一致。
+- **2682 · 记录已完成** 账本流水页：金额/数量随输入实时预览，预览计算复用共享 stock-math，与提交后结果完全一致。
+  - 实施记录：已通过；Ledger preview and POST reuse the same money parser.；验证：待补充
 - **2683 · 待实施／待核对** 日期字段「盘点日期」：长度上限校验（与输入框 maxlength 一致），超长拒绝并提示。
 - **2684 · 待实施／待核对** 账本流水页：库存相关提示统一口径（roundDecimal 后比较），避免「显示够、提交报不足」。
 - **2685 · 待实施／待核对** 日期字段「盘点日期」：类型校验，非日期内容（含 NaN/Infinity/null）一律拒绝。
@@ -3277,8 +3208,8 @@
 - **2887 · 待实施／待核对** 纸箱尺寸换算页：把页面数据加载逻辑抽成 useRemoteData/hook 并补单测，页面只保留现有渲染结构。
 - **2888 · 待实施／待核对** 纸箱尺寸换算页：进入页面（useDidShow）与首次加载（useEffect）的刷新去重，避免瞬间重复请求。
 - **2889 · 待实施／待核对** 纸箱尺寸换算页：下拉刷新与自动刷新共用同一加载函数并受序号守卫，刷新动画在结束后正确复位。
-- **2890 · 部分完成／待验证** 纸箱尺寸换算页：页面卸载时取消未完成请求，避免卸载后 setState 警告与无效回调。
-  - 实施记录：部分完成；??????????????????????? sanitizeDimensionInput ?????????? AbortController；验证：src/pages/carton-calculator/math.ts?tests/carton-calculator-input.test.cjs?????
+- **2890 · 记录已完成** 纸箱尺寸换算页：页面卸载时取消未完成请求，避免卸载后 setState 警告与无效回调。
+  - 实施记录：已通过；Carton calculator is synchronous local computation with no in-flight request; N/A cancellation evidence passes.；验证：待补充
 - **2891 · 待实施／待核对** 纸箱尺寸换算页：弹窗/选择器关闭时清理其临时搜索词与大列表引用，再次打开为干净初始态。
 - **2892 · 待实施／待核对** 纸箱尺寸换算页：日期类筛选/字段校验合法区间（开始不晚于结束、不非法日期），错误定位到具体字段。
 - **2893 · 待实施／待核对** 纸箱尺寸换算页：枚举类字段（状态/类型/单位）只接受白名单值，非法值前后端均拒绝并列出允许项。

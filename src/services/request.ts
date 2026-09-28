@@ -110,6 +110,9 @@ const CACHE_PREFIX = 'team_cache_';
 const CACHE_INDEX_KEY = CACHE_PREFIX + '__idx';
 const PENDING_WRITES_KEY = 'sg_pending_writes_v1';
 const PENDING_WRITE_TTL = 24 * 60 * 60 * 1000;
+// A write may have committed before transport failure; keep the same
+// idempotency key while retrying, then reconcile through the receipt endpoint.
+const WRITE_NETWORK_RETRIES = 2;
 
 let offline = false;
 const listeners = new Set<(v: boolean) => void>();
@@ -331,7 +334,7 @@ async function performRequest<T = any>(options: RequestOptions, identity: string
       } catch (error) {
         // A write may have committed before the connection dropped. Retry once
         // with the same idempotency key so the server can replay its receipt.
-        if (!isRead && isNetworkError(error) && networkAttempt < 2) {
+        if (!isRead && isNetworkError(error) && networkAttempt < WRITE_NETWORK_RETRIES) {
           await sleep(250 * (2 ** networkAttempt));
           networkAttempt += 1;
           continue;

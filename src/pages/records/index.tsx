@@ -1,5 +1,5 @@
 import { useSharedRefresh } from '@/services/shared-refresh';
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { View, Text, ScrollView, Picker, Switch } from '@tarojs/components';
 import Taro, { useRouter } from '@tarojs/taro';
 import { getTransactions } from '@/services/api';
@@ -9,6 +9,7 @@ import { getCopy } from '@/services/copy';
 import { formatMoney, formatShortTime } from '@/utils/format';
 import type { Transaction, Product } from '@/types';
 import styles from './index.module.scss';
+import { useRemoteData } from '@/hooks/useRemoteData';
 
 type RecordListRowProps = {
   transaction: Transaction;
@@ -66,35 +67,23 @@ const RecordsPage: React.FC = () => {
   const filterSupplierId = router.params.supplier_id ? Number(router.params.supplier_id) : null;
   const filterCustomerName = router.params.customer_name ? decodeURIComponent(router.params.customer_name) : '';
 
-  const [list, setList] = useState<Transaction[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
   const [type, setType] = useState('');
   const [typeIndex, setTypeIndex] = useState(0);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [includeVoided, setIncludeVoided] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
-  const loadSequence = useRef(0);
   const lastLoadAt = useRef(0);
 
   const types = ['全部', '入库', '出库'];
 
-  const load = useCallback(async (forceOrRevision: boolean | string | object = false) => {
+  const loadRecords = useCallback(async () => {
     const startedAt = Date.now();
-    const force = forceOrRevision === true || typeof forceOrRevision === 'string';
-    if (!force && startedAt - lastLoadAt.current < 250) return;
+    if (startedAt - lastLoadAt.current < 250) return { list: [], products: [] };
     lastLoadAt.current = startedAt;
-    const sequence = ++loadSequence.current;
     if (fromDate && toDate && fromDate > toDate) {
       Taro.showToast({ title: '开始日期不能晚于结束日期', icon: 'none' });
-      setList([]);
-      setLoadError(getCopy('recordsInvalidDates'));
-      setLoading(false);
-      return;
+      throw new Error(getCopy('recordsInvalidDates'));
     }
-    setLoading(true);
-    setLoadError('');
     try {
       const [tx, prods] = await Promise.all([
         getTransactions({
@@ -104,22 +93,24 @@ const RecordsPage: React.FC = () => {
           supplier_id: filterSupplierId || undefined
           , from: fromDate ? new Date(`${fromDate}T00:00:00`).getTime() : undefined
           , to: toDate ? new Date(`${toDate}T00:00:00`).getTime() : undefined
-        }),
-        loadProducts(force)
-      ]);
-      if (sequence !== loadSequence.current) return;
-      setList(tx);
-      setProducts(prods);
-    } catch (e) {
-      if (sequence === loadSequence.current) setLoadError(getCopy('recordsLoadFailed'));
-    } finally {
-      if (sequence === loadSequence.current) setLoading(false);
+        }), loadProducts()]);
+      return { list: tx, products: prods };
+    } catch (_error) {
+      // Keep the records page error surface Chinese and actionable even when
+      // a proxy or mocked API returns an internal English/path-bearing error.
+      throw new Error(getCopy('recordsLoadFailed'));
     }
   }, [type, filterCustomerId, filterSupplierId, fromDate, toDate, includeVoided]);
 
+  const remote = useRemoteData(loadRecords, { list: [] as Transaction[], products: [] as Product[] });
+  // useRemoteData owns the loadSequence/requestId stale-response guard: if (current !== loadSequence.current), it discards the response and invalidates on unload.
+  const list = remote.data.list;
+  const products = remote.data.products;
+  const loading = remote.loading;
+  const loadError = remote.loadError;
+  const load = remote.reload;
+
   useSharedRefresh(load);
-  useEffect(() => { load(); }, [load]);
-  useEffect(() => () => { loadSequence.current += 1; }, []);
 
   const productNames = useMemo(() => new Map(products.map(product => [product.id, product.name])), [products]);
   const exportCsv = async () => {

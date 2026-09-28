@@ -30,6 +30,16 @@ test('critical write errors bypass offline toast throttling', () => {
   assert.match(source, /toastOnce\(msg, !isRead\)/);
 });
 
+test('unknown write outcomes retain the idempotency key and reconcile receipts', () => {
+  const source = fs.readFileSync('src/services/request.ts', 'utf8');
+  assert.match(source, /const WRITE_NETWORK_RETRIES = 2/);
+  assert.match(source, /pendingGet\(identity\)/);
+  assert.match(source, /Idempotency-Key/);
+  assert.match(source, /recoverPending/);
+  assert.match(source, /sync\/receipt/);
+  assert.match(source, /same idempotency key/);
+});
+
 test('409 conflicts can use the revision returned in the response body', () => {
   const source = fs.readFileSync('src/services/request.ts', 'utf8');
   assert.match(source, /bodyRevision = \(res\.data as any\)\?\.data\?\.revision/);

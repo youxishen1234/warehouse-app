@@ -8,6 +8,7 @@ import { formatMoney, formatShortTime, getStockStatus } from '@/utils/format';
 import { localDate, numberValue, sanitizeDecimalInput } from '@/utils/stock-math';
 import type { Product, Stocktake } from '@/types';
 import styles from './index.module.scss';
+import { useRemoteData } from '@/hooks/useRemoteData';
 
 // 跨页联动中转键：tabBar 页（入库/出库）无法通过 URL 传参，用 storage 中转
 const TRANSIT_KEY = 'sg_transit';
@@ -52,19 +53,14 @@ const InventoryListRow = React.memo(function InventoryListRow({ product, latest,
 });
 
 const InventoryPage: React.FC = () => {
-  const [list, setList] = useState<Product[]>([]);
   const [keyword, setKeyword] = useState('');
   const [filterKeyword, setFilterKeyword] = useState('');
   const [counting, setCounting] = useState<Product | null>(null);
   const [countValue, setCountValue] = useState('');
   const [countRemark, setCountRemark] = useState('');
   const [countDate, setCountDate] = useState(() => localDate());
-  const [takes, setTakes] = useState<Stocktake[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
   const [countSaving, setCountSaving] = useState(false);
   const countSavingRef = useRef(false);
-  const requestId = useRef(0);
   const keywordTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const openCount = useCallback((product: Product) => {
     if (countSavingRef.current) return;
@@ -89,21 +85,18 @@ const InventoryPage: React.FC = () => {
     finally { countSavingRef.current = false; setCountSaving(false); }
   };
 
-  const load = useCallback(async () => {
-    const current = ++requestId.current;
-    setLoading(true);
-    try {
-      const [data, history] = await Promise.all([loadProducts(true), getStocktakes()]);
-      if (current !== requestId.current) return;
-      setList(data); setTakes(history);
-      setLoadError('');
-    } catch (e) { if (current === requestId.current) setLoadError(e instanceof Error ? e.message : '库存加载失败，请重试'); }
-    finally { if (current === requestId.current) setLoading(false); }
+  const loadInventory = useCallback(async () => {
+    const [list, takes] = await Promise.all([loadProducts(true), getStocktakes()]);
+    return { list, takes };
   }, []);
+  const remote = useRemoteData(loadInventory, { list: [] as Product[], takes: [] as Stocktake[] });
+  const list = remote.data.list;
+  const takes = remote.data.takes;
+  const loading = remote.loading;
+  const loadError = remote.loadError;
+  const load = remote.reload;
 
   useSharedRefresh(load);
-  useEffect(() => { load(); }, [load]);
-  useEffect(() => () => { requestId.current += 1; }, []);
 
   const normalizedKeyword = filterKeyword.trim().toLowerCase();
   const visibleList = useMemo(() => normalizedKeyword

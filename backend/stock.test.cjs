@@ -9,9 +9,7 @@ const install = require('./team');
 test('stock workflows use isolated data and real HTTP routes', async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'warehouse-stock-test-'));
   process.env.WAREHOUSE_DATA_FILE = path.join(dir, 'data.json');
-  process.env.WAREHOUSE_ACCOUNTS_FILE = path.join(dir, 'accounts.json');
   fs.writeFileSync(process.env.WAREHOUSE_DATA_FILE, JSON.stringify({ products: [], customers: [], suppliers: [], transactions: [], ledger: [] }));
-  await install.bootstrap(process.env.WAREHOUSE_ACCOUNTS_FILE, 'Stock-test-password!');
   const db = require('./db');
   const app = express(); app.use(express.json({ limit: '5mb' })); app.use('/api', install(db));
   const server = app.listen(0, '127.0.0.1');
@@ -33,7 +31,7 @@ test('stock workflows use isolated data and real HTTP routes', async t => {
     assert.equal(fs.readFileSync(process.env.WAREHOUSE_DATA_FILE, 'utf8'), before);
   }
   try {
-    token = (await call('/auth/login', 'POST', { username: 'admin', password: 'Stock-test-password!' })).body.data.token;
+    token = '';
     await t.test('supplier rename preserves historical snapshots and uses current name for new receipts', async () => {
       const s = await create('/suppliers', { name: 'Original supplier' });
       const p = await product({ supplier_id: s.id });
@@ -146,6 +144,32 @@ test('stock workflows use isolated data and real HTTP routes', async t => {
       const receivable = db.listLedger({ type: 'receivable' }).filter(entry => result.transactions.some(item => item.transaction.id === entry.transaction_id));
       assert.equal(receivable.reduce((sum, entry) => sum + entry.amount, 0), total);
     });
+    await t.test('half-cent multi-line amounts round each line before balance aggregation', async () => {
+      const supplier = await create('/suppliers', { name: '半分舍入供应商' });
+      const inboundA = await product({ name: '入库半分甲', stock: 0, price: 0.005 });
+      const inboundB = await product({ name: '入库半分乙', stock: 0, price: 0.005 });
+      const note = await create('/delivery-notes', { supplier_id: supplier.id, freight: 0, lines: [
+        { product_id: inboundA.id, quantity: 1, delivered_qty: 1, unit_price: 0.005 },
+        { product_id: inboundB.id, quantity: 1, delivered_qty: 1, unit_price: 0.005 }
+      ] });
+      assert.deepEqual(note.lines.map(line => line.amount), [0.01, 0.01]);
+      assert.equal(note.total_amount, 0.02);
+      assert.equal(db.getSupplier(supplier.id).payable, 0.02);
+      const payable = db.listLedger({ type: 'payable' }).filter(entry => note.lines.some(line => line.transaction_id === entry.transaction_id));
+      assert.deepEqual(payable.map(entry => entry.amount).sort((a, b) => a - b), [0.01, 0.01]);
+
+      const customer = await create('/customers', { name: '半分舍入客户' });
+      const outboundA = await product({ name: '出库半分甲', stock: 1, price: 0.005 });
+      const outboundB = await product({ name: '出库半分乙', stock: 1, price: 0.005 });
+      const posted = await create('/stock/out/batch', { customer_id: customer.id, lines: [
+        { product_id: outboundA.id, quantity: 1, unit_price: 0.005 },
+        { product_id: outboundB.id, quantity: 1, unit_price: 0.005 }
+      ] });
+      assert.deepEqual(posted.transactions.map(item => item.transaction.amount), [0.01, 0.01]);
+      assert.equal(db.getCustomer(customer.id).debt, 0.02);
+      const receivable = db.listLedger({ type: 'receivable' }).filter(entry => posted.transactions.some(item => item.transaction.id === entry.transaction_id));
+      assert.deepEqual(receivable.map(entry => entry.amount).sort((a, b) => a - b), [0.01, 0.01]);
+    });
     await t.test('voided ledger entries stay out of default lists until history is requested', async () => {
       const entry = db.addLedger({ type: 'income', amount: 12.34, remark: '可作废手工流水' });
       assert.equal(db.listLedger({}).some(item => item.id === entry.id), true);
@@ -153,6 +177,24 @@ test('stock workflows use isolated data and real HTTP routes', async t => {
       assert.equal(db.listLedger({}).some(item => item.id === entry.id), false);
       const history = db.listLedger({ include_voided: 'true' }).find(item => item.id === entry.id);
       assert.equal(history?.voided_at > 0, true);
+    });
+    await t.test('voided receivable remains in history but is excluded from HTTP statistics', async () => {
+      const baseline = await call('/stats');
+      assert.equal(baseline.status, 200, JSON.stringify(baseline.body));
+      const customer = await create('/customers', { name: '作废统计客户', debt: 7 });
+      const p = await product({ name: '作废统计商品', stock: 4, price: 2 });
+      const posted = await create('/stock/out', { product_id: p.id, quantity: 1, customer_id: customer.id });
+      const beforeVoid = await call('/stats');
+      assert.equal(beforeVoid.status, 200, JSON.stringify(beforeVoid.body));
+      assert.equal(beforeVoid.body.data.totalReceivable, baseline.body.data.totalReceivable + 9);
+      const ledgerId = db.listLedger({ type: 'receivable' }).find(entry => entry.transaction_id === posted.transaction.id).id;
+      const voided = await call(`/transactions/${posted.transaction.id}`, 'DELETE');
+      assert.equal(voided.status, 200, JSON.stringify(voided.body));
+      const afterVoid = await call('/stats');
+      assert.equal(afterVoid.status, 200, JSON.stringify(afterVoid.body));
+      assert.equal(afterVoid.body.data.totalReceivable, baseline.body.data.totalReceivable + 7, 'voided receivable must no longer affect statistics');
+      assert.equal(db.listLedger({}).some(entry => entry.id === ledgerId), false, 'default ledger list hides voided history');
+      assert.equal(db.listLedger({ include_voided: 'true' }).find(entry => entry.id === ledgerId)?.voided_at > 0, true, 'history remains queryable');
     });
     await t.test('ledger reads expose current party names without rewriting snapshots', async () => {
       const customer = await create('/customers', { name: '账本旧客户名', debt: 2 });
@@ -201,12 +243,38 @@ test('stock workflows use isolated data and real HTTP routes', async t => {
     });
     await t.test('accounting invariant failure rolls back the whole transaction', async () => {
       const p = await product({ name: '恒等式回滚商品', stock: 2 });
+      const customer = await create('/customers', { name: '原子回滚应收客户' });
       const before = db.backupData();
-      assert.throws(() => db.transact({ id: 9001, username: 'admin' }, 'accounting-invariant-test', 'accounting-invariant-test-fingerprint', String(db.revision()), 'test accounting invariant', () => {
-        db.getProduct(p.id).stock = 3;
+      const dataBefore = fs.readFileSync(process.env.WAREHOUSE_DATA_FILE, 'utf8');
+      const key = 'accounting-invariant-test';
+      assert.throws(() => db.transact({ id: 9001, username: 'admin' }, key, 'accounting-invariant-test-fingerprint', String(db.revision()), 'test accounting invariant', () => {
+        db.stockOut(p.id, 1, 'admin', 'atomic rollback', customer.id);
+        // Force the late invariant check to fail after the nested operation has
+        // already changed inventory, receivable, transaction and ledger.
+        db.getProduct(p.id).stock = 2;
         return { id: p.id };
       }), /库存与出入库流水不一致/);
       assert.deepEqual(db.backupData(), before);
+      assert.equal(db.receipt(9001, key), null, 'failed write must not leave an idempotency receipt');
+      assert.equal(fs.readFileSync(process.env.WAREHOUSE_DATA_FILE, 'utf8'), dataBefore, 'failed write must not persist partial state');
+    });
+    await t.test('accounting invariant rejects receivable or payable changes without ledger entries', async () => {
+      const customer = await create('/customers', { name: '应收恒等式回滚客户' });
+      const supplier = await create('/suppliers', { name: '应付恒等式回滚供应商' });
+      const cases = [
+        { actor: 9101, id: customer.id, row: () => db.getCustomer(customer.id), field: 'debt', expected: /往来余额与账本不一致：customer/ },
+        { actor: 9102, id: supplier.id, row: () => db.getSupplier(supplier.id), field: 'payable', expected: /往来余额与账本不一致：supplier/ }
+      ];
+      for (const [index, item] of cases.entries()) {
+        const before = db.backupData();
+        const key = `party-invariant-${item.actor}-${sequence++}`;
+        assert.throws(() => db.transact({ id: item.actor, username: 'admin' }, key, `party-invariant-fingerprint-${index}`, String(db.revision()), 'test party accounting invariant', () => {
+          item.row()[item.field] = 1;
+          return { id: item.id };
+        }), item.expected);
+        assert.deepEqual(db.backupData(), before);
+        assert.equal(db.receipt(item.actor, key), null);
+      }
     });
     await t.test('duplicate or missing inbound products never create records or products', async () => {
       const p = await product(); const body = delivery(p); body.lines.push(body.lines[0]);
@@ -291,6 +359,14 @@ test('stock workflows use isolated data and real HTTP routes', async t => {
       assert.equal(db.getProduct(p.id).stock, 1);
       await unchanged('/stock/out/batch', { lines: [{ product_id: p.id, quantity: 0.0000001, unit_price: 1 }] }, /最多支持六位小数/);
       assert.equal(db.getProduct(p.id).stock, 1);
+    });
+    await t.test('outbound stock comparisons use the same six-decimal rounded value at every boundary', async () => {
+      const p = await product({ name: '六位库存比较商品', stock: 0.30000000000000004 });
+      const posted = await create('/stock/out/batch', { lines: [{ product_id: p.id, quantity: 0.3, unit_price: 1 }] });
+      assert.equal(posted.transactions[0].transaction.quantity, 0.3);
+      assert.equal(db.getProduct(p.id).stock, 0);
+      await unchanged('/stock/out/batch', { lines: [{ product_id: p.id, quantity: 0.000001, unit_price: 1 }] }, /库存不足/);
+      assert.equal(db.getProduct(p.id).stock, 0);
     });
     await t.test('void keeps history and reverses stock and debt only once', async () => {
       const p = await product(); const c = await create('/customers', { name: '作废客户' });

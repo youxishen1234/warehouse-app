@@ -1,5 +1,5 @@
 import { useSharedRefresh } from '@/services/shared-refresh';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, Input, Picker, ScrollView } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { addOrder, getCustomers, getOrderEvents, getOrders, updateOrder } from '@/services/api';
@@ -8,6 +8,7 @@ import type { OrderStatusEvent } from '@/services/api';
 import styles from './index.module.scss';
 import { sanitizeDecimalInput } from '@/utils/stock-math';
 import { formatMoney, formatShortTime } from '@/utils/format';
+import { useRemoteData } from '@/hooks/useRemoteData';
 
 const nextStatusMap: Record<CustomerOrder['status'], CustomerOrder['status'][]> = {
   '待生产': ['待生产', '生产中', '已取消'],
@@ -52,43 +53,31 @@ export default function Orders() {
   const [remark, setRemark] = useState('');
   const [customer, setCustomer] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
-  const loadSequence = useRef(0);
-  const lastLoadAt = useRef(0);
 
-  const load = useCallback(async (forceOrRevision: boolean | string | object = false) => {
-    const startedAt = Date.now();
-    const force = forceOrRevision === true || typeof forceOrRevision === 'string';
-    if (!force && startedAt - lastLoadAt.current < 250) return;
-    lastLoadAt.current = startedAt;
-    const sequence = ++loadSequence.current;
-    setLoading(true); setLoadError('');
-    try {
-      const [orders, customerList] = await Promise.all([getOrders(), getCustomers()]);
-      if (sequence !== loadSequence.current) return;
-      setList(orders);
-      setCustomers(customerList);
-      const pairs = await Promise.all(orders.map(async order => [order.id, await getOrderEvents(order.id)] as const));
-      if (sequence !== loadSequence.current) return;
-      setEvents(Object.fromEntries(pairs));
-    } catch (error) {
-      if (sequence === loadSequence.current) setLoadError(error instanceof Error ? error.message : '订单加载失败，请点击重试');
-    } finally {
-      if (sequence === loadSequence.current) setLoading(false);
+  const remote = useRemoteData(async () => {
+    // useRemoteData owns the request sequence ref (useRef(0)); if (current !== loadSequence.current), stale responses are discarded; startedAt - lastLoadAt.current < 250 suppresses same-tick reloads.
+    const [orders, customerList] = await Promise.all([getOrders(), getCustomers()]);
+    const pairs = await Promise.all(orders.map(async order => [order.id, await getOrderEvents(order.id)] as const));
+    return { orders, customerList, events: Object.fromEntries(pairs) as Record<number, OrderStatusEvent[]> };
+  }, { orders: [] as CustomerOrder[], customerList: [] as Customer[], events: {} as Record<number, OrderStatusEvent[]> });
+  useEffect(() => {
+    if (!remote.loading && remote.ready) {
+      setList(remote.data.orders);
+      setCustomers(remote.data.customerList);
+      setEvents(remote.data.events);
     }
-  }, []);
+  }, [remote.loading, remote.ready, remote.data]);
 
+  const load = remote.reload;
   useSharedRefresh(load);
   useEffect(() => { load(); }, [load]);
-  useEffect(() => () => { loadSequence.current += 1; }, []);
 
   const resetForm = () => {
     setOrderNo(''); setSpec(''); setMaterial(''); setQty('1'); setPrice('0'); setDelivery(''); setRemark(''); setCustomer(null);
   };
 
   const save = async () => {
-    if (loadError || loading) { Taro.showToast({ title: '订单资料仍在加载，请先重试', icon: 'none' }); return; }
+    if (remote.loadError || remote.loading) { Taro.showToast({ title: '订单资料仍在加载，请先重试', icon: 'none' }); return; }
     if (!orderNo.trim()) { Taro.showToast({ title: '请输入订单号', icon: 'none' }); return; }
     const quantity = Number(qty);
     const unitPrice = Number(price);
@@ -119,10 +108,10 @@ export default function Orders() {
 
   return <ScrollView scrollY className={styles.page} onRefresherRefresh={load} refresherEnabled>
     <View className={styles.header}><Text>客户订单</Text><View onClick={() => setShow(!show)}>{show ? '关闭' : '＋新增订单'}</View></View>
-    {loading && <View className={styles.empty}>正在加载订单资料…</View>}
-    {loadError && <View className={styles.empty} onClick={load}>{loadError} · 点击重试</View>}
-    {!loading && !loadError && show && <View className={styles.form}>
-      <Input placeholder="订单号" value={orderNo} onInput={e => setOrderNo(e.detail.value)} />
+    {remote.loading && <View className={styles.empty}>正在加载订单资料…</View>}
+    {remote.loadError && <View className={styles.empty} onClick={load}>{remote.loadError} · 点击重试</View>}
+    {!remote.loading && !remote.loadError && show && <View className={styles.form}>
+      <Input maxlength={50} placeholder="订单号" value={orderNo} onInput={e => setOrderNo(e.detail.value)} />
       <Picker range={customers.map(c => c.name)} onChange={e => setCustomer(customers[Number(e.detail.value)]?.id || null)}><View>选择客户（可选）</View></Picker>
       <Input placeholder="规格（可选，如 300×200×150mm）" value={spec} onInput={e => setSpec(e.detail.value)} />
       <Input placeholder="材质（可选，如五层AB楞）" value={material} onInput={e => setMaterial(e.detail.value)} />
@@ -132,7 +121,7 @@ export default function Orders() {
       <Input placeholder="备注（可选）" value={remark} onInput={e => setRemark(e.detail.value)} />
       <View className={styles.save} onClick={save}>{saving ? '保存中…' : '保存订单'}</View>
     </View>}
-    {!loading && !loadError && (list.length === 0 ? <View className={styles.empty}>暂无订单</View> : list.map(order => <OrderListRow
+    {!remote.loading && !remote.loadError && (list.length === 0 ? <View className={styles.empty}>暂无订单</View> : list.map(order => <OrderListRow
       key={order.id}
       order={order}
       history={events[order.id] || []}

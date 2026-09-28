@@ -7,9 +7,7 @@ const install = require('../backend/team');
 async function start() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'warehouse-team-preview-'));
   process.env.WAREHOUSE_DATA_FILE = path.join(dir,'data.json');
-  process.env.WAREHOUSE_ACCOUNTS_FILE = path.join(dir,'accounts.json');
   fs.writeFileSync(process.env.WAREHOUSE_DATA_FILE, JSON.stringify({products:[],customers:[],suppliers:[],transactions:[],orders:[],ledger:[],_meta:{nextProductId:1,nextCustomerId:1,nextSupplierId:1,nextTransactionId:1,nextLedgerId:1}}));
-  await install.bootstrap(process.env.WAREHOUSE_ACCOUNTS_FILE, 'Local-preview-password!');
   const db = require('../backend/db');
   // Match the production JSON limit so file-restore tests exercise the same contract.
   const app=express();app.use(express.json({ limit: '5mb' }));

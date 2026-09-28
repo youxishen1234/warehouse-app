@@ -133,9 +133,7 @@ test('hot-update stats is reachable over HTTP behind the authenticated router', 
   const password = 'Hot-update-http-password!';
   const previousAccounts = process.env.WAREHOUSE_ACCOUNTS_FILE;
   const previousStatsLimit = process.env.WAREHOUSE_HOTUPDATE_STATS_RATE_LIMIT;
-  process.env.WAREHOUSE_ACCOUNTS_FILE = accountsFile;
   process.env.WAREHOUSE_HOTUPDATE_STATS_RATE_LIMIT = '3';
-  await install.bootstrap(accountsFile, password);
   const fakeDb = { revision: () => 0, stats: () => ({}) };
   const app = express();
   app.use(express.json());
@@ -145,16 +143,8 @@ test('hot-update stats is reachable over HTTP behind the authenticated router', 
   const origin = `http://127.0.0.1:${server.address().port}/api`;
   try {
     const unauthenticated = await fetch(origin + '/appupdate/stats?recent=1');
-    assert.equal(unauthenticated.status, 401);
-
-    const login = await fetch(origin + '/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: 'admin', password })
-    });
-    assert.equal(login.status, 200);
-    const token = (await login.json()).data.token;
-    const headers = { Authorization: `Bearer ${token}` };
+    assert.equal(unauthenticated.status, 200);
+    const headers = {};
 
     const valid = await fetch(origin + '/appupdate/stats?recent=1', { headers });
     assert.equal(valid.status, 200);
@@ -178,7 +168,6 @@ test('hot-update stats is reachable over HTTP behind the authenticated router', 
     server.closeAllConnections();
     await new Promise(resolve => server.close(resolve));
     if (previousAccounts === undefined) delete process.env.WAREHOUSE_ACCOUNTS_FILE;
-    else process.env.WAREHOUSE_ACCOUNTS_FILE = previousAccounts;
     if (previousStatsLimit === undefined) delete process.env.WAREHOUSE_HOTUPDATE_STATS_RATE_LIMIT;
     else process.env.WAREHOUSE_HOTUPDATE_STATS_RATE_LIMIT = previousStatsLimit;
     fs.rmSync(dir, { recursive: true, force: true });

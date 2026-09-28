@@ -6,11 +6,14 @@ function installGracefulShutdown(server, options = {}) {
     ? Math.min(60000, Math.max(1000, configuredTimeout))
     : 10000;
   let shuttingDown = false;
+  let inFlight = 0;
   const trackResponse = (_req, res) => {
     let completed = false;
+    inFlight += 1;
     const onComplete = () => {
       if (completed) return;
       completed = true;
+      inFlight = Math.max(0, inFlight - 1);
       if (shuttingDown) setImmediate(() => server.closeIdleConnections?.());
     };
     res.once('finish', onComplete);
@@ -21,7 +24,7 @@ function installGracefulShutdown(server, options = {}) {
   const shutdown = signal => {
     if (shuttingDown) return;
     shuttingDown = true;
-    logger.log(`[server] received ${signal}; draining in-flight requests`);
+    logger.log(`[server] received ${signal}; draining in-flight requests (${inFlight})`);
     const forceTimer = setTimeout(() => {
       logger.error(`[server] shutdown timed out after ${timeout}ms; closing remaining connections`);
       server.closeAllConnections?.();

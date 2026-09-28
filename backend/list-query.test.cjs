@@ -22,9 +22,7 @@ test('list sorting has stable ties, handles legacy values and does not mutate in
 test('all list routes and CSV exports validate sorting and order status through HTTP', async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'warehouse-query-test-'));
   process.env.WAREHOUSE_DATA_FILE = path.join(dir, 'data.json');
-  process.env.WAREHOUSE_ACCOUNTS_FILE = path.join(dir, 'accounts.json');
   fs.writeFileSync(process.env.WAREHOUSE_DATA_FILE, JSON.stringify({ products: [], customers: [], suppliers: [], transactions: [], ledger: [] }));
-  await install.bootstrap(process.env.WAREHOUSE_ACCOUNTS_FILE, 'Query-test-password!');
   const db = require('./db');
   const app = express(); app.use(express.json()); app.use('/api', install(db));
   const server = app.listen(0, '127.0.0.1');

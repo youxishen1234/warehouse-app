@@ -8,10 +8,8 @@ const express = require('express');
 test('订单列表支持统一关键词、客户和日期筛选', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'warehouse-order-filter-'));
   process.env.WAREHOUSE_DATA_FILE = path.join(dir, 'data.json');
-  process.env.WAREHOUSE_ACCOUNTS_FILE = path.join(dir, 'accounts.json');
   fs.writeFileSync(process.env.WAREHOUSE_DATA_FILE, JSON.stringify({ products: [], customers: [], suppliers: [], transactions: [], ledger: [] }));
   const install = require('./team');
-  await install.bootstrap(process.env.WAREHOUSE_ACCOUNTS_FILE, 'Order-filter-password!');
   const db = require('./db');
   const app = express(); app.use(express.json()); app.use('/api', install(db));
   const server = app.listen(0, '127.0.0.1');
@@ -42,6 +40,11 @@ test('订单列表支持统一关键词、客户和日期筛选', async () => {
     const byDate = await call(`/orders?from=${date}&to=${date}&sort=id&order=asc`);
     assert.equal(byDate.status, 200);
     assert.deepEqual(byDate.body.data.map(row => row.id), [first.id, second.id]);
+    const paged = await call('/orders?keyword=' + encodeURIComponent('订单') + '&sort=id&order=asc&page=1&page_size=1');
+    assert.equal(paged.status, 200);
+    assert.deepEqual(paged.body.data, { items: [second], total: 1, page: 1, page_size: 1 });
+    const customerPage = await call(`/orders?customer_id=${customer.id}&sort=id&order=asc&page=1&page_size=1`);
+    assert.deepEqual(customerPage.body.data, { items: [first], total: 1, page: 1, page_size: 1 });
   } finally {
     server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
     fs.rmSync(dir, { recursive: true, force: true });

@@ -1,7 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { promisify } = require('node:util');
 const { Readable } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
 const { ORDER_STATUSES, validateSortQuery, sortList } = require('./list-sort');
@@ -9,10 +8,6 @@ const { parseDateQuery } = require('./date-query');
 const updates = require('./updates');
 const { consumeRateLimit } = require('./rate-limit');
 const hotUpdateStatsRateLimit = () => Math.max(2, Math.min(1000, Number(process.env.WAREHOUSE_HOTUPDATE_STATS_RATE_LIMIT) || 60));
-
-const scrypt = promisify(crypto.scrypt);
-const roles = ['admin', 'operator', 'viewer'];
-const DEFAULT_GATE_PASSWORD = 'shuguang2026';
 const digest = text => crypto.createHash('sha256').update(text).digest('hex');
 const productImagePath = imageUrl => {
   if (typeof imageUrl !== 'string') return null;
@@ -49,42 +44,47 @@ async function streamCsv(res, headings, rows, toCells) {
   const source = Readable.from(csvRows(headings, rows, toCells));
   await pipeline(source, res);
 }
-const clean = user => ({ id: user.id, username: user.username, role: user.role, disabled: !!user.disabled });
+
+// Emit large JSON responses incrementally while preserving their wire shape.
+// Arrays are written item by item so Express does not first build one giant
+// serialized string for backup/export responses.
+async function streamJson(res, value) {
+  res.type('application/json');
+  const write = async chunk => {
+    if (res.write(chunk)) return;
+    await new Promise(resolve => res.once('drain', resolve));
+  };
+  const emit = async input => {
+    if (input === null || typeof input !== 'object') return write(JSON.stringify(input));
+    if (Array.isArray(input)) {
+      await write('[');
+      for (let index = 0; index < input.length; index += 1) {
+        if (index) await write(',');
+        await emit(input[index]);
+        if (index % 128 === 0) await new Promise(resolve => setImmediate(resolve));
+      }
+      return write(']');
+    }
+    await write('{');
+    const entries = Object.entries(input);
+    for (let index = 0; index < entries.length; index += 1) {
+      if (index) await write(',');
+      await write(JSON.stringify(entries[index][0]));
+      await write(':');
+      await emit(entries[index][1]);
+    }
+    return write('}');
+  };
+  await emit(value);
+  res.end();
+}
 const error = (message, status = 400) => Object.assign(new Error(message), { status });
-async function passwordHash(password, salt) {
-  if (typeof password !== 'string' || password.length < 12 || password.length > 128) throw error('密码须为 12 至 128 位');
-  return (await scrypt(password, salt, 64)).toString('hex');
-}
-function save(file, value) {
-  const tmp = `${file}.tmp`;
-  const fd = fs.openSync(tmp, 'w', 0o600);
-  try { fs.writeFileSync(fd, JSON.stringify(value, null, 2)); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-  fs.renameSync(tmp, file);
-}
-async function bootstrap(file, password) {
-  if (fs.existsSync(file)) throw error('账号文件已存在，禁止覆盖');
-  const salt = crypto.randomBytes(16).toString('hex');
-  const hash = await passwordHash(password, salt);
-  fs.writeFileSync(file, JSON.stringify({ users: [{ id: crypto.randomUUID(), username: 'admin', role: 'admin', salt, hash, disabled: false }], events: [] }, null, 2), { flag: 'wx', mode: 0o600 });
-}
+const IDENTITY_KEY_PATTERN = /^[\w-]{16,100}$/;
+const requiresIdempotencyKey = pathName => /^\/(?:products|customers|suppliers|orders|transactions|ledger|stock(?:\/in|\/out|\/out\/batch)?|backup|stocktake|delivery-notes)(?:\/|$)/.test(pathName);
 function install(db) {
   const router = require('express').Router();
-  const file = process.env.WAREHOUSE_ACCOUNTS_FILE || path.join(__dirname, 'accounts.json');
-  let accounts = JSON.parse(fs.readFileSync(file, 'utf8'));
-  if (!Array.isArray(accounts.users) || !accounts.users.some(u => u.role === 'admin' && !u.disabled)) throw error('缺少管理员账号');
-  const sessions = new Map(), attempts = new Map();
+  const guestSessions = new Map();
   const statsBuckets = new Map();
-  const gateFile = process.env.WAREHOUSE_GATE_PASSWORD_FILE || path.join(__dirname, 'access-password');
-  const gatePassword = () => { try { return fs.readFileSync(gateFile, 'utf8').trim() || DEFAULT_GATE_PASSWORD; } catch { return DEFAULT_GATE_PASSWORD; } };
-  const accountCommit = (actor, operation, change) => {
-    const active = accounts.users.find(u => u.id === actor.id && !u.disabled);
-    if (!active || (operation !== '修改密码' && active.role !== 'admin')) throw error('账号权限已变更，请重新登录', 403);
-    const next = JSON.parse(JSON.stringify(accounts));
-    const result = change(next);
-    if (!next.users.some(u => u.role === 'admin' && !u.disabled)) throw error('必须保留至少一个启用的管理员');
-    next.events.push({ actor_name: actor.username, operation, time: Date.now() });
-    save(file, next); accounts = next; return result;
-  };
   const ok = (res, data) => res.json({ success: true, data });
   const route = (method, url, handler) => router[method](url, (req, res, next) => Promise.resolve().then(() => handler(req, res)).catch(next));
   router.use((req, res, next) => {
@@ -100,48 +100,41 @@ function install(db) {
     });
     next();
   });
-  route('get', '/health', (req, res) => ok(res, { ...db.health(), authentication: true, accountsAvailable: fs.existsSync(file) }));
-  route('post', '/auth/login', async (req, res) => {
-    const ip = req.ip;
-    const now = Date.now();
-    for (const [key, attempt] of attempts) if (attempt.until < now) attempts.delete(key);
-    const attempt = attempts.get(ip) || { count: 0, until: now + 600000 };
-    if (++attempt.count > 20) throw error('尝试过于频繁，请十分钟后重试', 429);
-    attempts.set(ip, attempt);
-    const { username, password } = req.body || {};
-    const user = accounts.users.find(u => u.username === username && !u.disabled);
-    const hash = await passwordHash(password, user?.salt || 'invalid-user-salt');
-    if (!user || !crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(user.hash, 'hex'))) throw error('账号或密码错误', 401);
-    if (!accounts.users.some(u => u.id === user.id && !u.disabled && u.hash === user.hash)) throw error('账号已变更，请重试', 401);
-    attempts.delete(ip);
-    for (const [key, session] of sessions) if (session.expires < now) sessions.delete(key);
-    const token = crypto.randomBytes(32).toString('hex');
-    sessions.set(digest(token), { userId: user.id, expires: now + 12 * 3600000 });
-    ok(res, { token, user: clean(user), expires: now + 12 * 3600000 });
-  });
-  route('post', '/auth/gate', (req, res) => {
-    if (!req.body || req.body.password !== gatePassword()) throw error('访问密码错误', 401);
-    const token = crypto.randomBytes(32).toString('hex');
-    sessions.set(digest(token), { userId: `gate:${crypto.randomUUID()}`, gate: true, expires: Date.now() + 12 * 3600000 });
-    ok(res, { token, user: { id: 'shared', username: '共享用户', role: 'operator', gate: true, disabled: false }, expires: Date.now() + 12 * 3600000 });
-  });
-  // App 启动时使用无感共享会话，不再向用户展示访问密码页面。
+  route('get', '/health', (req, res) => ok(res, { ...db.health(), authentication: false }));
+  const bearer = req => String(req.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
+  const actorFor = req => {
+    const token = bearer(req);
+    const session = token ? guestSessions.get(digest(token)) : null;
+    if (session && session.expires > Date.now()) return session.actor;
+    const device = `${String(req.get('X-Warehouse-Device') || 'anonymous').slice(0, 80)}:${String(req.warehouseClientIp || req.ip || 'unknown')}`;
+    return { id: `anonymous:${digest(device).slice(0, 40)}`, username: '\u533f\u540d\u7528\u6237' };
+  };
+  // Guest bootstrap is optional for clients that retain a session token.
+  // The token identifies an anonymous actor only; it grants no role or account privileges.
   route('post', '/auth/guest', (req, res) => {
+    const now = Date.now();
+    for (const [key, session] of guestSessions) if (session.expires <= now) guestSessions.delete(key);
     const token = crypto.randomBytes(32).toString('hex');
-    sessions.set(digest(token), { userId: `guest:${crypto.randomUUID()}`, gate: true, expires: Date.now() + 12 * 3600000 });
-    ok(res, { token, user: { id: 'guest', username: '共享用户', role: 'operator', gate: true, disabled: false }, expires: Date.now() + 12 * 3600000 });
+    const actor = { id: `guest:${crypto.randomUUID()}`, username: '\u533f\u540d\u7528\u6237' };
+    const expires = now + 12 * 3600000;
+    guestSessions.set(digest(token), { actor, expires });
+    ok(res, { token, user: actor, expires });
   });
   router.use((req, res, next) => {
-    if ((req.method === 'GET' && ['/appupdate/check', '/app/downloads'].includes(req.path)) || (req.method === 'POST' && req.path === '/appupdate/report')) return next('router');
-    const key = digest(String(req.get('Authorization') || '').replace(/^Bearer /, ''));
-    const session = sessions.get(key);
-    const user = session && session.expires > Date.now() && (session.gate ? { id: session.userId, username: '共享用户', role: 'operator', gate: true, disabled: false } : accounts.users.find(u => u.id === session.userId && !u.disabled));
-    if (!user) {
-      if (/^\/(team|audit|auth)/.test(req.path)) return next(error('请登录后使用', 401));
-      return next(error('请输入共享访问密码', 401));
-    }
-    req.user = user; req.sessionKey = key; next();
+    req.user = actorFor(req);
+    req.sessionKey = bearer(req) ? digest(bearer(req)) : '';
+    next();
   });
+  // Keep the write-key contract in one place. Route handlers retain their
+  // defensive checks for direct reuse, but malformed keys are rejected before
+  // business validation or persistence can run.
+  router.use((req, res, next) => {
+    if (!['POST', 'PUT', 'DELETE'].includes(req.method) || !requiresIdempotencyKey(req.path)) return next();
+    if (!IDENTITY_KEY_PATTERN.test(String(req.get('Idempotency-Key') || ''))) return next(error('缺少有效的提交编号', 400));
+    next();
+  });
+  route('get', '/auth/me', (req, res) => ok(res, req.user));
+  route('post', '/auth/logout', (req, res) => { if (req.sessionKey) guestSessions.delete(req.sessionKey); ok(res, true); });
   const rateBuckets = new Map();
   const rateLimit = (req, scope, limit, windowMs) => {
     const source = `${req.warehouseClientIp || req.ip}|${String(req.get('X-Warehouse-Device') || 'unknown').slice(0, 80)}`;
@@ -158,11 +151,8 @@ function install(db) {
     }
     next();
   });
-  route('get', '/auth/me', (req, res) => ok(res, clean(req.user)));
-  route('post', '/auth/logout', (req, res) => { sessions.delete(req.sessionKey); ok(res, true); });
-  // Keep the hot-update dashboard behind the authenticated router. Defining
-  // it here avoids the router's unknown-route guard swallowing this endpoint
-  // before a later server-level handler can run.
+  // Keep the hot-update dashboard on the shared anonymous API router. Defining
+  // it here avoids the router's unknown-route guard swallowing this endpoint.
   route('get', '/appupdate/stats', (req, res) => {
     const bucketKey = `${req.warehouseClientIp || req.ip || 'unknown'}:${String(req.get('X-Warehouse-Device') || 'unknown').slice(0, 80)}`;
     if (!consumeRateLimit(statsBuckets, bucketKey, { limit: hotUpdateStatsRateLimit() })) {
@@ -171,46 +161,13 @@ function install(db) {
     }
     ok(res, updates.stats(updates.parseRecent(req.query.recent)));
   });
-  route('post', '/auth/password', async (req, res) => {
-    const oldHash = await passwordHash(req.body.currentPassword, req.user.salt);
-    if (oldHash !== req.user.hash) throw error('当前密码不正确');
-    const salt = crypto.randomBytes(16).toString('hex');
-    const hash = await passwordHash(req.body.password, salt);
-    accountCommit(req.user, '修改密码', next => { const u = next.users.find(candidate => candidate.id === req.user.id); u.salt = salt; u.hash = hash; });
-    for (const [key, s] of sessions) if (s.userId === req.user.id) sessions.delete(key);
-    ok(res, true);
-  });
-  router.use(['/team', '/audit'], (req, res, next) => req.user.role === 'admin' ? next() : next(error('仅管理员可操作', 403)));
-  route('get', '/team', (req, res) => ok(res, accounts.users.map(clean)));
-  route('post', '/team', async (req, res) => {
-    const { username, password, role } = req.body;
-    if (!/^[a-zA-Z0-9_-]{3,32}$/.test(username) || !roles.includes(role)) throw error('账号须为 3 至 32 位字母、数字或下划线，角色无效');
-    const salt = crypto.randomBytes(16).toString('hex'), hash = await passwordHash(password, salt);
-    const user = { id: crypto.randomUUID(), username, role, salt, hash, disabled: false };
-    accountCommit(req.user, `创建账号 ${username}`, next => { if (next.users.some(u => u.username === username)) throw error('账号已存在'); next.users.push(user); });
-    ok(res, clean(user));
-  });
-  route('put', '/team/:id', async (req, res) => {
-    const { role, disabled, password } = req.body;
-    if (role !== undefined && !roles.includes(role)) throw error('角色无效');
-    if (disabled !== undefined && typeof disabled !== 'boolean') throw error('启用状态无效');
-    let salt, hash;
-    if (password !== undefined) { salt = crypto.randomBytes(16).toString('hex'); hash = await passwordHash(password, salt); }
-    const user = accountCommit(req.user, `更新账号 ${req.params.id}`, next => {
-      const u = next.users.find(candidate => candidate.id === req.params.id); if (!u) throw error('账号不存在', 404);
-      if (role !== undefined) u.role = role; if (disabled !== undefined) u.disabled = disabled;
-      if (hash) { u.salt = salt; u.hash = hash; } return clean(u);
-    });
-    for (const [key, s] of sessions) if (s.userId === req.params.id) sessions.delete(key);
-    ok(res, user);
-  });
   route('get', '/audit', (req, res) => {
     const rawPage = req.query.page;
     if (rawPage !== undefined && (typeof rawPage !== 'string' || !/^[1-9]\d*$/.test(rawPage) || !Number.isSafeInteger(Number(rawPage)))) {
-      throw error('page ??????', 400);
+      throw error('\u9875\u7801\u5fc5\u987b\u662f\u6b63\u6574\u6570', 400);
     }
     const page = rawPage === undefined ? 1 : Number(rawPage);
-    const all = [...db.audit(), ...accounts.events].sort((a,b) => b.time-a.time);
+    const all = db.audit().slice().sort((a,b) => b.time-a.time);
     const offset = (page - 1) * 50;
     const items = Number.isSafeInteger(offset) && Number.isSafeInteger(offset + 50) ? all.slice(offset, offset + 50) : [];
     ok(res, { total: all.length, items });
@@ -243,38 +200,36 @@ function install(db) {
     rows.push(['货款合计', '', '', '', '', '', '', note.total_amount], ['总平米', note.total_square_meters], ['备注', note.remark]);
     res.attachment(`delivery-note-${note.id}.csv`).type('text/csv').send('\ufeff' + rows.map(row => row.map(csvCell).join(',')).join('\r\n'));
   });
-  route('get', '/backup', (req, res) => { if (req.user.role === 'viewer') throw error('只读账号不能导出备份',403); ok(res, { exportedAt: new Date().toISOString(), data: db.backupData() }); });
-  route('post', '/backup', (req, res) => { if (req.user.role === 'viewer') throw error('只读账号不能恢复备份',403); const key=req.get('Idempotency-Key'); if(!key || !/^[\w-]{16,100}$/.test(key)) throw error('缺少有效的提交编号'); const payload=req.body?.data || req.body; const result=db.transact(req.user,key,digest(JSON.stringify(payload)),req.get('If-Match'),'POST /backup',()=>db.restoreData(payload)); res.set('X-Warehouse-Revision',String(result.revision)); ok(res,result.data); });
-  route('post', '/stock/out/batch', (req, res) => { if (req.user.role === 'viewer') throw error('只读账号不能出库',403); const key=req.get('Idempotency-Key'); if(!key || !/^[\w-]{16,100}$/.test(key)) throw error('缺少有效的提交编号'); const body=req.body||{}; const result=db.transact(req.user,key,digest('POST /stock/out/batch'+JSON.stringify(body)),req.get('If-Match'),'POST /stock/out/batch',()=>({ transactions: db.stockOutBatch(body.lines,body.operator||req.user.username,body.remark||'',body.customer_id) })); res.set('X-Warehouse-Revision',String(result.revision)); ok(res,result.data); });
+  route('get', '/backup', (req, res) => { streamJson(res, { success: true, data: { exportedAt: new Date().toISOString(), data: db.backupData() } }); });
+  route('post', '/backup', (req, res) => { const key=req.get('Idempotency-Key'); const payload=req.body?.data || req.body; const result=db.transact(req.user,key,digest(JSON.stringify(payload)),req.get('If-Match'),'POST /backup',()=>db.restoreData(payload)); res.set('X-Warehouse-Revision',String(result.revision)); ok(res,result.data); });
+  route('post', '/stock/out/batch', (req, res) => { const key=req.get('Idempotency-Key'); const body=req.body||{}; const result=db.transact(req.user,key,digest('POST /stock/out/batch'+JSON.stringify(body)),req.get('If-Match'),'POST /stock/out/batch',()=>({ transactions: db.stockOutBatch(body.lines,body.operator||req.user.username,body.remark||'',body.customer_id) })); res.set('X-Warehouse-Revision',String(result.revision)); ok(res,result.data); });
+  route('post', '/orders/:id/outbound', (req, res) => { const key=req.get('Idempotency-Key'); const body=req.body||{}; const lines=Array.isArray(body.lines) ? body.lines : (body.product_id !== undefined ? [{ product_id: body.product_id, quantity: body.quantity, unit_price: body.unit_price }] : []); const result=db.transact(req.user,key,digest('POST /orders/'+req.params.id+'/outbound'+JSON.stringify(body)),req.get('If-Match'),'POST /orders/:id/outbound',()=>db.orderToOutbound(Number(req.params.id), lines, body.operator||req.user.username, body.remark||'')); res.set('X-Warehouse-Revision',String(result.revision)); ok(res,result.data); });
   route('get', '/export/transactions.csv', async (req, res) => {
     validateListQuery(req.query, 'transactions');
-    const rows = sortList(db.listTx(req.query), req.query, 'transactions');
-    if (!rows.length) throw error('没有符合条件的流水可导出', 404);
-    await streamCsv(res, ['时间','类型','商品','规格','材质','数量','单位','单价','金额','客户','供应商','备注','状态'], rows, t => [new Date(t.created_at).toISOString(),t.type,t.product_name||'',t.specification||'',t.material||'',t.type === 'adjustment' ? t.adjustment : t.quantity||0,t.unit||'',t.unit_price||0,t.amount||0,t.customer_name||'',t.supplier_name||'',t.remark||'',t.voided_at ? '已作废（不计库存及金额）' : '有效']);
+    const streamed = !req.query.sort && !req.query.order && db.streamTx ? db.streamTx(req.query) : null;
+    const rows = streamed ? streamed.rows : sortList(db.listTx(req.query), req.query, 'transactions');
+    if (streamed ? streamed.count === 0 : rows.length === 0) throw error('\u6ca1\u6709\u7b26\u5408\u6761\u4ef6\u7684\u6d41\u6c34\u53ef\u5bfc\u51fa', 404);
+    await streamCsv(res, ['??','??','??','??','??','??','??','??','??','??','???','??','??'], rows, t => [new Date(t.created_at).toISOString(),t.type,t.product_name||'',t.specification||'',t.material||'',t.type === 'adjustment' ? t.adjustment : t.quantity||0,t.unit||'',t.unit_price||0,t.amount||0,t.customer_name||'',t.supplier_name||'',t.remark||'',t.voided_at ? '????????????' : '??']);
   });
   route('get', '/export/ledger.csv', async (req, res) => {
     validateListQuery(req.query, 'ledger');
-    const rows = sortList(db.listLedger(req.query), req.query, 'ledger');
-    if (!rows.length) throw error('没有符合条件的账本流水可导出', 404);
-    await streamCsv(res, ['时间','类型','金额','往来对象','说明'], rows, x => [new Date(x.created_at).toISOString(),x.type,x.amount,x.party_name||'',x.remark||'']);
+    const streamed = !req.query.sort && !req.query.order && db.streamLedger ? db.streamLedger(req.query) : null;
+    const rows = streamed ? streamed.rows : sortList(db.listLedger(req.query), req.query, 'ledger');
+    if (streamed ? streamed.count === 0 : rows.length === 0) throw error('\u6ca1\u6709\u7b26\u5408\u6761\u4ef6\u7684\u8d26\u672c\u6d41\u6c34\u53ef\u5bfc\u51fa', 404);
+    await streamCsv(res, ['??','??','??','????','??'], rows, x => [new Date(x.created_at).toISOString(),x.type,x.amount,x.party_name||'',x.remark||'']);
   });
-  route('post', '/stocktake', (req, res) => { if (req.user.role === 'viewer') throw error('只读账号不能盘点',403); const key=req.get('Idempotency-Key'); if(!key || !/^[\w-]{16,100}$/.test(key)) throw error('缺少有效的提交编号'); const result=db.transact(req.user,key,digest(JSON.stringify(req.body)),req.get('If-Match'), 'POST /stocktake',()=>db.addStocktake(req.body)); res.set('X-Warehouse-Revision',String(result.revision)); ok(res,result.data); });
+  route('post', '/stocktake', (req, res) => { const key=req.get('Idempotency-Key'); const result=db.transact(req.user,key,digest(JSON.stringify(req.body)),req.get('If-Match'), 'POST /stocktake',()=>db.addStocktake(req.body)); res.set('X-Warehouse-Revision',String(result.revision)); ok(res,result.data); });
   route('get', '/stocktakes', (req, res) => { validateListQuery(req.query, 'stocktakes'); return ok(res, paginateList(sortList(db.listStocktakes(req.query), req.query, 'stocktakes'), req.query)); });
   route('get', '/delivery-notes', (req, res) => { validateListQuery(req.query, 'delivery_notes'); return ok(res, paginateList(sortList(db.listDeliveryNotes(), req.query, 'delivery_notes'), req.query)); });
   route('get', '/delivery-notes/:id', (req, res) => { const note=db.getDeliveryNote(Number(req.params.id)); if(!note) throw error('送货单不存在',404); ok(res,note); });
-  route('post', '/delivery-notes', (req, res) => {
-    if (req.user.role === 'viewer') throw error('只读账号不能保存送货单', 403);
-    const remark = req.body?.remark;
+  route('post', '/delivery-notes', (req, res) => { const remark = req.body?.remark;
     if (remark !== undefined && (typeof remark !== 'string' || remark.length > 500)) throw error('remark 长度不能超过 500 个字符且必须为文本');
     const key = req.get('Idempotency-Key');
-    if (!key || !/^[\w-]{16,100}$/.test(key)) throw error('缺少有效的提交编号');
     const result = db.transact(req.user, key, digest('POST /delivery-notes' + JSON.stringify(req.body)), req.get('If-Match'), 'POST /delivery-notes', () => db.addDeliveryNote({ ...req.body, operator: req.body.operator || req.user.username }));
     res.set('X-Warehouse-Revision', String(result.revision));
     ok(res, result.data);
   });
-  route('delete', '/delivery-notes/:id', (req, res) => {
-    if (req.user.role !== 'admin' && !req.user.gate) throw error('作废需要管理员权限', 403);
-    const key = req.get('Idempotency-Key'); if (!key || !/^[\w-]{16,100}$/.test(key)) throw error('缺少有效的提交编号');
+  route('delete', '/delivery-notes/:id', (req, res) => { const key = req.get('Idempotency-Key');
     const operation = `DELETE /delivery-notes/${req.params.id}`;
     const result = db.transact(req.user, key, digest(operation), req.get('If-Match'), operation, () => db.voidDeliveryNote(Number(req.params.id)));
     res.set('X-Warehouse-Revision', String(result.revision)); ok(res, result.data);
@@ -282,13 +237,11 @@ function install(db) {
   route('post', '/sync/upload', (req, res) => ok(res, { ok: true, received: true }));
   route('post', '/products/:id/image', (req, res) => {
     const key = req.get('Idempotency-Key');
-    if (!key || !/^[\w-]{16,100}$/.test(key)) throw error('缺少有效的提交编号');
-    if (req.user.role === 'viewer') throw error('只读账号不能上传图片', 403);
     const raw = String(req.body?.data || '');
     const match = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(raw);
     if (!match) throw error('仅支持 PNG、JPEG 或 WebP 图片');
     const bytes = Buffer.from(match[2], 'base64');
-    if (!bytes.length || bytes.length > 2 * 1024 * 1024) throw error('图片大小不能超过 2 MiB');
+    if (!bytes.length || bytes.length > 2 * 1024 * 1024) throw error('图片解码后大小不能超过 2 MiB');
     if (!validImageBytes(match[1], bytes)) throw error('图片内容与文件类型不一致，请重新上传');
     const product = db.getProduct(Number(req.params.id)); if (!product) throw error('商品不存在',404);
     const uploadDir = path.join(__dirname, 'public', 'uploads', 'products'); fs.mkdirSync(uploadDir, { recursive: true });
@@ -408,11 +361,7 @@ function install(db) {
         const names = collections[collection]; const rawData = id ? (names[1] ? db[names[1]](id) : db[names[0]]({}).find(row=>row.id===id)) : db[names[0]](req.query);
         const data = id ? rawData : paginateList(sortList(rawData, req.query, collection), req.query);
         if (!data) throw error('记录不存在', 404); return ok(res, data);
-      }
-      if (req.user.role === 'viewer') throw error('只读账号不能修改数据', 403);
-      if (req.user.role !== 'admin' && !req.user.gate && (req.method !== 'POST' || collection === 'ledger' || ['debt','payable'].some(k => Number(body[k]) !== 0 && body[k] !== undefined))) throw error('编辑、删除、账务和结清需要管理员权限', 403);
-      const key = req.get('Idempotency-Key');
-      if (!key || !/^[\w-]{16,100}$/.test(key)) throw error('缺少有效的提交编号');
+      } const key = req.get('Idempotency-Key');
       for (const name of ['quantity','stock','price','unit_price','debt','payable','amount','safety_stock']) if (body[name] !== undefined && (body[name] === null || body[name] === '' || !Number.isFinite(Number(body[name])) || Number(body[name]) < 0)) throw error('金额和数量必须是有效非负数');
       if (stock && !(Number(body.quantity) > 0)) throw error('数量必须大于零');
       const payload = { ...body };
@@ -462,4 +411,3 @@ function install(db) {
   return router;
 }
 module.exports = install;
-module.exports.bootstrap = bootstrap;

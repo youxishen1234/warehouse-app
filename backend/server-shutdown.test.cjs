@@ -42,6 +42,7 @@ test('SIGTERM stops new accepts and lets an in-flight response finish', async t 
   runtime.emit('SIGTERM');
   runtime.emit('SIGINT');
   assert.equal(log.filter(message => /draining in-flight/.test(message)).length, 1);
+  assert.match(log.find(message => /draining in-flight/.test(message)), /\(1\)/);
   await assert.rejects(fetch(origin, { signal: AbortSignal.timeout(1000) }));
 
   finishResponse();

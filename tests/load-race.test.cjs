@@ -31,3 +31,19 @@ test('stock workflow pages guard stale responses and initial duplicate refreshes
     assert.match(source, /startedAt - lastLoadAt\.current < 250/, `${file} should suppress same-tick reloads`);
   }
 });
+
+test('sequence guard keeps the newest refresh result when an older request resolves last', async () => {
+  let sequence = 0;
+  let state = '';
+  const resolve = (value, delay) => new Promise(done => setTimeout(() => done(value), delay));
+  const load = async (value, delay) => {
+    const current = ++sequence;
+    const result = await resolve(value, delay);
+    if (current !== sequence) return;
+    state = result;
+  };
+  const oldRequest = load('old-response', 40);
+  const newRequest = load('new-response', 5);
+  await Promise.all([oldRequest, newRequest]);
+  assert.equal(state, 'new-response');
+});

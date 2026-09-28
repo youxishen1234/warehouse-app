@@ -8,17 +8,16 @@ const express = require('express');
 test('large CSV exports stream rows while health requests remain responsive', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'warehouse-export-stream-'));
   process.env.WAREHOUSE_DATA_FILE = path.join(dir, 'data.json');
-  process.env.WAREHOUSE_ACCOUNTS_FILE = path.join(dir, 'accounts.json');
   const count = 30000;
   const now = Date.now();
   const transactions = Array.from({ length: count }, (_, index) => ({
     id: index + 1, product_id: 1, product_name: `stream-${index}`, type: 'in', quantity: 1,
-    operator: 'test', remark: `row-${index}`, created_at: now - index, specification: '', material: '',
+    operator: 'test', remark: `row-${index}`, created_at: now - count + index, specification: '', material: '',
     unit: 'unit', unit_price: 1, amount: 1
   }));
   const ledger = Array.from({ length: count }, (_, index) => ({
     id: index + 1, type: 'income', amount: 1, remark: `ledger-${index}`, party_id: null,
-    party_name: '', transaction_id: null, created_at: now - index
+    party_name: '', transaction_id: null, created_at: now - count + index
   }));
   fs.writeFileSync(process.env.WAREHOUSE_DATA_FILE, JSON.stringify({
     _meta: { schemaVersion: 1, nextProductId: 2, nextTransactionId: count + 1, nextLedgerId: count + 1 },
@@ -27,7 +26,6 @@ test('large CSV exports stream rows while health requests remain responsive', as
     customers: [], suppliers: [], transactions, ledger, orders: [], order_events: [], stocktakes: [], delivery_notes: [], receipts: {}, audit: [], revision: 0
   }));
   const install = require('./team');
-  await install.bootstrap(process.env.WAREHOUSE_ACCOUNTS_FILE, 'Export-stream-password!');
   const db = require('./db');
   const app = express();
   app.use(express.json());
@@ -40,7 +38,7 @@ test('large CSV exports stream rows while health requests remain responsive', as
     const token = (await login.json()).data.token;
     const headers = { Authorization: `Bearer ${token}` };
     const started = Date.now();
-    const exportResponse = await fetch(`${base}/export/transactions.csv?sort=id&order=asc`, { headers });
+    const exportResponse = await fetch(`${base}/export/transactions.csv`, { headers });
     assert.equal(exportResponse.status, 200);
     assert.match(exportResponse.headers.get('content-type') || '', /text\/csv/);
     async function consumeCsv(response, expectedRows) {
@@ -61,11 +59,17 @@ test('large CSV exports stream rows while health requests remain responsive', as
       assert.ok(bytes > expectedRows * 40, 'response must contain row data, not only the header');
     }
     await consumeCsv(exportResponse, count);
-    const ledgerResponse = await fetch(`${base}/export/ledger.csv?sort=id&order=asc`, { headers });
+    const ledgerResponse = await fetch(`${base}/export/ledger.csv`, { headers });
     assert.equal(ledgerResponse.status, 200);
     await consumeCsv(ledgerResponse, count);
     assert.ok(Date.now() - started < 2000, 'headers and first CSV chunk should arrive promptly');
-
+    const backupResponse = await fetch(`${base}/backup`, { headers });
+    assert.equal(backupResponse.status, 200);
+    assert.match(backupResponse.headers.get('content-type') || '', /application\/json/);
+    assert.equal(backupResponse.headers.get('content-length'), null, 'JSON backup should be emitted as a stream');
+    const backup = await backupResponse.json();
+    assert.equal(backup.success, true);
+    assert.equal(backup.data.data.transactions.length, count);
     const health = await fetch(`${base}/health`, { headers });
     assert.equal(health.status, 200);
   } finally {

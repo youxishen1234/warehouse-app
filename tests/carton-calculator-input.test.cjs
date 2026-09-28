@@ -12,3 +12,11 @@ test('carton calculator sanitizes dimension and thickness inputs consistently', 
   assert.match(source, /dimensions\[key\].*sanitizeDimensionInput\(event\.detail\.value\)/);
   assert.match(source, /setThickness\(sanitizeDimensionInput\(event\.detail\.value\)/);
 });
+
+test('carton calculator has no remote request to survive page unload', () => {
+  const source = fs.readFileSync('src/pages/carton-calculator/index.tsx', 'utf8');
+  // This page is a pure local calculation surface. It starts no fetch/request
+  // or remote loader, so there is no in-flight callback that can survive an
+  // unmount and no AbortController is needed for this route.
+  assert.doesNotMatch(source, /useRemoteData|fetch\(|request\(|loadProducts\(/);
+});

@@ -7,12 +7,10 @@ const path = require('node:path');
 test('server restricts CORS origins and does not trust spoofed forwarding headers', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'warehouse-server-security-'));
   process.env.WAREHOUSE_DATA_FILE = path.join(dir, 'data.json');
-  process.env.WAREHOUSE_ACCOUNTS_FILE = path.join(dir, 'accounts.json');
   process.env.WAREHOUSE_TRUSTED_PROXY_CIDRS = '10.0.0.1/32';
   process.env.WAREHOUSE_WRITE_RATE_LIMIT = '20';
   fs.writeFileSync(process.env.WAREHOUSE_DATA_FILE, JSON.stringify({ products: [], customers: [], suppliers: [], transactions: [], ledger: [] }));
   const install = require('./team');
-  await install.bootstrap(process.env.WAREHOUSE_ACCOUNTS_FILE, 'Security-test-password!');
   const app = require('./server');
   const server = app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
@@ -23,6 +21,13 @@ test('server restricts CORS origins and does not trust spoofed forwarding header
     assert.equal(allowed.headers.get('access-control-allow-origin'), 'https://youxishen.online');
     assert.equal(allowed.headers.get('vary'), 'Origin');
     assert.equal(allowed.headers.get('access-control-expose-headers'), 'X-Warehouse-Revision');
+    assert.equal(allowed.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(allowed.headers.get('x-frame-options'), 'DENY');
+    assert.equal(allowed.headers.get('referrer-policy'), 'no-referrer');
+    assert.equal(allowed.headers.get('permissions-policy'), 'camera=(), microphone=(), geolocation=()');
+    assert.match(allowed.headers.get('content-security-policy') || '', /default-src 'self'/);
+    assert.match(allowed.headers.get('content-security-policy') || '', /object-src 'none/);
+    assert.match(allowed.headers.get('content-security-policy') || '', /script-src 'self' 'nonce-sg-bootstrap'/);
 
     const preflight = await fetch(base + '/api/stats', { method: 'OPTIONS', headers: { Origin: 'https://youxishen.online', 'Access-Control-Request-Method': 'GET' } });
     assert.equal(preflight.status, 204);
@@ -48,14 +53,13 @@ test('server restricts CORS origins and does not trust spoofed forwarding header
     const imageWithinLimit = JSON.stringify({ data: 'data:image/png;base64,' + 'A'.repeat(2.1 * 1024 * 1024) });
     const imageAllowed = await fetch(base + '/api/products/1/image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: imageWithinLimit });
     assert.notEqual(imageAllowed.status, 413, 'image route keeps its larger 3 MiB JSON limit');
-    assert.equal(imageAllowed.status, 401, 'auth is checked after the image body limit');
-    const imageOverLimit = JSON.stringify({ data: 'data:image/png;base64,' + 'A'.repeat(3.1 * 1024 * 1024) });
+    assert.equal(imageAllowed.status, 400, 'anonymous API still validates the image submit contract');
+    const imageOverLimit = JSON.stringify({ data: 'data:image/png;base64,' + 'A'.repeat(2.6 * 1024 * 1024) });
     const imageLimit = await fetch(base + '/api/products/1/image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: imageOverLimit });
     assert.equal(imageLimit.status, 413);
     assert.match((await imageLimit.json()).message, /图片请求内容过大/);
 
-    const login = await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'admin', password: 'Security-test-password!' }) });
-    const token = (await login.json()).data.token;
+    const token = '';
     let limited = null;
     for (let index = 0; index < 24 && !limited; index++) {
       const response = await fetch(base + '/api/products', {

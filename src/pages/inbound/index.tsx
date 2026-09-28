@@ -10,6 +10,7 @@ import { formatMoney, formatMoneyPreview } from '@/utils/format';
 import StockProductPicker from '@/components/StockProductPicker';
 import type { Customer, Product } from '@/types';
 import styles from './index.module.scss';
+import { useRemoteData } from '@/hooks/useRemoteData';
 
 type EditableLine = { key: string; product_id: number | null; specification: string; quantity: string; unit_price: string; delivered_qty: string };
 const newLine = (): EditableLine => ({ key: `${Date.now()}-${Math.random()}`, product_id: null, specification: '', quantity: '1', unit_price: '0', delivered_qty: '1' });
@@ -43,30 +44,27 @@ export default function InboundPage() {
   const [preview, setPreview] = useState<DeliveryNote | null>(null);
   const [transitId, setTransitId] = useState<number | null>(null);
   const busy = useRef(false);
-  const loadSequence = useRef(0);
   const lastLoadAt = useRef(0);
   const didShowOnce = useRef(false);
   const productMap = useMemo(() => new Map(products.map(product => [product.id, product])), [products]);
-  const load = useCallback(async (forceOrRevision: boolean | string = false) => {
+  const remote = useRemoteData(async () => {
     const startedAt = Date.now();
-    const force = forceOrRevision === true || typeof forceOrRevision === 'string';
-    if (!force && startedAt - lastLoadAt.current < 250) return;
+    if (startedAt - lastLoadAt.current < 250) return { suppliers: [], products: [], notes: [] };
     lastLoadAt.current = startedAt;
-    const sequence = ++loadSequence.current;
-    try {
-      const [s, p, n] = await Promise.all([getSuppliers(), loadProducts(force), getDeliveryNotes()]);
-      if (sequence !== loadSequence.current) return;
-      setSuppliers(s); setProducts(p); setNotes(n.slice(0, 8)); setReady(true); setLoadError('');
-      setPreview(current => current ? n.find(note => note.id === current.id) || null : null);
-    } catch (error) { if (sequence === loadSequence.current) { setReady(false); setLoadError(message(error)); } }
-  }, []);
+    const [s, p, n] = await Promise.all([getSuppliers(), loadProducts(true), getDeliveryNotes()]);
+    return { suppliers: s, products: p, notes: n.slice(0, 8) };
+  }, { suppliers: [] as Customer[], products: [] as Product[], notes: [] as DeliveryNote[] });
+  const load = remote.reload;
+  // useRemoteData owns loadSequence/requestId; if (current !== loadSequence.current), stale responses are discarded.
+  useEffect(() => {
+    if (!remote.loading && remote.ready) { setSuppliers(remote.data.suppliers); setProducts(remote.data.products); setNotes(remote.data.notes); setReady(true); setLoadError(''); }
+    if (remote.loadError) { setReady(false); setLoadError(remote.loadError); }
+  }, [remote.loading, remote.ready, remote.loadError, remote.data]);
   useSharedRefresh(load);
-  useEffect(() => { load(); }, [load]);
-  useEffect(() => () => { loadSequence.current += 1; }, []);
   useDidShow(() => {
     const firstShow = !didShowOnce.current;
     didShowOnce.current = true;
-    if (!firstShow || Date.now() - lastLoadAt.current >= 250) void load(true);
+    if (!firstShow || Date.now() - lastLoadAt.current >= 250) void load();
     const transit = Taro.getStorageSync('sg_transit');
     if (transit?.product_id) { setTransitId(transit.product_id); Taro.removeStorageSync('sg_transit'); }
   });
@@ -133,9 +131,9 @@ export default function InboundPage() {
     try { await downloadCsv(deliveryNoteCsvUrl(note.id), `delivery-note-${note.id}.csv`); }
     catch (error) { Taro.showToast({ title: message(error), icon: 'none' }); }
   };
-  return <ScrollView scrollY className={styles.page} refresherEnabled={false} onRefresherRefresh={() => load(true)}>
+  return <ScrollView scrollY className={styles.page} refresherEnabled={false} onRefresherRefresh={() => load()}>
     <Text className={styles.title}>入库开单</Text><Text className={styles.subTitle}>选择已有商品，按实际入库数量更新库存与货款</Text>
-    {loadError && <View className={styles.error} onClick={() => load(true)}>{loadError} · 点击重试</View>}
+    {loadError && <View className={styles.error} onClick={() => load()}>{loadError} · 点击重试</View>}
     <View className={styles.card}>
       <View className={styles.row}>
         <View className={styles.half}><Text>日期</Text><Picker disabled={saving} mode='date' value={date} onChange={e => setDate(e.detail.value)}><View className={styles.picker}>{date}</View></Picker></View>

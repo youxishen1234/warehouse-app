@@ -10,7 +10,6 @@ test('unexpected API errors return a generic Chinese message and request id', as
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'warehouse-error-contract-'));
   const accountsFile = path.join(dir, 'accounts.json');
   const password = 'Error-contract-password!';
-  await install.bootstrap(accountsFile, password);
   const fakeDb = {
     revision: () => 7,
     stats: () => { throw new Error(`internal file path: ${path.join(dir, 'data.json')}`); }
@@ -18,20 +17,15 @@ test('unexpected API errors return a generic Chinese message and request id', as
   const app = express();
   app.use(express.json());
   const previousAccounts = process.env.WAREHOUSE_ACCOUNTS_FILE;
-  process.env.WAREHOUSE_ACCOUNTS_FILE = accountsFile;
   const router = install(fakeDb);
   app.use('/api', router);
   const server = app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
   const origin = `http://127.0.0.1:${server.address().port}/api`;
   try {
-    const login = await fetch(origin + '/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Request-Id': 'error-contract-request' },
-      body: JSON.stringify({ username: 'admin', password })
-    });
-    assert.equal(login.status, 200);
-    const token = (await login.json()).data.token;
+    const guest = await fetch(origin + '/auth/guest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    assert.equal(guest.status, 200);
+    const token = (await guest.json()).data.token;
     const response = await fetch(origin + '/stats', {
       headers: { Authorization: `Bearer ${token}`, 'X-Request-Id': 'error-contract-request' }
     });
@@ -45,7 +39,6 @@ test('unexpected API errors return a generic Chinese message and request id', as
     server.closeAllConnections();
     await new Promise(resolve => server.close(resolve));
     if (previousAccounts === undefined) delete process.env.WAREHOUSE_ACCOUNTS_FILE;
-    else process.env.WAREHOUSE_ACCOUNTS_FILE = previousAccounts;
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });

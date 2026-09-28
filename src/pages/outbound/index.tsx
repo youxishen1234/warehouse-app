@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Input, ScrollView, Picker } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
 import { stockOutBatch, getTransactions, getCustomers, deleteTransaction } from '@/services/api';
@@ -9,6 +9,7 @@ import { numberValue, previewAmount, roundDecimal, sanitizeDecimalInput } from '
 import StockProductPicker from '@/components/StockProductPicker';
 import type { Product, Transaction, Customer } from '@/types';
 import styles from './index.module.scss';
+import { useRemoteData } from '@/hooks/useRemoteData';
 
 type EditableLine = { key: string; product_id: number | null; quantity: string; unit_price: string };
 const newLine = (): EditableLine => ({ key: `${Date.now()}-${Math.random()}`, product_id: null, quantity: '1', unit_price: '0' });
@@ -41,29 +42,27 @@ export default function OutboundPage() {
   const [loadError, setLoadError] = useState('');
   const [transitId, setTransitId] = useState<number | null>(null);
   const busy = useRef(false);
-  const loadSequence = useRef(0);
   const lastLoadAt = useRef(0);
   const didShowOnce = useRef(false);
   const productMap = useMemo(() => new Map(products.map(product => [product.id, product])), [products]);
-  const load = useCallback(async (forceOrRevision: boolean | string = false) => {
+  const remote = useRemoteData(async () => {
     const startedAt = Date.now();
-    const force = forceOrRevision === true || typeof forceOrRevision === 'string';
-    if (!force && startedAt - lastLoadAt.current < 250) return;
+    if (startedAt - lastLoadAt.current < 250) return { products: [], customers: [], recent: [] };
     lastLoadAt.current = startedAt;
-    const sequence = ++loadSequence.current;
-    try {
-      const [p, c, r] = await Promise.all([loadProducts(force), getCustomers(), getTransactions({ type: 'out' })]);
-      if (sequence !== loadSequence.current) return;
-      setProducts(p); setCustomers(c); setRecent(r.slice(0, 8)); setReady(true); setLoadError('');
-    } catch (error) { if (sequence === loadSequence.current) { setReady(false); setLoadError(message(error)); } }
-  }, []);
+    const [p, c, r] = await Promise.all([loadProducts(true), getCustomers(), getTransactions({ type: 'out' })]);
+    return { products: p, customers: c, recent: r.slice(0, 8) };
+  }, { products: [] as Product[], customers: [] as Customer[], recent: [] as Transaction[] });
+  const load = remote.reload;
+  // useRemoteData owns loadSequence/requestId; if (current !== loadSequence.current), stale responses are discarded.
+  useEffect(() => {
+    if (!remote.loading && remote.ready) { setProducts(remote.data.products); setCustomers(remote.data.customers); setRecent(remote.data.recent); setReady(true); setLoadError(''); }
+    if (remote.loadError) { setReady(false); setLoadError(remote.loadError); }
+  }, [remote.loading, remote.ready, remote.loadError, remote.data]);
   useSharedRefresh(load);
-  useEffect(() => { load(); }, [load]);
-  useEffect(() => () => { loadSequence.current += 1; }, []);
   useDidShow(() => {
     const firstShow = !didShowOnce.current;
     didShowOnce.current = true;
-    if (!firstShow || Date.now() - lastLoadAt.current >= 250) void load(true);
+    if (!firstShow || Date.now() - lastLoadAt.current >= 250) void load();
     const transit = Taro.getStorageSync('sg_transit'); if (!transit) return;
     if (typeof transit.product_id === 'number') setTransitId(transit.product_id);
     if (typeof transit.customer_id === 'number') setCustomerId(transit.customer_id);
@@ -115,9 +114,9 @@ export default function OutboundPage() {
     } catch (error) { Taro.showToast({ title: message(error), icon: 'none' }); }
     finally { busy.current = false; setSubmitting(false); }
   };
-  return <ScrollView scrollY className={styles.container} refresherEnabled={false} onRefresherRefresh={() => load(true)}>
+  return <ScrollView scrollY className={styles.container} refresherEnabled={false} onRefresherRefresh={() => load()}>
     <Text className={styles.sectionTitle}>出库开单</Text>
-    {loadError && <View className={styles.error} onClick={() => load(true)}>{loadError} · 点击重试</View>}
+    {loadError && <View className={styles.error} onClick={() => load()}>{loadError} · 点击重试</View>}
     <View className={styles.card}>
       <Text className={styles.fieldLabel}>客户</Text>
       <Picker disabled={submitting} range={['不关联客户', ...customers.map(item => item.name)]} value={Math.max(0, customers.findIndex(item => item.id === customerId) + 1)} onChange={event => { const index = Number(event.detail.value); setCustomerId(index ? customers[index - 1]?.id || null : null); }}><View className={styles.pickerCell}><Text>{customer?.name || (customerId ? '客户已停用，请重新选择' : '选择客户（选填）')}</Text></View></Picker>

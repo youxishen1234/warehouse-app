@@ -1,5 +1,5 @@
 import { useSharedRefresh } from '@/services/shared-refresh';
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, Image } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { deleteProduct, uploadProductImage } from '@/services/api';
@@ -9,6 +9,7 @@ import { invalidateProducts, loadProducts } from '@/services/product-store';
 import type { Product } from '@/types';
 import SwipeRow from '@/components/SwipeRow';
 import styles from './index.module.scss';
+import { useRemoteData } from '@/hooks/useRemoteData';
 
 // 跨页联动中转键：tabBar 页（入库/出库）无法通过 URL 传参，用 storage 中转
 const TRANSIT_KEY = 'sg_transit';
@@ -101,34 +102,18 @@ const ProductListRow = React.memo(function ProductListRow({
 });
 
 const ProductsPage: React.FC = () => {
-  const [list, setList] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
-  const loadSequence = useRef(0);
-  // 当前左滑展开的行（一次只开一行）
+  const loadProductData = useCallback(() => loadProducts(), []);
+  const remote = useRemoteData(loadProductData, [] as Product[]);
+  const list = remote.data;
+  const loading = remote.loading;
+  const loadError = remote.loadError;
+  const load = remote.reload;
+  useSharedRefresh(load);
+  // ????????????????
   const [activeId, setActiveId] = useState<number | null>(null);
   const handleActiveChange = useCallback((id: number, open: boolean) => {
     setActiveId(open ? id : null);
   }, []);
-
-  const load = useCallback(async () => {
-    const sequence = ++loadSequence.current;
-    setLoading(true);
-    setLoadError('');
-    try {
-      const data = await loadProducts();
-      if (sequence !== loadSequence.current) return;
-      setList(data);
-    } catch (error) {
-      if (sequence === loadSequence.current) setLoadError(error instanceof Error ? error.message : '商品加载失败，请点击重试');
-    } finally {
-      if (sequence === loadSequence.current) setLoading(false);
-    }
-  }, []);
-
-  useSharedRefresh(load);
-  useEffect(() => { load(); }, [load]);
-  useEffect(() => () => { loadSequence.current += 1; }, []);
 
   const handleAdd = () => {
     Taro.navigateTo({ url: '/pages/product-edit/index' });

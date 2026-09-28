@@ -14,6 +14,7 @@ const PORT = Number(process.env.PORT || 4000);
 const APP_DOWNLOADS_RATE_LIMIT = Math.max(2, Math.min(1000, Number(process.env.WAREHOUSE_APP_DOWNLOADS_RATE_LIMIT) || 20));
 const appDownloadsBuckets = new Map();
 const appUpdateReportBuckets = new Map();
+const CONTENT_SECURITY_POLICY = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'nonce-sg-bootstrap'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://youxishen.online http://localhost:* https://localhost:* http://127.0.0.1:*; font-src 'self' data:; connect-src 'self' https://youxishen.online capacitor://localhost http://localhost:* https://localhost:* http://127.0.0.1:*; worker-src 'self' blob:;";
 
 const trustedProxyRules = String(process.env.WAREHOUSE_TRUSTED_PROXY_CIDRS || '127.0.0.1/32,::1/128')
   .split(',').map(value => value.trim()).filter(Boolean);
@@ -55,6 +56,7 @@ app.use((req, res, next) => {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Content-Security-Policy', CONTENT_SECURITY_POLICY);
   req.warehouseClientIp = clientIp(req);
   const origin = req.get('Origin');
   if (origin && allowedOrigin(origin)) {
@@ -69,11 +71,11 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
-const BODY_LIMITS = Object.freeze({ general: 1024 * 1024, image: 3 * 1024 * 1024, backup: 5 * 1024 * 1024 });
+const BODY_LIMITS = Object.freeze({ general: 1024 * 1024, imageJson: 2.5 * 1024 * 1024, imageDecoded: 2 * 1024 * 1024, backup: 5 * 1024 * 1024 });
 // Parse each large-body route with its own ceiling before the general parser.
-// The image endpoint accepts up to 2 MiB of decoded bytes; base64 JSON needs
-// roughly 2.8 MiB, so a 2.5 MiB JSON ceiling would reject valid legacy uploads.
-app.use('/api/products/:id/image', express.json({ limit: `${BODY_LIMITS.image}b` }));
+// The JSON envelope is capped at the documented 2.5 MiB; decoded image bytes
+// retain the separate 2 MiB business limit in the route handler.
+app.use('/api/products/:id/image', express.json({ limit: `${BODY_LIMITS.imageJson}b` }));
 app.use('/api/backup', express.json({ limit: `${BODY_LIMITS.backup}b` }));
 app.use('/api', express.json({ limit: `${BODY_LIMITS.general}b` }));
 app.use('/api', require('./team')(db));
