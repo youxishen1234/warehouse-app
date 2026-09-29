@@ -73,6 +73,11 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     override var childForStatusBarStyle: UIViewController? { tabsController }
     override var childForStatusBarHidden: UIViewController? { tabsController }
 
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        dock.subviews.first { $0.tag == dockGlassOverlayTag }?.frame = dock.bounds.insetBy(dx: 9, dy: 8)
+    }
+
     deinit {
         selectionTimeout?.cancel()
         keyboardObservers.forEach { NotificationCenter.default.removeObserver($0) }
@@ -151,7 +156,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
 
     private func installDarkGlassOverlay() {
         guard nativeGlass else { return }
-        dock.subviews.filter { $0.tag == dockGlassOverlayTag }.forEach { $0.removeFromSuperview() }
+        guard !dock.subviews.contains(where: { $0.tag == dockGlassOverlayTag }) else { return }
         guard #available(iOS 26.0, *) else { return }
         let effect = UIGlassEffect(style: .regular)
         effect.isInteractive = true
@@ -162,15 +167,12 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         glass.layer.cornerRadius = 28
         glass.layer.cornerCurve = .continuous
         glass.clipsToBounds = true
-        glass.translatesAutoresizingMaskIntoConstraints = false
+        // The tab controller owns the bar's constraints. Use a frame for our
+        // decoration and never remove/reinstall constraints on that system bar.
+        glass.frame = dock.bounds.insetBy(dx: 9, dy: 8)
+        glass.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         let index = min(1, dock.subviews.count)
         dock.insertSubview(glass, at: index)
-        NSLayoutConstraint.activate([
-            glass.leadingAnchor.constraint(equalTo: dock.leadingAnchor, constant: 9),
-            glass.trailingAnchor.constraint(equalTo: dock.trailingAnchor, constant: -9),
-            glass.topAnchor.constraint(equalTo: dock.topAnchor, constant: 8),
-            glass.bottomAnchor.constraint(equalTo: dock.bottomAnchor, constant: -8)
-        ])
     }
 
     // Same 24-unit line drawings as the web assets, rendered as tintable images.
@@ -452,7 +454,19 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     }
 
     private func finishSmokeTest(_ error: String?) {
+        var hierarchy: [String] = []
+        func inspect(_ node: UIView, depth: Int) {
+            guard depth < 12, hierarchy.count < 140 else { return }
+            let frame = node.convert(node.bounds, to: view)
+            if frame.maxY >= view.bounds.height - 150 {
+                let effect = (node as? UIVisualEffectView)?.effect.map { String(describing: type(of: $0)) } ?? "none"
+                hierarchy.append("\(depth) \(type(of: node)) frame=\(frame) hidden=\(node.isHidden) alpha=\(node.alpha) style=\(node.traitCollection.userInterfaceStyle.rawValue) effect=\(effect)")
+            }
+            node.subviews.forEach { inspect($0, depth: depth + 1) }
+        }
+        inspect(tabsController.view, depth: 0)
         var result: [String: Any] = ["success": error == nil, "error": error ?? "",
+                                    "nativeHierarchy": hierarchy,
                                     "trace": smokeTrace,
                                     "controller": String(describing: type(of: self)),
                                     "material": nativeGlass ? "system-liquid-glass" : "web-glass",

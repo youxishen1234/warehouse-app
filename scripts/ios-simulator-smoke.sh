@@ -23,6 +23,7 @@ xcrun simctl bootstatus "$DEVICE_ID" -b
 xcrun simctl install "$DEVICE_ID" "$APP_PATH"
 mkdir -p release/ios-smoke
 xcrun simctl launch --console-pty "$DEVICE_ID" com.warehouse.app --native-dock-smoke > release/ios-smoke/console.log 2>&1 &
+LAUNCH_PID=$!
 APP_DATA="$(xcrun simctl get_app_container "$DEVICE_ID" com.warehouse.app data)"
 mkdir -p release/ios-smoke
 for attempt in {1..180}; do
@@ -44,6 +45,12 @@ if not valid:
     sys.exit(1)
 PY
     exit 0
+  fi
+  if ! kill -0 "$LAUNCH_PID" 2>/dev/null; then
+    tail -70 release/ios-smoke/console.log
+    xcrun simctl io "$DEVICE_ID" screenshot release/ios-smoke/crash.png
+    echo "::error title=Native application launch::Simulator process exited before acceptance completed"
+    exit 1
   fi
   sleep 2
 done

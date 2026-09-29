@@ -26,5 +26,9 @@ payload = json.dumps({'luminance':round(luminance, 1),
 assert len(payload) < 3900, 'Dock preview exceeds CI annotation limit'
 print('::notice title=Native dock appearance::' + payload)
 if luminance >= 180:
+    for offset in range(0, len(result.get('nativeHierarchy', [])), 20):
+        detail = '\n'.join(result['nativeHierarchy'][offset:offset + 20])
+        escaped = detail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+        print('::notice title=Native dock hierarchy::' + escaped[:3800])
     print('::error title=Native dock appearance::Native dock is light; preserve the approved dark material')
     sys.exit(1)
