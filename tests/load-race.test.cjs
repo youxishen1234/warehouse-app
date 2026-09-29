@@ -11,8 +11,7 @@ test('stock workflow pages guard stale responses and initial duplicate refreshes
     'src/pages/home/index.tsx',
     'src/pages/inbound/index.tsx',
     'src/pages/outbound/index.tsx',
-    'src/pages/records/index.tsx',
-    'src/pages/orders/index.tsx'
+    'src/pages/records/index.tsx'
   ];
   for (const file of pages) {
     const source = read(file);
@@ -25,11 +24,22 @@ test('stock workflow pages guard stale responses and initial duplicate refreshes
     assert.match(source, /didShowOnce/, `${file} should dedupe first useDidShow refresh`);
     assert.match(source, /Date\.now\(\) - lastLoadAt\.current >= 250/, `${file} should gate first refresh`);
   }
-  for (const file of ['src/pages/records/index.tsx', 'src/pages/orders/index.tsx']) {
+  for (const file of ['src/pages/records/index.tsx']) {
     const source = read(file);
     assert.match(source, /lastLoadAt/, `${file} should gate repeated refreshes`);
     assert.match(source, /startedAt - lastLoadAt\.current < 250/, `${file} should suppress same-tick reloads`);
   }
+});
+
+test('orders uses the real shared sequence guard rather than a comment-only contract', () => {
+  const source = read('src/pages/orders/index.tsx');
+  const hook = read('src/hooks/useRemoteData.ts');
+  assert.ok(source.includes('const loadOrders = useCallback(async () => {'));
+  assert.ok(source.includes('useRemoteData(loadOrders,'));
+  assert.ok(hook.includes('const sequence = useRef(0)'));
+  assert.ok(hook.includes('const current = ++sequence.current'));
+  assert.ok(hook.includes('if (!mounted.current || current !== sequence.current) return;'));
+  assert.ok(!source.includes('useEffect(() => { load(); }, [load])'), 'the hook already owns initial loading');
 });
 
 test('sequence guard keeps the newest refresh result when an older request resolves last', async () => {

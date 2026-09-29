@@ -21,11 +21,11 @@ type RecentOutboundRowProps = { transaction: Transaction; onVoid: (transaction: 
 const RecentOutboundRow = React.memo(function RecentOutboundRow({ transaction, onVoid }: RecentOutboundRowProps) {
   return <View className={styles.recentItem}>
     <View className={styles.recentLeft}>
-      <Text className={styles.recentName}>{transaction.product_name || '(?????)'} ? -{transaction.quantity}{transaction.unit}</Text>
-      <Text className={styles.recentTime}>{formatShortTime(transaction.created_at)} ? {formatMoney(Number(transaction.amount || 0))}</Text>
+      <Text className={styles.recentName}>{transaction.product_name || '未命名商品'} · -{transaction.quantity}{transaction.unit}</Text>
+      <Text className={styles.recentTime}>{formatShortTime(transaction.created_at)} · {formatMoney(Number(transaction.amount || 0))}</Text>
       {transaction.customer_name && <Text className={styles.recentCustomer}>{transaction.customer_name}</Text>}
     </View>
-    <Text className={styles.deleteBtn} onClick={() => onVoid(transaction)}>??</Text>
+    <Text className={styles.deleteBtn} onClick={() => onVoid(transaction)}>作废</Text>
   </View>;
 });
 
@@ -122,10 +122,14 @@ export default function OutboundPage() {
     finally { busy.current = false; setSubmitting(false); }
   };
   return <ScrollView scrollY className={styles.container} refresherEnabled={false} onRefresherRefresh={() => load(true)}>
-    <Text className={styles.sectionTitle}>出库开单</Text>
+    <View className={styles.hero}>
+      <View className={styles.heroHeading}><View><Text className={styles.eyebrow}>发货 / DISPATCH</Text><Text className={styles.title}>出库开单</Text></View><View className={styles.heroMark}>出</View></View>
+      <Text className={styles.subTitle}>确认库存，让每一笔发货有据可查</Text>
+      <View className={styles.heroSummary}><View><Text className={styles.summaryLabel}>本单货款</Text><Text className={styles.summaryValue}>{formatMoneyPreview(totalAmount)}</Text></View><Text className={styles.summaryCount}>{lines.length} 项商品</Text></View>
+    </View>
     {loadError && <View className={styles.error} onClick={() => load(true)}>{loadError} · 点击重试</View>}
     <View className={styles.card}>
-      <Text className={styles.fieldLabel}>客户</Text>
+      <Text className={styles.cardTitle}>收货客户</Text>
       <Picker disabled={submitting} range={['不关联客户', ...customers.map(item => item.name)]} value={Math.max(0, customers.findIndex(item => item.id === customerId) + 1)} onChange={event => { const index = Number(event.detail.value); setCustomerId(index ? customers[index - 1]?.id || null : null); }}><View className={styles.pickerCell}><Text>{customer?.name || (customerId ? '客户已停用，请重新选择' : '选择客户（选填）')}</Text></View></Picker>
       <Text className={styles.infoStock}>{customer ? `当前应收 ${formatMoney(Number(customer.debt || 0))}，本单增加 ${formatMoneyPreview(totalAmount)}` : '未关联客户时，仅扣库存，不登记客户应收'}</Text>
     </View>
@@ -137,8 +141,9 @@ export default function OutboundPage() {
         <View className={styles.recentTop}><Text className={styles.fieldLabel}>第 {index + 1} 项</Text>{lines.length > 1 && <Text className={styles.deleteBtn} onClick={() => { if (!busy.current) setLines(current => current.filter(item => item.key !== line.key)); }}>移除</Text>}</View>
         <StockProductPicker products={products} value={line.product_id} disabled={submitting} excluded={lines.filter(item => item.key !== line.key).map(item => item.product_id || 0)} onSelect={selected => updateLine(line.key, applyProduct(line, selected))} />
         {product && <View className={after < 0 ? styles.error : styles.stockPreview}><Text>当前库存 {product.stock}{product.unit} → 出库后 {after}{product.unit}</Text><Text className={styles.infoStock}>{product.specification || '未填规格'} · {product.material || product.corrugation || '未填材质'}</Text>{after < 0 && <Text>库存不足，请减少数量</Text>}</View>}
-        <View className={styles.field}><Text className={styles.fieldLabel}>出库数量（{product?.unit || '单位'}）</Text><Input disabled={submitting} className={styles.fieldInput} type='digit' placeholder='出库数量' value={line.quantity} onInput={event => updateLine(line.key, { quantity: sanitizeDecimalInput(event.detail.value, 6) })} /></View>
+        <View className={styles.fieldGrid}><View className={styles.field}><Text className={styles.fieldLabel}>出库数量（{product?.unit || '单位'}）</Text><Input disabled={submitting} className={styles.fieldInput} type='digit' placeholder='出库数量' value={line.quantity} onInput={event => updateLine(line.key, { quantity: sanitizeDecimalInput(event.detail.value, 6) })} /></View>
         <View className={styles.field}><Text className={styles.fieldLabel}>单价（元/{product?.unit || '单位'}）</Text><Input disabled={submitting} className={styles.fieldInput} type='digit' placeholder='出库单价' value={line.unit_price} onInput={event => updateLine(line.key, { unit_price: sanitizeDecimalInput(event.detail.value, 2) })} /></View>
+        </View>
         <Text className={styles.amountPreview}>本项金额 {formatMoneyPreview(previewAmount(line.quantity, line.unit_price))}</Text>
         {line.quantity.trim() && line.unit_price.trim() && !Number.isFinite(previewAmount(line.quantity, line.unit_price)) && <Text className={styles.error}>金额超出支持范围，请减少数量或单价</Text>}
       </View>;
@@ -151,6 +156,6 @@ export default function OutboundPage() {
     </View>
     <View className={`${styles.btnPrimary} ${submitting || !ready ? styles.btnDisabled : ''}`} onClick={submit}>{submitting ? '处理中…' : '确认出库'}</View>
     <Text className={styles.sectionTitle}>最近出库记录</Text>
-    <View className={styles.card}>{recent.length ? recent.map(transaction => <RecentOutboundRow key={transaction.id} transaction={transaction} onVoid={voidRecent} />) : <View className={styles.empty}>????</View>}</View>
+    <View className={styles.card}>{recent.length ? recent.map(transaction => <RecentOutboundRow key={transaction.id} transaction={transaction} onVoid={voidRecent} />) : <View className={styles.empty}>暂无出库记录</View>}</View>
   </ScrollView>;
 }

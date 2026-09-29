@@ -198,12 +198,12 @@ taro-tabbar .weui-tabbar__item { padding: 4px 0 !important; height: 60px; box-si
 taro-tabbar .weui-tabbar__label { font-size: 12px; line-height: 18px; }
 taro-tabbar .weui-tabbar__icon { width: 25px; height: 25px; }
 taro-scroll-view-core.taro-scroll-view__scroll-y {
-  padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px)) !important; box-sizing: border-box;
+  padding-bottom: calc(var(--sg-page-bottom-space, 112px) + env(safe-area-inset-bottom, 0px)) !important; box-sizing: border-box;
 }
 /* Only a live v2 native handshake can suppress the web fallback. */
 html.sg-native-ios taro-tabbar { display: none !important; }
 html.sg-native-ios taro-scroll-view-core.taro-scroll-view__scroll-y {
-  padding-bottom: calc(var(--sg-native-bottom-space, 84px) + env(safe-area-inset-bottom, 0px)) !important;
+  padding-bottom: calc(max(var(--sg-page-bottom-space, 112px), var(--sg-native-bottom-space, 84px)) + env(safe-area-inset-bottom, 0px)) !important;
 }
 .sg-page-nav, .sg-back-btn, .sg-quick-add, .sg-home-search { display: none !important; pointer-events: none !important; }
 

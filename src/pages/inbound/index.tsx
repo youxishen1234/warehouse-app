@@ -20,8 +20,9 @@ const message = (error: unknown) => error instanceof Error ? error.message : '�
 type InboundNoteRowProps = { note: DeliveryNote; onOpen: (note: DeliveryNote) => void };
 const InboundNoteRow = React.memo(function InboundNoteRow({ note, onOpen }: InboundNoteRowProps) {
   return <View className={styles.note} onClick={() => onOpen(note)}>
-    <Text>{note.date} ? {note.work_order_no || `??? #${note.id}`} ? {note.voided_at ? '???' : '???'}</Text>
-    <Text>{note.supplier_name || '??????'} ? {note.lines.length} ? ? {formatMoney(note.total_amount)}</Text>
+    <View className={styles.noteTop}><Text>{note.work_order_no || `入库单 #${note.id}`}</Text><Text className={styles.noteAmount}>{formatMoney(note.total_amount)}</Text></View>
+    <Text className={styles.noteMeta}>{note.supplier_name || '未关联供应商'} · {note.lines.length} 项商品</Text>
+    <Text className={styles.noteMeta}>{note.date} · {note.voided_at ? '已作废' : '已入库'}</Text>
   </View>;
 });
 
@@ -37,6 +38,7 @@ export default function InboundPage() {
   const [operator, setOperator] = useState('');
   const [freight, setFreight] = useState('0');
   const [remark, setRemark] = useState('');
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [lines, setLines] = useState<EditableLine[]>([newLine()]);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -139,9 +141,14 @@ export default function InboundPage() {
     catch (error) { Taro.showToast({ title: message(error), icon: 'none' }); }
   };
   return <ScrollView scrollY className={styles.page} refresherEnabled={false} onRefresherRefresh={() => load(true)}>
-    <Text className={styles.title}>入库开单</Text><Text className={styles.subTitle}>选择已有商品，按实际入库数量更新库存与货款</Text>
+    <View className={styles.hero}>
+      <View className={styles.heroHeading}><View><Text className={styles.eyebrow}>收货 / RECEIVE</Text><Text className={styles.title}>入库开单</Text></View><View className={styles.heroMark}>入</View></View>
+      <Text className={styles.subTitle}>核对商品，记录每一笔收货</Text>
+      <View className={styles.heroSummary}><View><Text className={styles.summaryLabel}>本单货款</Text><Text className={styles.summaryValue}>{formatMoneyPreview(totalAmount)}</Text></View><Text className={styles.summaryCount}>{lines.length} 项商品</Text></View>
+    </View>
     {loadError && <View className={styles.error} onClick={() => load(true)}>{loadError} · 点击重试</View>}
     <View className={styles.card}>
+      <Text className={styles.cardTitle}>单据信息</Text>
       <View className={styles.row}>
         <View className={styles.half}><Text>日期</Text><Picker disabled={saving} mode='date' value={date} onChange={e => setDate(e.detail.value)}><View className={styles.picker}>{date}</View></Picker></View>
         <View className={styles.half}><Text>工单编号 / 采购单号</Text><Input disabled={saving} className={styles.input} placeholder='选填单号' value={workOrder} onInput={e => setWorkOrder(e.detail.value)} /></View>
@@ -149,6 +156,8 @@ export default function InboundPage() {
       <Text>供应商</Text>
       <Picker disabled={saving} range={['不关联供应商', ...suppliers.map(item => item.name)]} value={Math.max(0, suppliers.findIndex(item => item.id === supplierId) + 1)} onChange={e => { const index = Number(e.detail.value); setSupplierId(index ? suppliers[index - 1]?.id || null : null); }}><View className={styles.picker}>{supplier?.name || (supplierId ? '供应商已停用，请重新选择' : '选择供应商（选填）')}</View></Picker>
       <Text className={styles.hint}>{supplier ? '本单货款计入该供应商应付' : '未关联供应商时，仅更新库存，不登记供应商应付'}</Text>
+      <View className={styles.detailsToggle} onClick={() => setDetailsOpen(!detailsOpen)}><View><Text className={styles.detailsTitle}>配送与补充信息</Text><Text className={styles.detailsHint}>司机、车号、操作人、运费与备注</Text></View><Text>{detailsOpen ? '收起 −' : '展开 ＋'}</Text></View>
+      {detailsOpen && <View className={styles.detailsBody}>
       <View className={styles.row}>
         <View className={styles.half}><Text>司机电话</Text><Input disabled={saving} className={styles.input} value={driverPhone} onInput={e => setDriverPhone(e.detail.value)} /></View>
         <View className={styles.half}><Text>车号</Text><Input disabled={saving} className={styles.input} value={vehicleNo} onInput={e => setVehicleNo(e.detail.value)} /></View>
@@ -158,13 +167,14 @@ export default function InboundPage() {
         <View className={styles.half}><Text>运费（元）</Text><Input disabled={saving} className={styles.input} type='digit' value={freight} onInput={e => setFreight(sanitizeDecimalInput(e.detail.value, 2))} /></View>
       </View>
       <Text className={styles.hint}>运费单独记录，不计入货款和供应商应付</Text><Text>备注</Text><Input disabled={saving} className={styles.input} maxlength={500} value={remark} onInput={e => setRemark(e.detail.value)} />
+      </View>}
     </View>
-    <Text className={styles.section}>入库明细</Text>
+    <View className={styles.sectionRow}><Text className={styles.section}>入库明细</Text><Text className={styles.sectionMeta}>按实际收货数量入账</Text></View>
     {lines.map((line, index) => {
       const selected = line.product_id == null ? undefined : productMap.get(line.product_id);
       const unit = selected?.unit || '单位'; const [length, width] = dimensions(line.specification, selected);
       return <View className={styles.lineCard} key={line.key}>
-        <View className={styles.lineHead}><Text>第 {index + 1} 行</Text>{lines.length > 1 && <Text className={styles.remove} onClick={() => { if (!busy.current) setLines(current => current.filter(item => item.key !== line.key)); }}>移除</Text>}</View>
+        <View className={styles.lineHead}><Text className={styles.lineIndex}>商品 {String(index + 1).padStart(2, '0')}</Text>{lines.length > 1 && <Text className={styles.remove} onClick={() => { if (!busy.current) setLines(current => current.filter(item => item.key !== line.key)); }}>移除</Text>}</View>
         <StockProductPicker products={products} value={line.product_id} disabled={saving} excluded={lines.filter(item => item.key !== line.key).map(item => item.product_id || 0)} onSelect={product => updateLine(line.key, applyProduct(line, product))} />
         {selected && <Text className={styles.hint}>当前库存 {selected.stock}{unit} → 入库后 {roundDecimal(selected.stock + Math.max(0, Number(line.delivered_qty) || 0), 6)}{unit}</Text>}
         <Text>规格 / 楞别</Text><Input disabled={saving} className={styles.input} placeholder='如 1550×705/A（选填）' value={line.specification} onInput={e => updateLine(line.key, { specification: e.detail.value })} />

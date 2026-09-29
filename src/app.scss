@@ -24,10 +24,8 @@ body,
 
 body, #app, .taro_router, .taro_page { min-height: 100%; }
 
-// Keep the operational UI plain and stable across all pages.
-.taro_page, .taro_page *:not(.sg-glass-rail):not(.sg-glass-dock):not(.sg-glass-lens):not(.sg-glass-refraction) { animation: none !important; transition: none !important; background-image: none !important; }
-.taro_page [class*="card"], .taro_page [class*="Card"], .taro_page [class*="listItem"], .taro_page [class*="ListItem"], .taro_page [class*="form"], .taro_page [class*="Form"], .taro_page [class*="menuList"], .taro_page [class*="item"] { background-image: none !important; box-shadow: none !important; }
-.taro_page [class*="card"], .taro_page [class*="Card"], .taro_page [class*="listItem"], .taro_page [class*="ListItem"], .taro_page [class*="form"], .taro_page [class*="Form"], .taro_page [class*="menuList"] { background-color: #fff !important; border-color: #e5e9ef !important; }
+// Each page owns its surfaces and contrast. Broad class-substring overrides
+// previously erased coloured cards and left white text on white backgrounds.
 
 // 统一表单和内容文字基线，避免不同页面的输入框、按钮出现跳级字号。
 .taro_page input, .taro_page textarea, .taro_page button, .taro_page picker { font-size: $font-size-md; line-height: $line-height-normal; }

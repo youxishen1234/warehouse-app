@@ -18,6 +18,10 @@ export function installTabNavigation(nav: Navigation): () => void {
   const root = document.documentElement;
   const win = window as any;
   let busy = false;
+  let queued: { url: string; requestId?: number } | null = null;
+  let acknowledgedRequest: number | undefined;
+  let navigationFailed = false;
+  let lastNativeState = '';
   let frame = 0;
   let state: { x: number; y: number; dx: number; locked: boolean; index: number; page: HTMLElement; back: boolean } | null = null;
   let suppressClickUntil = 0;
@@ -52,7 +56,16 @@ export function installTabNavigation(nav: Navigation): () => void {
     if (native) {
       root.style.setProperty('--sg-native-bottom-space', String(capability.bottomSpace ?? 84) + 'px');
     }
-    if (capability && bridge) bridge.postMessage({ route: route(), ready: true, modal: modalOpen() });
+    // A route is acknowledged only after its navigation settles. Sending the
+    // previous route during selection makes UIKit snap its glass lens back.
+    if (capability && bridge && !busy && !queued) {
+      const message = { route: route(), ready: true, modal: modalOpen(), requestId: acknowledgedRequest, navigationFailed };
+      const serialized = JSON.stringify(message);
+      if (serialized !== lastNativeState) {
+        lastNativeState = serialized;
+        bridge.postMessage(message);
+      }
+    }
   };
   const scheduleSync = () => {
     if (!frame) frame = requestAnimationFrame(() => { frame = 0; sync(); });
@@ -67,13 +80,34 @@ export function installTabNavigation(nav: Navigation): () => void {
     page.style.setProperty('transform', 'translate3d(' + x + 'px,0,0)', 'important');
     setTimeout(resolve, reduced ? 0 : 165);
   });
-  const switchTo = async (url: string) => {
-    if (busy || !tabRoutes.includes(url) || url === route()) return;
+  const switchTo = async (url: string, requestId?: number) => {
+    if (disposed || !tabRoutes.includes(url)) return;
+    // Keep the most recent destination while Taro is switching. Native drag
+    // and rapid taps must not lose their final selection to a busy guard.
+    queued = { url, requestId };
+    if (busy) return;
     busy = true;
-    try { await nav.switchTab(url); } catch (error) { console.error('[Navigation]', error); }
-    finally { busy = false; scheduleSync(); }
+    try {
+      while (queued && !disposed) {
+        const target: { url: string; requestId?: number } = queued;
+        queued = null;
+        navigationFailed = false;
+        acknowledgedRequest = target.requestId;
+        try {
+          if (modalOpen()) { navigationFailed = true; continue; }
+          if (target.url !== route()) await nav.switchTab(target.url);
+        } catch (error) {
+          navigationFailed = true;
+          console.error('[Navigation]', error);
+        }
+      }
+    } finally { busy = false; scheduleSync(); }
   };
-  const nativeSelect = (event: Event) => { void switchTo((event as CustomEvent<string>).detail); };
+  const nativeSelect = (event: Event) => {
+    const selection = event as CustomEvent<string> & { requestId?: number };
+    void switchTo(selection.detail, selection.requestId);
+  };
+  const nativeReady = () => { lastNativeState = ''; scheduleSync(); };
   const cancel = () => {
     const current = state;
     state = null;
@@ -126,7 +160,12 @@ export function installTabNavigation(nav: Navigation): () => void {
         await (current.back ? nav.back() : nav.switchTab(tabRoutes[next]));
       }
     } catch (error) { console.error('[Navigation]', error); }
-    finally { restore(current.page); busy = false; scheduleSync(); }
+    finally {
+      restore(current.page);
+      busy = false;
+      if (queued && !disposed) void switchTo(queued.url, queued.requestId);
+      else scheduleSync();
+    }
   };
   const blockClick = (event: MouseEvent) => {
     if (Date.now() < suppressClickUntil) { event.preventDefault(); event.stopImmediatePropagation(); }
@@ -138,7 +177,7 @@ export function installTabNavigation(nav: Navigation): () => void {
   window.addEventListener('touchcancel', cancel, { passive: true, capture: true });
   window.addEventListener('click', blockClick, true);
   window.addEventListener('sg-native-tab', nativeSelect);
-  window.addEventListener('sg-native-ready', scheduleSync);
+  window.addEventListener('sg-native-ready', nativeReady);
   window.addEventListener('hashchange', scheduleSync);
   window.addEventListener('popstate', scheduleSync);
   const observer = new MutationObserver(scheduleSync);
@@ -146,6 +185,7 @@ export function installTabNavigation(nav: Navigation): () => void {
   sync();
   return () => {
     disposed = true;
+    queued = null;
     cancel();
     cancelAnimationFrame(frame);
     observer.disconnect();
@@ -156,7 +196,7 @@ export function installTabNavigation(nav: Navigation): () => void {
     window.removeEventListener('touchcancel', cancel, true);
     window.removeEventListener('click', blockClick, true);
     window.removeEventListener('sg-native-tab', nativeSelect);
-    window.removeEventListener('sg-native-ready', scheduleSync);
+    window.removeEventListener('sg-native-ready', nativeReady);
     window.removeEventListener('hashchange', scheduleSync);
     window.removeEventListener('popstate', scheduleSync);
   };

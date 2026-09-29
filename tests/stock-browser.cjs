@@ -31,6 +31,11 @@ async function main() {
     page.setDefaultTimeout(8000);
     activePage = page;
     page.on('pageerror', error => errors.push(error.message));
+    if (process.env.STOCK_DIAGNOSTICS) {
+      page.on('requestfailed', request => console.log('API failure', request.method(), new URL(request.url()).pathname, request.failure()?.errorText));
+      page.on('response', response => { if (response.status() >= 400) console.log('HTTP failure', response.status(), new URL(response.url()).pathname); });
+      page.on('pageerror', error => console.log('Page error detail', error.stack));
+    }
     page.on('response', response => { if (response.status() >= 400 && /\.(js|css)(\?|$)/.test(response.url())) failedAssets.push(response.url()); });
     const input = placeholder => page.locator(`input[placeholder="${placeholder}"]:visible`);
     const text = value => page.getByText(value, { exact: true }).filter({ visible: true });
@@ -83,10 +88,13 @@ async function main() {
     await expect.poll(() => db.getProduct(a.id).stock).toBe(28);
     await expect.poll(() => db.getProduct(b.id).stock).toBe(10);
     await page.goto(base + '/pages/inbound/index'); await text('入库开单').waitFor();
-    await page.getByText(/入库单 #1 · 已入库/).click();
+    const inboundNote = page.locator('[class*=note___]').filter({ hasText: '入库单 #1' });
+    await expect(inboundNote).toContainText('已入库');
+    await inboundNote.click();
     await text('作废整张入库单').click(); await text('确定').click();
     await expect.poll(() => db.getProduct(a.id).stock).toBe(20);
-    await page.reload(); await text('入库开单').waitFor(); await page.getByText(/入库单 #1 · 已作废/).waitFor();
+    await page.reload(); await text('入库开单').waitFor();
+    await expect(page.locator('[class*=note___]').filter({ hasText: '入库单 #1' })).toContainText('已作废');
     const routes = [...new Set([...fs.readFileSync('src/app.config.ts', 'utf8').matchAll(/'pages\/([^']+)'/g)].map(match => match[1]))];
     for (const width of [390, 1280]) {
       await page.setViewportSize({ width, height: 900 });
@@ -94,6 +102,7 @@ async function main() {
         await page.goto(base + '/pages/' + route);
         await expect(page.locator('.taro_page:visible').last()).not.toBeEmpty();
         await page.locator('.team-boot').waitFor({ state: 'detached' });
+        await page.waitForLoadState('networkidle');
         await page.waitForTimeout(400);
         if (['inbound/index', 'outbound/index'].includes(route)) {
           assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `overflow: ${route} ${width}`);

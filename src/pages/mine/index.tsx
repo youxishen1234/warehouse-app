@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, Input } from '@tarojs/components';
-import Taro from '@tarojs/taro';
+import Taro, { useDidShow } from '@tarojs/taro';
 import Icon from '@/components/Icon';
 import type { IconName } from '@/components/Icon';
 import { autoBestBase, getBaseUrl, setBaseUrl } from '@/services/request';
 import { checkAndUpdate } from '@/services/update';
 import styles from './index.module.scss';
 import { getCopy } from '@/services/copy';
+import { getStats } from '@/services/api';
+import { session, watchSession, PUBLIC_ORIGIN, TEAM_ORIGIN } from '@/services/session';
 
 const menus: { icon: IconName; text: string; desc: string; url: string; color: string; bg: string }[] = [
   { icon: 'clipboard', text: '库存查询', desc: '查看全部商品库存', url: '/pages/inventory/index', color: '#2f6bff', bg: '#eaf1ff' },
@@ -21,7 +23,7 @@ const menus: { icon: IconName; text: string; desc: string; url: string; color: s
   { icon: 'box', text: '纸箱尺寸换算', desc: '内尺寸、外尺寸双向计算', url: '/pages/carton-calculator/index', color: '#0f766e', bg: '#e6f7f5' },
   { icon: 'edit', text: '自定义文案', desc: '修改页面菜单和按钮名称', url: '/pages/custom-copy/index', color: '#2563eb', bg: '#eaf1ff' }
 ];
-const menuCopyKey = (url: string) => url.includes('inventory') ? 'inventory' : url.includes('customers') ? 'customers' : url.includes('suppliers') ? 'suppliers' : url.includes('products') ? 'products' : url.includes('records') ? 'records' : url.includes('ledger') ? 'ledger' : url.includes('orders') ? 'orders' : url.includes('carton-calculator') ? 'cartonCalculator' : url.includes('custom-copy') ? 'appName' : '';
+const menuCopyKey = (url: string) => url.includes('inventory') ? 'inventory' : url.includes('customers') ? 'customers' : url.includes('suppliers') ? 'suppliers' : url.includes('products') ? 'products' : url.includes('records') ? 'records' : url.includes('ledger') ? 'ledger' : url.includes('orders') ? 'orders' : url.includes('carton-calculator') ? 'cartonCalculator' : '';
 
 const MineContent: React.FC = () => {
   const [addrOpen, setAddrOpen] = useState(false);
@@ -36,6 +38,25 @@ const MineContent: React.FC = () => {
   const [ipaCompleted, setIpaCompleted] = useState(false);
   const [webVersion, setWebVersion] = useState('获取中…');
   const [nativeVersion, setNativeVersion] = useState('');
+  const [connection, setConnection] = useState('检测中');
+  const [updateKind, setUpdateKind] = useState<'web' | 'ipa'>('web');
+  const connectionRequest = React.useRef(0);
+  const refreshConnection = React.useCallback(async () => {
+    const request = ++connectionRequest.current;
+    if (!session()) { setConnection('连接中'); return; }
+    setConnection('检测中');
+    try {
+      await getStats();
+      if (request === connectionRequest.current) setConnection('已连接');
+    } catch (error) {
+      if (request === connectionRequest.current) setConnection('连接异常');
+    }
+  }, []);
+  useDidShow(() => { void refreshConnection(); });
+  React.useEffect(() => {
+    const unwatch = watchSession(() => { void refreshConnection(); });
+    return () => { unwatch(); connectionRequest.current += 1; };
+  }, [refreshConnection]);
   React.useEffect(() => {
     const win = window as any;
     const refresh = () => {
@@ -60,6 +81,7 @@ const MineContent: React.FC = () => {
     try {
       const selected = await autoBestBase();
       setTestResult(selected ? '已自动选择：' + selected : '自动选择失败：暂时没有可用的服务器地址');
+      void refreshConnection();
     } finally {
       setTesting(false);
     }
@@ -75,19 +97,24 @@ const MineContent: React.FC = () => {
     if (testing) return;
     setTesting(true);
     setTestResult('');
-    const target = normalizeBase(url || addrVal || getBaseUrl());
     try {
+      const target = normalizeBase(url || addrVal || getBaseUrl());
+      if (![PUBLIC_ORIGIN, TEAM_ORIGIN].includes(target)) throw new Error('地址必须是共享仓库服务器地址');
+      const token = session()?.token;
+      if (!token) throw new Error('仓库连接尚未建立，请稍后测试');
       const res: any = await Taro.request({
-        url: `${target}/api/stats?page=1&pageSize=1`,
+        url: `${target}/api/sync`,
         method: 'GET',
+        header: { Authorization: `Bearer ${token}` },
         timeout: 10000
       });
-      const ok = res && res.statusCode >= 200 && res.statusCode < 300;
+      const ok = res && res.statusCode >= 200 && res.statusCode < 300 && res.data?.success === true;
+      if (target === getBaseUrl()) setConnection(ok ? '已连接' : '连接异常');
       setTestResult(ok
         ? '连接成功 ✓ 服务器可以正常访问'
         : '连接失败：服务器返回异常，请检查地址');
-    } catch (e) {
-      setTestResult('连接失败 ✗ 请检查地址，或切换 Wi-Fi / 流量后再试');
+    } catch (e: any) {
+      setTestResult(e?.message || e?.errMsg || '连接测试失败');
     } finally {
       setTesting(false);
     }
@@ -109,8 +136,10 @@ const MineContent: React.FC = () => {
       Taro.showToast({ title: '地址已保存', icon: 'success' });
       // 用新地址做一次连通测试；失败仅提示，不阻断使用
       try {
-        await Taro.request({ url: `${getBaseUrl()}/api/stats?page=1&pageSize=1`, timeout: 8000 });
+        await getStats();
+        setConnection('已连接');
       } catch (e) {
+        setConnection('连接异常');
         Taro.showToast({ title: '已保存，但连接测试未通过', icon: 'none' });
       }
     } catch (e: any) {
@@ -128,6 +157,7 @@ const MineContent: React.FC = () => {
 
   const downloadIpa = async () => {
     if (ipaDownloading) return;
+    setUpdateKind('ipa');
     setIpaDownloading(true);
     setIpaCompleted(false);
     setIpaMessage('正在下载新版 IPA');
@@ -158,6 +188,7 @@ const MineContent: React.FC = () => {
 
   const doCheck = async () => {
     if (checking || ipaDownloading) return;
+    setUpdateKind('web');
     setChecking(true);
     setIpaCompleted(false);
     setIpaMessage('正在检查更新');
@@ -184,18 +215,17 @@ const MineContent: React.FC = () => {
   return (
     <ScrollView scrollY className={styles.container}>
       <View className={styles.hero}>
-        <View className={styles.heroGlow} />
         <View className={styles.heroTop}>
           <View className={styles.brandMark}>曙</View>
           <View className={styles.heroCopy}>
-            <Text className={styles.eyebrow}>SHUGUANG / CONTROL</Text>
+            <Text className={styles.eyebrow}>SHUGUANG / WORKSPACE</Text>
             <Text className={styles.heroTitle}>我的工作台</Text>
             <Text className={styles.heroSubtitle}>连接、更新与业务入口</Text>
           </View>
-          <View className={styles.heroBadge}><View className={styles.liveDot} /><Text>在线</Text></View>
+          <View className={`${styles.heroBadge} ${connection === '连接异常' ? styles.connectionError : ''}`} onClick={() => { void refreshConnection(); }}><View className={styles.liveDot} /><Text>{connection}</Text></View>
         </View>
         <View className={styles.connectionBar} onClick={() => setAddrOpen(true)}>
-          <View className={styles.connectionIcon}><Icon name="trend" color="#bff5e7" className={styles.connectionIconImg} /></View>
+          <View className={styles.connectionIcon}><Icon name="trend" color="#2563eb" className={styles.connectionIconImg} /></View>
           <View className={styles.connectionCopy}><Text>当前服务节点</Text><Text>{addrSummary}</Text></View>
           <Text className={styles.connectionAction}>设置</Text>
         </View>
@@ -213,20 +243,20 @@ const MineContent: React.FC = () => {
         ))}
       </View>
 
-      <View className={styles.sectionHead}><Text>系统与连接</Text><Text>ONLINE</Text></View>
+      <View className={styles.sectionHead}><Text>系统与连接</Text><Text>设备设置</Text></View>
       <View className={styles.systemStack}>
         <View className={styles.systemCard} onClick={doCheck}>
-          <View className={`${styles.systemIcon} ${styles.cyan}`}><Icon name="trend" color="#70f2dd" className={styles.systemIconImg} /></View>
+          <View className={`${styles.systemIcon} ${styles.cyan}`}><Icon name="trend" color="#0f766e" className={styles.systemIconImg} /></View>
           <View className={styles.systemCopy}><Text>检查更新</Text><Text>{checking ? '正在检查版本…' : `网页版本 ${webVersion}`}</Text></View>
           <Text className={styles.systemAction}>{checking ? '检查中' : '检查'}</Text>
         </View>
         <View className={styles.systemCard} onClick={() => setAddrOpen(true)}>
-          <View className={`${styles.systemIcon} ${styles.purple}`}><Icon name="edit" color="#c6b7ff" className={styles.systemIconImg} /></View>
+          <View className={`${styles.systemIcon} ${styles.purple}`}><Icon name="edit" color="#7c3aed" className={styles.systemIconImg} /></View>
           <View className={styles.systemCopy}><Text>服务器 / 更新地址</Text><Text>{addrSummary}</Text></View>
           <View className={styles.systemActions}><Text onClick={(e) => { e.stopPropagation(); openUpdateAddress(); }}>官网</Text><Text>设置</Text></View>
         </View>
         <View className={styles.systemCard} onClick={downloadIpa}>
-          <View className={`${styles.systemIcon} ${styles.blue}`}><Icon name="download" color="#a8c7ff" className={styles.systemIconImg} /></View>
+          <View className={`${styles.systemIcon} ${styles.blue}`}><Icon name="download" color="#2563eb" className={styles.systemIconImg} /></View>
           <View className={styles.systemCopy}><Text>App 安装包下载</Text><Text>{ipaSummary}</Text></View>
           <Text className={styles.systemAction}>下载</Text>
         </View>
@@ -237,8 +267,8 @@ const MineContent: React.FC = () => {
       {ipaDownloading && (
         <View className={styles.mask}>
           <View className={styles.ipaDialog}>
-            <View className={styles.ipaTitleRow}><View className={styles.ipaIcon}><Icon name="download" color="#fff" className={styles.ipaIconImg} /></View><Text className={styles.ipaTitle}>网页更新</Text></View>
-            <View className={styles.ipaFileName}>www.zip</View><Text className={styles.ipaStatus}>{ipaMessage}</Text>
+            <View className={styles.ipaTitleRow}><View className={styles.ipaIcon}><Icon name="download" color="#fff" className={styles.ipaIconImg} /></View><Text className={styles.ipaTitle}>{updateKind === 'ipa' ? '安装包下载' : '网页更新'}</Text></View>
+            <View className={styles.ipaFileName}>{updateKind === 'ipa' ? 'shuguang.ipa' : 'www.zip'}</View><Text className={styles.ipaStatus}>{ipaMessage}</Text>
             {!ipaCompleted && <View className={styles.ipaProgressTrack}><View className={styles.ipaProgressBar} style={{ width: `${ipaProgress}%` }} /></View>}
             {!ipaCompleted && <Text className={styles.ipaProgressText}>{ipaProgress}%</Text>}
             {ipaCompleted && <View className={styles.ipaCloseBtn} onClick={() => setIpaDownloading(false)}>关闭</View>}

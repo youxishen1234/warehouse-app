@@ -1,1 +1,32 @@
-﻿.page{min-height:100vh;box-sizing:border-box;padding:32rpx 22rpx calc(250rpx + env(safe-area-inset-bottom));background:linear-gradient(180deg,#0b1220 0,#111d31 360rpx,#f4f7fb 360rpx);color:#172033}.title{display:block;padding:18rpx 8rpx 0;color:#fff;font-size:40rpx;font-weight:800}.subTitle{display:block;padding:10rpx 8rpx 34rpx;color:#b9c7da;font-size:23rpx}.card,.lineCard,.note,.preview{margin-bottom:20rpx;padding:24rpx;border:0;border-radius:24rpx;background:#fff;box-shadow:0 14rpx 36rpx rgba(25,50,90,.09)}.section{display:block;margin:30rpx 6rpx 14rpx;color:#172b48;font-size:29rpx;font-weight:800}.row,.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14rpx;margin-bottom:16rpx}.half,.grid>view{min-width:0}.deliveryQty{grid-column:1/-1}.card text,.lineCard text{display:block;margin:0 0 10rpx;color:#6c7b90;font-size:22rpx}.input,.picker{width:100%;height:78rpx;box-sizing:border-box;padding:0 18rpx;line-height:78rpx;border:1rpx solid #e4eaf2;border-radius:14rpx;background:#f8fafc;color:#15243b;font-size:24rpx}.hint{display:block!important;margin:10rpx 0 14rpx!important;color:#7b8ba0!important;font-size:21rpx!important;line-height:1.6}.error{padding:16rpx;border-radius:14rpx;background:#fff0f1;color:#c02636;font-size:22rpx}.lineHead,.previewTop{display:flex;align-items:center;justify-content:space-between;margin-bottom:14rpx}.lineHead text:first-child{color:#162b48;font-size:27rpx;font-weight:800}.remove,.closePreview{color:#db3b4b!important}.calc,.total{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12rpx;padding:16rpx;border-radius:16rpx;background:#f1f7ff}.calc text,.total text{margin:0;color:#1769c2;font-size:23rpx;font-weight:700}.addLine{margin:14rpx 0;padding:20rpx;border:1rpx dashed #72a9e8;border-radius:16rpx;background:#edf6ff;color:#216fc4;text-align:center;font-size:25rpx;font-weight:700}.total{margin:18rpx 0}.note text{display:block;color:#64758b;font-size:22rpx;line-height:1.8}.empty{text-align:center;padding:50rpx;color:#9aa8b9}.previewTitle{color:#152b49!important;font-size:29rpx!important;font-weight:800}.preview text{display:block;color:#53657d;font-size:22rpx;line-height:1.8}.tableHead,.tableRow{display:grid;grid-template-columns:2fr .8fr .8fr .8fr 1fr;gap:6rpx;padding:10rpx 0;border-bottom:1rpx solid #e9eef4}.tableRow text{font-size:19rpx;overflow-wrap:anywhere}.previewTotal{margin-top:14rpx;color:#1769c2!important;font-weight:800}.export,.voidButton{margin-top:16rpx;padding:20rpx;border-radius:16rpx;text-align:center;font-size:24rpx;font-weight:700}.export{background:#216fc4;color:#fff}.voidButton{background:#fff0f1;color:#c02636}.fixedSave{position:fixed;z-index:1001;left:22rpx;right:22rpx;bottom:calc(112rpx + env(safe-area-inset-bottom));padding:22rpx;border-radius:20rpx;background:linear-gradient(135deg,#287bd3,#1554a8);box-shadow:0 14rpx 30rpx rgba(18,74,140,.3);color:#fff;text-align:center;font-size:28rpx;font-weight:800}.disabled{opacity:.5;pointer-events:none}
+@use '@/styles/workflow.scss' as flow;
+.page { @include flow.page; }
+.hero { @include flow.hero(#155bc1, #3579db); }
+@include flow.heroContents;
+.card,.lineCard,.note,.preview { @include flow.surface; }
+.card,.lineCard { font-size: 25rpx; line-height: 1.5; }
+.cardTitle { margin-bottom: 24rpx; }
+.row,.grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16rpx; }
+.half,.grid>view { min-width: 0; }
+.deliveryQty { grid-column: 1/-1; }
+.input,.picker { @include flow.field; }
+.picker { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hint { display: block; margin: 10rpx 0 20rpx; color: #607086; font-size: 22rpx; line-height: 1.65; }
+.sectionRow { display: flex; align-items: baseline; justify-content: space-between; gap: 16rpx; }
+.section { display: block; margin: 32rpx 4rpx 18rpx; color: #172235; font-size: 31rpx; font-weight: 750; }
+.sectionMeta { color: #6a7a91; font-size: 21rpx; }
+.detailsToggle { display: flex; align-items: center; justify-content: space-between; padding-top: 22rpx; border-top: 1rpx solid #e7ecf3; color: #155bc1; font-size: 23rpx; min-height: 78rpx; }
+.detailsTitle { display: block; color: #253750; font-weight: 600; font-size: 25rpx; }
+.detailsHint { display: block; margin-top: 6rpx; color: #65758c; font-size: 21rpx; }
+.detailsBody { margin-top: 22rpx; }
+.lineHead,.previewTop { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22rpx; }
+.lineIndex { color: #155bc1; font-size: 25rpx; font-weight: 700; }
+.remove,.closePreview { display: flex; align-items: center; padding: 12rpx; min-height: 44rpx; color: #b42332; font-size: 23rpx; }
+.calc,.total { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14rpx; padding: 22rpx; border-radius: 20rpx; background: #edf4ff; color: #155bc1; font-size: 23rpx; line-height: 1.7; }
+.calc text { display: block; }.total { margin: 20rpx 0; font-weight: 700; }
+.addLine { display: flex; align-items: center; justify-content: center; min-height: 90rpx; padding: 18rpx; margin: 16rpx 0 24rpx; border: 2rpx dashed #a5bfe7; border-radius: 22rpx; background: #eaf2ff; color: #155bc1; font-size: 28rpx; font-weight: 600; }
+.error { display: block; padding: 22rpx; margin-bottom: 22rpx; border-radius: 20rpx; background: #fff0f1; border: 1rpx solid #f5ccd2; color: #a51d32; font-size: 24rpx; line-height: 1.5; }
+.note { cursor: pointer; }.noteTop { display: flex; justify-content: space-between; gap: 16rpx; font-size: 27rpx; font-weight: 700; }.noteAmount { color: #155bc1; }.noteMeta { display: block; color: #61728a; margin-top: 12rpx; font-size: 23rpx; }
+.empty { padding: 42rpx 24rpx; text-align: center; background: #fff; border: 1rpx dashed #dce4ed; border-radius: 24rpx; color: #66778d; font-size: 25rpx; }
+.preview { font-size: 23rpx; line-height: 1.7; }.previewTitle { font-size: 28rpx; font-weight: 700; }.tableHead,.tableRow { display: grid; grid-template-columns: 1.6fr .8fr .8fr .8fr 1fr; gap: 8rpx; padding: 16rpx 0; border-bottom: 1rpx solid #e8edf3; overflow-wrap: anywhere; font-size: 20rpx; }.tableHead { color: #63748b; }.previewTotal { display: block; margin-top: 20rpx; font-weight: 700; color: #155bc1; }
+.export,.voidButton { padding: 24rpx; margin-top: 20rpx; text-align: center; border-radius: 20rpx; font-size: 26rpx; font-weight: 600; }.export { background: #edf4ff; color: #155bc1; }.voidButton { background: #fff0f1; color: #b42332; }
+.fixedSave { @include flow.action(#155bc1); }.disabled { opacity: .5; pointer-events: none; }

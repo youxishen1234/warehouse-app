@@ -1,0 +1,19 @@
+// Uppercase PX keeps dock clearance in physical CSS pixels through Taro's
+// design-width conversion. rpx is reserved for the scalable page controls.
+@mixin page { --sg-page-bottom-space: 190PX; min-height: 100%; padding: 28rpx 28rpx 380rpx; box-sizing: border-box; background: #f3f5f8; color: #172235; }
+@mixin hero($accent, $end) { padding: 32rpx; margin-bottom: 28rpx; border-radius: 32rpx; background: $accent linear-gradient(130deg, $accent, $end); color: #fff; box-shadow: 0 12rpx 30rpx rgba(25,46,80,.12); }
+@mixin surface { padding: 28rpx; margin-bottom: 24rpx; background: #fff; border: 1rpx solid #e6ebf1; border-radius: 28rpx; box-shadow: 0 4rpx 18rpx rgba(25,46,80,.035); }
+@mixin field { display: block; width: 100%; min-width: 0; height: 92rpx; box-sizing: border-box; padding: 0 22rpx; margin: 10rpx 0 18rpx; border: 1rpx solid #e1e7ef; border-radius: 18rpx; background: #f7f9fc; color: #172235; font-size: 28rpx; line-height: 92rpx; }
+@mixin action($accent) { position: fixed; left: 28rpx; right: 28rpx; bottom: calc(max(var(--sg-native-bottom-space, 84PX), 84PX) + env(safe-area-inset-bottom, 0px) + 8PX); z-index: 800; display: flex; align-items: center; justify-content: center; min-height: 96rpx; padding: 18rpx 24rpx; box-sizing: border-box; border: 0; border-radius: 24rpx; background: $accent; color: #fff; box-shadow: 0 8rpx 30rpx rgba(25,46,80,.18); font-size: 30rpx; font-weight: 700; }
+@mixin heroContents {
+ .heroHeading { display: flex; justify-content: space-between; align-items: center; gap: 20rpx; }
+ .eyebrow { display: block; color: #e3edff; font-size: 20rpx; letter-spacing: 3rpx; font-weight: 600; }
+ .title { display: block; margin-top: 10rpx; color: #fff; font-size: 46rpx; line-height: 1.25; font-weight: 800; }
+ .heroMark { display: flex; align-items: center; justify-content: center; width: 86rpx; height: 86rpx; border-radius: 26rpx; background: rgba(255,255,255,.16); color: #fff; font-size: 38rpx; font-weight: 700; flex: 0 0 auto; }
+ .subTitle { display: block; margin-top: 16rpx; color: #e3edff; font-size: 24rpx; line-height: 1.6; }
+ .heroSummary { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 28rpx; padding-top: 22rpx; border-top: 1rpx solid rgba(255,255,255,.23); }
+ .summaryLabel { display: block; color: #e3edff; font-size: 22rpx; }
+ .summaryValue { display: block; margin-top: 6rpx; color: #fff; font-size: 42rpx; font-weight: 700; font-variant-numeric: tabular-nums; }
+ .summaryCount { padding: 9rpx 18rpx; border-radius: 99rpx; color: #fff; background: rgba(255,255,255,.15); font-size: 23rpx; white-space: nowrap; }
+ .cardTitle { display: block; margin-bottom: 22rpx; color: #172235; font-size: 30rpx; font-weight: 700; }
+}

@@ -50,7 +50,8 @@ export function createGlassTabBar(host: HTMLElement, onSelect: (index: number) =
   let velocity = 0;
   let animation = 0;
   let previousTime = 0;
-  let pointer: { id: number; offset: number; start: number; moved: boolean } | null = null;
+  let pointer: { id: number; offset: number; left: number; top: number; bottom: number; cancelled: boolean } | null = null;
+  let cellWidth = 1;
   let suppressClick = false;
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   let ripplePosition = 0;
@@ -73,9 +74,11 @@ export function createGlassTabBar(host: HTMLElement, onSelect: (index: number) =
     motion.oncancel = () => wave.remove();
   };
   const clamp = (value: number) => Math.max(0, Math.min(3, value));
-  const width = () => (rail.clientWidth - 16) / 4;
+  const measure = () => { cellWidth = Math.max(1, (rail.clientWidth - 16) / 4); };
   const render = () => {
-    const cell = width();
+    // Geometry is read on resize / pointerdown, never after every transform
+    // write. This avoids synchronous layout work in the finger-follow path.
+    const cell = cellWidth;
     if (Math.abs(position - ripplePosition) > .28 && dock.classList.contains('sg-glass-pressed')) {
       ripple(position - ripplePosition);
       ripplePosition = position;
@@ -131,10 +134,11 @@ export function createGlassTabBar(host: HTMLElement, onSelect: (index: number) =
     if (pointer || !event.isPrimary || event.button !== 0) return;
     cancelAnimationFrame(animation); animation = 0; velocity = 0;
     const rect = rail.getBoundingClientRect();
-    const at = (event.clientX - rect.left - 8) / width() - .5;
+    measure();
+    const at = (event.clientX - rect.left - 8) / cellWidth - .5;
     // Preserve the point grabbed on the existing lens; tapping another tab grabs its centre.
     const onLens = Math.abs(at - position) <= .5;
-    pointer = { id: event.pointerId, offset: onLens ? at - position : 0, start: event.clientX, moved: false };
+    pointer = { id: event.pointerId, offset: onLens ? at - position : 0, left: rect.left, top: rect.top, bottom: rect.bottom, cancelled: false };
     if (!onLens) position = clamp(at);
     rail.setPointerCapture(event.pointerId);
     dock.classList.add('sg-glass-pressed');
@@ -144,14 +148,19 @@ export function createGlassTabBar(host: HTMLElement, onSelect: (index: number) =
   };
   const move = (event: PointerEvent) => {
     if (!pointer || pointer.id !== event.pointerId) return;
-    pointer.moved ||= Math.abs(event.clientX - pointer.start) > 4;
-    const rect = rail.getBoundingClientRect();
-    position = clamp((event.clientX - rect.left - 8) / width() - .5 - pointer.offset);
+    if (pointer.cancelled) return;
+    if (event.clientY < pointer.top - 48 || event.clientY > pointer.bottom + 48) {
+      pointer.cancelled = true;
+      dock.classList.remove('sg-glass-pressed');
+      settle(selected);
+      return;
+    }
+    position = clamp((event.clientX - pointer.left - 8) / cellWidth - .5 - pointer.offset);
     render();
   };
   const finish = (event: PointerEvent) => {
     if (!pointer || pointer.id !== event.pointerId) return;
-    const cancelled = event.type !== 'pointerup';
+    const cancelled = event.type !== 'pointerup' || pointer.cancelled;
     const index = cancelled ? selected : Math.round(position);
     pointer = null;
     dock.classList.remove('sg-glass-pressed');
@@ -180,9 +189,11 @@ export function createGlassTabBar(host: HTMLElement, onSelect: (index: number) =
   rail.addEventListener('lostpointercapture', finish);
   rail.addEventListener('click', click);
   rail.addEventListener('keydown', keydown);
-  const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(render);
+  const onResize = () => { measure(); render(); };
+  const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(onResize);
   resize?.observe(rail);
-  if (!resize) window.addEventListener('resize', render);
+  if (!resize) window.addEventListener('resize', onResize);
+  measure();
   update(0, true);
   return {
     host,
@@ -193,6 +204,6 @@ export function createGlassTabBar(host: HTMLElement, onSelect: (index: number) =
       cancelAnimationFrame(animation); animation = 0; velocity = 0;
       position = clamp(index); render();
     },
-    destroy() { cancelAnimationFrame(animation); resize?.disconnect(); window.removeEventListener('resize', render); dock.remove(); host.classList.remove('sg-glass-host'); }
+    destroy() { cancelAnimationFrame(animation); resize?.disconnect(); window.removeEventListener('resize', onResize); dock.remove(); host.classList.remove('sg-glass-host'); }
   };
 }

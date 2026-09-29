@@ -54,12 +54,13 @@ export default function Orders() {
   const [customer, setCustomer] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const remote = useRemoteData(async () => {
-    // useRemoteData owns the request sequence ref (useRef(0)); if (current !== loadSequence.current), stale responses are discarded; startedAt - lastLoadAt.current < 250 suppresses same-tick reloads.
+  // A stable loader prevents every state update from starting another request.
+  const loadOrders = useCallback(async () => {
     const [orders, customerList] = await Promise.all([getOrders(), getCustomers()]);
     const pairs = await Promise.all(orders.map(async order => [order.id, await getOrderEvents(order.id)] as const));
     return { orders, customerList, events: Object.fromEntries(pairs) as Record<number, OrderStatusEvent[]> };
-  }, { orders: [] as CustomerOrder[], customerList: [] as Customer[], events: {} as Record<number, OrderStatusEvent[]> });
+  }, []);
+  const remote = useRemoteData(loadOrders, { orders: [] as CustomerOrder[], customerList: [] as Customer[], events: {} as Record<number, OrderStatusEvent[]> });
   useEffect(() => {
     if (!remote.loading && remote.ready) {
       setList(remote.data.orders);
@@ -70,7 +71,6 @@ export default function Orders() {
 
   const load = remote.reload;
   useSharedRefresh(load);
-  useEffect(() => { load(); }, [load]);
 
   const resetForm = () => {
     setOrderNo(''); setSpec(''); setMaterial(''); setQty('1'); setPrice('0'); setDelivery(''); setRemark(''); setCustomer(null);

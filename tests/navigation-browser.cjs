@@ -119,6 +119,13 @@ async function verify(browser, name) {
   await page.waitForTimeout(450);
   assert.match(page.url(), /home/);
   await page.waitForFunction(() => Math.abs(Number(document.querySelector('.sg-glass-dock').dataset.position)) < .001);
+  await page.mouse.move(first.x + first.width / 2, first.y + first.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(last.x, first.y - 80, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForTimeout(400);
+  assert.match(page.url(), /home/, 'leaving the dock vertically cancels the pending selection');
+  await page.waitForFunction(() => Math.abs(Number(document.querySelector('.sg-glass-dock').dataset.position)) < .001);
   assert.notEqual(await swipe(page, -110), 'none', 'gesture follows finger');
   await page.waitForURL(/inbound/);
   await page.waitForTimeout(500);
@@ -162,6 +169,28 @@ async function verify(browser, name) {
     await page.waitForFunction(route => window.__nativeMessages.at(-1)?.route === route, route);
   }
   const pageText = await page.locator('body').innerText();
+  // Native selection may arrive again before Taro finishes the previous one.
+  // The last finger destination must win, with no old-route acknowledgment.
+  await page.evaluate(() => {
+    window.__nativeMessages = [];
+    ['/pages/inbound/index', '/pages/outbound/index', '/pages/mine/index'].forEach((route, index) => {
+      const event = new CustomEvent('sg-native-tab', { detail: route });
+      event.requestId = 201 + index;
+      window.dispatchEvent(event);
+    });
+  });
+  await page.waitForURL(/mine/);
+  await page.waitForFunction(() => window.__nativeMessages.at(-1)?.requestId === 203);
+  const acknowledgments = await page.evaluate(() => window.__nativeMessages);
+  assert.ok(acknowledgments.length > 0);
+  assert.ok(acknowledgments.every(s => s.route === '/pages/mine/index' && s.requestId === 203), JSON.stringify(acknowledgments));
+  await page.evaluate(() => {
+    for (let i = 0; i < 20; i++) { const item = document.createElement('span'); document.body.appendChild(item); item.remove(); }
+  });
+  await page.waitForTimeout(100);
+  assert.equal(await page.evaluate(() => window.__nativeMessages.length), acknowledgments.length, 'unrelated DOM changes do not resend the selection');
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('sg-native-tab', { detail: '/pages/home/index' })));
+  await page.waitForURL(/home/);
   for (const label of ['库存查询', '商品管理', '客户管理', '供应商管理', '出入库记录', '新增商品', '流水', '客户订单', '纸箱尺寸换算', '瓦楞计算']) {
     assert.ok(pageText.includes(label), `homepage shortcut missing: ${label}`);
   }

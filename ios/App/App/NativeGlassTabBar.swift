@@ -14,6 +14,9 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     private var hosts: [UIViewController] = []
     private var bridgeProxy: WeakTabMessageHandler?
     private var selectedIndex = 0
+    private var pendingIndex: Int?
+    private var requestSequence = 0
+    private var selectionTimeout: DispatchWorkItem?
     private var routeIsTab = true
     private var webReady = false
     private var keyboardVisible = false
@@ -54,6 +57,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     override var childForStatusBarHidden: UIViewController? { tabsController }
 
     deinit {
+        selectionTimeout?.cancel()
         keyboardObservers.forEach { NotificationCenter.default.removeObserver($0) }
         bridgeController.webView?.configuration.userContentController.removeScriptMessageHandler(forName: "nativeTabSelected")
     }
@@ -172,7 +176,9 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     }
 
     private func updateSelection() {
-        tabsController.selectedIndex = selectedIndex
+        if tabsController.selectedIndex != selectedIndex {
+            tabsController.selectedIndex = selectedIndex
+        }
         mountBridge(in: hosts[selectedIndex])
     }
 
@@ -182,10 +188,32 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
 
     private func requestTab(_ index: Int) {
         guard webReady, routes.indices.contains(index) else { return }
+        requestSequence += 1
+        let sequence = requestSequence
+        pendingIndex = index
+        selectionTimeout?.cancel()
+        if tabsController.selectedIndex != index { tabsController.selectedIndex = index }
+        mountBridge(in: hosts[index])
+        // Retain the string detail for installed web bundles. Newer bundles
+        // return requestId as well, so an older in-flight route cannot win.
         bridgeController.webView?.evaluateJavaScript(
-            "window.dispatchEvent(new CustomEvent('sg-native-tab',{detail:'\(routes[index])'}));",
-            completionHandler: nil
-        )
+            "var e=new CustomEvent('sg-native-tab',{detail:'\(routes[index])'});e.requestId=\(sequence);window.dispatchEvent(e);"
+        ) { [weak self] _, error in
+            if error != nil { self?.cancelSelection(sequence) }
+        }
+        let timeout = DispatchWorkItem { [weak self] in self?.cancelSelection(sequence) }
+        selectionTimeout = timeout
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8, execute: timeout)
+    }
+
+    private func cancelSelection(_ sequence: Int) {
+        guard requestSequence == sequence, pendingIndex != nil else { return }
+        pendingIndex = nil
+        selectionTimeout?.cancel()
+        updateSelection()
+        // Reconcile with the actual route after a failed or unacknowledged
+        // selection, including compatibility with an older web bundle.
+        publishCapability()
     }
 
     #if compiler(>=6.2)
@@ -198,7 +226,6 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     @available(iOS 18.0, *)
     func tabBarController(_ tabBarController: UITabBarController, didSelectTab selectedTab: UITab, previousTab: UITab?) {
         guard let index = routes.firstIndex(of: selectedTab.identifier) else { return }
-        mountBridge(in: hosts[index])
         requestTab(index)
     }
     #endif
@@ -255,8 +282,20 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         guard message.name == "nativeTabSelected", message.frameInfo.isMainFrame,
               let state = message.body as? [String: Any], let route = state["route"] as? String else { return }
         webReady = state["ready"] as? Bool ?? false
-        routeIsTab = routes.contains(route)
         modalVisible = state["modal"] as? Bool ?? false
+        if let pending = pendingIndex {
+            let acknowledged = state["requestId"] as? Int
+            let matching = acknowledged == requestSequence
+            let compatible = acknowledged == nil && route == routes[pending]
+            guard matching || compatible else { updateVisibility(); return }
+            guard route == routes[pending] || state["navigationFailed"] as? Bool == true else {
+                updateVisibility()
+                return
+            }
+            pendingIndex = nil
+            selectionTimeout?.cancel()
+        }
+        routeIsTab = routes.contains(route)
         if let index = routes.firstIndex(of: route) {
             selectedIndex = index
             updateSelection()
@@ -267,7 +306,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     // Invoked by the simulator job against the real storyboard and WebView.
     private func runSmokeTest(step: Int, attempt: Int) {
         guard attempt < 300 else { finishSmokeTest("WebView did not acknowledge navigation"); return }
-        let expected = step < routes.count ? step : 0
+        let expected = step == routes.count + 2 ? 3 : (step < routes.count ? step : 0)
         guard webReady, selectedIndex == expected else {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.runSmokeTest(step: step, attempt: attempt + 1) }
             return
@@ -305,6 +344,14 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
             } else if step == self.routes.count {
                 self.webReady = false
                 self.bridgeController.webView?.reload()
+            } else if step == self.routes.count + 1 {
+                // Three destinations in one native turn exercise the pending
+                // request queue and the final acknowledgment after reload.
+                self.requestTab(1)
+                self.requestTab(2)
+                self.requestTab(3)
+            } else if step == self.routes.count + 2 {
+                self.requestTab(0)
             } else {
                 self.finishSmokeTest(nil)
                 return
