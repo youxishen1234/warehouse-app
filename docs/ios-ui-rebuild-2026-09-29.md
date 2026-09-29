@@ -1,4 +1,4 @@
-# iOS 1.1.3 UI and tab navigation repair
+# iOS 1.1.4 UI and tab navigation repair
 
 ## User-visible changes
 
@@ -72,8 +72,13 @@ then dispatched 2 before 1; the web layer correctly acknowledged the last
 request (1), while native was waiting for 2 and reverted after its timeout.
 Guard programmatic assignments so only user selections initiate requests.
 Keep UIKit's native gesture recognizers and material. Apply the approved
-dark appearance at the tab-controller boundary, with light business hosts.
+dark appearance at the tab-controller boundary, with a light business WebView.
 
 The simulator gate exercises all four real pages, reload, rapid queued
 selection and return home; screenshots of each accepted page are archived.
-The final IPA uses marketing version 1.1.3 to distinguish it from Build 112.
+Build 115 passes all native navigation steps. Its compositor screenshot still
+shows a light dock despite the tab bar reporting a dark trait. Keep the native
+tab hosts dark, apply the light override only to the business WebView, and set
+UIKit's black bar style. A compositor-image luminance check now blocks light
+dock regressions, instead of trusting the trait flag alone. Final marketing
+version is 1.1.4; the compact dock preview is available in CI annotations.

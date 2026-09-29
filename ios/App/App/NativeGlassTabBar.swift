@@ -76,9 +76,10 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         // Apply the approved dark appearance to the whole tab controller so
         // its native material inherits it. Business pages retain light fields.
         tabsController.overrideUserInterfaceStyle = .dark
+        bridgeController.overrideUserInterfaceStyle = .light
         hosts = routes.indices.map { index in
             let host = UIViewController()
-            host.overrideUserInterfaceStyle = .light
+            host.overrideUserInterfaceStyle = .dark
             host.view.backgroundColor = .clear
             host.tabBarItem = UITabBarItem(title: titles[index], image: tabImages[index], tag: index)
             host.tabBarItem.accessibilityIdentifier = "warehouse.tab.\(index)"
@@ -115,6 +116,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         tabsController.didMove(toParent: self)
         dock.accessibilityIdentifier = "warehouse.native.tabbar"
         dock.overrideUserInterfaceStyle = .dark
+        dock.barStyle = .black
         dock.tintColor = UIColor(red: 36 / 255, green: 166 / 255, blue: 248 / 255, alpha: 1)
         dock.unselectedItemTintColor = .white
         // Do not set backgroundImage, selectionIndicatorImage or a custom
