@@ -124,8 +124,24 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         dock.barStyle = .black
         dock.tintColor = UIColor(red: 36 / 255, green: 166 / 255, blue: 248 / 255, alpha: 1)
         dock.unselectedItemTintColor = .white
-        // Do not set backgroundImage, selectionIndicatorImage or a custom
-        // UITabBarAppearance: those replace the system's refractive material.
+        // Keep UIKit's native tab/gesture machinery, but give the system bar
+        // an explicit dark glass backing. On the iOS 26 simulator the default
+        // appearance otherwise stays a bright platter even when the window
+        // trait is dark. A material blur preserves the live backdrop and the
+        // native selection morphing while matching the approved dark dock.
+        if #available(iOS 13.0, *) {
+            let appearance = UITabBarAppearance()
+            appearance.configureWithTransparentBackground()
+            appearance.backgroundEffect = UIBlurEffect(style: .systemMaterialDark)
+            appearance.backgroundColor = UIColor(red: 10 / 255, green: 13 / 255, blue: 18 / 255, alpha: 0.84)
+            appearance.shadowColor = .clear
+            appearance.stackedLayoutAppearance.normal.iconColor = .white
+            appearance.stackedLayoutAppearance.normal.titleTextAttributes = [.foregroundColor: UIColor.white]
+            appearance.stackedLayoutAppearance.selected.iconColor = UIColor(red: 36 / 255, green: 166 / 255, blue: 248 / 255, alpha: 1)
+            appearance.stackedLayoutAppearance.selected.titleTextAttributes = [.foregroundColor: UIColor(red: 91 / 255, green: 190 / 255, blue: 255 / 255, alpha: 1)]
+            dock.standardAppearance = appearance
+            dock.scrollEdgeAppearance = appearance
+        }
         updateSelection()
         updateVisibility()
     }

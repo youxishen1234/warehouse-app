@@ -93,3 +93,8 @@ Build 117 reached the native WebView but remained on the guest-login boot
 overlay in the offline simulator fixture, so the page-count handshake failed.
 The fixture now seeds only its own local WebView session before the same real
 page and navigation checks. This does not change production authentication.
+
+Build 118 passed native page and gesture acceptance but the actual compositor
+image still rendered a bright tab-bar platter (luminance 235.5). Keep UIKit's
+native tabs and gestures, with a dark system material backing and native item
+selection colors; the image gate must pass before an IPA is published.
