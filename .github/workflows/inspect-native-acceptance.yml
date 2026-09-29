@@ -13,7 +13,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh run download 36521694283 --repo "$GITHUB_REPOSITORY" --name native-dock-verification --dir diagnostic
+          gh run download 36523525354 --repo "$GITHUB_REPOSITORY" --name native-dock-verification --dir diagnostic
           python3 -m pip install --quiet Pillow
           python3 - <<'PY'
           import json, pathlib, base64, io
@@ -31,4 +31,16 @@ jobs:
               payload = json.dumps({'name':source.stem, 'base64':base64.b64encode(data.getvalue()).decode()})
               assert len(payload) < 3900, len(payload)
               print('::notice title=Native screenshot::' + payload)
+          PY
+      - name: Inspect failed native stage
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run view 36523525354 --repo "$GITHUB_REPOSITORY" --log-failed > failure.log
+          python3 - <<'PY'
+          import pathlib
+          content = pathlib.Path('failure.log').read_text()[-3700:]
+          escaped = content.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print('::notice title=Build failure detail::' + escaped)
           PY
