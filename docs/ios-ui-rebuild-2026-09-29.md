@@ -82,3 +82,9 @@ tab hosts dark, apply the light override only to the business WebView, and set
 UIKit's black bar style. A compositor-image luminance check now blocks light
 dock regressions, instead of trusting the trait flag alone. Final marketing
 version is 1.1.4; the compact dock preview is available in CI annotations.
+
+Build 116 passed native navigation, then failed installing Pillow into the
+Homebrew-managed Python environment. Use an isolated virtual environment.
+Its compositor image also remained light: keep the entire native hierarchy
+and window dark, and use CSS color-scheme: light for business form controls.
+The actual screenshot gate remains mandatory before publishing.

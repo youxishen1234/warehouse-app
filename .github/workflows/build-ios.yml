@@ -40,8 +40,9 @@ jobs:
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath release/ios-simulator CODE_SIGNING_ALLOWED=NO build > release-simulator.log 2>&1 || { tail -150 release-simulator.log; exit 1; }
           bash scripts/ios-simulator-smoke.sh release/ios-simulator/Build/Products/Debug-iphonesimulator/App.app
-          python3 -m pip install --quiet Pillow
-          python3 scripts/verify-native-dock-image.py release/ios-smoke
+          python3 -m venv "$RUNNER_TEMP/native-dock-image-venv"
+          "$RUNNER_TEMP/native-dock-image-venv/bin/python" -m pip install --quiet Pillow
+          "$RUNNER_TEMP/native-dock-image-venv/bin/python" scripts/verify-native-dock-image.py release/ios-smoke
       - name: Upload simulator verification
         if: always()
         uses: actions/upload-artifact@v4

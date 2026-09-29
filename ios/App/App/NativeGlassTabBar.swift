@@ -38,7 +38,8 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemBackground
+        overrideUserInterfaceStyle = .dark
+        view.backgroundColor = .white
         view.accessibilityIdentifier = "warehouse.native.container"
         bridgeController.onBridgeLoaded = { [weak self] webView in self?.installMessaging(on: webView) }
         installDock()
@@ -56,6 +57,10 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        // iOS 26's detached glass compositor also reads the window's traits.
+        // A dark tab-bar trait alone still produces a light platter. Keep the
+        // native hierarchy consistent; the web pages own their light surfaces.
+        view.window?.overrideUserInterfaceStyle = .dark
         publishCapability()
         if ProcessInfo.processInfo.arguments.contains("--native-dock-smoke"), !smokeStarted {
             smokeStarted = true
@@ -73,10 +78,10 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     }
 
     private func installDock() {
-        // Apply the approved dark appearance to the whole tab controller so
-        // its native material inherits it. Business pages retain light fields.
+        // Keep the native hierarchy dark, including the bridge controller.
+        // A nested light trait leaks into the system glass compositor.
         tabsController.overrideUserInterfaceStyle = .dark
-        bridgeController.overrideUserInterfaceStyle = .light
+        bridgeController.overrideUserInterfaceStyle = .dark
         hosts = routes.indices.map { index in
             let host = UIViewController()
             host.overrideUserInterfaceStyle = .dark
