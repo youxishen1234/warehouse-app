@@ -24,7 +24,16 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     private var keyboardObservers: [NSObjectProtocol] = []
     private var smokeStarted = false
     private var nativeGlass = false
+    private var smokeTrace: [String] = []
     private var dock: UITabBar { tabsController.tabBar }
+
+    private func traceSmoke(_ message: String) {
+        guard ProcessInfo.processInfo.arguments.contains("--native-dock-smoke") else { return }
+        let entry = "[NativeDock] \(message)"
+        smokeTrace.append(entry)
+        if smokeTrace.count > 100 { smokeTrace.removeFirst() }
+        print(entry)
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -188,6 +197,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
 
     private func requestTab(_ index: Int) {
         guard webReady, routes.indices.contains(index) else { return }
+        traceSmoke("request index=\(index) selected=\(selectedIndex) UIKit=\(tabsController.selectedIndex)")
         requestSequence += 1
         let sequence = requestSequence
         pendingIndex = index
@@ -199,6 +209,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         bridgeController.webView?.evaluateJavaScript(
             "var e=new CustomEvent('sg-native-tab',{detail:'\(routes[index])'});e.requestId=\(sequence);window.dispatchEvent(e);"
         ) { [weak self] _, error in
+            self?.traceSmoke("dispatch sequence=\(sequence) error=\(error?.localizedDescription ?? "none")")
             if error != nil { self?.cancelSelection(sequence) }
         }
         let timeout = DispatchWorkItem { [weak self] in self?.cancelSelection(sequence) }
@@ -208,6 +219,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
 
     private func cancelSelection(_ sequence: Int) {
         guard requestSequence == sequence, pendingIndex != nil else { return }
+        traceSmoke("cancel sequence=\(sequence) pending=\(pendingIndex ?? -1) selected=\(selectedIndex)")
         pendingIndex = nil
         selectionTimeout?.cancel()
         updateSelection()
@@ -281,6 +293,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.name == "nativeTabSelected", message.frameInfo.isMainFrame,
               let state = message.body as? [String: Any], let route = state["route"] as? String else { return }
+        traceSmoke("state route=\(route) request=\(String(describing: state["requestId"])) failed=\(String(describing: state["navigationFailed"])) pending=\(pendingIndex ?? -1) sequence=\(requestSequence)")
         webReady = state["ready"] as? Bool ?? false
         modalVisible = state["modal"] as? Bool ?? false
         if let pending = pendingIndex {
@@ -305,6 +318,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
 
     // Invoked by the simulator job against the real storyboard and WebView.
     private func runSmokeTest(step: Int, attempt: Int) {
+        if attempt == 0 { traceSmoke("step=\(step) webReady=\(webReady) selected=\(selectedIndex) UIKit=\(tabsController.selectedIndex)") }
         guard attempt < 300 else { finishSmokeTest("WebView did not acknowledge navigation"); return }
         let expected = step == routes.count + 2 ? 3 : (step < routes.count ? step : 0)
         guard webReady, selectedIndex == expected else {
@@ -362,6 +376,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
 
     private func finishSmokeTest(_ error: String?) {
         var result: [String: Any] = ["success": error == nil, "error": error ?? "",
+                                    "trace": smokeTrace,
                                     "controller": String(describing: type(of: self)),
                                     "material": nativeGlass ? "system-liquid-glass" : "web-glass",
                                     "selectedIndex": selectedIndex,
@@ -370,7 +385,8 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         result["url"] = bridgeController.webView?.url?.absoluteString ?? "nil"
         bridgeController.webView?.evaluateJavaScript("""
           JSON.stringify({url:location.href, state:document.readyState, native:window.__sgNativeDock,
-          errors:window.__sgStartupErrors, html:document.documentElement.outerHTML.slice(0,14000)})
+          errors:window.__sgStartupErrors, visibility:document.visibilityState,
+          text:document.body.innerText.slice(0,5000)})
         """) { value, jsError in
             result["webState"] = value as? String ?? jsError?.localizedDescription ?? "no JS result"
             let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
