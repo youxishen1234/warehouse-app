@@ -2,14 +2,9 @@ import Taro from '@tarojs/taro';
 export const TEAM_ORIGIN = 'http://152.136.100.200';
 export const PUBLIC_ORIGIN = 'https://youxishen.online';
 export function sessionOrigin(): string {
-  try {
-    const cap = (globalThis as any).Capacitor;
-    // Native iOS must use the public HTTPS endpoint first. The raw HTTP IP is
-    // only a fallback because carrier/Wi-Fi networks commonly block it.
-    const native = cap?.isNativePlatform?.() || (typeof location !== 'undefined' && location.protocol === 'capacitor:');
-    if (native) return PUBLIC_ORIGIN;
-  } catch (e) { /* browser runtime */ }
-  return typeof location !== 'undefined' && location.protocol === 'https:' ? PUBLIC_ORIGIN : TEAM_ORIGIN;
+  // The public HTTPS endpoint is the canonical route for every client,
+  // including Capacitor iOS. The raw HTTP IP is only a last-resort fallback.
+  return PUBLIC_ORIGIN;
 }
 export type Member = { id: string; username: string; role: 'admin' | 'operator' | 'viewer'; disabled?: boolean };
 type Session = { token: string; user: Member };
