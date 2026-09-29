@@ -25,6 +25,23 @@ payload = json.dumps({'luminance':round(luminance, 1),
                       'base64':base64.b64encode(buffer.getvalue()).decode()})
 assert len(payload) < 3900, 'Dock preview exceeds CI annotation limit'
 print('::notice title=Native dock appearance::' + payload)
+
+# A dark background alone is not acceptance: an effect layered above the
+# system tab content also darkens its icons. Require a visible bright icon
+# inside each tab, excluding the platter edges and its specular highlights.
+icon_checks = []
+for center in (.185, .396, .607, .818):
+    icon = image.crop((int(image.width * center - 10 * scale),
+                       int((frame['y'] + 12) * scale),
+                       int(image.width * center + 10 * scale),
+                       int((frame['y'] + 35) * scale)))
+    pixels = list(icon.getdata())
+    bright = sum(max(pixel) >= 150 for pixel in pixels)
+    icon_checks.append(bright / max(1, len(pixels)))
+print('Native dock bright-icon fractions:', icon_checks)
+if any(fraction < .035 for fraction in icon_checks):
+    print('::error title=Native dock readability::Tab icons lack visible foreground contrast')
+    sys.exit(1)
 if luminance >= 180:
     for offset in range(0, len(result.get('nativeHierarchy', [])), 20):
         detail = '\n'.join(result['nativeHierarchy'][offset:offset + 20])

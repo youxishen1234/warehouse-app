@@ -94,7 +94,7 @@ overlay in the offline simulator fixture, so the page-count handshake failed.
 The fixture now seeds only its own local WebView session before the same real
 page and navigation checks. This does not change production authentication.
 
-Build 118 passed native page and gesture acceptance but the actual compositor
+Build 118 passed native page and programmatic navigation acceptance but the actual compositor
 image still rendered a bright tab-bar platter (luminance 235.5). Keep UIKit's
 native tabs and gestures, with a dark system material backing and native item
 selection colors; the image gate must pass before an IPA is published.
@@ -103,4 +103,15 @@ Build 120 showed that UITabBarAppearance alone does not tint the detached
 iOS 26 tab-bar platter. The native dock now layers an interactive UIKit
 UIGlassEffect with a dark tint behind the real tab content. This keeps the
 system tab controller and its gestures while making the compositor output
-match the approved dark glass treatment.
+use a dark glass treatment. Actual appearance still requires screenshot review.
+
+Build 121 exposed a controller-owned UITabBar constraint exception. Build 122
+uses a frame-based decoration and passes native navigation plus the dark
+background gate. Its server IPA is 1.1.4/122 (8,598,749 bytes), with SHA256
+`d5e10c574201997029c5c603ac3153a339bd31810240a2c333761cffaa033d10`;
+the downloaded bytes match server metadata and the GitHub release digest.
+However, manual screenshot review found dim icons: the decoration was above
+the system platter. This is not final visual acceptance. Move the decoration
+below system content and add a per-tab bright-foreground screenshot gate.
+The follow-up must pass simulator compilation, navigation, readability and
+manual screenshot review before it is considered complete.

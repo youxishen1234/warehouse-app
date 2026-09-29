@@ -171,8 +171,10 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         // decoration and never remove/reinstall constraints on that system bar.
         glass.frame = dock.bounds.insetBy(dx: 9, dy: 8)
         glass.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        let index = min(1, dock.subviews.count)
-        dock.insertSubview(glass, at: index)
+        // A visual-effect view samples and composites everything behind it.
+        // It must stay below the system platter, including its icons/labels;
+        // inserting above that platter darkens the actual tab content too.
+        dock.insertSubview(glass, at: 0)
     }
 
     // Same 24-unit line drawings as the web assets, rendered as tintable images.
