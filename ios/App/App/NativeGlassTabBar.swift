@@ -274,6 +274,13 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
               window.__sgStartupErrors.push(String(e.message || (e.target && e.target.src) || 'resource error'));
             }, true);
             window.addEventListener('unhandledrejection', function(e) { window.__sgStartupErrors.push(String(e.reason)); });
+            // The smoke process is intentionally offline. Seed only its
+            // isolated WebView storage so TeamAccess renders the real pages
+            // without waiting on a network login before testing navigation.
+            try {
+              localStorage.setItem('warehouse_session_v1', JSON.stringify({token:'simulator',user:{id:'1',username:'preview',role:'viewer'}}));
+              localStorage.setItem('warehouse_device_id_v1', 'simulator');
+            } catch (_) {}
             const realFetch = window.fetch.bind(window);
             window.fetch = function(input, options) {
               const url = typeof input === 'string' ? input : input.url;

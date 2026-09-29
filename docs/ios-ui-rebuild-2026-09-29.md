@@ -88,3 +88,8 @@ Homebrew-managed Python environment. Use an isolated virtual environment.
 Its compositor image also remained light: keep the entire native hierarchy
 and window dark, and use CSS color-scheme: light for business form controls.
 The actual screenshot gate remains mandatory before publishing.
+
+Build 117 reached the native WebView but remained on the guest-login boot
+overlay in the offline simulator fixture, so the page-count handshake failed.
+The fixture now seeds only its own local WebView session before the same real
+page and navigation checks. This does not change production authentication.
