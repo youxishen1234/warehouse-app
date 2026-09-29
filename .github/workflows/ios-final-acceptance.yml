@@ -80,6 +80,7 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/dock-image-venv"
           "$RUNNER_TEMP/dock-image-venv/bin/python" -m pip install --quiet Pillow
           "$RUNNER_TEMP/dock-image-venv/bin/python" scripts/test-native-dock-image.py
+          "$RUNNER_TEMP/dock-image-venv/bin/python" scripts/test-ios-ui-evidence.py
       - name: Capture proposed dock and diagnostic reference
         id: appearance
         timeout-minutes: 20
@@ -99,6 +100,7 @@ jobs:
         timeout-minutes: 18
         run: |
           bash scripts/run-ios-ui-tests.sh "$(cat release/ios-final-acceptance/device-id.txt)" release/ios-acceptance-derived release/ios-final-acceptance/ui-tests current
+          "$RUNNER_TEMP/dock-image-venv/bin/python" scripts/verify-ios-ui-evidence.py release/ios-final-acceptance/ui-tests --expected-source ios/App/AppUITests/NativeDockInteractionTests.swift > release/ios-final-acceptance/ui-tests/evidence-check.json || { cat release/ios-final-acceptance/ui-tests/evidence-check.json; exit 1; }
       - name: Collect original evidence
         if: always()
         uses: actions/upload-artifact@v4
