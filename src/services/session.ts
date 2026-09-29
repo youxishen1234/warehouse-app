@@ -6,7 +6,8 @@ export function sessionOrigin(): string {
     const cap = (globalThis as any).Capacitor;
     // Native iOS must use the public HTTPS endpoint first. The raw HTTP IP is
     // only a fallback because carrier/Wi-Fi networks commonly block it.
-    if (cap?.isNativePlatform?.()) return PUBLIC_ORIGIN;
+    const native = cap?.isNativePlatform?.() || (typeof location !== 'undefined' && location.protocol === 'capacitor:');
+    if (native) return PUBLIC_ORIGIN;
   } catch (e) { /* browser runtime */ }
   return typeof location !== 'undefined' && location.protocol === 'https:' ? PUBLIC_ORIGIN : TEAM_ORIGIN;
 }
