@@ -56,6 +56,8 @@ Keep the shared hook's dependency-driven filtering behavior unchanged.
   draft form is edited.
 
 Native compilation and simulator acceptance run in the GitHub iOS workflow.
+The release gate requires an iOS 26+ runtime and a system-liquid-glass result;
+an older runtime passing with web-glass does not count as native acceptance.
 The simulator also checks rapid native requests after a WebView reload.
 These tests do not establish physical-iPhone finger-gesture acceptance.
 Swift changes require the new IPA; a web hot update alone cannot replace

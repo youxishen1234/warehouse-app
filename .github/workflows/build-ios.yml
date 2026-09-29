@@ -17,6 +17,12 @@ jobs:
           xcodebuild -version
       - name: Install CocoaPods
         run: sudo gem install cocoapods
+      - name: Ensure native Liquid Glass simulator runtime
+        run: |
+          set -euo pipefail
+          if ! xcrun simctl list runtimes -j | python3 -c 'import json,sys; runtimes=json.load(sys.stdin)["runtimes"]; sys.exit(0 if any(r.get("isAvailable") and r.get("name","").startswith("iOS") and int(r.get("version","0").split(".")[0]) >= 26 for r in runtimes) else 1)'; then
+            xcodebuild -downloadPlatform iOS
+          fi
       - name: Install npm dependencies
         run: npm install --legacy-peer-deps
       - name: Build current web assets
