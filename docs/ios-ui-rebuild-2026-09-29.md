@@ -1,4 +1,4 @@
-# iOS 1.1.2 UI and tab navigation repair
+# iOS 1.1.3 UI and tab navigation repair
 
 ## User-visible changes
 
@@ -62,3 +62,18 @@ The simulator also checks rapid native requests after a WebView reload.
 These tests do not establish physical-iPhone finger-gesture acceptance.
 Swift changes require the new IPA; a web hot update alone cannot replace
 the installed native controller.
+
+## Native iOS 26 regression found during acceptance
+
+Builds 113 and 114 failed the native gate. Build 114's trace proves that
+setting UITabBarController.selectedIndex programmatically reenters the new
+didSelectTab delegate. One inbound selection generated requests 1 and 2,
+then dispatched 2 before 1; the web layer correctly acknowledged the last
+request (1), while native was waiting for 2 and reverted after its timeout.
+Guard programmatic assignments so only user selections initiate requests.
+Keep UIKit's native gesture recognizers and material. Apply the approved
+dark appearance at the tab-controller boundary, with light business hosts.
+
+The simulator gate exercises all four real pages, reload, rapid queued
+selection and return home; screenshots of each accepted page are archived.
+The final IPA uses marketing version 1.1.3 to distinguish it from Build 112.

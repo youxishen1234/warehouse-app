@@ -14,6 +14,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     private var hosts: [UIViewController] = []
     private var bridgeProxy: WeakTabMessageHandler?
     private var selectedIndex = 0
+    private var applyingSelection = false
     private var pendingIndex: Int?
     private var requestSequence = 0
     private var selectionTimeout: DispatchWorkItem?
@@ -72,8 +73,12 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     }
 
     private func installDock() {
+        // Apply the approved dark appearance to the whole tab controller so
+        // its native material inherits it. Business pages retain light fields.
+        tabsController.overrideUserInterfaceStyle = .dark
         hosts = routes.indices.map { index in
             let host = UIViewController()
+            host.overrideUserInterfaceStyle = .light
             host.view.backgroundColor = .clear
             host.tabBarItem = UITabBarItem(title: titles[index], image: tabImages[index], tag: index)
             host.tabBarItem.accessibilityIdentifier = "warehouse.tab.\(index)"
@@ -185,10 +190,18 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     }
 
     private func updateSelection() {
-        if tabsController.selectedIndex != selectedIndex {
-            tabsController.selectedIndex = selectedIndex
-        }
+        applyNativeSelection(selectedIndex)
         mountBridge(in: hosts[selectedIndex])
+    }
+
+    private func applyNativeSelection(_ index: Int) {
+        guard tabsController.selectedIndex != index else { return }
+        // UITab's delegate also fires for a programmatic selectedIndex change.
+        // Without this guard, one request allocates a second sequence inside
+        // the setter, then sends the older sequence last and loses its ACK.
+        applyingSelection = true
+        defer { applyingSelection = false }
+        tabsController.selectedIndex = index
     }
 
     private func updateVisibility() {
@@ -202,7 +215,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         let sequence = requestSequence
         pendingIndex = index
         selectionTimeout?.cancel()
-        if tabsController.selectedIndex != index { tabsController.selectedIndex = index }
+        applyNativeSelection(index)
         mountBridge(in: hosts[index])
         // Retain the string detail for installed web bundles. Newer bundles
         // return requestId as well, so an older in-flight route cannot win.
@@ -237,7 +250,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
 
     @available(iOS 18.0, *)
     func tabBarController(_ tabBarController: UITabBarController, didSelectTab selectedTab: UITab, previousTab: UITab?) {
-        guard let index = routes.firstIndex(of: selectedTab.identifier) else { return }
+        guard !applyingSelection, let index = routes.firstIndex(of: selectedTab.identifier) else { return }
         requestTab(index)
     }
     #endif
@@ -321,7 +334,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         if attempt == 0 { traceSmoke("step=\(step) webReady=\(webReady) selected=\(selectedIndex) UIKit=\(tabsController.selectedIndex)") }
         guard attempt < 300 else { finishSmokeTest("WebView did not acknowledge navigation"); return }
         let expected = step == routes.count + 2 ? 3 : (step < routes.count ? step : 0)
-        guard webReady, selectedIndex == expected else {
+        guard webReady, pendingIndex == nil, selectedIndex == expected else {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.runSmokeTest(step: step, attempt: attempt + 1) }
             return
         }
@@ -351,6 +364,13 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
                 self.finishSmokeTest("Web content or dock handshake failed")
                 return
             }
+            if step < self.routes.count {
+                let snapshot = UIGraphicsImageRenderer(bounds: self.view.bounds).image { _ in
+                    self.view.drawHierarchy(in: self.view.bounds, afterScreenUpdates: true)
+                }
+                let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                try? snapshot.pngData()?.write(to: directory.appendingPathComponent("native-dock-step-\(step).png"), options: .atomic)
+            }
             if step < self.routes.count - 1 {
                 self.requestTab(step + 1)
             } else if step == self.routes.count - 1 {
@@ -379,6 +399,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
                                     "trace": smokeTrace,
                                     "controller": String(describing: type(of: self)),
                                     "material": nativeGlass ? "system-liquid-glass" : "web-glass",
+                                    "dockStyle": dock.traitCollection.userInterfaceStyle.rawValue,
                                     "selectedIndex": selectedIndex,
                                     "dockFrame": ["x": dock.frame.minX, "y": dock.frame.minY,
                                                   "width": dock.frame.width, "height": dock.frame.height]]

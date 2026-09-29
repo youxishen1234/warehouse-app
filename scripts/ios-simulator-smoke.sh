@@ -28,8 +28,21 @@ mkdir -p release/ios-smoke
 for attempt in {1..180}; do
   if [ -f "$APP_DATA/Documents/native-dock-smoke.json" ]; then
     cp "$APP_DATA/Documents/native-dock-smoke.json" release/ios-smoke/result.json
+    for snapshot in "$APP_DATA"/Documents/native-dock-step-*.png; do
+      [ ! -f "$snapshot" ] || cp "$snapshot" release/ios-smoke/
+    done
     xcrun simctl io "$DEVICE_ID" screenshot release/ios-smoke/simulator.png
-    ruby -rjson -e 'j=JSON.parse(File.read(ARGV[0])); puts JSON.pretty_generate(j); abort "Native dock smoke failed" unless j["success"]; abort "Expected system Liquid Glass, not web fallback" unless j["material"] == "system-liquid-glass"' release/ios-smoke/result.json
+    python3 - release/ios-smoke/result.json <<'PY'
+import json, sys
+result = json.load(open(sys.argv[1]))
+print(json.dumps(result, ensure_ascii=False, indent=2))
+valid = result.get('success') is True and result.get('material') == 'system-liquid-glass'
+if not valid:
+    for line in [result.get('error') or 'Expected system Liquid Glass'] + result.get('trace', []):
+        escaped = line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+        print('::error title=Native dock acceptance::' + escaped)
+    sys.exit(1)
+PY
     exit 0
   fi
   sleep 2
