@@ -140,7 +140,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
             appearance.stackedLayoutAppearance.selected.iconColor = UIColor(red: 36 / 255, green: 166 / 255, blue: 248 / 255, alpha: 1)
             appearance.stackedLayoutAppearance.selected.titleTextAttributes = [.foregroundColor: UIColor(red: 91 / 255, green: 190 / 255, blue: 255 / 255, alpha: 1)]
             dock.standardAppearance = appearance
-            dock.scrollEdgeAppearance = appearance
+            if #available(iOS 15.0, *) { dock.scrollEdgeAppearance = appearance }
         }
         updateSelection()
         updateVisibility()
