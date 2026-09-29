@@ -13,13 +13,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh run download 36523525354 --repo "$GITHUB_REPOSITORY" --name native-dock-verification --dir diagnostic
+          gh run download 36524643351 --repo "$GITHUB_REPOSITORY" --name native-dock-verification --dir diagnostic
           python3 -m pip install --quiet Pillow
           python3 - <<'PY'
           import json, pathlib, base64, io
           from PIL import Image
           result = json.loads(next(pathlib.Path('diagnostic').rglob('result.json')).read_text())
-          for line in [result.get('error', '')] + result.get('trace', [])[-1:]:
+          for line in [result.get('error', ''), result.get('webState', ''), json.dumps(result, ensure_ascii=False)[:3000]] + result.get('trace', [])[-12:]:
               escaped = line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
               print('::notice title=Native acceptance::' + escaped)
           for source in pathlib.Path('diagnostic').rglob('simulator.png'):
