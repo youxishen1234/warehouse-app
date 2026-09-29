@@ -156,7 +156,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
 
     private func installDarkGlassOverlay() {
         guard nativeGlass else { return }
-        guard dockBackdrop == nil else { return }
+        guard dockBackdrop == nil else { layoutDockBackdrop(); return }
         let backdrop = UIView()
         backdrop.backgroundColor = UIColor(red: 8 / 255, green: 12 / 255, blue: 18 / 255, alpha: 1)
         backdrop.isUserInteractionEnabled = false
@@ -166,18 +166,16 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     }
 
     private func layoutDockBackdrop() {
-        guard let backdrop = dockBackdrop, let root = tabsController.view else { return }
-        // Glass samples the content behind its controller-owned container.
-        // Put our background there, not among the tab bar's own effect layers.
-        // Traverse ownership using public UIView relationships only; never
-        // modify internal labels, recognizers, traits or constraints.
-        var container: UIView = dock
-        while let parent = container.superview, parent !== root { container = parent }
-        guard container.superview === root else { return }
-        if backdrop.superview !== root { root.insertSubview(backdrop, belowSubview: container) }
+        guard let backdrop = dockBackdrop, let root = bridgeController.view,
+              root.window != nil, dock.window === root.window else { return }
+        // The native platter samples its hosted page, not arbitrary siblings
+        // of the controller's tab container. Keep this app-owned background
+        // inside that page above the WebView, below all native tab content.
+        if backdrop.superview !== root { root.addSubview(backdrop) }
+        root.bringSubviewToFront(backdrop)
         let visibleSurface = dock.subviews.first { !$0.isHidden && $0.bounds.width > dock.bounds.width / 2 }
         let rect = visibleSurface.map { $0.convert($0.bounds, to: root) }
-            ?? dock.convert(dock.bounds.insetBy(dx: 21, dy: 0), to: root)
+            ?? dock.convert(CGRect(x: 21, y: 0, width: max(0, dock.bounds.width - 42), height: 62), to: root)
         backdrop.frame = rect
         backdrop.layer.cornerRadius = rect.height / 2
         backdrop.isHidden = dock.isHidden
@@ -266,6 +264,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
 
     private func updateVisibility() {
         dock.isHidden = !(nativeGlass && webReady && routeIsTab && !keyboardVisible && !modalVisible)
+        layoutDockBackdrop()
         dockBackdrop?.isHidden = dock.isHidden
     }
 

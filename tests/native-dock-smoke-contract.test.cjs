@@ -9,7 +9,8 @@ test('native dock smoke accepts the native/fallback visibility contract', () => 
   assert.match(source, /systemMaterialDark/);
   assert.match(source, /dock\.standardAppearance = appearance/);
   assert.match(source, /dock\.scrollEdgeAppearance = appearance/);
-  assert.match(source, /root\.insertSubview\(backdrop, belowSubview: container\)/);
+  assert.match(source, /let root = bridgeController\.view/);
+  assert.match(source, /root\.addSubview\(backdrop\)/);
   assert.match(source, /backdrop\.isUserInteractionEnabled = false/);
   assert.match(source, /dockBackdrop\?\.isHidden = dock\.isHidden/);
   assert.doesNotMatch(source, /dock\.insertSubview/);
