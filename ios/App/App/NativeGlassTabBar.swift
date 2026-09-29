@@ -26,7 +26,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     private var smokeStarted = false
     private var nativeGlass = false
     private var smokeTrace: [String] = []
-    private let dockGlassOverlayTag = 2601
+    private var dockBackdrop: UIView?
     private var dock: UITabBar { tabsController.tabBar }
 
     private func traceSmoke(_ message: String) {
@@ -75,7 +75,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        dock.subviews.first { $0.tag == dockGlassOverlayTag }?.frame = dock.bounds.insetBy(dx: 9, dy: 8)
+        layoutDockBackdrop()
     }
 
     deinit {
@@ -156,25 +156,31 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
 
     private func installDarkGlassOverlay() {
         guard nativeGlass else { return }
-        guard !dock.subviews.contains(where: { $0.tag == dockGlassOverlayTag }) else { return }
-        guard #available(iOS 26.0, *) else { return }
-        let effect = UIGlassEffect(style: .regular)
-        effect.isInteractive = true
-        effect.tintColor = UIColor(red: 8 / 255, green: 12 / 255, blue: 18 / 255, alpha: 0.84)
-        let glass = UIVisualEffectView(effect: effect)
-        glass.tag = dockGlassOverlayTag
-        glass.isUserInteractionEnabled = false
-        glass.layer.cornerRadius = 28
-        glass.layer.cornerCurve = .continuous
-        glass.clipsToBounds = true
-        // The tab controller owns the bar's constraints. Use a frame for our
-        // decoration and never remove/reinstall constraints on that system bar.
-        glass.frame = dock.bounds.insetBy(dx: 9, dy: 8)
-        glass.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        // A visual-effect view samples and composites everything behind it.
-        // It must stay below the system platter, including its icons/labels;
-        // inserting above that platter darkens the actual tab content too.
-        dock.insertSubview(glass, at: 0)
+        guard dockBackdrop == nil else { return }
+        let backdrop = UIView()
+        backdrop.backgroundColor = UIColor(red: 8 / 255, green: 12 / 255, blue: 18 / 255, alpha: 1)
+        backdrop.isUserInteractionEnabled = false
+        backdrop.layer.cornerCurve = .continuous
+        dockBackdrop = backdrop
+        layoutDockBackdrop()
+    }
+
+    private func layoutDockBackdrop() {
+        guard let backdrop = dockBackdrop, let root = tabsController.view else { return }
+        // Glass samples the content behind its controller-owned container.
+        // Put our background there, not among the tab bar's own effect layers.
+        // Traverse ownership using public UIView relationships only; never
+        // modify internal labels, recognizers, traits or constraints.
+        var container: UIView = dock
+        while let parent = container.superview, parent !== root { container = parent }
+        guard container.superview === root else { return }
+        if backdrop.superview !== root { root.insertSubview(backdrop, belowSubview: container) }
+        let visibleSurface = dock.subviews.first { !$0.isHidden && $0.bounds.width > dock.bounds.width / 2 }
+        let rect = visibleSurface.map { $0.convert($0.bounds, to: root) }
+            ?? dock.convert(dock.bounds.insetBy(dx: 21, dy: 0), to: root)
+        backdrop.frame = rect
+        backdrop.layer.cornerRadius = rect.height / 2
+        backdrop.isHidden = dock.isHidden
     }
 
     // Same 24-unit line drawings as the web assets, rendered as tintable images.
@@ -260,6 +266,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
 
     private func updateVisibility() {
         dock.isHidden = !(nativeGlass && webReady && routeIsTab && !keyboardVisible && !modalVisible)
+        dockBackdrop?.isHidden = dock.isHidden
     }
 
     private func requestTab(_ index: Int) {

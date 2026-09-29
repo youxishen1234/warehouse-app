@@ -115,3 +115,11 @@ the system platter. This is not final visual acceptance. Move the decoration
 below system content and add a per-tab bright-foreground screenshot gate.
 The follow-up must pass simulator compilation, navigation, readability and
 manual screenshot review before it is considered complete.
+
+Build 123 was blocked before upload: placing a backdrop inside the tab bar
+but below its platter restored readable icons but left the native platter
+light (235.5 luminance). The next correction places an app-owned,
+non-interactive dark background in the page-content layer below the native
+tab container. UIKit continues to own the only glass effect and all gestures.
+Backdrop visibility follows keyboard, modal and non-tab route state.
+This correction still requires the real simulator gates and visual review.
