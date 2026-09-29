@@ -19,7 +19,7 @@ jobs:
           import json, pathlib, base64, io
           from PIL import Image
           result = json.loads(next(pathlib.Path('diagnostic').rglob('result.json')).read_text())
-          for line in [result.get('error', '')] + result.get('trace', []):
+          for line in [result.get('error', '')] + result.get('trace', [])[-1:]:
               escaped = line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
               print('::notice title=Native acceptance::' + escaped)
           for source in pathlib.Path('diagnostic').rglob('*.png'):
