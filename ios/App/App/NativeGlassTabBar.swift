@@ -34,7 +34,9 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     private var smokeStarted = false
     private var nativeGlass = false
     private var smokeTrace: [String] = []
-    private var dockBackdrop: UIView?
+    private var lastWebBackdropState = ""
+    private var appliedWebBackdropState = ""
+    private var webBackdropFrame: CGRect?
     private var acknowledgedRoute = ""
     private var navigationStateLabel: UILabel?
     private var diagnosticSurface: UIView?
@@ -44,7 +46,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         #if DEBUG
         guard nativeAcceptanceEnabled else { return "current" }
         let value = ProcessInfo.processInfo.arguments.first { $0.hasPrefix("--dock-variant=") }?.split(separator: "=").last.map(String.init) ?? "current"
-        return ["current", "system", "edge-off", "web-dark", "native-white", "native-dark"].contains(value) ? value : "current"
+        return ["current", "web-pill", "system", "edge-off", "web-dark", "native-white", "native-dark"].contains(value) ? value : "current"
         #else
         return "current"
         #endif
@@ -99,7 +101,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         // A dark tab-bar trait alone still produces a light platter. Keep the
         // native hierarchy consistent; the web pages own their light surfaces.
         view.window?.overrideUserInterfaceStyle = .dark
-        installDarkGlassOverlay()
+        configureWebBackdrop()
         publishCapability()
         if nativeAcceptanceEnabled && ProcessInfo.processInfo.arguments.contains("--native-dock-smoke"), !smokeStarted {
             smokeStarted = true
@@ -112,9 +114,18 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        layoutDockBackdrop()
+        updateWebBackdrop()
         diagnosticSurface?.frame = bridgeController.view.bounds
         if let label = navigationStateLabel { view.bringSubviewToFront(label) }
+    }
+
+    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+        super.viewWillTransition(to: size, with: coordinator)
+        coordinator.animate(alongsideTransition: nil) { [weak self] _ in
+            // UIKit may lay out its floating bar after the parent's layout pass.
+            self?.view.layoutIfNeeded()
+            self?.updateWebBackdrop(force: true)
+        }
     }
 
     deinit {
@@ -170,54 +181,94 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         dock.barStyle = .black
         dock.tintColor = UIColor(red: 36 / 255, green: 166 / 255, blue: 248 / 255, alpha: 1)
         dock.unselectedItemTintColor = .white
-        // Keep UIKit's native tab/gesture machinery, but give the system bar
-        // an explicit dark glass backing. On the iOS 26 simulator the default
-        // appearance otherwise stays a bright platter even when the window
-        // trait is dark. A material blur preserves the live backdrop and the
-        // native selection morphing while matching the approved dark dock.
-        if dockVariant == "current", #available(iOS 13.0, *) {
-            let appearance = UITabBarAppearance()
-            appearance.configureWithTransparentBackground()
-            appearance.backgroundEffect = UIBlurEffect(style: .systemMaterialDark)
-            appearance.backgroundColor = UIColor(red: 10 / 255, green: 13 / 255, blue: 18 / 255, alpha: 0.84)
-            appearance.shadowColor = .clear
-            appearance.stackedLayoutAppearance.normal.iconColor = .white
-            appearance.stackedLayoutAppearance.normal.titleTextAttributes = [.foregroundColor: UIColor.white]
-            appearance.stackedLayoutAppearance.selected.iconColor = UIColor(red: 36 / 255, green: 166 / 255, blue: 248 / 255, alpha: 1)
-            appearance.stackedLayoutAppearance.selected.titleTextAttributes = [.foregroundColor: UIColor(red: 91 / 255, green: 190 / 255, blue: 255 / 255, alpha: 1)]
-            dock.standardAppearance = appearance
-            if #available(iOS 15.0, *) { dock.scrollEdgeAppearance = appearance }
-        }
-        installDarkGlassOverlay()
+        // Keep UIKit's own glass and selection content. The app supplies only
+        // the sampled DOM color beneath the visible platter, never an overlay
+        // on native icons or an additional native visual effect.
+        configureWebBackdrop()
         updateSelection()
         updateVisibility()
     }
 
-    private func installDarkGlassOverlay() {
-        guard nativeGlass, dockVariant == "current" else { return }
-        guard dockBackdrop == nil else { layoutDockBackdrop(); return }
-        let backdrop = UIView()
-        backdrop.backgroundColor = UIColor(red: 8 / 255, green: 12 / 255, blue: 18 / 255, alpha: 1)
-        backdrop.isUserInteractionEnabled = false
-        backdrop.layer.cornerCurve = .continuous
-        dockBackdrop = backdrop
-        layoutDockBackdrop()
+    private var usesWebBackdrop: Bool { nativeGlass && ["current", "web-pill"].contains(dockVariant) }
+
+    private func configureWebBackdrop() {
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, *), usesWebBackdrop {
+            bridgeController.webView?.scrollView.bottomEdgeEffect.isHidden = true
+        }
+        #endif
+        updateWebBackdrop()
     }
 
-    private func layoutDockBackdrop() {
-        guard let backdrop = dockBackdrop, let root = bridgeController.view,
-              root.window != nil, dock.window === root.window else { return }
-        // The native platter samples its hosted page, not arbitrary siblings
-        // of the controller's tab container. Keep this app-owned background
-        // inside that page above the WebView, below all native tab content.
-        if backdrop.superview !== root { root.addSubview(backdrop) }
-        root.bringSubviewToFront(backdrop)
-        let visibleSurface = dock.subviews.first { !$0.isHidden && $0.bounds.width > dock.bounds.width / 2 }
-        let rect = visibleSurface.map { $0.convert($0.bounds, to: root) }
-            ?? dock.convert(CGRect(x: 21, y: 0, width: max(0, dock.bounds.width - 42), height: 62), to: root)
-        backdrop.frame = rect
-        backdrop.layer.cornerRadius = rect.height / 2
-        backdrop.isHidden = dock.isHidden
+    // UIKit does not expose the floating platter's rectangle as a property.
+    // Observe public UIView geometry only; never name, modify or reparent its
+    // private classes. Reject ambiguous/non-platter geometry rather than draw
+    // an estimated solid strip across page content.
+    private func visiblePlatterFrame(in webView: WKWebView) -> CGRect? {
+        let candidates = dock.subviews.filter {
+            !$0.isHidden && $0.alpha > 0.01 && $0.bounds.width > dock.bounds.width / 2
+                && $0.bounds.width < dock.bounds.width && $0.bounds.height >= 40
+                && $0.bounds.height <= dock.bounds.height
+        }
+        guard candidates.count == 1, let surface = candidates.first else { return nil }
+        let rectangle = surface.convert(surface.bounds, to: webView)
+        guard rectangle.minX >= 0, rectangle.minY >= 0,
+              rectangle.maxX <= webView.bounds.width + 1,
+              rectangle.maxY <= webView.bounds.height + 1 else { return nil }
+        return rectangle
+    }
+
+    private func updateWebBackdrop(force: Bool = false) {
+        guard usesWebBackdrop, let webView = bridgeController.webView,
+              webView.bounds.width > 0, webView.bounds.height > 0 else { return }
+        let sameWindow = webView.window != nil && webView.window === dock.window
+        let rectangle = sameWindow ? visiblePlatterFrame(in: webView) : nil
+        webBackdropFrame = rectangle
+        let frame = rectangle ?? .zero
+        let payload: [String: Any] = [
+            "visible": sameWindow && rectangle != nil && !dock.isHidden && webReady
+                && routeIsTab && !keyboardVisible && !modalVisible,
+            "x": frame.minX, "y": frame.minY, "width": frame.width, "height": frame.height,
+            "viewportWidth": webView.bounds.width, "viewportHeight": webView.bounds.height
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload, options: .sortedKeys),
+              let state = String(data: data, encoding: .utf8), force || state != lastWebBackdropState else { return }
+        lastWebBackdropState = state
+        webView.evaluateJavaScript("window.__sgSetNativeBackdrop ? (window.__sgSetNativeBackdrop(\(state)), true) : false") { [weak self] result, error in
+            guard let self = self, self.lastWebBackdropState == state else { return }
+            if error != nil || result as? Bool != true {
+                self.lastWebBackdropState = ""
+                self.appliedWebBackdropState = ""
+            } else {
+                self.appliedWebBackdropState = state
+            }
+        }
+    }
+
+    private var webBackdropScript: String {
+        return """
+        (function(){
+          var latest=null, frame=0, id='sg-native-dock-backdrop';
+          function draw(){
+            frame=0;
+            var node=document.getElementById(id);
+            if(!node){node=document.createElement('div');node.id=id;node.setAttribute('aria-hidden','true');document.documentElement.appendChild(node);}
+            var visible=latest&&latest.visible;
+            if(!visible){node.style.setProperty('display','none','important');return;}
+            var viewport=window.visualViewport;
+            var scaleX=(viewport?viewport.width:innerWidth)/latest.viewportWidth;
+            var scaleY=scaleX;
+            var x=(viewport?viewport.offsetLeft:0)+latest.x*scaleX;
+            var y=(viewport?viewport.offsetTop:0)+latest.y*scaleY;
+            var width=latest.width*scaleX,height=latest.height*scaleY;
+            node.style.cssText='all:initial!important;position:fixed!important;display:block!important;pointer-events:none!important;user-select:none!important;box-sizing:border-box!important;background:rgb(8,12,18)!important;z-index:2147483646!important;left:'+x+'px!important;top:'+y+'px!important;width:'+width+'px!important;height:'+height+'px!important;border-radius:'+(height/2)+'px!important;';
+          }
+          function schedule(){if(!frame)frame=requestAnimationFrame(draw);}
+          window.__sgSetNativeBackdrop=function(state){latest=state;draw();};
+          window.addEventListener('resize',schedule);
+          if(window.visualViewport){visualViewport.addEventListener('resize',schedule);visualViewport.addEventListener('scroll',schedule);}
+        })();
+        """
     }
 
     // Same 24-unit line drawings as the web assets, rendered as tintable images.
@@ -303,8 +354,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
 
     private func updateVisibility() {
         dock.isHidden = !(nativeGlass && webReady && routeIsTab && !keyboardVisible && !modalVisible)
-        layoutDockBackdrop()
-        dockBackdrop?.isHidden = dock.isHidden
+        updateWebBackdrop()
         updateAcceptanceState()
     }
 
@@ -372,6 +422,10 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         let proxy = WeakTabMessageHandler(self)
         bridgeProxy = proxy
         let controller = webView.configuration.userContentController
+        if usesWebBackdrop {
+            controller.addUserScript(WKUserScript(source: webBackdropScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+            configureWebBackdrop()
+        }
         controller.add(proxy, name: "nativeTabSelected")
         if nativeAcceptanceEnabled {
             controller.addUserScript(WKUserScript(source: """
@@ -491,6 +545,9 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
             updateSelection()
         }
         updateVisibility()
+        // A reload replaces the DOM while its native geometry can be unchanged.
+        // Every accepted JS state republishes the current shape to that document.
+        updateWebBackdrop(force: true)
     }
 
     // Invoked by the simulator job against the real storyboard and WebView.
@@ -605,9 +662,13 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         result["dockFrame"] = rectangle(dock.convert(dock.bounds, to: window))
         result["imageRegions"] = regions
         result["variant"] = dockVariant
+        result["webBackdropFrame"] = webBackdropFrame.map { rectangle($0) } ?? [:]
+        result["webBackdropState"] = lastWebBackdropState
+        result["webBackdropAppliedState"] = appliedWebBackdropState
         result["screenshotReady"] = diagnosticReady && error == nil
         bridgeController.webView?.evaluateJavaScript("""
           JSON.stringify({url:location.href, state:document.readyState, native:window.__sgNativeDock,
+          backdrop:(function(){var e=document.getElementById('sg-native-dock-backdrop');if(!e)return null;var r=e.getBoundingClientRect(),s=getComputedStyle(e);return {x:r.x,y:r.y,width:r.width,height:r.height,display:s.display,pointerEvents:s.pointerEvents,background:s.backgroundColor};})(),
           errors:window.__sgStartupErrors, visibility:document.visibilityState,
           text:document.body.innerText.slice(0,5000)})
         """) { value, jsError in

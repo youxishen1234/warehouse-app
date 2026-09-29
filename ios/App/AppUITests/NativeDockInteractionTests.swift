@@ -10,6 +10,7 @@ final class NativeDockInteractionTests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
         app.launchArguments = ["--native-dock-ui-test"]
         if let variant = ProcessInfo.processInfo.environment["DOCK_UI_TEST_VARIANT"], !variant.isEmpty {
             app.launchArguments.append("--dock-variant=" + variant)
@@ -19,6 +20,10 @@ final class NativeDockInteractionTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        defer {
+            app.terminate()
+            XCUIDevice.shared.orientation = .portrait
+        }
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "final-" + name
         attachment.lifetime = .keepAlways
@@ -27,7 +32,6 @@ final class NativeDockInteractionTests: XCTestCase {
         hierarchy.name = "accessibility-" + name
         hierarchy.lifetime = .keepAlways
         add(hierarchy)
-        app.terminate()
     }
 
     private var bar: XCUIElement {
@@ -86,6 +90,17 @@ final class NativeDockInteractionTests: XCTestCase {
         attachment.name = label
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    private func assertViewport(isLandscape: Bool, file: StaticString = #filePath, line: UInt = #line) {
+        let predicate = NSPredicate { [app] _, _ in
+            let frame = app.frame
+            guard frame.width > 0, frame.height > 0 else { return false }
+            return isLandscape ? frame.width > frame.height : frame.height > frame.width
+        }
+        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: 15), .completed,
+                       "Application did not rotate to \(isLandscape ? "landscape" : "portrait")", file: file, line: line)
     }
 
     private func drag(from: Int, to: Int, hold: TimeInterval = 0.08) {
@@ -155,5 +170,22 @@ final class NativeDockInteractionTests: XCTestCase {
         tab(0).tap()
         assertRoute(0)
         capture("tap-after-drag-home")
+    }
+
+    func testRotateAndTapNativeTabs() {
+        assertViewport(isLandscape: false)
+        assertRoute(0)
+        XCUIDevice.shared.orientation = .landscapeLeft
+        assertViewport(isLandscape: true)
+        for index in [1, 3] {
+            tab(index).tap()
+            assertRoute(index)
+            capture("landscape-tap-tab-\(index)")
+        }
+        XCUIDevice.shared.orientation = .portrait
+        assertViewport(isLandscape: false)
+        tab(0).tap()
+        assertRoute(0)
+        capture("portrait-after-rotation-tab-0")
     }
 }

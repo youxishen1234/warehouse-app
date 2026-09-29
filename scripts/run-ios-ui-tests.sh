@@ -55,19 +55,32 @@ command = [
     'test-without-building'
 ]
 try:
-    with open(sys.argv[3], 'w') as log:
-        process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                               start_new_session=True, env={**os.environ, 'NSUnbufferedIO': 'YES'})
+    # tee mirrors bytes immediately; the parent still owns xcodebuild's timeout
+    # and exit status, so a successful logger cannot hide a failing test run.
+    mirror = subprocess.Popen(['tee', sys.argv[3]], stdin=process.stdout)
+    process.stdout.close()
+    try:
+        status = process.wait(timeout=900)
+    except subprocess.TimeoutExpired:
+        print('::error title=Native UI tests::xcodebuild exceeded 15 minutes', flush=True)
+        os.killpg(process.pid, signal.SIGTERM)
         try:
-            status = process.wait(timeout=900)
+            process.wait(timeout=15)
         except subprocess.TimeoutExpired:
-            print('::error title=Native UI tests::xcodebuild exceeded 15 minutes', flush=True)
-            os.killpg(process.pid, signal.SIGTERM)
-            try:
-                process.wait(timeout=15)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.wait()
-            status = 124
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+        status = 124
+    try:
+        mirror_status = mirror.wait(timeout=15)
+    except subprocess.TimeoutExpired:
+        mirror.kill()
+        mirror.wait()
+        print('::error title=Native UI tests::Live log forwarding did not finish', flush=True)
+        mirror_status = 124
+    if status == 0 and mirror_status != 0:
+        status = mirror_status
 finally:
     os.unlink(spec_path)
 sys.exit(status)
@@ -83,6 +96,19 @@ EXPORT_STATUS=0
 if [ -d "$RESULT" ]; then
   xcrun xcresulttool export attachments --path "$RESULT" --output-path "$OUTPUT/attachments" \
     > "$OUTPUT/attachment-export.log" 2>&1 || EXPORT_STATUS=$?
+  # Preserve Xcode's raw reports for checking the actual executed test list and
+  # skipped counts. Do not infer successful methods from an unverified schema.
+  for section in summary tests; do
+    SECTION_STATUS=0
+    xcrun xcresulttool get test-results "$section" --path "$RESULT" \
+      > "$OUTPUT/test-results-$section.json" 2> "$OUTPUT/test-results-$section-export.log" || SECTION_STATUS=$?
+    printf '%s\n' "$SECTION_STATUS" > "$OUTPUT/test-results-$section-exit-status.txt"
+    if [ "$SECTION_STATUS" -ne 0 ]; then
+      printf '\nxcresulttool test-results %s exited %s\n' "$section" "$SECTION_STATUS" >> "$OUTPUT/test-results-$section-export.log"
+      cat "$OUTPUT/test-results-$section-export.log"
+      EXPORT_STATUS="$SECTION_STATUS"
+    fi
+  done
 else
   echo "::error title=Native UI tests::xcodebuild did not create xcresult"
   EXPORT_STATUS=1
@@ -93,7 +119,7 @@ if [ "$TEST_STATUS" -ne 0 ]; then
 fi
 if [ "$EXPORT_STATUS" -ne 0 ]; then
   cat "$OUTPUT/attachment-export.log" 2>/dev/null || true
-  echo "::error title=Native UI tests::Failed to export original screenshot evidence"
+  echo "::error title=Native UI tests::Failed to export screenshots or test-result reports"
   exit "$EXPORT_STATUS"
 fi
-echo "Native tap/drag tests passed; evidence: $OUTPUT"
+echo "Native UI test command completed; inspect test-result reports and screenshot evidence: $OUTPUT"

@@ -1,11 +1,21 @@
 #!/bin/bash
 # Diagnostic only: never archives, builds an IPA, pushes, or publishes.
-# Usage: ios-dock-diagnostics.sh APP_PATH OUTPUT_DIR [BOOTED_INSTALLED_DEVICE_ID]
+# Usage: ios-dock-diagnostics.sh APP_PATH OUTPUT_DIR [BOOTED_INSTALLED_DEVICE_ID] [VARIANT...]
 # Compile the Debug simulator App once upstream. PYTHON may name a Pillow venv.
 set -euo pipefail
 APP_PATH="${1:?App.app path required}"
 OUTPUT="${2:?Output directory required}"
 DEVICE_ID="${3:-}"
+VARIANTS=("${@:4}")
+if [ "${#VARIANTS[@]}" -eq 0 ]; then
+  VARIANTS=(system edge-off web-dark native-white native-dark current)
+fi
+for variant in "${VARIANTS[@]}"; do
+  case "$variant" in
+    system|edge-off|web-dark|web-pill|native-white|native-dark|current) ;;
+    *) echo "Unknown diagnostic variant: $variant" >&2; exit 1 ;;
+  esac
+done
 PYTHON="${PYTHON:-python3}"
 BUNDLE=com.warehouse.app
 OWN_DEVICE=0
@@ -69,7 +79,7 @@ print(chosen[1]+"|"+chosen[2])')"
 fi
 APP_DATA="$(bounded 30 xcrun simctl get_app_container "$DEVICE_ID" "$BUNDLE" data)"
 export OUTPUT
-for variant in system edge-off web-dark native-white native-dark current; do
+for variant in "${VARIANTS[@]}"; do
   SCENE="$OUTPUT/$variant"
   mkdir -p "$SCENE"
   bounded 15 xcrun simctl terminate "$DEVICE_ID" "$BUNDLE" >/dev/null 2>&1 || true
@@ -109,10 +119,10 @@ PY
   stop_launcher
   echo "Collected native dock candidate: $variant"
 done
-"$PYTHON" - "$OUTPUT" <<'PY'
+"$PYTHON" - "$OUTPUT" "${VARIANTS[@]}" <<'PY'
 import json,pathlib,sys
 root=pathlib.Path(sys.argv[1]); reports=[]; incomplete=False
-for variant in ('system','edge-off','web-dark','native-white','native-dark','current'):
+for variant in sys.argv[2:]:
     scene=root/variant; path=scene/'appearance-report.json'
     if path.exists() and not (scene/'collection-error.txt').exists():
         report=json.loads(path.read_text(encoding='utf-8'))

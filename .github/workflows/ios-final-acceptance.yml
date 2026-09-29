@@ -80,13 +80,20 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/dock-image-venv"
           "$RUNNER_TEMP/dock-image-venv/bin/python" -m pip install --quiet Pillow
           "$RUNNER_TEMP/dock-image-venv/bin/python" scripts/test-native-dock-image.py
-      - name: Capture all appearance candidates
+      - name: Capture proposed dock and diagnostic reference
         id: appearance
         timeout-minutes: 20
         run: |
           exec > >(tee release/ios-final-acceptance/appearance-collection.log) 2>&1
           export PYTHON="$RUNNER_TEMP/dock-image-venv/bin/python"
-          bash scripts/ios-dock-diagnostics.sh release/ios-acceptance-derived/Build/Products/Debug-iphonesimulator/App.app release/ios-final-acceptance/appearance "$(cat release/ios-final-acceptance/device-id.txt)"
+          bash scripts/ios-dock-diagnostics.sh release/ios-acceptance-derived/Build/Products/Debug-iphonesimulator/App.app release/ios-final-acceptance/appearance "$(cat release/ios-final-acceptance/device-id.txt)" current web-dark
+      - name: Make appearance evidence available before UI tests
+        if: always() && steps.device.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-appearance-originals
+          path: release/ios-final-acceptance/appearance/
+          retention-days: 14
       - name: Real native taps and drags
         if: always() && steps.device.outcome == 'success'
         timeout-minutes: 18
