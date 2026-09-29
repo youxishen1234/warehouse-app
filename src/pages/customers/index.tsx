@@ -42,32 +42,32 @@ const CustomerListRow = React.memo(function CustomerListRow({ party, stats, supp
     onOpenChange={nextOpen => onOpenChange(party.id, nextOpen)}
     onTap={() => handleRecords(party)}
     actions={[
-      { text: '??', bg: '#64748b', onClick: () => handleRecords(party) },
-      { text: '??', bg: '#2f6bff', onClick: () => handleEdit(party.id) },
-      { text: '??', bg: '#dc2626', onClick: () => handleDelete(party) }
+      { text: '记录', bg: '#64748b', onClick: () => handleRecords(party) },
+      { text: '编辑', bg: '#2f6bff', onClick: () => handleEdit(party.id) },
+      { text: '停用', bg: '#dc2626', onClick: () => handleDelete(party) }
     ]}
   >
     <View className={styles.listItem}>
       <View className={styles.itemTop}>
         <Text className={styles.itemName}>{party.name}</Text>
-        <Text className={styles.itemBadge}>{stats.count} ???</Text>
+        <Text className={styles.itemBadge}>{stats.count} 条记录</Text>
       </View>
       <View className={styles.itemMeta}>
-        {party.contact ? `????${party.contact}` : '?????'}
-        {party.phone ? ` ? ???${party.phone}` : ''}
-        {party.address ? `\n???${party.address}` : ''}
-        {party.remark ? `\n???${party.remark}` : ''}
+        {party.contact ? `联系人：${party.contact}` : '暂无联系人'}
+        {party.phone ? ` · 电话：${party.phone}` : ''}
+        {party.address ? `\n地址：${party.address}` : ''}
+        {party.remark ? `\n备注：${party.remark}` : ''}
       </View>
       <View className={styles.itemStats}>
-        <Text className={styles.statItem}>{supplier ? '???' : '??'} {formatMoney(Number(supplier ? party.payable || 0 : party.debt || 0))}</Text>
-        <Text className={styles.statItem}>??<Text className={`${styles.statNum} ${styles.statNumOut}`}>{stats.outQty}</Text></Text>
-        <Text className={styles.statItem}>??<Text className={`${styles.statNum} ${styles.statNumIn}`}>{stats.inQty}</Text></Text>
+        <Text className={styles.statItem}>{supplier ? '应付' : '应收'} {formatMoney(Number(supplier ? party.payable || 0 : party.debt || 0))}</Text>
+        <Text className={styles.statItem}>出库<Text className={`${styles.statNum} ${styles.statNumOut}`}>{stats.outQty}</Text></Text>
+        <Text className={styles.statItem}>入库<Text className={`${styles.statNum} ${styles.statNumIn}`}>{stats.inQty}</Text></Text>
       </View>
       <View className={styles.itemActions}>
-        <View className={styles.btnOut} onClick={event => { event.stopPropagation(); openSettlement(party); }}>??</View>
-        <View className={styles.btnIn} onClick={event => { event.stopPropagation(); handleEdit(party.id); }}>??</View>
-        {!supplier && <View className={styles.btnOut} onClick={event => { event.stopPropagation(); goOutbound(party); }}>??</View>}
-        {supplier && <View className={styles.btnIn} onClick={event => { event.stopPropagation(); Taro.setStorageSync(TRANSIT_KEY, { supplier_id: party.id, supplier_name: party.name }); Taro.switchTab({ url: '/pages/inbound/index' }); }}>??</View>}
+        <View className={styles.btnOut} onClick={event => { event.stopPropagation(); openSettlement(party); }}>结算</View>
+        <View className={styles.btnIn} onClick={event => { event.stopPropagation(); handleEdit(party.id); }}>编辑</View>
+        {!supplier && <View className={styles.btnOut} onClick={event => { event.stopPropagation(); goOutbound(party); }}>出库</View>}
+        {supplier && <View className={styles.btnIn} onClick={event => { event.stopPropagation(); Taro.setStorageSync(TRANSIT_KEY, { supplier_id: party.id, supplier_name: party.name }); Taro.switchTab({ url: '/pages/inbound/index' }); }}>入库</View>}
       </View>
     </View>
   </SwipeRow>;

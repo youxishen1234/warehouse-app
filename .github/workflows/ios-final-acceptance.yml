@@ -12,31 +12,70 @@ jobs:
   native-acceptance:
     runs-on: macos-15
     timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer
-      - name: Dependencies and source regression
+      - name: Initialize acceptance evidence
+        run: |
+          mkdir -p release/ios-final-acceptance
+          exec > >(tee release/ios-final-acceptance/environment.log) 2>&1
+          printf 'Commit: %s\nRun: %s (attempt %s)\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+          sw_vers
+          uname -m
+      - name: Select Xcode and verify runner tools
+        timeout-minutes: 4
+        run: |
+          exec > >(tee release/ios-final-acceptance/toolchain.log) 2>&1
+          test -d /Applications/Xcode_26.2.app/Contents/Developer
+          sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer
+          xcodebuild -version
+          xcrun --sdk iphonesimulator --show-sdk-version
+          # macos-15 includes PowerShell. Fail here with evidence if the image changes.
+          command -v pwsh
+          pwsh -NoProfile -NonInteractive -Command '$PSVersionTable.PSVersion.ToString()'
+          node --version
+          npm --version
+          ruby --version
+          gem --version
+      - name: Install npm dependencies
+        timeout-minutes: 8
+        run: |
+          exec > >(tee release/ios-final-acceptance/npm-install.log) 2>&1
+          npm install --legacy-peer-deps
+      - name: Build and sync current web assets
+        timeout-minutes: 10
+        run: |
+          exec > >(tee release/ios-final-acceptance/web-build.log) 2>&1
+          TARO_PUBLIC_PATH=./ npm run build:h5
+          # Preserve source-owned www/js/home-search.js and www/css/polish.css.
+          pwsh -NoProfile -NonInteractive -File scripts/sync-native-assets.ps1 -Source dist -Target www
+      - name: Source and built-asset regression
         timeout-minutes: 12
         run: |
-          npm install --legacy-peer-deps
+          exec > >(tee release/ios-final-acceptance/verify-fast.log) 2>&1
           npm run verify:fast
-          TARO_PUBLIC_PATH=./ npm run build:h5
-          cp -R dist/. www/
+      - name: Prepare native UI test project
+        timeout-minutes: 8
+        run: |
+          exec > >(tee release/ios-final-acceptance/native-setup.log) 2>&1
           npx cap copy ios
           sudo gem install cocoapods
+          pod --version
+          ruby -e 'require "xcodeproj"; puts "xcodeproj #{Xcodeproj::VERSION}"'
           (cd ios/App && pod install)
           ruby scripts/setup-ios-ui-tests.rb
       - name: Build app and real UI tests once
         id: build
         timeout-minutes: 18
         run: |
-          mkdir -p release/ios-final-acceptance
           xcodebuild -workspace ios/App/App.xcworkspace -scheme NativeDockUITests -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath release/ios-acceptance-derived CODE_SIGNING_ALLOWED=NO build-for-testing > release/ios-final-acceptance/build.log 2>&1 || { tail -150 release/ios-final-acceptance/build.log; exit 1; }
       - name: Create isolated simulator
         id: device
         timeout-minutes: 8
         run: |
+          exec > >(tee release/ios-final-acceptance/device-setup.log) 2>&1
           python3 scripts/prepare-ios-acceptance-device.py
           python3 -m venv "$RUNNER_TEMP/dock-image-venv"
           "$RUNNER_TEMP/dock-image-venv/bin/python" -m pip install --quiet Pillow
@@ -45,6 +84,7 @@ jobs:
         id: appearance
         timeout-minutes: 20
         run: |
+          exec > >(tee release/ios-final-acceptance/appearance-collection.log) 2>&1
           export PYTHON="$RUNNER_TEMP/dock-image-venv/bin/python"
           bash scripts/ios-dock-diagnostics.sh release/ios-acceptance-derived/Build/Products/Debug-iphonesimulator/App.app release/ios-final-acceptance/appearance "$(cat release/ios-final-acceptance/device-id.txt)"
       - name: Real native taps and drags

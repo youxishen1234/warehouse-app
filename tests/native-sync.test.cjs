@@ -14,6 +14,7 @@ test('native asset sync preserves source-owned auxiliary assets and copies sourc
   fs.mkdirSync(path.join(source, 'nested'), { recursive: true });
   fs.mkdirSync(path.join(target, 'js'), { recursive: true });
   fs.mkdirSync(path.join(target, 'css'), { recursive: true });
+  fs.writeFileSync(path.join(source, 'index.html'), 'built-index');
   fs.writeFileSync(path.join(source, 'js', 'app.js'), 'built-app');
   fs.writeFileSync(path.join(source, 'js', 'home-search.js'), 'built-search');
   fs.writeFileSync(path.join(source, 'css', 'polish.css'), 'built-polish');
@@ -21,7 +22,9 @@ test('native asset sync preserves source-owned auxiliary assets and copies sourc
   fs.writeFileSync(path.join(target, 'js', 'home-search.js'), 'source-search');
   fs.writeFileSync(path.join(target, 'css', 'polish.css'), 'source-polish');
   const script = path.join(__dirname, '..', 'scripts', 'sync-native-assets.ps1');
-  execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, '-Source', source, '-Target', target], { stdio: 'pipe' });
+  const powershell = process.platform === 'win32' ? 'powershell.exe' : 'pwsh';
+  execFileSync(powershell, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Source', source, '-Target', target], { stdio: 'pipe' });
+  assert.equal(fs.readFileSync(path.join(target, 'index.html'), 'utf8'), 'built-index');
   assert.equal(fs.readFileSync(path.join(target, 'js', 'app.js'), 'utf8'), 'built-app');
   assert.equal(fs.readFileSync(path.join(target, 'nested', 'chunk.js'), 'utf8'), 'built-chunk');
   assert.equal(fs.readFileSync(path.join(target, 'js', 'home-search.js'), 'utf8'), 'source-search');

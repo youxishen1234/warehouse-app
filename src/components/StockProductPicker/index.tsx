@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Input, ScrollView } from '@tarojs/components';
 import type { Product } from '@/types';
+import { formatMoney } from '@/utils/format';
 import styles from './index.module.scss';
 
 type Props = { products: Product[]; value: number | null; onSelect: (product: Product) => void; disabled?: boolean; excluded?: number[] };
@@ -9,7 +10,7 @@ type ProductOptionProps = { product: Product; onSelect: (product: Product) => vo
 const ProductOption = React.memo(function ProductOption({ product, onSelect }: ProductOptionProps) {
   return <View className={styles.option} onClick={() => onSelect(product)}>
     <Text>{product.name}</Text>
-    <Text className={styles.detail}>{product.specification || '???'} ? ?? {product.stock}{product.unit} ? ?{product.price}/{product.unit}</Text>
+    <Text className={styles.detail}>{product.specification || '无规格'} · 库存 {product.stock}{product.unit} · {formatMoney(product.price)}/{product.unit}</Text>
   </View>;
 });
 

@@ -23,7 +23,7 @@ export function formatMoney(n: number): string {
 
 export function formatMoneyPreview(n: number): string {
   const value = Number(n);
-  return Number.isFinite(value) ? formatMoney(value) : '?--';
+  return Number.isFinite(value) ? formatMoney(value) : '¥--';
 }
 
 // Numeric form fields cannot contain a currency sign or grouping separators.

@@ -12,8 +12,8 @@ const PAGE_SIZE = 200;
 const PrintTransactionRow = React.memo(function PrintTransactionRow({ item }: { item: Transaction }) {
   return <View className={styles.row}>
     <Text>{formatTime(item.created_at)}</Text>
-    <Text>{item.type === 'in' ? '??' : item.type === 'out' ? '??' : '??'}</Text>
-    <Text>{item.product_name || '??'}</Text>
+    <Text>{item.type === 'in' ? '入库' : item.type === 'out' ? '出库' : '盘点'}</Text>
+    <Text>{item.product_name || '未命名商品'}</Text>
     <Text>{item.quantity}</Text>
     <Text>{formatMoney(item.amount || 0)}</Text>
   </View>;

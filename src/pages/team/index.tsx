@@ -23,7 +23,7 @@ export default function Team() {
       const a=await accountApi(`/audit?page=${page}`);
       setEvents(a.items); setTotal(a.total);
     } catch(error) {
-      const text = error instanceof Error ? error.message : '??????????????';
+      const text = error instanceof Error ? error.message : '团队资料加载失败，请重试';
       setLoadError(text); setMessage(text);
     } finally { setLoading(false); }
   },[me?.role,page]);
@@ -36,7 +36,7 @@ export default function Team() {
     <Text className="team-message">{message}</Text>
     {me?.role === 'admin' && <>
       <Text className="team-section">团队成员</Text>
-      {loading ? <Text className="team-message">?????????</Text> : loadError ? <Text className="team-message" onClick={load}>{loadError} ? ????</Text> : members.length === 0 ? <Text className="team-message">??????</Text> : members.map(u=><View className="team-member" key={u.id}>
+      {loading ? <Text className="team-message">正在加载团队成员…</Text> : loadError ? <Text className="team-message" onClick={load}>{loadError} · 点击重试</Text> : members.length === 0 ? <Text className="team-message">暂无团队成员</Text> : members.map(u=><View className="team-member" key={u.id}>
         <Text>{u.username}</Text>
         <Picker value={roles.indexOf(u.role)} range={labels} disabled={busy} onChange={e=>action(()=>accountApi(`/team/${u.id}`,'PUT',{role:roles[Number(e.detail.value)]}))}><Text>{labels[roles.indexOf(u.role)]}</Text></Picker>
         <Switch checked={!u.disabled} disabled={busy || u.id === me.id} onChange={e=>action(()=>accountApi(`/team/${u.id}`,'PUT',{disabled:!e.detail.value}))} />
@@ -54,7 +54,7 @@ export default function Team() {
       <Picker range={labels} value={role} onChange={e=>setRole(Number(e.detail.value))}><Text className="team-select">{labels[role]}</Text></Picker>
       <Button disabled={busy} onClick={()=>action(async()=>{await accountApi('/team','POST',{username,password,role:roles[role]});setUsername('');setPassword('');})}>添加成员</Button>
       <Text className="team-section">操作记录</Text>
-      {loading ? <Text className="team-message">?????????</Text> : loadError ? <Text className="team-message" onClick={load}>{loadError} ? ????</Text> : events.length === 0 ? <Text className="team-message">??????</Text> : events.map((e,i)=><View className="team-event" key={i}><Text>{e.actor_name} · {e.operation}</Text><Text>{formatTime(e.time)}</Text></View>)}
+      {loading ? <Text className="team-message">正在加载操作记录…</Text> : loadError ? <Text className="team-message" onClick={load}>{loadError} · 点击重试</Text> : events.length === 0 ? <Text className="team-message">暂无操作记录</Text> : events.map((e,i)=><View className="team-event" key={i}><Text>{e.actor_name} · {e.operation}</Text><Text>{formatTime(e.time)}</Text></View>)}
       <View className="team-heading"><Button size="mini" disabled={page===1} onClick={()=>setPage(page-1)}>上一页</Button><Text>{page} / {Math.max(1,Math.ceil(total/50))}</Text><Button size="mini" disabled={page*50>=total} onClick={()=>setPage(page+1)}>下一页</Button></View>
     </>}
     <Text className="team-section">修改我的密码</Text>

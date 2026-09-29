@@ -159,7 +159,7 @@ const RecordsPage: React.FC = () => {
         list.map(transaction => <RecordListRow
           key={transaction.id}
           transaction={transaction}
-          productLabel={transaction.product_name || productNames.get(transaction.product_id) || '(?????)'}
+          productLabel={transaction.product_name || productNames.get(transaction.product_id) || '(未知商品)'}
         />)
       )}
     </ScrollView>
