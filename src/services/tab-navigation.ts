@@ -23,7 +23,7 @@ export function installTabNavigation(nav: Navigation): () => void {
   let navigationFailed = false;
   let lastNativeState = '';
   let frame = 0;
-  let state: { x: number; y: number; dx: number; locked: boolean; index: number; page: HTMLElement; back: boolean } | null = null;
+  let state: { x: number; y: number; dx: number; startedAt: number; locked: boolean; index: number; page: HTMLElement; back: boolean } | null = null;
   let suppressClickUntil = 0;
   let disposed = false;
   let dock: ReturnType<typeof createGlassTabBar> | null = null;
@@ -124,7 +124,7 @@ export function installTabNavigation(nav: Navigation): () => void {
     if (!back && (touch.clientX < 50 || touch.clientX > innerWidth - 50)) return;
     const page = activePage();
     if (!page || (index < 0 && !back)) return;
-    state = { x: touch.clientX, y: touch.clientY, dx: 0, locked: false, index, page, back };
+    state = { x: touch.clientX, y: touch.clientY, dx: 0, startedAt: performance.now(), locked: false, index, page, back };
   };
   const move = (event: TouchEvent) => {
     if (!state || event.touches.length !== 1) { cancel(); return; }
@@ -132,7 +132,7 @@ export function installTabNavigation(nav: Navigation): () => void {
     const dy = event.touches[0].clientY - state.y;
     if (!state.locked) {
       if (Math.abs(dy) > 10 && Math.abs(dy) >= Math.abs(dx)) { cancel(); return; }
-      if (Math.abs(dx) < 12 || Math.abs(dx) < Math.abs(dy) * 1.35) return;
+      if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(dy) * 1.35) return;
       if (state.back && dx < 0) { cancel(); return; }
       state.locked = true;
       state.page.style.setProperty('will-change', 'transform');
@@ -145,13 +145,19 @@ export function installTabNavigation(nav: Navigation): () => void {
     state.page.style.setProperty('transform', 'translate3d(' + amount + 'px,0,0)', 'important');
     if (!state.back) dock?.preview(state.index - dx / innerWidth);
   };
-  const end = async () => {
+  const end = async (event: TouchEvent) => {
     const current = state;
     state = null;
     if (!current?.locked) return;
+    // Browsers may coalesce the final move; use the release position rather
+    // than committing from the last delivered touchmove alone.
+    const released = event.changedTouches[0];
+    if (released) current.dx = released.clientX - current.x;
     suppressClickUntil = Date.now() + 350;
     const next = current.index + (current.dx < 0 ? 1 : -1);
-    const commit = Math.abs(current.dx) >= 64 && (current.back || (next >= 0 && next < tabRoutes.length));
+    const distance = Math.abs(current.dx);
+    const quickFlick = !current.back && distance >= 28 && performance.now() - current.startedAt <= 220;
+    const commit = (distance >= (current.back ? 64 : 44) || quickFlick) && (current.back || (next >= 0 && next < tabRoutes.length));
     busy = true;
     if (!current.back) dock?.update(commit ? next : current.index);
     try {
@@ -168,6 +174,8 @@ export function installTabNavigation(nav: Navigation): () => void {
     }
   };
   const blockClick = (event: MouseEvent) => {
+    // Suppress a page's synthetic post-swipe click, never an intentional tab tap.
+    if ((event.target as Element).closest('.sg-glass-dock')) return;
     if (Date.now() < suppressClickUntil) { event.preventDefault(); event.stopImmediatePropagation(); }
   };
   // Touch only: installing pointer and touch handlers together double-switches iOS tabs.

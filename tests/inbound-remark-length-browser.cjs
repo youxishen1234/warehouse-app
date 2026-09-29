@@ -34,8 +34,8 @@ async function main() {
     });
     await page.goto(`${origin}/#/pages/inbound/index`);
     await page.locator('.taro_page:visible').last().waitFor();
-    const inputs = page.locator('input:visible');
-    const remark = inputs.nth(5); // work order, driver, vehicle, operator, freight, remark
+    await page.getByText('配送与补充信息', { exact: true }).click();
+    const remark = page.locator('[class*="detailsBody___"] input').last();
     await remark.waitFor();
     assert.equal(await remark.getAttribute('maxlength'), '500');
     await remark.fill('R'.repeat(525));

@@ -50,7 +50,7 @@ export function createGlassTabBar(host: HTMLElement, onSelect: (index: number) =
   let velocity = 0;
   let animation = 0;
   let previousTime = 0;
-  let pointer: { id: number; offset: number; left: number; top: number; bottom: number; cancelled: boolean } | null = null;
+  let pointer: { id: number; offset: number; left: number; top: number; bottom: number; startX: number; startY: number; tapIndex: number; dragged: boolean; cancelled: boolean } | null = null;
   let cellWidth = 1;
   let suppressClick = false;
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
@@ -138,7 +138,9 @@ export function createGlassTabBar(host: HTMLElement, onSelect: (index: number) =
     const at = (event.clientX - rect.left - 8) / cellWidth - .5;
     // Preserve the point grabbed on the existing lens; tapping another tab grabs its centre.
     const onLens = Math.abs(at - position) <= .5;
-    pointer = { id: event.pointerId, offset: onLens ? at - position : 0, left: rect.left, top: rect.top, bottom: rect.bottom, cancelled: false };
+    const button = (event.target as Element).closest<HTMLElement>('[data-tab]');
+    const tapIndex = button ? Number(button.dataset.tab) : Math.round(clamp(at));
+    pointer = { id: event.pointerId, offset: onLens ? at - position : 0, left: rect.left, top: rect.top, bottom: rect.bottom, startX: event.clientX, startY: event.clientY, tapIndex, dragged: false, cancelled: false };
     if (!onLens) position = clamp(at);
     rail.setPointerCapture(event.pointerId);
     dock.classList.add('sg-glass-pressed');
@@ -149,6 +151,8 @@ export function createGlassTabBar(host: HTMLElement, onSelect: (index: number) =
   const move = (event: PointerEvent) => {
     if (!pointer || pointer.id !== event.pointerId) return;
     if (pointer.cancelled) return;
+    // Vertical finger jitter is still a tap on the original button.
+    if (Math.abs(event.clientX - pointer.startX) > 6) pointer.dragged = true;
     if (event.clientY < pointer.top - 48 || event.clientY > pointer.bottom + 48) {
       pointer.cancelled = true;
       dock.classList.remove('sg-glass-pressed');
@@ -161,7 +165,8 @@ export function createGlassTabBar(host: HTMLElement, onSelect: (index: number) =
   const finish = (event: PointerEvent) => {
     if (!pointer || pointer.id !== event.pointerId) return;
     const cancelled = event.type !== 'pointerup' || pointer.cancelled;
-    const index = cancelled ? selected : Math.round(position);
+    // A tap targets its button even while the lens is still settling nearby.
+    const index = cancelled ? selected : pointer.dragged ? Math.round(position) : pointer.tapIndex;
     pointer = null;
     dock.classList.remove('sg-glass-pressed');
     if (rail.hasPointerCapture(event.pointerId)) rail.releasePointerCapture(event.pointerId);

@@ -1,5 +1,5 @@
 import { useSharedRefresh } from '@/services/shared-refresh';
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { View, Text, ScrollView, Picker, Switch } from '@tarojs/components';
 import Taro, { useRouter } from '@tarojs/taro';
 import { getTransactions } from '@/services/api';
@@ -72,14 +72,13 @@ const RecordsPage: React.FC = () => {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [includeVoided, setIncludeVoided] = useState(false);
-  const lastLoadAt = useRef(0);
 
   const types = ['全部', '入库', '出库'];
 
   const loadRecords = useCallback(async () => {
-    const startedAt = Date.now();
-    if (startedAt - lastLoadAt.current < 250) return { list: [], products: [] };
-    lastLoadAt.current = startedAt;
+    // Every reload must represent a real API outcome. Returning an empty
+    // success for a rapid shared refresh masks the previous request's error.
+    // useRemoteData already discards responses from older load sequences.
     if (fromDate && toDate && fromDate > toDate) {
       Taro.showToast({ title: '开始日期不能晚于结束日期', icon: 'none' });
       throw new Error(getCopy('recordsInvalidDates'));

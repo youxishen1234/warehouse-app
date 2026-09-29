@@ -10,8 +10,7 @@ test('stock workflow pages guard stale responses and initial duplicate refreshes
   const pages = [
     'src/pages/home/index.tsx',
     'src/pages/inbound/index.tsx',
-    'src/pages/outbound/index.tsx',
-    'src/pages/records/index.tsx'
+    'src/pages/outbound/index.tsx'
   ];
   for (const file of pages) {
     const source = read(file);
@@ -24,14 +23,9 @@ test('stock workflow pages guard stale responses and initial duplicate refreshes
     assert.match(source, /didShowOnce/, `${file} should dedupe first useDidShow refresh`);
     assert.match(source, /Date\.now\(\) - lastLoadAt\.current >= 250/, `${file} should gate first refresh`);
   }
-  for (const file of ['src/pages/records/index.tsx']) {
-    const source = read(file);
-    assert.match(source, /lastLoadAt/, `${file} should gate repeated refreshes`);
-    assert.match(source, /startedAt - lastLoadAt\.current < 250/, `${file} should suppress same-tick reloads`);
-  }
 });
 
-test('orders uses the real shared sequence guard rather than a comment-only contract', () => {
+test('orders and records use the shared sequence guard without fabricated successful reloads', () => {
   const source = read('src/pages/orders/index.tsx');
   const hook = read('src/hooks/useRemoteData.ts');
   assert.ok(source.includes('const loadOrders = useCallback(async () => {'));
@@ -40,6 +34,10 @@ test('orders uses the real shared sequence guard rather than a comment-only cont
   assert.ok(hook.includes('const current = ++sequence.current'));
   assert.ok(hook.includes('if (!mounted.current || current !== sequence.current) return;'));
   assert.ok(!source.includes('useEffect(() => { load(); }, [load])'), 'the hook already owns initial loading');
+  const records = read('src/pages/records/index.tsx');
+  assert.ok(records.includes('useRemoteData(loadRecords,'));
+  assert.ok(records.includes('getTransactions('));
+  assert.ok(!records.includes('return { list: [], products: [] }'), 'a refresh must not replace an API error with a fabricated empty success');
 });
 
 test('sequence guard keeps the newest refresh result when an older request resolves last', async () => {

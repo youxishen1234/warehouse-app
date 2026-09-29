@@ -1,9 +1,10 @@
-const { chromium, webkit } = require('playwright');
+const { chromium, webkit, expect } = require('@playwright/test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 (async () => {
+  process.env.TEAM_PREVIEW_PORT = '0';
   const { server, db } = await require('../scripts/team-preview.cjs')();
-  const base = 'http://127.0.0.1:4186';
+  const base = `http://127.0.0.1:${server.address().port}`;
   // 应用启动会自动以游客身份连接共享仓库（无登录表单），请求会按 sessionOrigin 顺序
   // 尝试 152.136.100.200 / youxishen.online；测试将两个来源都重写到本地预览后端，
   // 保证测试不依赖外部服务器。
@@ -48,8 +49,11 @@ const fs = require('node:fs/promises');
     assert.equal(await a.locator('.team-login').count(), 0, 'no login form in guest mode');
     const session = await a.evaluate(() => localStorage.getItem('warehouse_session_v1'));
     assert.ok(session, 'guest session was stored');
-    const user = JSON.parse(session).data.user;
-    assert.equal(user.role, 'operator', 'guest connects as operator');
+    const storedSession = JSON.parse(session).data;
+    assert.equal(typeof storedSession.token, 'string', 'anonymous session retains its audit token');
+    assert.ok(storedSession.token.length > 0, 'anonymous audit token is nonempty');
+    assert.equal(storedSession.user.username, '匿名用户', 'guest connects anonymously');
+    assert.equal(Object.hasOwn(storedSession.user, 'role'), false, 'anonymous access has no account roles');
     assert.ok(await a.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'no horizontal overflow');
     await a.screenshot({ path: 'release/team-home.png', fullPage: true });
     console.log('Guest auto-connect and homepage rendered (mobile)', a.url());
@@ -62,7 +66,10 @@ const fs = require('node:fs/promises');
     await nameInput.waitFor({ timeout: 10000 });
     await nameInput.fill('Shared carton');
     await a.getByText('保存', { exact: true }).click();
-    await a.getByText('Shared carton', { exact: true }).last().waitFor({ timeout: 15000 });
+    await expect.poll(() => db.listProducts().filter(product => product.name === 'Shared carton').length).toBe(1);
+    console.log('Backend contains exactly one UI-created Shared carton before checking returned list');
+    await a.locator('.taro_page:visible').getByText('Shared carton', { exact: true }).first().waitFor({ timeout: 15000 });
+    assert.equal(db.listProducts().filter(product => product.name === 'Shared carton').length, 1, 'UI save persisted exactly one product');
     await a.screenshot({ path: 'release/team-product-added.png', fullPage: true });
     console.log('Guest added a product through the UI');
 
@@ -84,13 +91,14 @@ const fs = require('node:fs/promises');
     await b.getByText('功能入口', { exact: true }).waitFor({ timeout: 15000 });
     await b.locator('.team-boot').waitFor({ state: 'detached', timeout: 15000 });
     await visibleClick(b, '商品管理');
-    await b.getByText('Shared carton', { exact: true }).last().waitFor({ timeout: 15000 });
+    await b.locator('.taro_page:visible').getByText('Shared carton', { exact: true }).first().waitFor({ timeout: 15000 });
     assert.ok(await b.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'no horizontal overflow on desktop');
     await b.screenshot({ path: 'release/team-shared-products.png', fullPage: true });
     console.log('Two sessions: shared product visible, no JS errors');
     assert.equal(errors.length, 0, errors.join('\n'));
   } finally {
     await browser.close();
+    server.closeAllConnections();
     await new Promise(r => server.close(r));
   }
 })().catch(e => { console.error(e); process.exitCode = 1; });

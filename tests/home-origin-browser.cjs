@@ -7,8 +7,9 @@ async function main() {
   process.env.TEAM_PREVIEW_PORT = '0';
   const { server, db } = await require('../scripts/team-preview.cjs')();
   const base = `http://127.0.0.1:${server.address().port}`;
-  const primary = 'http://152.136.100.200';
-  const fallback = 'https://youxishen.online';
+  // sessionOrigin() now prefers HTTPS; exercise its real fallback order.
+  const primary = 'https://youxishen.online';
+  const fallback = 'http://152.136.100.200';
   const name = process.env.HOME_BROWSER === 'webkit' ? 'webkit' : 'chromium';
   const browser = await (name === 'webkit' ? webkit : chromium).launch();
   const artifactDir = path.resolve('release/home-origin-check', name);
@@ -41,7 +42,7 @@ async function main() {
     await page.clock.install({ time: new Date('2026-09-30T23:59:50+08:00') });
     await page.goto(base);
     await page.getByText('9月30日 · 星期三', { exact: true }).waitFor();
-    await page.getByText(/库存总值 ¥250.00$/).waitFor();
+    await expect(page.locator('[class*="footerNote___"]')).toContainText('库存总值 ¥250.00 · 应收 ¥0.00 · 应付 ¥0.00');
     assert(!(await page.locator('[class*="footerNote___"]').innerText()).includes('¥¥'));
     await page.locator('.team-boot').waitFor({ state: 'detached' });
     const statsCount = () => requests.filter(item => item.path === '/api/stats').length;
@@ -55,7 +56,7 @@ async function main() {
     // A cached but hidden Tab must not keep its midnight timer running.
     await page.locator('.sg-glass-tab[data-tab="3"]').click();
     await page.waitForURL(/mine/);
-    await page.getByText('库存管理 · 清晰如一', { exact: true }).waitFor();
+    await page.getByText('我的工作台', { exact: true }).waitFor();
     await page.clock.runFor(500);
     const beforeHiddenTab = statsCount();
     await page.clock.fastForward(24 * 60 * 60 * 1000);

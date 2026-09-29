@@ -2,6 +2,14 @@ import UIKit
 import WebKit
 import Capacitor
 
+private var nativeAcceptanceEnabled: Bool {
+    #if DEBUG
+    return ProcessInfo.processInfo.arguments.contains("--native-dock-smoke") || ProcessInfo.processInfo.arguments.contains("--native-dock-ui-test")
+    #else
+    return false
+    #endif
+}
+
 // Let UIKit render and track the actual Liquid Glass tab selection on iOS 26.
 // A single live Capacitor bridge moves between lightweight tab hosts; data and
 // the JavaScript router survive every selection. Older systems use the web dock.
@@ -27,6 +35,20 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     private var nativeGlass = false
     private var smokeTrace: [String] = []
     private var dockBackdrop: UIView?
+    private var acknowledgedRoute = ""
+    private var navigationStateLabel: UILabel?
+    private var diagnosticSurface: UIView?
+    private var diagnosticReady = false
+    private var uiDiagnosticPreparing = false
+    private var dockVariant: String {
+        #if DEBUG
+        guard nativeAcceptanceEnabled else { return "current" }
+        let value = ProcessInfo.processInfo.arguments.first { $0.hasPrefix("--dock-variant=") }?.split(separator: "=").last.map(String.init) ?? "current"
+        return ["current", "system", "edge-off", "web-dark", "native-white", "native-dark"].contains(value) ? value : "current"
+        #else
+        return "current"
+        #endif
+    }
     private var dock: UITabBar { tabsController.tabBar }
 
     private func traceSmoke(_ message: String) {
@@ -44,6 +66,21 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         view.accessibilityIdentifier = "warehouse.native.container"
         bridgeController.onBridgeLoaded = { [weak self] webView in self?.installMessaging(on: webView) }
         installDock()
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--native-dock-ui-test") {
+            let label = UILabel(frame: CGRect(x: 8, y: 64, width: 360, height: 18))
+            label.font = .systemFont(ofSize: 8)
+            label.textColor = .black
+            label.backgroundColor = .white
+            label.isUserInteractionEnabled = false
+            label.isAccessibilityElement = true
+            label.accessibilityIdentifier = "warehouse.native.navigation.state"
+            label.accessibilityLabel = "Native navigation test state"
+            navigationStateLabel = label
+            view.addSubview(label)
+            updateAcceptanceState()
+        }
+        #endif
         keyboardObservers = [
             NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main) { [weak self] _ in
                 self?.keyboardVisible = true
@@ -64,7 +101,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         view.window?.overrideUserInterfaceStyle = .dark
         installDarkGlassOverlay()
         publishCapability()
-        if ProcessInfo.processInfo.arguments.contains("--native-dock-smoke"), !smokeStarted {
+        if nativeAcceptanceEnabled && ProcessInfo.processInfo.arguments.contains("--native-dock-smoke"), !smokeStarted {
             smokeStarted = true
             runSmokeTest(step: 0, attempt: 0)
         }
@@ -76,6 +113,8 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         layoutDockBackdrop()
+        diagnosticSurface?.frame = bridgeController.view.bounds
+        if let label = navigationStateLabel { view.bringSubviewToFront(label) }
     }
 
     deinit {
@@ -136,7 +175,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         // appearance otherwise stays a bright platter even when the window
         // trait is dark. A material blur preserves the live backdrop and the
         // native selection morphing while matching the approved dark dock.
-        if #available(iOS 13.0, *) {
+        if dockVariant == "current", #available(iOS 13.0, *) {
             let appearance = UITabBarAppearance()
             appearance.configureWithTransparentBackground()
             appearance.backgroundEffect = UIBlurEffect(style: .systemMaterialDark)
@@ -155,7 +194,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     }
 
     private func installDarkGlassOverlay() {
-        guard nativeGlass else { return }
+        guard nativeGlass, dockVariant == "current" else { return }
         guard dockBackdrop == nil else { layoutDockBackdrop(); return }
         let backdrop = UIView()
         backdrop.backgroundColor = UIColor(red: 8 / 255, green: 12 / 255, blue: 18 / 255, alpha: 1)
@@ -266,14 +305,17 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         dock.isHidden = !(nativeGlass && webReady && routeIsTab && !keyboardVisible && !modalVisible)
         layoutDockBackdrop()
         dockBackdrop?.isHidden = dock.isHidden
+        updateAcceptanceState()
     }
 
     private func requestTab(_ index: Int) {
         guard webReady, routes.indices.contains(index) else { return }
+        guard pendingIndex != index else { return }
         traceSmoke("request index=\(index) selected=\(selectedIndex) UIKit=\(tabsController.selectedIndex)")
         requestSequence += 1
         let sequence = requestSequence
         pendingIndex = index
+        updateAcceptanceState()
         selectionTimeout?.cancel()
         applyNativeSelection(index)
         mountBridge(in: hosts[index])
@@ -301,6 +343,17 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         publishCapability()
     }
 
+    // UIKit can report ordinary taps through the view-controller delegate.
+    // Both delegate paths share the same deduplicated navigation request.
+    func tabBarController(_ tabBarController: UITabBarController, shouldSelect viewController: UIViewController) -> Bool {
+        return webReady && !modalVisible
+    }
+
+    func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
+        guard !applyingSelection, let index = hosts.firstIndex(where: { $0 === viewController }) else { return }
+        requestTab(index)
+    }
+
     #if compiler(>=6.2)
     @available(iOS 18.0, *)
     func tabBarController(_ tabBarController: UITabBarController, shouldSelectTab tab: UITab) -> Bool {
@@ -320,7 +373,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         bridgeProxy = proxy
         let controller = webView.configuration.userContentController
         controller.add(proxy, name: "nativeTabSelected")
-        if ProcessInfo.processInfo.arguments.contains("--native-dock-smoke") {
+        if nativeAcceptanceEnabled {
             controller.addUserScript(WKUserScript(source: """
             window.__sgStartupErrors = [];
             window.addEventListener('error', function(e) {
@@ -347,6 +400,43 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
             """, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
         controller.addUserScript(WKUserScript(source: capabilityScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+    }
+
+    private func updateAcceptanceState() {
+        #if DEBUG
+        guard let label = navigationStateLabel else { return }
+        let appearanceReady = dockVariant == "current" || dockVariant == "system" || diagnosticReady
+        let state = "route=\(acknowledgedRoute);selected=\(tabsController.selectedIndex);pending=\(pendingIndex ?? -1);ready=\(webReady && appearanceReady ? 1 : 0)"
+        label.text = state
+        label.accessibilityValue = state
+        #endif
+    }
+
+    // Candidate switches are only reachable in a Debug acceptance process.
+    // They isolate variables; none is a claimed production rendering fix.
+    private func prepareDiagnosticSurface(completion: @escaping () -> Void) {
+        guard nativeAcceptanceEnabled, let webView = bridgeController.webView else { completion(); return }
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, *), ["edge-off", "web-dark"].contains(dockVariant) {
+            webView.scrollView.bottomEdgeEffect.isHidden = true
+        }
+        #endif
+        if dockVariant == "native-white" || dockVariant == "native-dark" {
+            let surface = diagnosticSurface ?? UIView()
+            surface.isUserInteractionEnabled = false
+            surface.frame = bridgeController.view.bounds
+            surface.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            surface.backgroundColor = dockVariant == "native-dark" ? .black : .white
+            bridgeController.view.addSubview(surface)
+            diagnosticSurface = surface
+        }
+        let script = dockVariant == "web-dark" ? """
+        (function(){var b=document.getElementById('native-dock-diagnostic-background');if(!b){b=document.createElement('div');b.id='native-dock-diagnostic-background';document.body.appendChild(b);}b.style.cssText='position:fixed;left:0;right:0;bottom:0;height:180px;background:black;z-index:2147483646;pointer-events:none';})();
+        """ : "void 0"
+        webView.evaluateJavaScript(script) { _, _ in
+            // Observe two completed WebView animation frames before capturing.
+            webView.evaluateJavaScript("window.__nativeDockVisualReady=false;requestAnimationFrame(function(){requestAnimationFrame(function(){window.__nativeDockVisualReady=true;});});") { _, _ in completion() }
+        }
     }
 
     private var capabilityScript: String {
@@ -389,6 +479,13 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
             selectionTimeout?.cancel()
         }
         routeIsTab = routes.contains(route)
+        acknowledgedRoute = route
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--native-dock-ui-test"), !uiDiagnosticPreparing, !diagnosticReady {
+            uiDiagnosticPreparing = true
+            prepareDiagnosticSurface { self.waitForDiagnosticFrames(attempt: 0) }
+        }
+        #endif
         if let index = routes.firstIndex(of: route) {
             selectedIndex = index
             updateSelection()
@@ -454,7 +551,9 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
             } else if step == self.routes.count + 2 {
                 self.requestTab(0)
             } else {
-                self.finishSmokeTest(nil)
+                self.prepareDiagnosticSurface {
+                    self.waitForDiagnosticFrames(attempt: 0)
+                }
                 return
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.runSmokeTest(step: step + 1, attempt: 0) }
@@ -473,6 +572,25 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
             node.subviews.forEach { inspect($0, depth: depth + 1) }
         }
         inspect(tabsController.view, depth: 0)
+        let window = view.window
+        func rectangle(_ frame: CGRect) -> [String: CGFloat] {
+            ["x": frame.minX, "y": frame.minY, "width": frame.width, "height": frame.height]
+        }
+        var regions: [[String: Any]] = []
+        func collectRegions(_ node: UIView, visible: Bool) {
+            let visible = visible && !node.isHidden && node.alpha > 0.01
+            guard visible else { return }
+            if let window = window, node is UIImageView || node is UILabel {
+                let frame = node.convert(node.bounds, to: window)
+                let dockRect = dock.convert(dock.bounds, to: window)
+                if frame.width > 0, frame.height > 0, dockRect.intersects(frame) {
+                    let index = min(3, max(0, Int((frame.midX - dockRect.minX) / max(1, dockRect.width) * 4)))
+                    regions.append(["tabIndex": index, "role": node is UILabel ? "label" : "icon", "frame": rectangle(frame)])
+                }
+            }
+            node.subviews.forEach { collectRegions($0, visible: visible) }
+        }
+        collectRegions(dock, visible: true)
         var result: [String: Any] = ["success": error == nil, "error": error ?? "",
                                     "nativeHierarchy": hierarchy,
                                     "trace": smokeTrace,
@@ -483,6 +601,11 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
                                     "dockFrame": ["x": dock.frame.minX, "y": dock.frame.minY,
                                                   "width": dock.frame.width, "height": dock.frame.height]]
         result["url"] = bridgeController.webView?.url?.absoluteString ?? "nil"
+        result["windowBounds"] = rectangle(window?.bounds ?? view.bounds)
+        result["dockFrame"] = rectangle(dock.convert(dock.bounds, to: window))
+        result["imageRegions"] = regions
+        result["variant"] = dockVariant
+        result["screenshotReady"] = diagnosticReady && error == nil
         bridgeController.webView?.evaluateJavaScript("""
           JSON.stringify({url:location.href, state:document.readyState, native:window.__sgNativeDock,
           errors:window.__sgStartupErrors, visibility:document.visibilityState,
@@ -492,6 +615,24 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
             let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             if let data = try? JSONSerialization.data(withJSONObject: result, options: .prettyPrinted) {
                 try? data.write(to: directory.appendingPathComponent("native-dock-smoke.json"), options: .atomic)
+            }
+        }
+    }
+
+    private func waitForDiagnosticFrames(attempt: Int) {
+        guard attempt < 40 else { finishSmokeTest("Diagnostic layout did not settle"); return }
+        bridgeController.webView?.evaluateJavaScript("window.__nativeDockVisualReady === true") { [weak self] value, _ in
+            guard let self = self else { return }
+            if value as? Bool == true {
+                self.view.layoutIfNeeded()
+                self.diagnosticReady = true
+                if ProcessInfo.processInfo.arguments.contains("--native-dock-ui-test") {
+                    self.updateAcceptanceState()
+                } else {
+                    self.finishSmokeTest(nil)
+                }
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { self.waitForDiagnosticFrames(attempt: attempt + 1) }
             }
         }
     }
@@ -506,7 +647,7 @@ private final class WarehouseBridgeController: CAPBridgeViewController {
     override func instanceDescriptor() -> InstanceDescriptor {
         let descriptor = super.instanceDescriptor()
         // Keep simulator verification offline and on the bundled revision.
-        if ProcessInfo.processInfo.arguments.contains("--native-dock-smoke") {
+        if nativeAcceptanceEnabled {
             descriptor.appLocation = Bundle.main.bundleURL.appendingPathComponent("public")
         }
         return descriptor

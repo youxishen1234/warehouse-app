@@ -5,6 +5,7 @@ import { getProduct, addProduct, updateProduct } from '@/services/api';
 import type { ProductForm } from '@/types';
 import { numberValue, sanitizeDecimalInput } from '@/utils/stock-math';
 import { invalidateProducts, loadProducts } from '@/services/product-store';
+import { refreshSharedData } from '@/services/shared-refresh';
 import styles from './index.module.scss';
 
 const units = ['件', '箱', '个', '千克'];
@@ -99,6 +100,9 @@ const ProductEditPage: React.FC = () => {
         await addProduct(data);
       }
       invalidateProducts();
+      // The write response may notify mounted lists before this form resumes.
+      // Reload once after clearing their shared cache so returning shows the save.
+      refreshSharedData();
       const saved = { specs: unique([data.specification || '', ...historySpecs]), materials: unique([data.material || '', ...historyMaterials]) };
       Taro.setStorageSync(HISTORY_KEY, saved);
       Taro.showToast({ title: '保存成功', icon: 'success' });

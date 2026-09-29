@@ -27,14 +27,18 @@ async function main() {
         const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
         const errors = [];
         let failRecords = true;
+        let failedRecordRequests = 0;
+        let successfulRecordRequests = 0;
         page.on('pageerror', error => errors.push(error.message));
         await page.route('**/*', async route => {
           const url = new URL(route.request().url());
           if (url.origin === origin) return route.continue();
           if (['http://152.136.100.200', 'https://youxishen.online'].includes(url.origin) && url.pathname.startsWith('/api/')) {
             if (url.pathname === '/api/transactions' && failRecords) {
+              failedRecordRequests++;
               return route.fulfill({ status: 400, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ success: false, message: 'Temporary test failure' }) });
             }
+            if (url.pathname === '/api/transactions') successfulRecordRequests++;
             const response = await route.fetch({ url: origin + url.pathname + url.search });
             return route.fulfill({ response, headers: { ...response.headers(), 'access-control-allow-origin': '*' } });
           }
@@ -43,11 +47,20 @@ async function main() {
         await page.goto(origin + '/pages/records/index');
         const retry = page.getByText('记录加载失败，请点击重试', { exact: true });
         await expect(retry).toBeVisible();
+        assert.ok(failedRecordRequests > 0, 'the real transaction request reached the failure fixture');
+        await expect(page.getByText('暂无记录', { exact: true })).toHaveCount(0);
+        const requestsBeforeRetry = failedRecordRequests;
+        // Rapid repeated user reloads must never resolve to fabricated empty
+        // records. The initial API revision also triggers a shared refresh.
+        await retry.evaluate(element => { element.click(); element.click(); });
+        await expect(retry).toBeVisible();
+        await expect.poll(() => failedRecordRequests).toBeGreaterThan(requestsBeforeRetry);
         await expect(page.getByText('暂无记录', { exact: true })).toHaveCount(0);
         failRecords = false;
         await retry.click();
         await expect(page.getByText('Supplier before（现名：Supplier after）', { exact: true })).toBeVisible();
         await expect(page.getByText('Customer before（现名：Customer after）', { exact: true })).toBeVisible();
+        assert.ok(successfulRecordRequests > 0, 'retry fetched actual backend records');
         assert.deepEqual(db.backupData().transactions, transactions, 'viewing and renaming cannot mutate snapshots');
         assert.deepEqual(errors, []);
         await expect(retry).toHaveCount(0);

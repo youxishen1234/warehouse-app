@@ -14,7 +14,7 @@ const server = http.createServer((req, res) => {
 });
 
 async function swipe(page, dx, options = {}) {
-  return page.evaluate(({ dx, options }) => {
+  return page.evaluate(async ({ dx, options }) => {
     const target = Array.from(document.querySelectorAll('.taro_page')).reverse().find(p => getComputedStyle(p).display !== 'none' && p.getBoundingClientRect().height > 0);
     const x = options.x || innerWidth / 2, y = 300;
     function dispatch(type, x2, y2, ended) {
@@ -26,7 +26,8 @@ async function swipe(page, dx, options = {}) {
     dispatch('touchstart', x, y);
     dispatch('touchmove', x + dx, y + (options.dy || 0));
     const moving = getComputedStyle(target).transform;
-    dispatch(options.cancel ? 'touchcancel' : 'touchend', x + dx, y, true);
+    if (options.duration) await new Promise(resolve => setTimeout(resolve, options.duration));
+    dispatch(options.cancel ? 'touchcancel' : 'touchend', x + (options.endDx ?? dx), y, true);
     return moving;
   }, { dx, options });
 }
@@ -64,6 +65,24 @@ async function verify(browser, name) {
   assert.equal(colors.normal, 'rgb(255, 255, 255)');
   assert.equal(colors.selected, 'rgb(36, 166, 248)');
   assert.equal(colors.glass, 'rgba(36, 37, 42, 0.78)');
+  // Finger taps at button edges must target the button, not the moving lens.
+  for (const [index, route] of [[1, 'inbound'], [2, 'outbound'], [3, 'mine'], [0, 'home']]) {
+    const button = page.locator('.sg-glass-tab[data-tab="' + index + '"]');
+    const bounds = await button.boundingBox();
+    await button.tap({ position: { x: 2, y: bounds.height / 2 } });
+    await page.waitForURL(new RegExp(route));
+  }
+  await page.waitForFunction(() => Math.abs(Number(document.querySelector('.sg-glass-dock').dataset.position)) < .001);
+  // A mostly vertical finger movement at a button edge remains a tap.
+  for (const [index, route] of [[1, 'inbound'], [2, 'outbound'], [3, 'mine'], [0, 'home']]) {
+    const bounds = await page.locator('.sg-glass-tab[data-tab="' + index + '"]').boundingBox();
+    await page.mouse.move(bounds.x + 2, bounds.y + bounds.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(bounds.x + 2, bounds.y + bounds.height / 2 + 12);
+    await page.mouse.up();
+    await page.waitForURL(new RegExp(route));
+  }
+  await page.waitForFunction(() => Math.abs(Number(document.querySelector('.sg-glass-dock').dataset.position)) < .001);
   await page.screenshot({ path: 'release/glass-' + name + '-rest.png' });
   const restingLens = await page.locator('.sg-glass-lens').boundingBox();
   const railBounds = await page.locator('.sg-glass-rail').boundingBox();
@@ -126,6 +145,28 @@ async function verify(browser, name) {
   await page.waitForTimeout(400);
   assert.match(page.url(), /home/, 'leaving the dock vertically cancels the pending selection');
   await page.waitForFunction(() => Math.abs(Number(document.querySelector('.sg-glass-dock').dataset.position)) < .001);
+  await swipe(page, -16);
+  await page.waitForTimeout(220);
+  assert.match(page.url(), /home/, 'small finger jitter must not navigate');
+  await swipe(page, -32, { duration: 300 });
+  await page.waitForTimeout(220);
+  assert.match(page.url(), /home/, 'slow short movement must not use the quick-flick threshold');
+  await swipe(page, -45, { duration: 300 });
+  await page.waitForURL(/inbound/);
+  await page.locator('.sg-glass-tab[data-tab="0"]').tap();
+  await page.waitForURL(/home/);
+  await swipe(page, -16, { duration: 300, endDx: -45 });
+  await page.waitForURL(/inbound/);
+  await page.locator('.sg-glass-tab[data-tab="0"]').tap();
+  await page.waitForURL(/home/);
+  await swipe(page, -45, { duration: 300, endDx: -16 });
+  await page.waitForTimeout(220);
+  assert.match(page.url(), /home/, 'releasing back inside the threshold cancels navigation');
+  await swipe(page, -32);
+  await page.waitForURL(/inbound/);
+  // A deliberate tab tap immediately after a swipe must not be suppressed.
+  await page.locator('.sg-glass-tab[data-tab="0"]').tap();
+  await page.waitForURL(/home/);
   assert.notEqual(await swipe(page, -110), 'none', 'gesture follows finger');
   await page.waitForURL(/inbound/);
   await page.waitForTimeout(500);

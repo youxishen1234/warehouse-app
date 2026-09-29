@@ -30,6 +30,13 @@ async function main() {
     const page = await context.newPage();
     page.setDefaultTimeout(8000);
     activePage = page;
+    const pendingBusinessRequests = new Set();
+    page.on('request', request => {
+      const pathname = new URL(request.url()).pathname;
+      if (pathname.startsWith('/api/') && !['/api/sync', '/api/health'].includes(pathname)) pendingBusinessRequests.add(request);
+    });
+    page.on('requestfinished', request => pendingBusinessRequests.delete(request));
+    page.on('requestfailed', request => pendingBusinessRequests.delete(request));
     page.on('pageerror', error => errors.push(error.message));
     if (process.env.STOCK_DIAGNOSTICS) {
       page.on('requestfailed', request => console.log('API failure', request.method(), new URL(request.url()).pathname, request.failure()?.errorText));
@@ -99,10 +106,17 @@ async function main() {
     for (const width of [390, 1280]) {
       await page.setViewportSize({ width, height: 900 });
       for (const route of routes) {
+        // A document replacement can leave canceled requests without a terminal
+        // page event. Only this route's business loads determine its readiness.
+        pendingBusinessRequests.clear();
         await page.goto(base + '/pages/' + route);
         await expect(page.locator('.taro_page:visible').last()).not.toBeEmpty();
         await page.locator('.team-boot').waitFor({ state: 'detached' });
-        await page.waitForLoadState('networkidle');
+        // Continuous sync polling is intentional; wait for page business loads.
+        await expect.poll(() => pendingBusinessRequests.size).toBe(0).catch(error => {
+          console.error('Pending business requests', [...pendingBusinessRequests].map(request => ({ method: request.method(), url: request.url() })));
+          throw error;
+        });
         await page.waitForTimeout(400);
         if (['inbound/index', 'outbound/index'].includes(route)) {
           assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `overflow: ${route} ${width}`);
