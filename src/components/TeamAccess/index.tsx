@@ -33,20 +33,18 @@ export default function TeamAccess({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     let alive = true;
     let revision = '';
-    let etag = '';
     let polling = false;
     const poll = async () => {
       if (!current || polling || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) return;
       polling = true;
       try {
         const headers: Record<string, string> = { Authorization: `Bearer ${current.token}` };
-        if (etag) headers['If-None-Match'] = etag;
+        // Older deployed servers reject If-None-Match during CORS preflight.
+        // Compare JSON revisions instead; polling still detects shared changes.
         const response = await fetch(`${getBaseUrl()}/api/sync`, { cache: 'no-store', headers });
         if (response.status === 401) { setSession(null); return; }
         if (response.status === 304) return;
         if (!response.ok) return;
-        const serverRevision = response.headers.get('X-Warehouse-Revision');
-        if (serverRevision) etag = `"${serverRevision}"`;
         const body = await response.json();
         const next = String(body?.data?.revision ?? '');
         if (alive && revision && next !== revision) refreshSharedData(next);

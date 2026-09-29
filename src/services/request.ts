@@ -185,10 +185,6 @@ interface RequestOptions {
   header?: Record<string, string>;
 }
 
-function requestId(): string {
-  return `req-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`;
-}
-
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -205,7 +201,9 @@ async function fetchApi(url: string, method: string, data: unknown, headers: Rec
       method,
       cache: 'no-store',
       signal: controller.signal,
-      headers: { 'X-Request-Id': requestId(), ...headers },
+      // Deployed API versions do not all allow X-Request-Id in CORS.
+      // Let the server assign diagnostic IDs; retain auth and write safety headers.
+      headers,
       body: data === undefined ? undefined : JSON.stringify(data)
       });
       let body: any = null;
