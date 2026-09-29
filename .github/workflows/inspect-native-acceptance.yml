@@ -1,0 +1,23 @@
+name: Inspect native acceptance artifact
+on:
+  push:
+    branches: [codex/native-diagnostics]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read existing simulator result
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 36520182171 --repo "$GITHUB_REPOSITORY" --name native-dock-verification --dir diagnostic
+          python3 - <<'PY'
+          import json, pathlib
+          result = json.loads(next(pathlib.Path('diagnostic').rglob('result.json')).read_text())
+          for line in [result.get('error', '')] + result.get('trace', []):
+              escaped = line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print('::notice title=Native acceptance::' + escaped)
+          PY
