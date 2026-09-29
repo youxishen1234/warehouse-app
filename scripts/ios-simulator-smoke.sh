@@ -1,9 +1,27 @@
 #!/bin/bash
 set -euo pipefail
 APP_PATH="$1"
+mkdir -p release/ios-smoke
+# CoreSimulator can hang before the acceptance loop even starts. Bound every
+# synchronous simulator operation and identify the stalled command in CI.
+bounded_simctl() {
+  local seconds="$1"
+  shift
+  python3 - "$seconds" "$@" <<'PY'
+import subprocess, sys
+command = ['xcrun', 'simctl', *sys.argv[2:]]
+print('Simulator operation: ' + ' '.join(command[2:]), file=sys.stderr, flush=True)
+try:
+    result = subprocess.run(command, timeout=int(sys.argv[1]))
+    sys.exit(result.returncode)
+except subprocess.TimeoutExpired:
+    print('::error title=Simulator operation timeout::' + ' '.join(command[2:]), file=sys.stderr)
+    sys.exit(124)
+PY
+}
 # Native Liquid Glass must be exercised on iOS 26+, not whichever older
 # simulator happens to appear first in the shared runner inventory.
-DEVICE_ID="$(xcrun simctl list devices available -j | ruby -rjson -e '
+DEVICE_TEMPLATE="$(bounded_simctl 30 list devices available -j | ruby -rjson -e '
   j = JSON.parse(STDIN.read)
   candidates = j.fetch("devices").map do |runtime, devices|
     version = runtime.split(".iOS-")[1]
@@ -16,15 +34,17 @@ DEVICE_ID="$(xcrun simctl list devices available -j | ruby -rjson -e '
   selected = candidates.max_by { |entry| entry[0] }
   abort "An available iOS 26+ iPhone simulator is required for native Liquid Glass acceptance" unless selected
   warn "Native acceptance device: #{selected[1]["name"]} / #{selected[2]}"
-  puts selected[1]["udid"]
+  puts [selected[1].fetch("deviceTypeIdentifier"), selected[2]].join("|")
 ')"
-xcrun simctl boot "$DEVICE_ID" 2>/dev/null || true
-xcrun simctl bootstatus "$DEVICE_ID" -b
-xcrun simctl install "$DEVICE_ID" "$APP_PATH"
-mkdir -p release/ios-smoke
+# Use the selected runtime/type in a fresh per-job device instead of
+# installing into a prebooted runner device with unknown simulator state.
+DEVICE_ID="$(bounded_simctl 60 create Warehouse-Native-Acceptance "${DEVICE_TEMPLATE%%|*}" "${DEVICE_TEMPLATE#*|}")"
+bounded_simctl 60 boot "$DEVICE_ID"
+bounded_simctl 180 bootstatus "$DEVICE_ID" -b
+bounded_simctl 180 install "$DEVICE_ID" "$APP_PATH"
+APP_DATA="$(bounded_simctl 30 get_app_container "$DEVICE_ID" com.warehouse.app data)"
 xcrun simctl launch --console-pty "$DEVICE_ID" com.warehouse.app --native-dock-smoke > release/ios-smoke/console.log 2>&1 &
 LAUNCH_PID=$!
-APP_DATA="$(xcrun simctl get_app_container "$DEVICE_ID" com.warehouse.app data)"
 mkdir -p release/ios-smoke
 for attempt in {1..180}; do
   if [ -f "$APP_DATA/Documents/native-dock-smoke.json" ]; then
@@ -32,7 +52,7 @@ for attempt in {1..180}; do
     for snapshot in "$APP_DATA"/Documents/native-dock-step-*.png; do
       [ ! -f "$snapshot" ] || cp "$snapshot" release/ios-smoke/
     done
-    xcrun simctl io "$DEVICE_ID" screenshot release/ios-smoke/simulator.png
+    bounded_simctl 30 io "$DEVICE_ID" screenshot release/ios-smoke/simulator.png
     python3 - release/ios-smoke/result.json <<'PY'
 import json, sys
 result = json.load(open(sys.argv[1]))
@@ -48,12 +68,12 @@ PY
   fi
   if ! kill -0 "$LAUNCH_PID" 2>/dev/null; then
     tail -70 release/ios-smoke/console.log
-    xcrun simctl io "$DEVICE_ID" screenshot release/ios-smoke/crash.png
+    bounded_simctl 30 io "$DEVICE_ID" screenshot release/ios-smoke/crash.png
     echo "::error title=Native application launch::Simulator process exited before acceptance completed"
     exit 1
   fi
   sleep 2
 done
-xcrun simctl io "$DEVICE_ID" screenshot release/ios-smoke/timeout.png
+bounded_simctl 30 io "$DEVICE_ID" screenshot release/ios-smoke/timeout.png
 echo "Native dock smoke timed out" >&2
 exit 1
