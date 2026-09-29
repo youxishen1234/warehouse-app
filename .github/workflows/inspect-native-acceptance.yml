@@ -22,11 +22,13 @@ jobs:
           for line in [result.get('error', '')] + result.get('trace', [])[-1:]:
               escaped = line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
               print('::notice title=Native acceptance::' + escaped)
-          for source in pathlib.Path('diagnostic').rglob('*.png'):
+          for source in pathlib.Path('diagnostic').rglob('simulator.png'):
               image = Image.open(source).convert('RGB')
-              image.thumbnail((280, 650))
+              image = image.crop((0, int(image.height * 0.85), image.width, image.height))
+              image.thumbnail((280, 70))
               data = io.BytesIO()
-              image.save(data, format='JPEG', quality=65)
+              image.save(data, format='JPEG', quality=35)
               payload = json.dumps({'name':source.stem, 'base64':base64.b64encode(data.getvalue()).decode()})
+              assert len(payload) < 3900, len(payload)
               print('::notice title=Native screenshot::' + payload)
           PY
