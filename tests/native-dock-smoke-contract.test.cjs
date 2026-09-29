@@ -9,5 +9,8 @@ test('native dock smoke accepts the native/fallback visibility contract', () => 
   assert.match(source, /systemMaterialDark/);
   assert.match(source, /dock\.standardAppearance = appearance/);
   assert.match(source, /dock\.scrollEdgeAppearance = appearance/);
+  assert.match(source, /UIGlassEffect\(style: \.regular\)/);
+  assert.match(source, /effect\.isInteractive = true/);
+  assert.match(source, /effect\.tintColor/);
   assert.equal((source.match(/@available\(iOS 18\.0, \*\)/g) || []).length, 2);
 });

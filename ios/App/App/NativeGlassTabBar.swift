@@ -26,6 +26,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     private var smokeStarted = false
     private var nativeGlass = false
     private var smokeTrace: [String] = []
+    private let dockGlassOverlayTag = 2601
     private var dock: UITabBar { tabsController.tabBar }
 
     private func traceSmoke(_ message: String) {
@@ -61,6 +62,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         // A dark tab-bar trait alone still produces a light platter. Keep the
         // native hierarchy consistent; the web pages own their light surfaces.
         view.window?.overrideUserInterfaceStyle = .dark
+        installDarkGlassOverlay()
         publishCapability()
         if ProcessInfo.processInfo.arguments.contains("--native-dock-smoke"), !smokeStarted {
             smokeStarted = true
@@ -142,8 +144,33 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
             dock.standardAppearance = appearance
             if #available(iOS 15.0, *) { dock.scrollEdgeAppearance = appearance }
         }
+        installDarkGlassOverlay()
         updateSelection()
         updateVisibility()
+    }
+
+    private func installDarkGlassOverlay() {
+        guard nativeGlass else { return }
+        dock.subviews.filter { $0.tag == dockGlassOverlayTag }.forEach { $0.removeFromSuperview() }
+        guard #available(iOS 26.0, *) else { return }
+        let effect = UIGlassEffect(style: .regular)
+        effect.isInteractive = true
+        effect.tintColor = UIColor(red: 8 / 255, green: 12 / 255, blue: 18 / 255, alpha: 0.84)
+        let glass = UIVisualEffectView(effect: effect)
+        glass.tag = dockGlassOverlayTag
+        glass.isUserInteractionEnabled = false
+        glass.layer.cornerRadius = 28
+        glass.layer.cornerCurve = .continuous
+        glass.clipsToBounds = true
+        glass.translatesAutoresizingMaskIntoConstraints = false
+        let index = min(1, dock.subviews.count)
+        dock.insertSubview(glass, at: index)
+        NSLayoutConstraint.activate([
+            glass.leadingAnchor.constraint(equalTo: dock.leadingAnchor, constant: 9),
+            glass.trailingAnchor.constraint(equalTo: dock.trailingAnchor, constant: -9),
+            glass.topAnchor.constraint(equalTo: dock.topAnchor, constant: 8),
+            glass.bottomAnchor.constraint(equalTo: dock.bottomAnchor, constant: -8)
+        ])
     }
 
     // Same 24-unit line drawings as the web assets, rendered as tintable images.

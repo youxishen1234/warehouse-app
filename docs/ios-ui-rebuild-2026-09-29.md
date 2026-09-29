@@ -98,3 +98,9 @@ Build 118 passed native page and gesture acceptance but the actual compositor
 image still rendered a bright tab-bar platter (luminance 235.5). Keep UIKit's
 native tabs and gestures, with a dark system material backing and native item
 selection colors; the image gate must pass before an IPA is published.
+
+Build 120 showed that UITabBarAppearance alone does not tint the detached
+iOS 26 tab-bar platter. The native dock now layers an interactive UIKit
+UIGlassEffect with a dark tint behind the real tab content. This keeps the
+system tab controller and its gestures while making the compositor output
+match the approved dark glass treatment.
