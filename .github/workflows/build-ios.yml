@@ -25,6 +25,8 @@ jobs:
           fi
       - name: Install npm dependencies
         run: npm install --legacy-peer-deps
+      - name: Resolve visible iOS version
+        run: node scripts/ios-version.cjs >> "$GITHUB_ENV"
       - name: Build current web assets
         run: |
           TARO_PUBLIC_PATH=./ npm run build:h5
@@ -60,7 +62,7 @@ jobs:
             -configuration Release \
             -sdk iphoneos \
             -derivedDataPath build \
-            MARKETING_VERSION=1.1.4 \
+            MARKETING_VERSION="$IOS_MARKETING_VERSION" \
             CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
