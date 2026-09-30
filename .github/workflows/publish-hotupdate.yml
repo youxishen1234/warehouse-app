@@ -33,6 +33,19 @@ jobs:
           printf '{"version":"%s","url":"www.zip","publishedAt":"%s"}\n' "$version" "$published" > release/manifest.json
           unzip -t release/www.zip
 
+      - name: Ensure appupdate directory is writable on server
+        shell: bash
+        env:
+          SHUGUANG_SERVER_HOST: ${{ secrets.SHUGUANG_SERVER_HOST }}
+          SHUGUANG_SERVER_USER: ${{ secrets.SHUGUANG_SERVER_USER }}
+          SHUGUANG_SERVER_PASSWORD: ${{ secrets.SHUGUANG_SERVER_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y -qq sshpass >/dev/null
+          sshpass -p "$SHUGUANG_SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no \
+            "$SHUGUANG_SERVER_USER@$SHUGUANG_SERVER_HOST" \
+            "sudo mkdir -p /opt/shuguang/public/appupdate && sudo chown -R $SHUGUANG_SERVER_USER:$SHUGUANG_SERVER_USER /opt/shuguang/public/appupdate && chmod 755 /opt/shuguang/public/appupdate"
+
       - name: Upload web bundle
         uses: appleboy/scp-action@v0.1.7
         with:
