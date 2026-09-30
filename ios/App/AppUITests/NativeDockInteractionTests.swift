@@ -49,11 +49,8 @@ final class NativeDockInteractionTests: XCTestCase {
         return element
     }
 
-    // Avoid XCTest's initial polling delay when a condition already holds.
-    // Unsettled conditions retain their original bounded predicate wait.
     private func waitFor(_ predicate: NSPredicate, object: Any, timeout: TimeInterval) -> XCTWaiter.Result {
-        if predicate.evaluate(with: object) { return .completed }
-        return XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: object)], timeout: timeout)
+        XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: object)], timeout: timeout)
     }
 
     private func assertRoute(_ index: Int, file: StaticString = #filePath, line: UInt = #line) {
