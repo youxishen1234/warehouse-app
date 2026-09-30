@@ -1,0 +1,88 @@
+// Shared dark iOS surfaces. Uppercase PX keeps touch targets independent of Taro scaling.
+.board-page {
+  --board-ink: #f4f6fb; --board-muted: #929eb1; --board-line: #ffffff0e;
+  color-scheme: dark; color: var(--board-ink); background: radial-gradient(ellipse at 90% 0%, #202b4540, transparent 34%), #101319;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 24PX);
+}
+.board-eyebrow { color: #78889f; font-size: 10PX; letter-spacing: 2PX; }
+.board-title { font-size: 31PX; font-weight: 650; letter-spacing: -1PX; }
+.board-subtitle { color: #8995a8; font-size: 12PX; margin-top: 9PX; }
+.board-content { margin-top: 23PX; }
+.board-page .board-header > .board-button { color: #b7c7e7; background: #ffffff08; border: 1PX solid #ffffff10; border-radius: 50PX; padding: 8PX 15PX; }
+.board-back { color: #dce6f9; border-color: #ffffff12; background: #ffffff08; }
+.board-page .board-button { background: linear-gradient(135deg, #468cfb, #3566eb); border: 1PX solid #ffffff16; box-shadow: 0 5PX 20PX #163e9320; border-radius: 14PX; color: #fff; font-weight: 600; font-size: 14PX; }
+.board-page .board-button.is-secondary { color: #cedbf4; background: #ffffff08; box-shadow: none; border: 1PX solid #ffffff12; }
+.board-page .board-button.is-disabled { color: #65738c; background: #202735; border-color: transparent; }
+.board-section,.board-card,.board-empty { color: #eaf0fc; background: linear-gradient(140deg, #202630, #191e27); border: 1PX solid #ffffff0e; box-shadow: 0 8PX 25PX #00000010; border-radius: 22PX; }
+.board-section-title { color: #eff3fc; font-size: 16PX; }
+.board-field-label { color: #9daac0; }
+.board-input-wrap { border-color: #ffffff0c; background: #ffffff04; border-radius: 12PX; min-height: 48PX; }
+.board-input-wrap input, .board-input-wrap taro-input-core { color: #e8efff; }
+.board-input-wrap:focus-within { border-color: #6b9bfc; box-shadow: 0 0 0 3PX #598bff15; }
+.board-note { color: #a9bbdb; background: #5387f20b; border: 1PX solid #5387f212; }
+.board-error { color: #f9b6a9; background: #4e2729; }
+.board-detail-row,.board-card-footer { border-color: #ffffff0a; }
+.board-card-meta,.board-qty-unit,.board-batch-id { color: #98a6bd; }
+.board-tabs { gap: 3PX; padding: 4PX; margin: 18PX 0; border: 1PX solid #ffffff06; border-radius: 13PX; background: #090c114d; }
+.board-tabs :is(button,taro-button-core) { min-height: 36PX; margin: 0; background: transparent; color: #8b97aa; font-size: 12PX; font-weight: 500; border-radius: 9PX; line-height: 16PX; }
+.board-tabs :is(button,taro-button-core).active { background: linear-gradient(180deg, #3a4353, #2b3443); color: #eaf1ff; box-shadow: 0 2PX 5PX #0003, inset 0 1PX 0 #ffffff12; }
+.board-tag { background: #4edca20e; border: 1PX solid #4edca217; color: #79d6b3; font-size: 10PX; border-radius: 7PX; padding: 4PX 8PX; }
+.board-tag.warn { background: #f6b55b0d; border-color: #f6b55b1a; color: #edbd7e; }
+.board-summary { background: linear-gradient(115deg, #273958 0%, #1c2a44 55%, #19243b 100%); border: 1PX solid #b1caff20; box-shadow: inset 0 1PX 0 #ffffff0c, 0 16PX 30PX #0002; border-radius: 24PX; }
+.board-summary .board-muted { color: #98accb; }
+.board-summary-number { font-size: 48PX; font-weight: 600; letter-spacing: -2PX; margin: 8PX 0; }
+.board-summary-number small { color: #90a4c5; font-size: 12PX; }
+.board-summary-bottom { border-color: #b2cbff15; padding-top: 15PX; margin-top: 18PX; }
+.board-summary-bottom > :not(:first-child) { padding-left: 14PX; border-left: 1PX solid #ffffff10; }
+.board-summary-bottom strong { color: #e1eafb; font-size: 20PX; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.board-summary-bottom .board-muted { font-size: 10PX; }
+.board-summary-bottom .inventory-warning strong { color: #f0be81; }
+.inventory-hero { position: relative; padding: 22PX; overflow: hidden; }
+.inventory-hero-main { display: flex; align-items: center; justify-content: space-between; min-height: 111PX; }
+.inventory-live { color: #b9c8e1; font-size: 12PX; display: flex; align-items: center; gap: 7PX; }
+.inventory-live i { width: 5PX; height: 5PX; border-radius: 50%; background: #8aaefd; box-shadow: 0 0 9PX #84adff90; }
+.board-material { width: 125PX; height: 120PX; flex-shrink: 0; margin-right: -6PX; }
+.board-glyph { display: block; width: 20PX; height: 20PX; flex-shrink: 0; }
+.inventory-shortcuts { margin: 16PX 0 22PX; gap: 11PX; }
+.board-page .inventory-shortcut { display: flex; align-items: center; gap: 10PX; justify-content: flex-start; min-height: 76PX; padding: 13PX 12PX; margin: 0; border: 1PX solid #ffffff12; border-radius: 18PX; background: linear-gradient(130deg, #242e3f, #1c2533); color: #d3e2ff; text-align: left; line-height: 1.5; }
+.board-page .inventory-shortcut.primary { background: linear-gradient(125deg, #4287f8, #2c5fd9); color: #fff; box-shadow: inset 0 1PX 0 #ffffff20, 0 7PX 20PX #214fca14; }
+.inventory-shortcut strong { display: block; font-size: 14PX; font-weight: 600; white-space: nowrap; }
+.inventory-shortcut taro-text-core { display: block; font-size: 10PX; opacity: .65; margin-top: 3PX; white-space: nowrap; }
+.inventory-shortcut > .board-glyph { display: none; }
+.shortcut-icon { width: 24PX; height: 30PX; display: flex; justify-content: center; align-items: center; flex-shrink: 0; }
+.shortcut-icon .board-glyph { width: 24PX; height: 24PX; }
+.board-search { margin-top: 0; }
+.board-search .board-field-label { font-size: 14PX; color: #e0e6f2; font-weight: 500; margin-bottom: 11PX; }
+.board-search .board-input-wrap { background: #ffffff04; border-radius: 13PX; min-height: 44PX; }
+.board-search input { font-size: 13PX; }
+.inventory-card { padding: 18PX; border-radius: 21PX; margin-top: 12PX; }
+.inventory-card-heading { display: flex; justify-content: space-between; align-items: center; gap: 8PX; margin-bottom: 20PX; }
+.inventory-material-badge { display: flex; align-items: center; gap: 8PX; font-size: 12PX; color: #b4c4df; }
+.inventory-material-badge .board-glyph { width: 18PX; height: 18PX; color: #739de9; }
+.inventory-specs { display: grid; grid-template-columns: 1.2fr 1fr; gap: 13PX; align-items: end; }
+.inventory-caption { display: block; font-size: 10PX; color: #7787a0; margin-bottom: 7PX; }
+.inventory-specs .board-spec { color: #eef4ff; font-size: 22PX; font-weight: 600; white-space: nowrap; }
+.inventory-specs .board-spec small { color: #6b7b94; font-size: 10PX; }
+.inventory-carton { border-left: 1PX solid #ffffff0a; padding-left: 13PX; font-size: 14PX; color: #c0cce0; padding-bottom: 3PX; }
+.inventory-supplier { display: block; color: #8e9eb7; font-size: 11PX; margin-top: 13PX; line-height: 1.6; }
+.inventory-supplier > taro-text-core { color: #62728b; }
+.inventory-card .board-card-footer { margin-top: 17PX; padding-top: 14PX; }
+.inventory-card .board-qty { font-size: 30PX; color: #f0f4ff; letter-spacing: -1PX; font-weight: 600; }
+.inventory-card .board-qty-unit { display: inline; margin-left: 8PX; color: #7c8da8; font-size: 11PX; }
+.board-card-footer :is(button,taro-button-core) { width: auto; min-height: 38PX; padding: 9PX 12PX; border-radius: 10PX; color: #9ebffa; background: #578dfa10; border: 1PX solid #578dfa14; font-size: 12PX; }
+.board-timeline { border-color: #45638d; margin-top: 18PX; background: #ffffff02; border-radius: 0 10PX 10PX 0; padding-right: 10PX; }
+.board-timeline strong { color: #d4e1f7; }
+.board-file { color: #a8bad8; border-color: #ffffff20; }
+.board-label { color-scheme: light; color: #172033; background: #fff; }
+.board-label .board-card-meta,.board-label .board-muted,.board-label .board-batch-id { color: #536078; }
+.board-page :focus-visible { outline-color: #6c9cff; }
+.inventory-hero { padding: 18PX 20PX; }
+.inventory-hero-main { min-height: 94PX; }
+.inventory-hero .board-summary-number { font-size: 44PX; line-height: 1.1; margin: 6PX 0 7PX; }
+.inventory-hero .board-material { height: 98PX; width: 116PX; }
+.inventory-hero .board-summary-bottom { margin-top: 12PX; padding-top: 12PX; }
+.inventory-hero .board-summary-bottom strong { font-size: 18PX; margin-bottom: 3PX; }
+.inventory-hero .board-summary-bottom .board-muted { line-height: 1.2; }
+.board-page .inventory-shortcut::after { pointer-events: none; }
+@media (max-width: 350PX) { .board-page { padding-left: 16PX; padding-right: 16PX; } .board-material { width: 100PX; } .inventory-specs { grid-template-columns: 1fr; gap: 12PX; } .inventory-carton { border: 0; padding: 0; } .inventory-shortcut { gap: 6PX !important; padding: 12PX 8PX !important; } .inventory-shortcut strong { font-size: 12PX; } }
+@media (prefers-reduced-motion: no-preference) { .board-button,.inventory-shortcut { transition: transform .16s ease, filter .16s ease; } .board-button:active,.inventory-shortcut:active { transform: scale(.98); filter: brightness(1.08); } }

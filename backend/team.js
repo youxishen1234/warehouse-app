@@ -96,7 +96,7 @@ function install(db) {
       'X-Content-Type-Options': 'nosniff',
       'X-Frame-Options': 'DENY',
       'Referrer-Policy': 'no-referrer',
-      'Permissions-Policy': 'camera=(), microphone=(), geolocation=()'
+      'Permissions-Policy': 'camera=(self), microphone=(), geolocation=()'
     });
     next();
   });
@@ -233,6 +233,20 @@ function install(db) {
     const operation = `DELETE /delivery-notes/${req.params.id}`;
     const result = db.transact(req.user, key, digest(operation), req.get('If-Match'), operation, () => db.voidDeliveryNote(Number(req.params.id)));
     res.set('X-Warehouse-Revision', String(result.revision)); ok(res, result.data);
+  });
+  route('get', '/boards', (req, res) => ok(res, db.listBoards()));
+  route('get', '/boards/:id', (req, res) => {
+    const batch = db.listBoards().find(b => b.id === req.params.id);
+    if (!batch) throw error('找不到这批纸板，请检查标签', 404);
+    ok(res, batch);
+  });
+  for (const endpoint of ['/boards', '/boards/:id/movements']) route('post', endpoint, (req, res) => {
+    if (!IDENTITY_KEY_PATTERN.test(String(req.get('Idempotency-Key') || ''))) throw error('缺少有效的提交编号');
+    if (!req.is('application/json') || !req.body || Array.isArray(req.body)) throw error('请提交有效的纸板数据');
+    const operation = `POST ${req.path}`;
+    const result = db.transact(req.user, req.get('Idempotency-Key'), digest(operation + JSON.stringify(req.body)), req.get('If-Match'), operation, () => req.params.id ? db.moveBoard(req.params.id, req.body) : db.receiveBoard(req.body));
+    res.set('X-Warehouse-Revision', String(result.revision));
+    ok(res, result.data);
   });
   route('post', '/sync/upload', (req, res) => ok(res, { ok: true, received: true }));
   route('post', '/products/:id/image', (req, res) => {

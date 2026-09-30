@@ -1,0 +1,45 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const QRCode = require('qrcode');
+const { chromium, webkit, expect } = require('@playwright/test');
+async function main() {
+  process.env.TEAM_PREVIEW_PORT = '0';
+  const { server, db } = await require('../scripts/team-preview.cjs')();
+  const base = 'http://127.0.0.1:' + server.address().port;
+  const browser = await (process.env.BOARD_BROWSER === 'webkit' ? webkit : chromium).launch();
+  const dir = 'release/board-check'; fs.mkdirSync(dir, { recursive: true });
+  try {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, acceptDownloads: true });
+    await context.route(/https?:\/\/[^/]+\/api\//, async route => { const url = new URL(route.request().url()); const response = await route.fetch({ url: base + url.pathname + url.search }); await route.fulfill({ response }); });
+    const page = await context.newPage(); page.setDefaultTimeout(10000); const errors = []; page.on('pageerror', e => errors.push(e.message));
+    const active = () => page.locator('.taro_page:visible').last();
+    const button = text => active().getByText(text, { exact: true });
+    const field = label => active().locator('.board-field').filter({ has: page.locator('.board-field-label', { hasText: label }) }).locator('input');
+    await page.goto(base + '/pages/board-stock/index'); await active().getByText('从第一批纸板开始', { exact: true }).waitFor();
+    await button('录入第一批来料').click();
+    for (const [label, value] of [['板厂名称', '恒盛纸业'], ['纸板长', '165'], ['纸板宽', '115'], ['纸箱长', '40'], ['纸箱宽', '30'], ['纸箱高', '20'], ['面纸克重', '150'], ['里纸克重', '150'], ['楞纸克重', '120'], ['订购数', '1000'], ['实收数', '1004'], ['计费平米', '1897.5'], ['每平米单价', '2.1'], ['规格预警线', '600'], ['库位', 'A区 02']]) await field(label).fill(value);
+    await page.screenshot({ path: dir + '/receive.png', fullPage: true });
+    await button('确认入库 · 生成批次标签').click(); await page.waitForURL(/board-detail/);
+    const batch = db.listBoards()[0]; assert.equal(batch.remainingQty, 1004); assert.equal(batch.amount, 3984.75);
+    await button('查看 / 保存标签').click(); await active().locator('.board-label img').waitFor();
+    await page.screenshot({ path: dir + '/batch-label.png', fullPage: true });
+    await button('领用这批纸板').click(); await field('领料数量').fill('1005'); await button('确认领料').click(); await active().locator('.board-error').filter({ hasText: '领料不能超过' }).waitFor(); assert.equal(db.listBoards()[0].remainingQty, 1004);
+    await field('领料数量').fill('500'); await field('用途备注').fill('生产 40×30×20 纸箱'); await button('确认领料').click(); await page.waitForURL(/board-detail/); await expect(active().locator('.board-summary-number')).toContainText('504'); assert.equal(db.listBoards()[0].remainingQty, 504);
+    await page.goto(base + '/pages/board-stock/index'); await active().getByText('查看批次 ›', { exact: true }).waitFor(); await expect(active().locator('.board-qty')).toHaveText('504');
+    await active().locator('.board-title').scrollIntoViewIfNeeded(); await page.screenshot({ path: dir + '/stock-light.png', fullPage: true });
+    await button('查看批次 ›').click(); await page.screenshot({ path: dir + '/stock-expanded.png', fullPage: true });
+    await page.emulateMedia({ colorScheme: 'dark' }); await page.screenshot({ path: dir + '/stock-dark.png', fullPage: true }); await page.emulateMedia({ colorScheme: 'light' });
+    for (const width of [320, 390, 768]) { await page.setViewportSize({ width, height: 844 }); assert.equal(await active().evaluate(el => el.scrollWidth <= el.clientWidth + 1), true, 'no horizontal overflow ' + width); }
+    await page.setViewportSize({ width: 390, height: 844 }); await active().locator('.inventory-shortcut').filter({ hasText: '扫码找纸板' }).click();
+    const qrPath = path.resolve(dir, 'test-batch-qr.png'); await QRCode.toFile(qrPath, 'https://youxishen.online/#/pages/board-detail/index?id=' + batch.id, { width: 700 });
+    await active().locator('input[type=file]').setInputFiles(qrPath); await page.waitForURL(/board-detail/); await expect(active().locator('.board-summary-number')).toContainText('504');
+    await button('盘点这批').click(); await field('实盘数量').fill('500'); await field('盘点原因').fill('实际清点少4张'); await button('确认盘点调整').click(); await page.waitForURL(/board-detail/); assert.equal(db.listBoards()[0].remainingQty, 500);
+    await button('再进同规格').click(); await expect(field('板厂名称')).toHaveValue('恒盛纸业'); await expect(field('纸板长')).toHaveValue('165'); await expect(field('实收数')).toHaveValue('');
+    await page.goto(base + '/pages/board-detail/index?id=' + batch.id); await expect(active().locator('.board-summary-number')).toContainText('500');
+    await button('查看 / 保存标签').click();
+    const qrData = await active().locator('.board-label img').getAttribute('src'); assert.ok(qrData.startsWith('data:image/png'));
+    assert.deepEqual(errors, []); console.log('PASS: real receipt, amount, overdraft, deduction, reload, responsive UI, QR photo recognition, count and template reuse (' + (process.env.BOARD_BROWSER || 'chromium') + ')');
+  } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); fs.rmSync(path.dirname(process.env.WAREHOUSE_DATA_FILE), { recursive: true, force: true }); }
+}
+main().catch(e => { console.error(e); process.exitCode = 1; });

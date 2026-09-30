@@ -929,6 +929,7 @@ function health() {
   return { online: readable && writable, dataReadable: readable, dataWritable: writable, revision: revision(), warningCount: loadWarnings.length };
 }
 function validateBackupData(data) {
+  require('./boards').validate(data || {});
   const collections = ['products', 'customers', 'suppliers', 'transactions', 'ledger', 'orders', 'order_events', 'stocktakes', 'delivery_notes'];
   if (!data || Number(data?._meta?.schemaVersion) > SCHEMA_VERSION) throw new Error('backup requires a newer schema version');
   if (!data || collections.some(name => !Array.isArray(data[name]))) throw new Error('备份文件缺少必要数据表');
@@ -1095,7 +1096,10 @@ function restoreData(value) {
   cache = next; persist(); return stats();
 }
 
-module.exports = { listProducts, getProduct, addProduct, updateProduct, deleteProduct,
+function listBoards() { return require('./boards').list(cache); }
+function receiveBoard(raw) { return atomicMutation(() => { const batch = require('./boards').receive(cache, raw); persist(); return batch; }); }
+function moveBoard(id, raw) { return atomicMutation(() => { const batch = require('./boards').move(cache, id, raw); persist(); return batch; }); }
+module.exports = { listBoards, receiveBoard, moveBoard, listProducts, getProduct, addProduct, updateProduct, deleteProduct,
   listCustomers, getCustomer, addCustomer, updateCustomer, deleteCustomer,
   listSuppliers, getSupplier, addSupplier, updateSupplier, deleteSupplier,
   stockIn, stockOut, stockOutBatch, orderToOutbound, listTx, streamTx, deleteTransaction, listLedger, streamLedger, addLedger, deleteLedger, listOrders, listOrderEvents, addOrder, updateOrder, addStocktake, listStocktakes, listDeliveryNotes, getDeliveryNote, addDeliveryNote, voidDeliveryNote, backupData, restoreData, health, stats, transact, revision, audit, receipt };

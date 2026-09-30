@@ -2,6 +2,9 @@
   pages: [
     'pages/home/index',
     'pages/board-stock/index',
+    'pages/board-receive/index',
+    'pages/board-detail/index',
+    'pages/board-scan/index',
     'pages/board-outbound/index',
     'pages/inbound/index',
     'pages/outbound/index',

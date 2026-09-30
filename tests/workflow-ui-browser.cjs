@@ -60,8 +60,8 @@ async function check(engine, name, base) {
           assert.equal(calculator.whiteSpace, 'nowrap');
           assert.ok(calculator.width >= calculator.scroll - 1, 'calculator label is not squeezed into a vertical column');
         } else if (route === 'board-stock') {
-          await active.locator('[class*=overviewCard___]').waitFor();
-          await active.getByText('库存总览', { exact: true }).waitFor();
+          await active.locator('.inventory-hero').waitFor();
+          await active.getByText('实时库存', { exact: true }).waitFor();
         } else if (route !== 'mine') {
           const hero = await active.locator('[class*=hero___]').evaluate(el => getComputedStyle(el).backgroundImage);
           assert.notEqual(hero, 'none');

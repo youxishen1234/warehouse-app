@@ -24,7 +24,7 @@ test('server restricts CORS origins and does not trust spoofed forwarding header
     assert.equal(allowed.headers.get('x-content-type-options'), 'nosniff');
     assert.equal(allowed.headers.get('x-frame-options'), 'DENY');
     assert.equal(allowed.headers.get('referrer-policy'), 'no-referrer');
-    assert.equal(allowed.headers.get('permissions-policy'), 'camera=(), microphone=(), geolocation=()');
+    assert.equal(allowed.headers.get('permissions-policy'), 'camera=(self), microphone=(), geolocation=()');
     assert.match(allowed.headers.get('content-security-policy') || '', /default-src 'self'/);
     assert.match(allowed.headers.get('content-security-policy') || '', /object-src 'none/);
     assert.match(allowed.headers.get('content-security-policy') || '', /script-src 'self' 'nonce-sg-bootstrap'/);

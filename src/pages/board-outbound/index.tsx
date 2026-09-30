@@ -1,173 +1,34 @@
-﻿import { useState } from 'react';
-import { View, Text, Input, Picker, ScrollView } from '@tarojs/components';
-import Taro from '@tarojs/taro';
-import styles from './index.module.scss';
-
+import { useRef, useState } from 'react';
+import { View, Text, Picker } from '@tarojs/components';
+import Taro, { useLoad, useRouter } from '@tarojs/taro';
+import { BoardPage, BoardButton, BoardField, BoardEmpty, BoardError } from '../../components/BoardUI';
+import { BoardBatch, getBoards, moveBoard, boardSpec, cartonSpec } from '../../services/boards';
+import { useSharedRefresh } from '../../services/shared-refresh';
 export default function BoardOutbound() {
-  const [boardSpec, setBoardSpec] = useState('');
-  const [boardIndex, setBoardIndex] = useState(0);
-  const [outboundQty, setOutboundQty] = useState('');
-  const [recipient, setRecipient] = useState('');
-  const [purpose, setPurpose] = useState('');
-  const [remark, setRemark] = useState('');
-
-  // 模拟纸板规格列表
-  const boardSpecs = [
-    '165×115cm → 40×30×20 (XX纸业)',
-    '140×100cm → 35×25×18 (YY纸板厂)',
-  ];
-
-  const handleBoardChange = (e) => {
-    const index = e.detail.value;
-    setBoardIndex(index);
-    setBoardSpec(boardSpecs[index]);
+  const { params } = useRouter(); const count = params.mode === 'count';
+  const [batches, setBatches] = useState<BoardBatch[]>([]); const [id, setId] = useState(params.id || '');
+  const [quantity, setQuantity] = useState(''); const [recipient, setRecipient] = useState(''); const [remark, setRemark] = useState('');
+  const [error, setError] = useState(''); const [busy, setBusy] = useState(false); const [loaded, setLoaded] = useState(false); const saving = useRef(false);
+  const load = async () => { try { setBatches(await getBoards()); setError(''); } catch (e) { setError(e.message); } finally { setLoaded(true); } };
+  useLoad(load);
+  useSharedRefresh(load);
+  const eligible = batches.filter(b => count || b.remainingQty > 0 || b.id === id);
+  const batch = batches.find(b => b.id === id); const n = Number(quantity);
+  const after = batch ? (count ? n : batch.remainingQty - n) : 0;
+  const save = async () => {
+    if (saving.current) return;
+    if (!batch) { setError('请先选择一批纸板'); return; }
+    if (!quantity.trim() || !Number.isSafeInteger(n) || n < 0 || (!count && n === 0)) { setError(count ? '请输入非负整数的实盘数量' : '请输入正整数的领料数量'); return; }
+    if (!count && n > batch.remainingQty) { setError('领料不能超过当前库存 ' + batch.remainingQty + ' 张'); return; }
+    if (count && !remark.trim()) { setError('请填写盘点原因'); return; }
+    saving.current = true; setBusy(true); setError('');
+    try { await moveBoard(id, { type: count ? 'count' : 'out', quantity: n, recipient, remark }); await Taro.redirectTo({ url: '/pages/board-detail/index?id=' + id }); } catch (e) { setError(e.message); try { setBatches(await getBoards()); } catch { /* keep the form for retry */ } } finally { saving.current = false; setBusy(false); }
   };
-
-  const handleSave = () => {
-    if (!boardSpec) {
-      Taro.showToast({ title: '请选择纸板规格', icon: 'none' });
-      return;
-    }
-    if (!outboundQty) {
-      Taro.showToast({ title: '请填写领料数量', icon: 'none' });
-      return;
-    }
-    if (!recipient) {
-      Taro.showToast({ title: '请填写领料人', icon: 'none' });
-      return;
-    }
-
-    const outboundData = {
-      boardSpec,
-      outboundQty: Number(outboundQty),
-      recipient,
-      purpose,
-      remark,
-      createdAt: new Date().toISOString()
-    };
-
-    console.log('纸板领料数据：', outboundData);
-    
-    Taro.showToast({
-      title: '领料成功',
-      icon: 'success',
-      duration: 2000
-    });
-    
-    setTimeout(() => {
-      Taro.navigateBack();
-    }, 2000);
-  };
-
-  const handleCancel = () => {
-    Taro.navigateBack();
-  };
-
-  return (
-    <View className={styles.page}>
-      <View className={styles.navbar}>
-        <View className={styles.navbarContent}>
-          <Text className={styles.navbarTitle}>纸板领料</Text>
-        </View>
-      </View>
-
-      <ScrollView scrollY className={styles.content}>
-        {/* 领料单头部卡片 */}
-        <View className={styles.headerCard}>
-          <Text className={styles.headerLabel}>📋 领料单号</Text>
-          <Text className={styles.headerTitle}>自动生成</Text>
-          <Text className={styles.headerSubtitle}>领料日期：{new Date().toLocaleDateString('zh-CN')}</Text>
-        </View>
-
-        {/* 纸板规格选择 */}
-        <View className={styles.section}>
-          <Text className={styles.sectionTitle}>纸板规格</Text>
-          <View className={styles.card}>
-            <View className={styles.formRow}>
-              <Text className={styles.formLabel}>选择规格</Text>
-              <Picker mode="selector" range={boardSpecs} onChange={handleBoardChange} value={boardIndex}>
-                <Text className={styles.formValue}>{boardSpec || '请选择纸板规格'}</Text>
-              </Picker>
-            </View>
-          </View>
-        </View>
-
-        {/* 领料数量 */}
-        <View className={styles.section}>
-          <Text className={styles.sectionTitle}>领料数量</Text>
-          <View className={styles.card}>
-            <View className={styles.formRow}>
-              <Text className={styles.formLabel}>领料数量</Text>
-              <View className={styles.qtyInputGroup}>
-                <Input
-                  className={styles.qtyInput}
-                  type="number"
-                  placeholder="0"
-                  value={outboundQty}
-                  onInput={(e) => setOutboundQty(e.detail.value)}
-                />
-                <Text className={styles.qtyUnit}>张</Text>
-              </View>
-            </View>
-
-            <View className={styles.totalDivider} />
-
-            <View className={styles.totalRow}>
-              <Text className={styles.totalLabel}>本次领料</Text>
-              <Text className={styles.totalValue}>{outboundQty || 0} 张</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* 领料信息 */}
-        <View className={styles.section}>
-          <Text className={styles.sectionTitle}>领料信息</Text>
-          <View className={styles.card}>
-            <View className={styles.formRow}>
-              <Text className={styles.formLabel}>领料人</Text>
-              <Input
-                className={styles.formInput}
-                placeholder="请输入领料人姓名"
-                value={recipient}
-                onInput={(e) => setRecipient(e.detail.value)}
-              />
-            </View>
-            
-            <View className={styles.formDivider} />
-            
-            <View className={styles.formRow}>
-              <Text className={styles.formLabel}>用途</Text>
-              <Input
-                className={styles.formInput}
-                placeholder="请输入用途（选填）"
-                value={purpose}
-                onInput={(e) => setPurpose(e.detail.value)}
-              />
-            </View>
-          </View>
-        </View>
-
-        {/* 备注 */}
-        <View className={styles.section}>
-          <Text className={styles.sectionTitle}>备注</Text>
-          <View className={styles.card}>
-            <Input
-              className={styles.remarkInput}
-              placeholder="选填"
-              value={remark}
-              onInput={(e) => setRemark(e.detail.value)}
-            />
-          </View>
-        </View>
-
-        <View className={styles.bottomSpace} />
-      </ScrollView>
-
-      {/* 底部操作栏 */}
-      <View className={styles.footer}>
-        <View className={styles.cancelBtn} onClick={handleCancel}>取消</View>
-        <View className={styles.saveBtn} onClick={handleSave}>确认领料</View>
-      </View>
-    </View>
-  );
+  return <BoardPage title={count ? '盘点这批纸板' : '纸板领料'} subtitle={count ? '填写实际数到的数量，保留调整记录。' : '确认批次和数量，再从库存中扣减。'}>
+    {!eligible.length && loaded && !error && <BoardEmpty title='暂无可领用纸板' hint='先记一笔来料，库存就会出现在这里。'><BoardButton onClick={() => Taro.navigateTo({ url: '/pages/board-receive/index' })}>来料入库</BoardButton></BoardEmpty>}
+    {eligible.length > 0 && <View className='board-section'><Text className='board-section-title'>选择批次</Text><Picker mode='selector' value={Math.max(0, eligible.findIndex(b => b.id === id) + 1)} range={['请选择批次', ...eligible.map(b => boardSpec(b) + ' · ' + b.supplier + ' · ' + b.date + ' · 余' + b.remainingQty + '张 · ' + b.id.slice(-6))]} onChange={e => setId(eligible[Number(e.detail.value) - 1]?.id || '')}><View className='board-input-wrap'>{batch ? boardSpec(batch) + ' cm · ' + batch.fluteType + '楞' : '请选择这次使用的纸板 ›'}</View></Picker>{batch && <><Text className='board-card-meta'>成箱 {cartonSpec(batch)} cm</Text><Text className='board-card-meta'>{batch.supplier} · {batch.date} · {batch.location || '未填写库位'}</Text><Text className='board-batch-id'>{batch.id}</Text><View className='board-detail-row'><Text>当前库存</Text><strong>{batch.remainingQty} 张</strong></View></>}</View>}
+    {batch && <><View className='board-section'><BoardField label={count ? '实盘数量' : '领料数量'} numeric unit='张' value={quantity} onChange={setQuantity} /><View className='board-detail-row'><Text>{count ? '盘点后结余' : '领用后结余'}</Text><strong>{quantity && Number.isFinite(after) ? after : '—'} 张</strong></View></View><View className='board-section'><BoardField label='领料人' optional value={recipient} onChange={setRecipient} /><BoardField label={count ? '盘点原因' : '用途备注'} optional={!count} value={remark} onChange={setRemark} placeholder={count ? '例如：重新清点，发现少了 2 张' : '例如：生产、试样、报废'} /></View></>}
+    {error && <BoardError message={error} retry={!loaded || !batches.length ? load : undefined} />}
+    {batch && <BoardButton disabled={busy} onClick={save}>{busy ? '正在保存…' : count ? '确认盘点调整' : '确认领料'}</BoardButton>}
+  </BoardPage>;
 }

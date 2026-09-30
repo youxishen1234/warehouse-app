@@ -1,0 +1,13 @@
+import { ReactNode } from 'react';
+import { View, Text, Input, Button } from '@tarojs/components';
+import Taro from '@tarojs/taro';
+import Icon from '../Icon';
+import './style.scss';
+import './titanium.scss';
+export function BoardPage({ title, subtitle, children, back = true, action }: { title: string; subtitle?: string; children: ReactNode; back?: boolean; action?: ReactNode }) {
+  return <View className='board-page'><View className='board-header'><View className='board-heading'>{back && <Button className='board-back' onClick={() => { if (Taro.getCurrentPages().length > 1) Taro.navigateBack(); else Taro.switchTab({ url: '/pages/board-stock/index' }); }} aria-label='返回'>‹</Button>}<View><Text className='board-eyebrow'>曙光 · 纸板仓库</Text><Text className='board-title'>{title}</Text></View></View>{action}</View>{subtitle && <Text className='board-subtitle'>{subtitle}</Text>}<View className='board-content'>{children}</View></View>;
+}
+export function BoardButton({ children, onClick, secondary = false, disabled = false }: { children: ReactNode; onClick: () => void; secondary?: boolean; disabled?: boolean }) { return <Button disabled={disabled || undefined} className={'board-button ' + (secondary ? 'is-secondary ' : '') + (disabled ? 'is-disabled' : '')} onClick={() => { if (!disabled) onClick(); }}>{children}</Button>; }
+export function BoardField({ label, value, onChange, placeholder = '', numeric = false, unit, optional = false }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; numeric?: boolean; unit?: string; optional?: boolean }) { return <View className='board-field'><Text className='board-field-label'>{label}{optional && <Text className='board-muted'> · 选填</Text>}</Text><View className='board-input-wrap'><Input aria-label={label} type={numeric ? 'digit' : 'text'} value={value} onInput={e => onChange(e.detail.value)} placeholder={placeholder} maxlength={label.includes('备注') || label.includes('原因') ? 500 : 120} />{unit && <Text className='board-muted'>{unit}</Text>}</View></View>; }
+export function BoardEmpty({ title, hint, children }: { title: string; hint: string; children?: ReactNode }) { return <View className='board-empty'><View className='board-empty-icon'><Icon name='box' style={{ width: 30, height: 30 }} color='#647a70' /></View><Text className='board-section-title'>{title}</Text><Text className='board-muted'>{hint}</Text>{children}</View>; }
+export function BoardError({ message, retry }: { message: string; retry?: () => void }) { return <View className='board-error' role='alert'><Text>{message}</Text>{retry && <Button onClick={retry}>重新加载</Button>}</View>; }
