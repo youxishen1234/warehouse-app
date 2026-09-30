@@ -100,7 +100,7 @@ jobs:
         timeout-minutes: 18
         run: |
           bash scripts/run-ios-ui-tests.sh "$(cat release/ios-final-acceptance/device-id.txt)" release/ios-acceptance-derived release/ios-final-acceptance/ui-tests current
-          "$RUNNER_TEMP/dock-image-venv/bin/python" scripts/verify-ios-ui-evidence.py release/ios-final-acceptance/ui-tests --expected-source ios/App/AppUITests/NativeDockInteractionTests.swift > release/ios-final-acceptance/ui-tests/evidence-check.json || { cat release/ios-final-acceptance/ui-tests/evidence-check.json; exit 1; }
+          "$RUNNER_TEMP/dock-image-venv/bin/python" scripts/verify-ios-ui-evidence.py release/ios-final-acceptance/ui-tests --expected-source ios/App/AppUITests/NativeDockInteractionTests.swift --require-screen-captures > release/ios-final-acceptance/ui-tests/evidence-check.json || { cat release/ios-final-acceptance/ui-tests/evidence-check.json; exit 1; }
       - name: Collect original evidence
         if: always()
         uses: actions/upload-artifact@v4

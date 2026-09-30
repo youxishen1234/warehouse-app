@@ -109,7 +109,7 @@ def unique_object(pairs):
     return result
 
 
-def verify(evidence_dir, expected_source):
+def verify(evidence_dir, expected_source, require_screen_captures=False):
     report = {"schemaVersion": 1, "status": "failed", "inputs": {},
               "acceptance": {"visual": "not_assessed", "production": "not_assessed",
                              "provenance": "hashes_recorded_not_authenticated"},
@@ -213,6 +213,7 @@ def verify(evidence_dir, expected_source):
                         with Image.open(io.BytesIO(data)) as image:
                             image.load()
                             record["width"], record["height"] = image.size
+                            record["exifOrientation"] = image.getexif().get(274, 1)
                             record["format"] = "PNG"
                     except (OSError, ValueError, SyntaxError, Image.DecompressionBombError) as error:
                         fail("invalid_png", filename + ": " + str(error))
@@ -225,6 +226,12 @@ def verify(evidence_dir, expected_source):
             required += [(ROTATION_TEST, "landscape-tap-tab-1", "landscape"),
                          (ROTATION_TEST, "landscape-tap-tab-3", "landscape"),
                          (ROTATION_TEST, "portrait-after-rotation-tab-0", "portrait")]
+            if require_screen_captures:
+                required += [(ROTATION_TEST, "landscape-tap-tab-0", "landscape"),
+                             (ROTATION_TEST, "landscape-tap-tab-2", "landscape")]
+        if require_screen_captures:
+            required += [(method, "screen-" + state, orientation)
+                         for method, state, orientation in list(required)]
         for method, state, orientation in required:
             matches = [record for record in report["attachments"] if record["method"] == method
                        and re.fullmatch(re.escape(state) + r"_\d+_" + UUID + r"\.png", record["name"])]
@@ -259,8 +266,10 @@ def main(argv=None):
     parser = JsonArgumentParser(description=__doc__)
     parser.add_argument("evidence_dir", type=Path, help="Directory containing xcodebuild.log, exit-status.txt and attachments/")
     parser.add_argument("--expected-source", required=True, type=Path, help="Exact Swift test source used by the evidence run")
+    parser.add_argument("--require-screen-captures", action="store_true",
+                        help="Require full-screen counterparts and all four landscape tab states; not visual approval")
     args = parser.parse_args(argv)
-    report = verify(args.evidence_dir, args.expected_source)
+    report = verify(args.evidence_dir, args.expected_source, args.require_screen_captures)
     print(json.dumps(report, ensure_ascii=True, indent=2))
     return 0 if report["status"] == "evidence_complete" else 1
 

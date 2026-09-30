@@ -86,10 +86,105 @@ final class NativeDockInteractionTests: XCTestCase {
     }
 
     private func capture(_ label: String) {
+        let layout = app.staticTexts["warehouse.native.layout.state"]
+        let navigation = app.staticTexts["warehouse.native.navigation.state"]
+        func observedRoute() -> String? {
+            guard navigation.exists, let raw = navigation.value as? String else { return nil }
+            let fields = raw.split(separator: ";").reduce(into: [String: String]()) { result, field in
+                let pair = field.split(separator: "=", maxSplits: 1).map(String.init)
+                if pair.count == 2 { result[pair[0]] = pair[1] }
+            }
+            guard fields["ready"] == "1", fields["pending"] == "-1" else { return nil }
+            return fields["route"]
+        }
+        let expectedRoute = observedRoute()
+        func isComplete(_ value: Any) -> Bool {
+            guard let state = value as? [String: Any],
+                  state["jsPending"] as? Bool == false,
+                  let route = state["route"] as? String,
+                  let expectedRoute = expectedRoute, route == expectedRoute,
+                  observedRoute() == expectedRoute,
+                  state["dom"] is [String: Any], state["jsError"] == nil else { return false }
+            return true
+        }
+        let ready = NSPredicate { _, _ in
+            guard layout.exists, let raw = layout.value as? String,
+                  let data = raw.data(using: .utf8),
+                  let value = try? JSONSerialization.jsonObject(with: data) else { return false }
+            return isComplete(value)
+        }
+        let waitResult = XCTWaiter.wait(
+            for: [XCTNSPredicateExpectation(predicate: ready, object: app)], timeout: 12)
+        // Preserve images and raw diagnostics even on timeout. Assert only after
+        // attaching them, so an inaccessible label or pending JS stays visible.
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = label
         attachment.lifetime = .keepAlways
         add(attachment)
+
+        // Keep both capture surfaces: a cropped application image alone cannot
+        // distinguish a screenshot-orientation defect from actual screen layout.
+        let screen = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screen.name = "screen-" + label
+        screen.lifetime = .keepAlways
+        add(screen)
+        let hierarchy = XCTAttachment(string: app.debugDescription)
+        hierarchy.name = "accessibility-" + label
+        hierarchy.lifetime = .keepAlways
+        add(hierarchy)
+
+        func frameJSON(_ frame: CGRect) -> [String: Double] {
+            return ["x": Double(frame.origin.x), "y": Double(frame.origin.y),
+                    "width": Double(frame.width), "height": Double(frame.height)]
+        }
+        var capturedLayoutReady = false
+        var evidence: [String: Any] = [
+            "label": label,
+            "layoutWaitStatus": waitResult == .completed ? "completed" : "not_completed",
+            "layoutWaitResult": waitResult.rawValue,
+            "expectedRoute": expectedRoute.map { $0 as Any } ?? NSNull(),
+            "appFrame": frameJSON(app.frame),
+            "deviceOrientation": XCUIDevice.shared.orientation.rawValue,
+            "layoutStateStatus": "missing_element",
+            "layoutState": NSNull()
+        ]
+        evidence["tabs"] = (0..<4).map { index -> [String: Any] in
+            let element = bar.buttons["warehouse.tab.\(index)"]
+            guard element.exists else { return ["index": index, "exists": false] }
+            return ["index": index, "exists": true, "frame": frameJSON(element.frame),
+                    "isHittable": element.isHittable, "isSelected": element.isSelected]
+        }
+        if layout.exists {
+            if let raw = layout.value as? String, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                evidence["layoutStateRaw"] = raw
+                if let data = raw.data(using: .utf8),
+                   let value = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) {
+                    evidence["layoutStateStatus"] = "present"
+                    evidence["layoutState"] = value
+                    capturedLayoutReady = isComplete(value)
+                } else {
+                    evidence["layoutStateStatus"] = "invalid_json"
+                }
+            } else {
+                evidence["layoutStateStatus"] = "missing_or_nonstring_value"
+            }
+        }
+        evidence["capturedLayoutComplete"] = capturedLayoutReady
+        let json: String
+        do {
+            let data = try JSONSerialization.data(withJSONObject: evidence, options: [.prettyPrinted, .sortedKeys])
+            json = String(decoding: data, as: UTF8.self)
+        } catch {
+            json = "{\"layoutStateStatus\":\"evidence_serialization_failed\"}"
+        }
+        let geometry = XCTAttachment(string: json)
+        geometry.name = "layout-" + label + ".json"
+        geometry.lifetime = .keepAlways
+        add(geometry)
+        XCTAssertEqual(waitResult, .completed,
+                       "Layout diagnostics never completed for the acknowledged route; see layout-\(label).json")
+        XCTAssertTrue(capturedLayoutReady,
+                      "Captured layout diagnostics are missing, pending, stale, or contain a JS error; see layout-\(label).json")
     }
 
     private func assertViewport(isLandscape: Bool, file: StaticString = #filePath, line: UInt = #line) {
@@ -101,6 +196,34 @@ final class NativeDockInteractionTests: XCTestCase {
         let expectation = XCTNSPredicateExpectation(predicate: predicate, object: app)
         XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: 15), .completed,
                        "Application did not rotate to \(isLandscape ? "landscape" : "portrait")", file: file, line: line)
+    }
+
+    private func assertAllTabsInsideApp(file: StaticString = #filePath, line: UInt = #line) {
+        var previousFrames: [CGRect]?
+        let predicate = NSPredicate { [self] _, _ in
+            let viewport = app.frame
+            guard !viewport.isNull, !viewport.isEmpty else { return false }
+            var frames = [viewport]
+            for index in 0..<4 {
+                let element = bar.buttons["warehouse.tab.\(index)"]
+                guard element.exists, element.isHittable else { previousFrames = nil; return false }
+                let frame = element.frame
+                guard !frame.isNull, !frame.isEmpty, viewport.contains(frame) else {
+                    previousFrames = nil
+                    return false
+                }
+                frames.append(frame)
+            }
+            let stable = previousFrames == frames
+            previousFrames = frames
+            return stable
+        }
+        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: app)
+        let result = XCTWaiter.wait(for: [expectation], timeout: 15)
+        if result != .completed { capture("tabs-outside-app-or-unstable") }
+        XCTAssertEqual(result, .completed,
+                       "All four native tabs must have stable, complete hittable frames inside app.frame",
+                       file: file, line: line)
     }
 
     private func drag(from: Int, to: Int, hold: TimeInterval = 0.08) {
@@ -177,15 +300,18 @@ final class NativeDockInteractionTests: XCTestCase {
         assertRoute(0)
         XCUIDevice.shared.orientation = .landscapeLeft
         assertViewport(isLandscape: true)
-        for index in [1, 3] {
+        assertAllTabsInsideApp()
+        for index in [1, 2, 3, 0] {
             tab(index).tap()
             assertRoute(index)
+            assertAllTabsInsideApp()
             capture("landscape-tap-tab-\(index)")
         }
         XCUIDevice.shared.orientation = .portrait
         assertViewport(isLandscape: false)
         tab(0).tap()
         assertRoute(0)
+        assertAllTabsInsideApp()
         capture("portrait-after-rotation-tab-0")
     }
 }

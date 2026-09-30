@@ -170,6 +170,37 @@ final class NativeDockInteractionTests: XCTestCase {
         self.assertEqual(self.verify()["expectedMethods"], [VERIFIER.TAP_TEST])
         self.assertEqual(self.verify()["status"], "evidence_complete")
 
+    def test_screen_contract_rejects_old_app_only_evidence(self):
+        self.make_fixture(rotation=True)
+        report = VERIFIER.verify(self.root, self.source, require_screen_captures=True)
+        self.assertEqual(report["status"], "failed")
+        missing = [item["detail"] for item in report["failures"] if item["code"] == "required_screenshot"]
+        self.assertTrue(any("screen-tap-tab-0" in detail for detail in missing))
+        self.assertTrue(any("landscape-tap-tab-2" in detail for detail in missing))
+
+    def test_screen_contract_requires_all_four_landscape_states(self):
+        self.make_fixture(rotation=True)
+        rotation = self.manifest[1]["attachments"]
+        for index in [0, 2]:
+            state = "landscape-tap-tab-" + str(index)
+            entry = copy.deepcopy(rotation[0])
+            entry["exportedFileName"] = state + ".png"
+            entry["suggestedHumanReadableName"] = state + "_0_00000000-0000-0000-0000-000000000000.png"
+            Image.new("RGB", (26, 12), "white").save(self.attachments / entry["exportedFileName"])
+            rotation.append(entry)
+        for method in self.manifest:
+            for entry in list(method["attachments"]):
+                screen = copy.deepcopy(entry)
+                screen["exportedFileName"] = "screen-" + entry["exportedFileName"]
+                screen["suggestedHumanReadableName"] = "screen-" + entry["suggestedHumanReadableName"]
+                (self.attachments / screen["exportedFileName"]).write_bytes((self.attachments / entry["exportedFileName"]).read_bytes())
+                method["attachments"].append(screen)
+        self.save()
+        report = VERIFIER.verify(self.root, self.source, require_screen_captures=True)
+        self.assertEqual(report["status"], "evidence_complete")
+        self.assertEqual(len(report["requiredScreenshots"]), 18)
+        self.assertEqual(report["acceptance"]["visual"], "not_assessed")
+
     def test_cli_failure_is_nonzero_json_and_source_is_required(self):
         for extra in ([], ["--expected-source", str(self.source)]):
             (self.root / "exit-status.txt").write_text("65", encoding="utf-8")

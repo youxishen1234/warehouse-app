@@ -27,8 +27,9 @@ jobs:
         run: npm install --legacy-peer-deps
       - name: Build current web assets
         run: |
+          set -euo pipefail
           TARO_PUBLIC_PATH=./ npm run build:h5
-          cp -R dist/. www/
+          pwsh -NoProfile -NonInteractive -File scripts/sync-native-assets.ps1 -Source dist -Target www
       - name: Copy Capacitor assets
         run: npx cap copy ios
       - name: Install Pods
@@ -107,8 +108,8 @@ jobs:
           cp www/download.html /tmp/shuguang-download.html
           cp scripts/publish-ios-files.sh /tmp/publish-ios-files.sh
           if [ -z "$SERVER_HOST" ] || [ -z "$SERVER_USER" ]; then
-            echo "::warning::SERVER_HOST or SERVER_USER not configured, skipping upload"
-            exit 0
+            echo "::error::SERVER_HOST or SERVER_USER not configured; publication failed"
+            exit 1
           fi
           if [ -n "$SSH_PRIVATE_KEY" ]; then
             echo "Using SSH private key authentication"
@@ -126,8 +127,8 @@ jobs:
             sshpass -p "$SSH_PASS" scp -o StrictHostKeyChecking=no /tmp/shuguang-ipa.json /tmp/shuguang-download.html /tmp/publish-ios-files.sh "$SERVER_USER@$SERVER_HOST:/tmp/"
             printf '%s\n' "$SSH_PASS" | sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "sudo -S sh /tmp/publish-ios-files.sh"
           else
-            echo "::warning::Neither SSH_PRIVATE_KEY nor SHUGUANG_SERVER_PASSWORD configured, skipping upload"
-            exit 0
+            echo "::error::Neither SSH_PRIVATE_KEY nor SHUGUANG_SERVER_PASSWORD configured; publication failed"
+            exit 1
           fi
           echo "IPA uploaded successfully to $SERVER_HOST:$REMOTE_PATH"
 

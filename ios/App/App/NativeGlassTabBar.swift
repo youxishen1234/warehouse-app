@@ -39,6 +39,10 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     private var webBackdropFrame: CGRect?
     private var acknowledgedRoute = ""
     private var navigationStateLabel: UILabel?
+    #if DEBUG
+    private var layoutStateLabel: UILabel?
+    private var layoutDiagnosticSequence = 0
+    #endif
     private var diagnosticSurface: UIView?
     private var diagnosticReady = false
     private var uiDiagnosticPreparing = false
@@ -80,6 +84,16 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
             label.accessibilityLabel = "Native navigation test state"
             navigationStateLabel = label
             view.addSubview(label)
+            let layoutLabel = UILabel(frame: CGRect(x: 8, y: 84, width: 1, height: 1))
+            layoutLabel.text = "layout"
+            layoutLabel.font = .systemFont(ofSize: 1)
+            layoutLabel.textColor = .clear
+            layoutLabel.isUserInteractionEnabled = false
+            layoutLabel.isAccessibilityElement = true
+            layoutLabel.accessibilityIdentifier = "warehouse.native.layout.state"
+            layoutLabel.accessibilityLabel = "Native layout test state"
+            layoutStateLabel = layoutLabel
+            view.addSubview(layoutLabel)
             updateAcceptanceState()
         }
         #endif
@@ -125,6 +139,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
             // UIKit may lay out its floating bar after the parent's layout pass.
             self?.view.layoutIfNeeded()
             self?.updateWebBackdrop(force: true)
+            self?.updateLayoutDiagnostic(reason: "rotation-complete")
         }
     }
 
@@ -242,7 +257,83 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
             } else {
                 self.appliedWebBackdropState = state
             }
+            self.updateLayoutDiagnostic(reason: "backdrop-applied")
         }
+    }
+
+    // Read-only diagnostics for the UI-test build. Do not repair or reinterpret
+    // geometry here: the raw native and DOM measurements must expose failures.
+    private func updateLayoutDiagnostic(reason: String) {
+        #if DEBUG
+        guard let label = layoutStateLabel else { return }
+        layoutDiagnosticSequence += 1
+        let sequence = layoutDiagnosticSequence
+        let window = view.window
+        func rect(_ value: CGRect) -> [String: Double] {
+            ["x": Double(value.minX), "y": Double(value.minY),
+             "width": Double(value.width), "height": Double(value.height)]
+        }
+        func geometry(_ node: UIView) -> [String: Any] {
+            ["bounds": rect(node.bounds), "frame": rect(node.frame),
+             "windowFrame": rect(node.convert(node.bounds, to: window)),
+             "hidden": node.isHidden, "alpha": Double(node.alpha),
+             "sameWindow": node.window != nil && node.window === window]
+        }
+        let subviews: [[String: Any]] = dock.subviews.enumerated().map { index, node in
+            var entry = geometry(node)
+            entry["index"] = index
+            entry["eligiblePlatter"] = !node.isHidden && node.alpha > 0.01
+                && node.bounds.width > dock.bounds.width / 2
+                && node.bounds.width < dock.bounds.width && node.bounds.height >= 40
+                && node.bounds.height <= dock.bounds.height
+            return entry
+        }
+        var payload: [String: Any] = [
+            "sequence": sequence, "reason": reason, "jsPending": true,
+            "timestamp": Date().timeIntervalSince1970,
+            "orientation": window?.windowScene?.interfaceOrientation.rawValue ?? 0,
+            "deviceOrientation": UIDevice.current.orientation.rawValue,
+            "window": window.map { geometry($0) } ?? [:],
+            "root": geometry(view), "tabs": geometry(tabsController.view),
+            "bridge": geometry(bridgeController.view), "dock": geometry(dock),
+            "dockSubviews": subviews,
+            "backdrop": ["frame": webBackdropFrame.map { rect($0) } ?? [:],
+                           "requested": lastWebBackdropState, "applied": appliedWebBackdropState],
+            "route": acknowledgedRoute, "selected": tabsController.selectedIndex
+        ]
+        func publish(_ value: [String: Any]) {
+            guard let data = try? JSONSerialization.data(withJSONObject: value, options: .sortedKeys),
+                  let json = String(data: data, encoding: .utf8) else { return }
+            label.accessibilityValue = json
+        }
+        guard let webView = bridgeController.webView else {
+            payload["jsPending"] = false
+            payload["jsError"] = "WebView unavailable"
+            publish(payload)
+            return
+        }
+        payload["web"] = geometry(webView)
+        publish(payload)
+        webView.evaluateJavaScript("""
+          JSON.stringify((function(){
+            var v=window.visualViewport,e=document.getElementById('sg-native-dock-backdrop');
+            var r=e?e.getBoundingClientRect():null,s=e?getComputedStyle(e):null;
+            return {innerWidth:innerWidth,innerHeight:innerHeight,devicePixelRatio:devicePixelRatio,
+              visualViewport:v?{width:v.width,height:v.height,offsetLeft:v.offsetLeft,offsetTop:v.offsetTop,scale:v.scale}:null,
+              backdrop:r?{x:r.x,y:r.y,width:r.width,height:r.height,display:s.display,background:s.backgroundColor}:null};
+          })())
+          """) { [weak self] value, error in
+            guard let self = self, self.layoutDiagnosticSequence == sequence else { return }
+            payload["jsPending"] = false
+            if let json = value as? String, let data = json.data(using: .utf8),
+               let dom = try? JSONSerialization.jsonObject(with: data) {
+                payload["dom"] = dom
+            } else {
+                payload["jsError"] = error?.localizedDescription ?? "Invalid layout JSON"
+            }
+            publish(payload)
+        }
+        #endif
     }
 
     private var webBackdropScript: String {
@@ -548,6 +639,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         // A reload replaces the DOM while its native geometry can be unchanged.
         // Every accepted JS state republishes the current shape to that document.
         updateWebBackdrop(force: true)
+        updateLayoutDiagnostic(reason: "route-ack")
     }
 
     // Invoked by the simulator job against the real storyboard and WebView.
