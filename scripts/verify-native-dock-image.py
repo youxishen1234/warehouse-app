@@ -13,14 +13,12 @@ image = Image.open(directory / 'simulator.png').convert('RGB')
 frame = result['dockFrame']
 W, H = image.size
 
-# On iOS 26 the floating Liquid Glass platter does not span the full screen
-# width, so frame['width'] is the platter width — not the screen width. Using
-# it to derive pixels-per-point mis-labels the sample band onto light web
-# content. Instead, sample by fraction of the screenshot: the platter sits in
-# the lower ~12% of the screen on every supported iPhone.
-# Dock band: vertical center of the floating platter (~85%–90% down the screen).
-top = int(H * 0.855)
-bottom = int(H * 0.900)
+# On iOS 26 the floating Liquid Glass platter sits near the very bottom of
+# the screen (~93%–99% down the screen on a modern iPhone). Sample by
+# fraction of the screenshot instead of deriving pixels-per-point from
+# dockFrame.width (which is the platter width, not the screen width).
+top = int(H * 0.935)
+bottom = int(H * 0.965)
 left = int(W * 0.30)
 right = int(W * 0.70)
 sample = image.crop((left, top, right, bottom))
@@ -28,7 +26,7 @@ mean = ImageStat.Stat(sample).mean
 luminance = .2126 * mean[0] + .7152 * mean[1] + .0722 * mean[2]
 
 # Preview: the lower strip where the dock lives.
-preview = image.crop((0, int(H * 0.80), W, H))
+preview = image.crop((0, int(H * 0.90), W, H))
 preview.thumbnail((280, 70))
 buffer = io.BytesIO()
 preview.save(buffer, format='JPEG', quality=35)
@@ -47,8 +45,8 @@ print('::notice title=Native dock appearance::' + payload)
 icon_checks = []
 for center in (.185, .396, .607, .818):
     cx = int(W * center)
-    icon = image.crop((cx - int(W * 0.022), int(H * 0.858),
-                       cx + int(W * 0.022), int(H * 0.895)))
+    icon = image.crop((cx - int(W * 0.022), int(H * 0.955),
+                       cx + int(W * 0.022), int(H * 0.980)))
     pixels = list(icon.getdata())
     bright = sum(max(pixel) >= 150 for pixel in pixels)
     icon_checks.append(bright / max(1, len(pixels)))
