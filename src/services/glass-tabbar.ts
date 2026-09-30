@@ -7,7 +7,7 @@ const paths = [
 ];
 // One 24-unit grid and stroke weight for every tab, including selected copies.
 const icon = (index: number) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + paths[index] + '</svg>';
-const titles = ['首页', '入库', '出库', '我的'];
+const titles = ['首页', '纸板', '出库', '我的'];
 
 export function createGlassTabBar(host: HTMLElement, onSelect: (index: number) => void) {
   const dock = document.createElement('div');

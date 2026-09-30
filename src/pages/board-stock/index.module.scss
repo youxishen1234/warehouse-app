@@ -27,6 +27,14 @@
   color: #000;
 }
 
+.navbarSubtitle {
+  display: block;
+  margin-top: 6px;
+  font-size: 24px;
+  color: #7b8492;
+  letter-spacing: 0.2px;
+}
+
 .navbarActions {
   display: flex;
   gap: 24px;
@@ -42,6 +50,7 @@
   border-radius: 32px;
   font-size: 36px;
   cursor: pointer;
+  color: #111827;
 }
 
 .filters {
@@ -68,6 +77,26 @@
   color: white;
 }
 
+.filterCount {
+  display: inline-flex;
+  min-width: 30px;
+  height: 30px;
+  margin-left: 8px;
+  padding: 0 8px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 15px;
+  background: rgba(255, 149, 0, 0.14);
+  color: #c56a00;
+  font-size: 21px;
+  font-weight: 700;
+}
+
+.filterBtn.active .filterCount {
+  background: rgba(255, 255, 255, 0.24);
+  color: #fff;
+}
+
 .content {
   height: calc(100vh - 240px);
   padding: 0 32px;
@@ -82,11 +111,23 @@
 }
 
 .overviewTitle {
-  font-size: 44px;
+  font-size: 40px;
   font-weight: 600;
   color: #000;
-  margin-bottom: 24px;
   display: block;
+}
+
+.overviewHeading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.overviewHint,
+.sectionHint {
+  font-size: 24px;
+  color: #8e8e93;
 }
 
 .overviewGrid {
@@ -116,17 +157,59 @@
   display: block;
 }
 
+.overviewProgress {
+  height: 10px;
+  margin-top: 22px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: #edf0f4;
+}
+
+.overviewProgressFill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2f80ed, #34c759);
+  transition: width 0.3s ease;
+}
+
 .sectionHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 32px 0 16px;
+  gap: 16px;
 }
 
 .sectionTitle {
   font-size: 44px;
   font-weight: 600;
   color: #000;
+}
+
+.emptyState {
+  margin: 8px 0 24px;
+  padding: 56px 32px;
+  border: 1px dashed #d8dde7;
+  border-radius: 28px;
+  background: #fff;
+  text-align: center;
+}
+
+.emptyTitle,
+.emptyHint {
+  display: block;
+}
+
+.emptyTitle {
+  font-size: 32px;
+  font-weight: 600;
+  color: #303642;
+}
+
+.emptyHint {
+  margin-top: 8px;
+  font-size: 25px;
+  color: #8e8e93;
 }
 
 .boardCard {
@@ -142,7 +225,7 @@
 }
 
 .boardHeader {
-  padding: 32px;
+  padding: 30px 32px 26px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
 }
 
@@ -154,7 +237,7 @@
 }
 
 .boardName {
-  font-size: 40px;
+  font-size: 38px;
   font-weight: 600;
   color: #000;
 }
@@ -196,13 +279,13 @@
 }
 
 .boardBody {
-  padding: 32px;
+  padding: 26px 32px 30px;
 }
 
 .infoRow {
   display: flex;
   justify-content: space-between;
-  padding: 24px 0;
+  padding: 20px 0;
   border-bottom: 1px solid rgba(0, 0, 0, 0.04);
 }
 
@@ -224,7 +307,7 @@
 }
 
 .progressSection {
-  padding: 32px 0;
+  padding: 28px 0 24px;
 }
 
 .progressHeader {
@@ -245,7 +328,7 @@
 }
 
 .progressBar {
-  height: 12px;
+  height: 14px;
   background: rgba(120, 120, 128, 0.16);
   border-radius: 6px;
   overflow: hidden;
@@ -265,7 +348,7 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 24px;
-  margin: 32px 0;
+  margin: 26px 0;
 }
 
 .statCard {
@@ -313,9 +396,9 @@
 
 .actionRow {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 16px;
-  padding-top: 32px;
+  padding-top: 26px;
   border-top: 1px solid rgba(0, 0, 0, 0.08);
 }
 
@@ -341,7 +424,22 @@
   font-weight: 600;
   cursor: pointer;
   text-align: center;
-  grid-column: span 2;
+  grid-column: span 1;
+}
+
+@media (max-width: 420px) {
+  .navbarTitle { font-size: 58px; }
+  .navbarSubtitle { font-size: 22px; }
+  .overviewGrid { gap: 10px; }
+  .overviewItem { padding: 14px 8px; }
+  .overviewValue { font-size: 42px; }
+  .overviewLabel { font-size: 22px; }
+  .boardTitleRow { align-items: flex-start; gap: 12px; }
+  .boardName { font-size: 34px; }
+  .statusBadge { flex: none; padding: 7px 12px; font-size: 22px; }
+  .infoValue { max-width: 58%; font-size: 27px; }
+  .actionRow { gap: 10px; }
+  .actionBtn, .actionBtnPrimary { padding: 18px 8px; font-size: 24px; }
 }
 
 .bottomSpace {

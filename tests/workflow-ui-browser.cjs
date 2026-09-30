@@ -36,8 +36,8 @@ async function check(engine, name, base) {
       await page.goto(base);
       await page.locator('[class*=actionIn___]').waitFor();
       await page.locator('.team-boot').waitFor({ state: 'detached' });
-      for (const [index, route] of ['home', 'inbound', 'outbound', 'mine'].entries()) {
-        await page.getByRole('button', { name: ['首页', '入库', '出库', '我的'][index], exact: true }).click();
+      for (const [index, route] of ['home', 'board-stock', 'outbound', 'mine'].entries()) {
+        await page.getByRole('button', { name: ['首页', '纸板', '出库', '我的'][index], exact: true }).click();
         await page.waitForURL(new RegExp('/pages/' + route + '/index'));
         const active = page.locator('.taro_page:visible').last();
         await active.locator('taro-scroll-view-core').waitFor();
@@ -59,6 +59,9 @@ async function check(engine, name, base) {
           const calculator = await active.locator('.sg-corrugated-text').evaluate(el => ({ whiteSpace: getComputedStyle(el).whiteSpace, width: el.getBoundingClientRect().width, scroll: el.scrollWidth }));
           assert.equal(calculator.whiteSpace, 'nowrap');
           assert.ok(calculator.width >= calculator.scroll - 1, 'calculator label is not squeezed into a vertical column');
+        } else if (route === 'board-stock') {
+          await active.locator('[class*=overviewCard___]').waitFor();
+          await active.getByText('库存总览', { exact: true }).waitFor();
         } else if (route !== 'mine') {
           const hero = await active.locator('[class*=hero___]').evaluate(el => getComputedStyle(el).backgroundImage);
           assert.notEqual(hero, 'none');

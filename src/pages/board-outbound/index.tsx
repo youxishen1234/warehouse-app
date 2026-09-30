@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+﻿import { useState } from 'react';
 import { View, Text, Input, Picker, ScrollView } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import styles from './index.module.scss';

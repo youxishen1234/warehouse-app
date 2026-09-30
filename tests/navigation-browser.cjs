@@ -53,7 +53,7 @@ async function verify(browser, name) {
   assert.ok(before.y > 700 && before.y + before.height <= 845, JSON.stringify(before));
   assert.equal(await page.locator('.sg-glass-tab[data-tab]').count(), 4);
   assert.equal(await page.locator('.sg-glass-search').count(), 0, 'no search button');
-  assert.deepEqual(await page.locator('.sg-glass-tab[data-tab] span').allTextContents(), ['首页', '入库', '出库', '我的']);
+  assert.deepEqual(await page.locator('.sg-glass-tab[data-tab] span').allTextContents(), ['首页', '纸板', '出库', '我的']);
   assert.ok(Math.abs((await page.locator('.sg-glass-rail').boundingBox()).width - (await page.locator('.sg-glass-dock').boundingBox()).width) < 1, 'four tabs fill the dock with no search gap');
   assert.equal(await page.locator('.weui-tabbar').isVisible(), false, 'old rectangular dock is replaced');
   const colors = await page.evaluate(() => ({
@@ -127,7 +127,7 @@ async function verify(browser, name) {
   assert.match(page.url(), /home/, 'leaving the dock vertically cancels the pending selection');
   await page.waitForFunction(() => Math.abs(Number(document.querySelector('.sg-glass-dock').dataset.position)) < .001);
   assert.notEqual(await swipe(page, -110), 'none', 'gesture follows finger');
-  await page.waitForURL(/inbound/);
+  await page.waitForURL(/board-stock/);
   await page.waitForTimeout(500);
   await swipe(page, -110);
   await page.waitForURL(/outbound/);
@@ -162,7 +162,7 @@ async function verify(browser, name) {
   }
   await swipe(page, 110);
   await page.waitForURL(/outbound/);
-  for (const route of ['/pages/inbound/index', '/pages/outbound/index', '/pages/mine/index', '/pages/home/index']) {
+  for (const route of ['/pages/board-stock/index', '/pages/outbound/index', '/pages/mine/index', '/pages/home/index']) {
     await page.evaluate(route => window.dispatchEvent(new CustomEvent('sg-native-tab', { detail: route })), route);
     await page.waitForURL(new RegExp(route));
     await page.waitForTimeout(500);
@@ -173,7 +173,7 @@ async function verify(browser, name) {
   // The last finger destination must win, with no old-route acknowledgment.
   await page.evaluate(() => {
     window.__nativeMessages = [];
-    ['/pages/inbound/index', '/pages/outbound/index', '/pages/mine/index'].forEach((route, index) => {
+    ['/pages/board-stock/index', '/pages/outbound/index', '/pages/mine/index'].forEach((route, index) => {
       const event = new CustomEvent('sg-native-tab', { detail: route });
       event.requestId = 201 + index;
       window.dispatchEvent(event);
@@ -212,7 +212,7 @@ async function verify(browser, name) {
   assert.equal(await page.locator('.sg-glass-dock').isVisible(), true, 'older iOS keeps the web glass dock');
   await page.locator('[data-tab="0"]').focus();
   await page.keyboard.press('ArrowRight');
-  await page.waitForURL(/inbound/);
+  await page.waitForURL(/board-stock/);
   await page.keyboard.press('Home');
   await page.waitForURL(/home/);
   await page.locator('.sg-corrugated-item').scrollIntoViewIfNeeded();

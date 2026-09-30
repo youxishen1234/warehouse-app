@@ -1,10 +1,31 @@
-﻿import React, { useState } from 'react';
-import { View, Text, ScrollView, Button } from '@tarojs/components';
+﻿import { useMemo, useState } from 'react';
+import { View, Text, ScrollView } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import styles from './index.module.scss';
 
-// 模拟数据
-const mockBoardStock = [
+type BoardStockItem = {
+  id: number;
+  boardLength: number;
+  boardWidth: number;
+  fluteType: string;
+  faceGsm: number;
+  linerGsm: number;
+  flutingGsm: number;
+  cartonLength: number;
+  cartonWidth: number;
+  cartonHeight: number;
+  currentStock: number;
+  maxStock: number;
+  supplier: string;
+  lastInboundDate: string;
+  lastInboundQty: number;
+  monthInbound: number;
+  monthOutbound: number;
+  status: 'ok' | 'warning';
+};
+
+// 纸板模块暂时使用演示数据；库存接口接入后只需替换这一层数据源。
+const mockBoardStock: BoardStockItem[] = [
   {
     id: 1,
     boardLength: 165,
@@ -50,74 +71,85 @@ const mockBoardStock = [
 export default function BoardStock() {
   const [filter, setFilter] = useState('all');
 
-  const filteredStock = mockBoardStock.filter(item => {
-    if (filter === 'all') return true;
+  const filteredStock = useMemo(() => mockBoardStock.filter(item => {
     if (filter === 'ok') return item.status === 'ok';
     if (filter === 'warning') return item.status === 'warning';
     return true;
-  });
+  }), [filter]);
 
   const totalSpecs = mockBoardStock.length;
   const totalQty = mockBoardStock.reduce((sum, item) => sum + item.currentStock, 0);
   const warningCount = mockBoardStock.filter(item => item.status === 'warning').length;
+  const totalCapacity = mockBoardStock.reduce((sum, item) => sum + item.maxStock, 0);
+  const utilization = totalCapacity ? Math.round(totalQty / totalCapacity * 100) : 0;
 
   const handleScan = () => {
     Taro.showToast({ title: '扫码功能开发中', icon: 'none' });
   };
 
-  const handleInbound = (board) => {
-    Taro.navigateTo({ url: '/pages/board-inbound/index' });
-  };
-
-  const handleOutbound = (board) => {
+  const handleOutbound = (_board: BoardStockItem) => {
     Taro.navigateTo({ url: '/pages/board-outbound/index' });
   };
 
-  const handleDetail = (board) => {
-    Taro.showToast({ title: '详情功能开发中', icon: 'none' });
+  const handleDetail = (board: BoardStockItem) => {
+    Taro.showModal({
+      title: `${board.boardLength}×${board.boardWidth} cm`,
+      content: `三层${board.fluteType}楞 · 当前库存 ${board.currentStock} 张\n供应商：${board.supplier}`,
+      showCancel: false,
+      confirmText: '知道了'
+    });
   };
 
-  const handleQRCode = (board) => {
+  const handleQRCode = (_board: BoardStockItem) => {
     Taro.showToast({ title: '二维码功能开发中', icon: 'none' });
+  };
+
+  const showRestockHint = (board: BoardStockItem) => {
+    Taro.showModal({
+      title: '库存预警',
+      content: `${board.boardLength}×${board.boardWidth} cm 当前仅余 ${board.currentStock} 张，建议尽快安排补货。`,
+      showCancel: false,
+      confirmText: '知道了'
+    });
   };
 
   return (
     <View className={styles.page}>
       <View className={styles.navbar}>
         <View className={styles.navbarContent}>
-          <Text className={styles.navbarTitle}>纸板库存</Text>
+          <View>
+            <Text className={styles.navbarTitle}>纸板库存</Text>
+            <Text className={styles.navbarSubtitle}>规格与库存一目了然</Text>
+          </View>
           <View className={styles.navbarActions}>
             <View className={styles.iconBtn} onClick={handleScan}>📱</View>
-            <View className={styles.iconBtn} onClick={() => Taro.navigateTo({ url: '/pages/board-inbound/index' })}>➕</View>
           </View>
         </View>
       </View>
 
       <View className={styles.filters}>
-        <View 
-          className={`${styles.filterBtn} ${filter === 'all' ? styles.active : ''}`}
-          onClick={() => setFilter('all')}
-        >
-          全部
-        </View>
-        <View 
-          className={`${styles.filterBtn} ${filter === 'ok' ? styles.active : ''}`}
-          onClick={() => setFilter('ok')}
-        >
-          充足
-        </View>
-        <View 
-          className={`${styles.filterBtn} ${filter === 'warning' ? styles.active : ''}`}
-          onClick={() => setFilter('warning')}
-        >
-          预警
-        </View>
+        {[
+          ['all', '全部'],
+          ['ok', '充足'],
+          ['warning', '预警']
+        ].map(([value, label]) => (
+          <View
+            key={value}
+            className={`${styles.filterBtn} ${filter === value ? styles.active : ''}`}
+            onClick={() => setFilter(value)}
+          >
+            {label}
+            {value === 'warning' && <Text className={styles.filterCount}>{warningCount}</Text>}
+          </View>
+        ))}
       </View>
 
       <ScrollView scrollY className={styles.content}>
-        {/* 总览卡片 */}
         <View className={styles.overviewCard}>
-          <Text className={styles.overviewTitle}>📊 库存总览</Text>
+          <View className={styles.overviewHeading}>
+            <Text className={styles.overviewTitle}>库存总览</Text>
+            <Text className={styles.overviewHint}>占用率 {utilization}%</Text>
+          </View>
           <View className={styles.overviewGrid}>
             <View className={styles.overviewItem}>
               <Text className={styles.overviewValue}>{totalSpecs}</Text>
@@ -132,16 +164,26 @@ export default function BoardStock() {
               <Text className={styles.overviewLabel}>库存不足</Text>
             </View>
           </View>
+          <View className={styles.overviewProgress}>
+            <View className={styles.overviewProgressFill} style={{ width: `${utilization}%` }} />
+          </View>
         </View>
 
         <View className={styles.sectionHeader}>
           <Text className={styles.sectionTitle}>{filteredStock.length}种规格</Text>
+          <Text className={styles.sectionHint}>按库存状态筛选</Text>
         </View>
 
-        {/* 纸板卡片列表 */}
+        {filteredStock.length === 0 && (
+          <View className={styles.emptyState}>
+            <Text className={styles.emptyTitle}>暂无符合条件的规格</Text>
+            <Text className={styles.emptyHint}>切换筛选条件后再试</Text>
+          </View>
+        )}
+
         {filteredStock.map(board => (
-          <View 
-            key={board.id} 
+          <View
+            key={board.id}
             className={`${styles.boardCard} ${board.status === 'warning' ? styles.warning : ''}`}
           >
             <View className={styles.boardHeader}>
@@ -150,7 +192,7 @@ export default function BoardStock() {
                   {board.boardLength}×{board.boardWidth} cm
                 </Text>
                 <View className={`${styles.statusBadge} ${board.status === 'ok' ? styles.ok : styles.warningBadge}`}>
-                  {board.status === 'ok' ? '✓ 库存充足' : '⚠️ 库存不足'}
+                  {board.status === 'ok' ? '✓ 库存充足' : '⚠ 库存预警'}
                 </View>
               </View>
               <View className={styles.boardSubtitle}>
@@ -192,9 +234,9 @@ export default function BoardStock() {
                   </Text>
                 </View>
                 <View className={styles.progressBar}>
-                  <View 
+                  <View
                     className={`${styles.progressFill} ${board.status === 'warning' ? styles.warningFill : ''}`}
-                    style={{ width: `${(board.currentStock / board.maxStock) * 100}%` }}
+                    style={{ width: `${Math.min(100, board.currentStock / board.maxStock * 100)}%` }}
                   />
                 </View>
               </View>
@@ -212,40 +254,28 @@ export default function BoardStock() {
 
               {board.status === 'warning' && (
                 <View className={styles.alertBox}>
-                  <Text className={styles.alertTitle}>⚠️ 低于安全库存</Text>
-                  <Text className={styles.alertText}>建议采购 500张，预计3天后用完</Text>
+                  <Text className={styles.alertTitle}>⚠ 低于安全库存</Text>
+                  <Text className={styles.alertText}>建议尽快补货，避免影响生产排期</Text>
                 </View>
               )}
 
               <View className={styles.actionRow}>
-                {board.status === 'warning' ? (
-                  <>
-                    <View className={styles.actionBtnPrimary} onClick={() => handleInbound(board)}>
-                      立即入库
-                    </View>
-                    <View className={styles.actionBtn} onClick={() => handleDetail(board)}>
-                      详情
-                    </View>
-                    <View className={styles.actionBtn} onClick={() => handleQRCode(board)}>
-                      二维码
-                    </View>
-                  </>
-                ) : (
-                  <>
-                    <View className={styles.actionBtn} onClick={() => handleInbound(board)}>
-                      入库
-                    </View>
-                    <View className={styles.actionBtn} onClick={() => handleOutbound(board)}>
-                      领料
-                    </View>
-                    <View className={styles.actionBtn} onClick={() => handleDetail(board)}>
-                      详情
-                    </View>
-                    <View className={styles.actionBtn} onClick={() => handleQRCode(board)}>
-                      二维码
-                    </View>
-                  </>
+                {board.status === 'warning' && (
+                  <View className={styles.actionBtnPrimary} onClick={() => showRestockHint(board)}>
+                    补货提醒
+                  </View>
                 )}
+                {board.status !== 'warning' && (
+                  <View className={styles.actionBtn} onClick={() => handleOutbound(board)}>
+                    领料
+                  </View>
+                )}
+                <View className={styles.actionBtn} onClick={() => handleDetail(board)}>
+                  详情
+                </View>
+                <View className={styles.actionBtn} onClick={() => handleQRCode(board)}>
+                  二维码
+                </View>
               </View>
             </View>
           </View>

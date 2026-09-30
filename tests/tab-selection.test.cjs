@@ -55,12 +55,12 @@ function harness() {
 test('rapid native changes keep the final destination and suppress stale route acknowledgments', async () => {
   const h = harness();
   try {
-    h.select('inbound', 1); h.select('outbound', 2); h.select('mine', 3);
+    h.select('board-stock', 1); h.select('outbound', 2); h.select('mine', 3);
     h.mutation(); await h.flush();
     assert.equal(h.messages.length, 0, 'old route cannot reset native selection while pending');
-    assert.deepEqual(h.calls, ['/pages/inbound/index']);
+    assert.deepEqual(h.calls, ['/pages/board-stock/index']);
     h.requests[0].resolve(); await h.flush();
-    assert.deepEqual(h.calls, ['/pages/inbound/index', '/pages/mine/index']);
+    assert.deepEqual(h.calls, ['/pages/board-stock/index', '/pages/mine/index']);
     assert.equal(h.messages.length, 0);
     h.requests[1].resolve(); await h.flush();
     assert.equal(h.messages.length, 1);
@@ -75,7 +75,7 @@ test('rapid native changes keep the final destination and suppress stale route a
 test('failed navigation acknowledges the actual route and allows the next selection', async () => {
   const h = harness();
   try {
-    h.select('inbound', 7); h.requests[0].reject(new Error('route failed')); await h.flush();
+    h.select('board-stock', 7); h.requests[0].reject(new Error('route failed')); await h.flush();
     assert.equal(h.messages[0].route, '/pages/home/index');
     assert.equal(h.messages[0].requestId, 7);
     assert.equal(h.messages[0].navigationFailed, true);
@@ -88,7 +88,7 @@ test('failed navigation acknowledges the actual route and allows the next select
 test('native requests cannot switch behind a modal and same-tab selections still acknowledge', async () => {
   const h = harness();
   try {
-    h.modal(true); h.select('inbound', 9); await h.flush();
+    h.modal(true); h.select('board-stock', 9); await h.flush();
     assert.equal(h.calls.length, 0);
     assert.equal(h.messages.at(-1).navigationFailed, true);
     assert.equal(h.messages.at(-1).modal, true);

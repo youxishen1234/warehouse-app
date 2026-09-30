@@ -1,7 +1,6 @@
 ﻿export default defineAppConfig({
   pages: [
     'pages/home/index',
-    'pages/board-inbound/index',
     'pages/board-stock/index',
     'pages/board-outbound/index',
     'pages/inbound/index',
