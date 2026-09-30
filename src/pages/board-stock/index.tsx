@@ -13,7 +13,7 @@ export default function BoardStock() {
   useDidShow(load); useSharedRefresh(load);
   const groups = useMemo(() => {
     const map = new Map<string, { batch: BoardBatch; batches: BoardBatch[]; quantity: number; warning: number }>();
-    batches.forEach(b => { const g = map.get(b.specKey) || { batch: b, batches: [], quantity: 0, warning: 0 }; g.batches.push(b); g.quantity += b.remainingQty; g.warning = Math.max(g.warning, b.warningQty); map.set(b.specKey, g); });
+    batches.slice().sort((a, b) => b.createdAt - a.createdAt).forEach(b => { const g = map.get(b.specKey) || { batch: b, batches: [], quantity: 0, warning: 0 }; g.batches.push(b); g.quantity += b.remainingQty; g.warning = Math.max(g.warning, b.warningQty); map.set(b.specKey, g); });
     return [...map.values()].sort((a, b) => Number(b.quantity > 0 && b.quantity <= b.warning) - Number(a.quantity > 0 && a.quantity <= a.warning));
   }, [batches]);
   const total = batches.reduce((n, b) => n + b.remainingQty, 0);
@@ -38,6 +38,7 @@ export default function BoardStock() {
       <View className='inventory-specs'><View><Text className='inventory-caption'>纸板规格</Text><Text className='board-spec'>{boardSpec(g.batch)}<small>cm</small></Text></View><View className='inventory-carton'><Text className='inventory-caption'>对应纸箱 · cm</Text><Text>{cartonSpec(g.batch)}</Text></View></View>
       <Text className='inventory-supplier'>{[...new Set(g.batches.map(b => b.supplier))].join(' / ')}<Text> · {g.batches.length} 个批次</Text></Text>
       <View className='board-card-footer'><View><Text className='board-qty'>{g.quantity.toLocaleString()}</Text><Text className='board-qty-unit'>张可用</Text></View><Button onClick={() => setExpanded(expanded === g.batch.specKey ? '' : g.batch.specKey)}>{expanded === g.batch.specKey ? '收起批次' : '查看批次 ›'}</Button></View>
+      <View className='board-quick-restock'><BoardButton onClick={() => Taro.navigateTo({ url: '/pages/board-receive/index?from=' + encodeURIComponent(g.batch.id) })}>同规格一键入库</BoardButton><Text className='board-muted'>沿用最近一次规格和板厂，填写本次数量后确认。</Text></View>
       {expanded === g.batch.specKey && <View>{g.batches.slice().sort((a, b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt).map(b => <View key={b.id} className='board-timeline'><View className='board-row'><strong>{b.supplier}</strong><Text>{b.remainingQty} 张</Text></View><Text className='board-muted'>{b.date} 入库 · {b.location || '未填写库位'}</Text><Text className='board-batch-id'>{b.id}</Text><View className='board-actions'><BoardButton secondary onClick={() => go('board-detail', b.id)}>详情 / 标签</BoardButton><BoardButton disabled={b.remainingQty === 0} onClick={() => go('board-outbound', b.id)}>领料</BoardButton></View></View>)}<BoardButton secondary onClick={() => Taro.navigateTo({ url: '/pages/board-receive/index?from=' + g.batch.id })}>按此规格再进一批</BoardButton></View>}
     </View>)}</View>}
   </BoardPage>;

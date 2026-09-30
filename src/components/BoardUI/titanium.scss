@@ -84,5 +84,11 @@
 .inventory-hero .board-summary-bottom strong { font-size: 18PX; margin-bottom: 3PX; }
 .inventory-hero .board-summary-bottom .board-muted { line-height: 1.2; }
 .board-page .inventory-shortcut::after { pointer-events: none; }
+.board-quick-restock { margin-top: 14PX; display: grid; gap: 8PX; }
+.board-quick-restock .board-muted { font-size: 11PX; line-height: 1.6; }
+.board-template-list { display: grid; gap: 9PX; margin: 14PX 0; }
+.board-template-list .board-button { text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.board-reuse-summary { border-color: #699cff40; }
+.board-reuse-summary .board-spec { display: block; margin-bottom: 10PX; }
 @media (max-width: 350PX) { .board-page { padding-left: 16PX; padding-right: 16PX; } .board-material { width: 100PX; } .inventory-specs { grid-template-columns: 1fr; gap: 12PX; } .inventory-carton { border: 0; padding: 0; } .inventory-shortcut { gap: 6PX !important; padding: 12PX 8PX !important; } .inventory-shortcut strong { font-size: 12PX; } }
 @media (prefers-reduced-motion: no-preference) { .board-button,.inventory-shortcut { transition: transform .16s ease, filter .16s ease; } .board-button:active,.inventory-shortcut:active { transform: scale(.98); filter: brightness(1.08); } }
