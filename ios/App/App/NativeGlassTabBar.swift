@@ -6,8 +6,8 @@ import Capacitor
 // A single live Capacitor bridge moves between lightweight tab hosts; data and
 // the JavaScript router survive every selection. Older systems use the web dock.
 final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHandler, UITabBarControllerDelegate {
-    private let routes = ["/pages/home/index", "/pages/inbound/index", "/pages/outbound/index", "/pages/mine/index"]
-    private let titles = ["首页", "入库", "出库", "我的"]
+    private let routes = ["/pages/home/index", "/pages/board-stock/index", "/pages/outbound/index", "/pages/mine/index"]
+    private let titles = ["首页", "纸板", "出库", "我的"]
     private lazy var tabImages = (0..<4).map { Self.tabIcon($0) }
     private let bridgeController = WarehouseBridgeController()
     private let tabsController = UITabBarController()

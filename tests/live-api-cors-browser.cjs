@@ -41,7 +41,10 @@ async function check(engine, name, base) {
     await waitFor('/api/stats');
     await waitFor('/api/products');
     await waitFor('/api/sync', 2);
-    await page.getByRole('button', { name: '入库', exact: true }).click();
+    // The second dock tab is the paperboard stock dashboard; the generic
+    // inbound workflow remains available as a direct page for API coverage.
+    await page.getByRole('button', { name: '纸板', exact: true }).click();
+    await page.goto(base + '/#/pages/inbound/index');
     await waitFor('/api/suppliers');
     await waitFor('/api/delivery-notes');
     await page.getByRole('button', { name: '出库', exact: true }).click();
