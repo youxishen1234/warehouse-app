@@ -71,28 +71,34 @@ jobs:
           zip -r shuguang.ipa Payload
           ls -lh shuguang.ipa
       - name: Upload IPA artifact
+        id: ipa_artifact
         uses: actions/upload-artifact@v4
         with:
           name: shuguang-ios-ipa
           path: ios/App/shuguang.ipa
       - name: Create Release and upload IPA
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: build-${{ github.run_number }}
-          name: Build ${{ github.run_number }}
-          body: |
-            iOS IPA 鑷姩鏋勫缓
-            鏋勫缓缂栧彿: ${{ github.run_number }}
-            鎻愪氦: ${{ github.sha }}
-          files: |
-            ios/App/shuguang.ipa
-            release/ios-smoke/result.json
-            release/ios-smoke/simulator.png
-            release/ios-smoke/native-dock-step-*.png
-            release/ios-smoke/dock-preview.jpg
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: build-${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          retry() {
+            for attempt in 1 2 3 4; do
+              if "$@"; then return 0; fi
+              echo "::warning::Release request failed (attempt $attempt/4)"
+              sleep $((attempt * 10))
+            done
+            return 1
+          }
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            retry gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --title "$RELEASE_TAG" --notes "iOS IPA build for $GITHUB_SHA"
+          fi
+          for asset in ios/App/shuguang.ipa release/ios-smoke/result.json release/ios-smoke/simulator.png release/ios-smoke/native-dock-step-*.png release/ios-smoke/dock-preview.jpg; do
+            retry gh release upload "$RELEASE_TAG" "$asset" --clobber
+          done
       - name: Upload IPA to server
+        # A transient GitHub Release failure must not block website delivery.
+        if: ${{ !cancelled() && steps.ipa_artifact.outcome == 'success' }}
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
