@@ -13,6 +13,7 @@ import styles from './index.module.scss';
 type QuickAction = { icon: IconName; text: string; url: string; color: string; bg: string };
 
 const quickActions: QuickAction[] = [
+  { icon: 'clipboard', text: '纸板管理', url: '/pages/board-stock/index', color: '#ea580c', bg: '#fff1e8' },
   { icon: 'clipboard', text: '库存查询', url: '/pages/inventory/index', color: '#1677ff', bg: '#eaf3ff' },
   { icon: 'tag', text: '商品管理', url: '/pages/products/index', color: '#2563eb', bg: '#eaf3ff' },
   { icon: 'mine', text: '客户管理', url: '/pages/customers/index', color: '#0f766e', bg: '#e8f7f3' },
@@ -25,7 +26,7 @@ const quickActions: QuickAction[] = [
 ];
 
 const WEEK = ['日', '一', '二', '三', '四', '五', '六'];
-const tabUrls = new Set(['/pages/home/index', '/pages/inbound/index', '/pages/outbound/index', '/pages/mine/index']);
+const tabUrls = new Set(['/pages/home/index', '/pages/board-stock/index', '/pages/outbound/index', '/pages/mine/index']);
 
 type LowStockRowProps = { product: Product };
 
@@ -161,10 +162,10 @@ export default function HomePage() {
       </View>
 
       <View className={styles.actionGrid}>
-        <View className={`${styles.actionCard} ${styles.actionIn}`} onClick={() => goTo('/pages/inbound/index')}>
+        <View className={`${styles.actionCard} ${styles.actionIn}`} onClick={() => goTo('/pages/board-inbound/index')}>
           <View className={styles.actionIcon}><Icon name="inbound" color="#fff" /></View>
-          <Text className={styles.actionTitle}>收货入库</Text>
-          <Text className={styles.actionSubtitle}>选择供应商和已有商品</Text>
+          <Text className={styles.actionTitle}>纸板入库</Text>
+          <Text className={styles.actionSubtitle}>纸板送货单专用入库</Text>
         </View>
         <View className={`${styles.actionCard} ${styles.actionOut}`} onClick={() => goTo('/pages/outbound/index')}>
           <View className={styles.actionIcon}><Icon name="outbound" color="#fff" /></View>
@@ -188,7 +189,7 @@ export default function HomePage() {
 
       <View className={styles.sectionHead}><Text className={styles.sectionTitle}>今日任务</Text><Text className={styles.cardCaption}>{loading ? '加载中…' : '实时数据'}</Text></View>
       <View className={styles.taskCard}>
-        <View className={styles.taskItem} onClick={() => goTo('/pages/inbound/index')}><Text className={styles.taskNum}>{stats ? todayIn : '--'}</Text><Text className={styles.taskLabel}>今日入库</Text></View>
+        <View className={styles.taskItem} onClick={() => goTo('/pages/board-inbound/index')}><Text className={styles.taskNum}>{stats ? todayIn : '--'}</Text><Text className={styles.taskLabel}>今日入库</Text></View>
         <View className={styles.taskItem} onClick={() => goTo('/pages/outbound/index')}><Text className={styles.taskNum}>{stats ? todayOut : '--'}</Text><Text className={styles.taskLabel}>今日出库</Text></View>
         <View className={styles.taskItem} onClick={() => goTo('/pages/inventory/index')}><Text className={styles.taskNum}>{stats ? stats.totalProducts : '--'}</Text><Text className={styles.taskLabel}>商品种类</Text></View>
         <View className={`${styles.taskItem} ${styles.attention}`} onClick={() => goTo('/pages/inventory/index')}><Text className={styles.taskNum}>{stats ? stats.lowStock : '--'}</Text><Text className={styles.taskLabel}>库存预警</Text></View>
@@ -197,7 +198,7 @@ export default function HomePage() {
       <View className={styles.sectionHead}><Text className={styles.sectionTitle}>库存流转</Text><Text className={styles.cardCaption}>今日数量</Text></View>
       <View className={styles.flowCard}>
         <View className={styles.flowLegend}><Text><Text className={styles.flowDotIn} />入库</Text><Text><Text className={styles.flowDotOut} />出库</Text><Text>单位：实际数量</Text></View>
-        <View className={styles.flowRow} onClick={() => goTo('/pages/inbound/index')}><Text className={styles.flowLabel}>入库</Text><View className={styles.flowBar}><View className={styles.flowBarIn} style={{ width: `${Math.round(todayIn / flowMax * 100)}%` }} /></View><Text className={styles.flowValue}>{stats ? todayIn : '--'}</Text></View>
+        <View className={styles.flowRow} onClick={() => goTo('/pages/board-inbound/index')}><Text className={styles.flowLabel}>入库</Text><View className={styles.flowBar}><View className={styles.flowBarIn} style={{ width: `${Math.round(todayIn / flowMax * 100)}%` }} /></View><Text className={styles.flowValue}>{stats ? todayIn : '--'}</Text></View>
         <View className={styles.flowRow} onClick={() => goTo('/pages/outbound/index')}><Text className={styles.flowLabel}>出库</Text><View className={styles.flowBar}><View className={styles.flowBarOut} style={{ width: `${Math.round(todayOut / flowMax * 100)}%` }} /></View><Text className={styles.flowValue}>{stats ? todayOut : '--'}</Text></View>
       </View>
 

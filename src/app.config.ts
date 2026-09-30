@@ -1,6 +1,9 @@
-export default defineAppConfig({
+﻿export default defineAppConfig({
   pages: [
     'pages/home/index',
+    'pages/board-inbound/index',
+    'pages/board-stock/index',
+    'pages/board-outbound/index',
     'pages/inbound/index',
     'pages/outbound/index',
     'pages/mine/index',
@@ -10,6 +13,7 @@ export default defineAppConfig({
     'pages/ledger/index',
     'pages/orders/index',
     'pages/carton-calculator/index',
+    'pages/board-calculator/index',
     'pages/team/index',
     'pages/suppliers/index',
     'pages/product-edit/index',
@@ -40,8 +44,8 @@ export default defineAppConfig({
         selectedIconPath: 'assets/tabbar/home-selected.svg'
       },
       {
-        pagePath: 'pages/inbound/index',
-        text: '入库',
+        pagePath: 'pages/board-stock/index',
+        text: '纸板',
         iconPath: 'assets/tabbar/inbound.svg',
         selectedIconPath: 'assets/tabbar/inbound-selected.svg'
       },
