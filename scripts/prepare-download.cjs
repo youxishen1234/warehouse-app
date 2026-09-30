@@ -55,6 +55,8 @@ async function prepareDownload(ipaPath, outputDir = 'release/download') {
   await fs.copyFile(path.join(root, 'www/download.html'), path.join(outputDir, 'index.html'));
   await fs.copyFile(path.join(root, 'ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png'), path.join(outputDir, 'app-icon.png'));
   await fs.writeFile(path.join(outputDir, 'ipa.json'), JSON.stringify(metadata, null, 2) + '\n');
+  const { createSource } = require('./create-ios-source.cjs');
+  await fs.writeFile(path.join(outputDir, 'source.json'), JSON.stringify(createSource(metadata), null, 2) + '\n');
   return metadata;
 }
 

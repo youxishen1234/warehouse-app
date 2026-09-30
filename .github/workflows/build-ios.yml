@@ -110,6 +110,7 @@ jobs:
           REMOTE_PATH="/opt/shuguang/public/shuguang.ipa"
           node scripts/prepare-download.cjs "$IPA_PATH" release/download
           cp release/download/ipa.json /tmp/shuguang-ipa.json
+          cp release/download/source.json /tmp/shuguang-source.json
           cp www/download.html /tmp/shuguang-download.html
           cp scripts/publish-ios-files.sh /tmp/publish-ios-files.sh
           if [ -z "$SERVER_HOST" ] || [ -z "$SERVER_USER" ]; then
@@ -123,13 +124,13 @@ jobs:
             chmod 600 ~/.ssh/id_rsa
             ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null
             scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa "$IPA_PATH" "$SERVER_USER@$SERVER_HOST:/tmp/shuguang.ipa"
-            scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa /tmp/shuguang-ipa.json /tmp/shuguang-download.html /tmp/publish-ios-files.sh "$SERVER_USER@$SERVER_HOST:/tmp/"
+            scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa /tmp/shuguang-ipa.json /tmp/shuguang-source.json /tmp/shuguang-download.html /tmp/publish-ios-files.sh "$SERVER_USER@$SERVER_HOST:/tmp/"
             ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa "$SERVER_USER@$SERVER_HOST" "sudo -n sh /tmp/publish-ios-files.sh"
           elif [ -n "$SSH_PASS" ]; then
             echo "Using password authentication (sshpass)"
             brew install sshpass 2>/dev/null || true
             sshpass -p "$SSH_PASS" scp -o StrictHostKeyChecking=no "$IPA_PATH" "$SERVER_USER@$SERVER_HOST:/tmp/shuguang.ipa"
-            sshpass -p "$SSH_PASS" scp -o StrictHostKeyChecking=no /tmp/shuguang-ipa.json /tmp/shuguang-download.html /tmp/publish-ios-files.sh "$SERVER_USER@$SERVER_HOST:/tmp/"
+            sshpass -p "$SSH_PASS" scp -o StrictHostKeyChecking=no /tmp/shuguang-ipa.json /tmp/shuguang-source.json /tmp/shuguang-download.html /tmp/publish-ios-files.sh "$SERVER_USER@$SERVER_HOST:/tmp/"
             printf '%s\n' "$SSH_PASS" | sshpass -p "$SSH_PASS" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" "sudo -S sh /tmp/publish-ios-files.sh"
           else
             echo "::warning::Neither SSH_PRIVATE_KEY nor SHUGUANG_SERVER_PASSWORD configured, skipping upload"
