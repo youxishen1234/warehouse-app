@@ -15,11 +15,36 @@ final class NativeDockInteractionTests: XCTestCase {
         if let variant = ProcessInfo.processInfo.environment["DOCK_UI_TEST_VARIANT"], !variant.isEmpty {
             app.launchArguments.append("--dock-variant=" + variant)
         }
+        // On a loaded macOS runner the second-and-later fresh simulator launches
+        // sometimes come up with the WebView never acknowledging ready (stays at
+        // route=;ready=0) even after 45s. The previous test's termination leaves
+        // the simulator in a slow/cold state. Retry the whole launch once before
+        // declaring failure; the first test in the bundle boots fine.
         app.launch()
-        // The very first WebView boot on a loaded macOS runner can be slow
-        // (previous run observed ~19s before ready=1). Give launch a generous
-        // window; in-test transitions keep the tighter 12s.
+        if !waitForReadyHome(predicateTimeout: 45) {
+            app.terminate()
+            sleep(2)
+            XCUIDevice.shared.orientation = .portrait
+            app.launch()
+        }
         assertRoute(0, predicateTimeout: 45)
+    }
+
+    // Returns true once the home route is acknowledged and ready; does not assert.
+    private func waitForReadyHome(predicateTimeout: TimeInterval) -> Bool {
+        let state = app.staticTexts["warehouse.native.navigation.state"]
+        guard state.waitForExistence(timeout: 30) else { return false }
+        let expectedRoute = routes[0]
+        let predicate = NSPredicate { object, _ in
+            guard let element = object as? XCUIElement, let value = element.value as? String else { return false }
+            let fields = value.split(separator: ";").reduce(into: [String: String]()) { result, field in
+                let pair = field.split(separator: "=", maxSplits: 1).map(String.init)
+                if pair.count == 2 { result[pair[0]] = pair[1] }
+            }
+            return fields["route"] == expectedRoute && fields["selected"] == "0"
+                && fields["pending"] == "-1" && fields["ready"] == "1"
+        }
+        return waitFor(predicate, object: state, timeout: predicateTimeout) == .completed
     }
 
     override func tearDownWithError() throws {
