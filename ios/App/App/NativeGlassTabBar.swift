@@ -220,8 +220,15 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     // private classes. Reject ambiguous/non-platter geometry rather than draw
     // an estimated solid strip across page content.
     private func visiblePlatterFrame(in webView: WKWebView) -> CGRect? {
+        // In landscape the detached Liquid Glass platter shrinks to a centered
+        // compact pill (~320pt on an 874pt-wide dock), while in portrait it stays
+        // near-full-width (~360pt on a 402pt dock). A relative width test against
+        // the dock width rejected the landscape pill (320 < 874/2), leaving the dark
+        // backdrop undrawn so the glass sampled light web content. An absolute floor
+        // every 4-tab platter exceeds (~300pt) fits both orientations; the count==1
+        // guard still rejects ambiguous geometry rather than guess.
         let candidates = dock.subviews.filter {
-            !$0.isHidden && $0.alpha > 0.01 && $0.bounds.width > dock.bounds.width / 2
+            !$0.isHidden && $0.alpha > 0.01 && $0.bounds.width >= 240
                 && $0.bounds.width < dock.bounds.width && $0.bounds.height >= 40
                 && $0.bounds.height <= dock.bounds.height
         }
@@ -283,7 +290,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
             var entry = geometry(node)
             entry["index"] = index
             entry["eligiblePlatter"] = !node.isHidden && node.alpha > 0.01
-                && node.bounds.width > dock.bounds.width / 2
+                && node.bounds.width >= 240
                 && node.bounds.width < dock.bounds.width && node.bounds.height >= 40
                 && node.bounds.height <= dock.bounds.height
             return entry

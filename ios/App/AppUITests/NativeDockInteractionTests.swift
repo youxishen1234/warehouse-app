@@ -40,17 +40,25 @@ final class NativeDockInteractionTests: XCTestCase {
     }
 
     private func tab(_ index: Int, file: StaticString = #filePath, line: UInt = #line) -> XCUIElement {
-        XCTAssertTrue(bar.waitForExistence(timeout: 10), "Native tab bar is missing", file: file, line: line)
-        let identified = bar.buttons["warehouse.tab.\(index)"]
-        let element = identified.exists ? identified : bar.buttons.matching(NSPredicate(format: "label == %@", titles[index])).firstMatch
-        XCTAssertTrue(element.waitForExistence(timeout: 5), "Missing native tab \(index)", file: file, line: line)
+        let nativeBar = bar
+        XCTAssertTrue(nativeBar.exists || nativeBar.waitForExistence(timeout: 10), "Native tab bar is missing", file: file, line: line)
+        let identified = nativeBar.buttons["warehouse.tab.\(index)"]
+        let element = identified.exists ? identified : nativeBar.buttons.matching(NSPredicate(format: "label == %@", titles[index])).firstMatch
+        XCTAssertTrue(element.exists || element.waitForExistence(timeout: 5), "Missing native tab \(index)", file: file, line: line)
         XCTAssertTrue(element.isHittable, "Tab \(index) is not hittable", file: file, line: line)
         return element
     }
 
+    // Avoid XCTest's initial polling delay when a condition already holds.
+    // Unsettled conditions retain their original bounded predicate wait.
+    private func waitFor(_ predicate: NSPredicate, object: Any, timeout: TimeInterval) -> XCTWaiter.Result {
+        if predicate.evaluate(with: object) { return .completed }
+        return XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: object)], timeout: timeout)
+    }
+
     private func assertRoute(_ index: Int, file: StaticString = #filePath, line: UInt = #line) {
         let state = app.staticTexts["warehouse.native.navigation.state"]
-        XCTAssertTrue(state.waitForExistence(timeout: 30), "Missing Debug navigation observer", file: file, line: line)
+        XCTAssertTrue(state.exists || state.waitForExistence(timeout: 30), "Missing Debug navigation observer", file: file, line: line)
         let expectedRoute = routes[index]
         let predicate = NSPredicate { object, _ in
             guard let element = object as? XCUIElement, let value = element.value as? String else { return false }
@@ -61,8 +69,7 @@ final class NativeDockInteractionTests: XCTestCase {
             return fields["route"] == expectedRoute && fields["selected"] == String(index)
                 && fields["pending"] == "-1" && fields["ready"] == "1"
         }
-        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: state)
-        XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: 12), .completed,
+        XCTAssertEqual(waitFor(predicate, object: state, timeout: 12), .completed,
                        "Native selection and acknowledged page disagree: \(String(describing: state.value))", file: file, line: line)
         XCTAssertTrue(tab(index, file: file, line: line).isSelected, "Native accessibility selection is wrong", file: file, line: line)
         // Taro retains inactive pages. A matching element merely existing in
@@ -80,8 +87,7 @@ final class NativeDockInteractionTests: XCTestCase {
                     }
             }
         }
-        let pageExpectation = XCTNSPredicateExpectation(predicate: visibleHeading, object: app)
-        XCTAssertEqual(XCTWaiter.wait(for: [pageExpectation], timeout: 12), .completed,
+        XCTAssertEqual(waitFor(visibleHeading, object: app, timeout: 12), .completed,
                        "Acknowledged route \(expectedRoute) has no visible WebView heading: \(heading)", file: file, line: line)
     }
 
@@ -113,8 +119,7 @@ final class NativeDockInteractionTests: XCTestCase {
                   let value = try? JSONSerialization.jsonObject(with: data) else { return false }
             return isComplete(value)
         }
-        let waitResult = XCTWaiter.wait(
-            for: [XCTNSPredicateExpectation(predicate: ready, object: app)], timeout: 12)
+        let waitResult = waitFor(ready, object: app, timeout: 12)
         // Preserve images and raw diagnostics even on timeout. Assert only after
         // attaching them, so an inaccessible label or pending JS stays visible.
         let attachment = XCTAttachment(screenshot: app.screenshot())
@@ -148,8 +153,9 @@ final class NativeDockInteractionTests: XCTestCase {
             "layoutStateStatus": "missing_element",
             "layoutState": NSNull()
         ]
+        let nativeBar = bar
         evidence["tabs"] = (0..<4).map { index -> [String: Any] in
-            let element = bar.buttons["warehouse.tab.\(index)"]
+            let element = nativeBar.buttons["warehouse.tab.\(index)"]
             guard element.exists else { return ["index": index, "exists": false] }
             return ["index": index, "exists": true, "frame": frameJSON(element.frame),
                     "isHittable": element.isHittable, "isSelected": element.isSelected]
@@ -193,19 +199,19 @@ final class NativeDockInteractionTests: XCTestCase {
             guard frame.width > 0, frame.height > 0 else { return false }
             return isLandscape ? frame.width > frame.height : frame.height > frame.width
         }
-        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: app)
-        XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: 15), .completed,
+        XCTAssertEqual(waitFor(predicate, object: app, timeout: 15), .completed,
                        "Application did not rotate to \(isLandscape ? "landscape" : "portrait")", file: file, line: line)
     }
 
     private func assertAllTabsInsideApp(file: StaticString = #filePath, line: UInt = #line) {
         var previousFrames: [CGRect]?
+        let nativeBar = bar
         let predicate = NSPredicate { [self] _, _ in
             let viewport = app.frame
             guard !viewport.isNull, !viewport.isEmpty else { return false }
             var frames = [viewport]
             for index in 0..<4 {
-                let element = bar.buttons["warehouse.tab.\(index)"]
+                let element = nativeBar.buttons["warehouse.tab.\(index)"]
                 guard element.exists, element.isHittable else { previousFrames = nil; return false }
                 let frame = element.frame
                 guard !frame.isNull, !frame.isEmpty, viewport.contains(frame) else {
@@ -218,8 +224,9 @@ final class NativeDockInteractionTests: XCTestCase {
             previousFrames = frames
             return stable
         }
-        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: app)
-        let result = XCTWaiter.wait(for: [expectation], timeout: 15)
+        // The immediate evaluation stores the first sample; the predicate can
+        // only pass after a second independent sample has identical frames.
+        let result = waitFor(predicate, object: app, timeout: 15)
         if result != .completed { capture("tabs-outside-app-or-unstable") }
         XCTAssertEqual(result, .completed,
                        "All four native tabs must have stable, complete hittable frames inside app.frame",
@@ -296,8 +303,13 @@ final class NativeDockInteractionTests: XCTestCase {
     }
 
     func testRotateAndTapNativeTabs() {
+        // Run 36651423052 needed ~171s for all four landscape destinations,
+        // paired app/screen images, AX/DOM diagnostics, and return to portrait.
+        // Keep each route/layout deadline unchanged; only this richer test gets
+        // the runner's existing 180s ceiling while redundant polling is removed.
+        executionTimeAllowance = 180
         assertViewport(isLandscape: false)
-        assertRoute(0)
+        // setUpWithError already verified the initial acknowledged home page.
         XCUIDevice.shared.orientation = .landscapeLeft
         assertViewport(isLandscape: true)
         assertAllTabsInsideApp()

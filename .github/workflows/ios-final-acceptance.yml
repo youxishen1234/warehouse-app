@@ -101,6 +101,18 @@ jobs:
         run: |
           bash scripts/run-ios-ui-tests.sh "$(cat release/ios-final-acceptance/device-id.txt)" release/ios-acceptance-derived release/ios-final-acceptance/ui-tests current
           "$RUNNER_TEMP/dock-image-venv/bin/python" scripts/verify-ios-ui-evidence.py release/ios-final-acceptance/ui-tests --expected-source ios/App/AppUITests/NativeDockInteractionTests.swift --require-screen-captures > release/ios-final-acceptance/ui-tests/evidence-check.json || { cat release/ios-final-acceptance/ui-tests/evidence-check.json; exit 1; }
+      - name: Collect compact original UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ui-originals
+          path: |
+            release/ios-final-acceptance/ui-tests/attachments/
+            release/ios-final-acceptance/ui-tests/xcodebuild.log
+            release/ios-final-acceptance/ui-tests/test-results-summary.json
+            release/ios-final-acceptance/ui-tests/evidence-check.json
+            release/ios-final-acceptance/environment.log
+          retention-days: 14
       - name: Collect original evidence
         if: always()
         uses: actions/upload-artifact@v4

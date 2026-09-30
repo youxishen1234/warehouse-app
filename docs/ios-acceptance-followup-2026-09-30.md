@@ -1,5 +1,15 @@
 # iOS 验收续办记录
 
+## 2026-09-30 最新结论（取代下方旧横屏待判定记录）
+
+- run 36651423052 / 586541f 已结束：真实 XCUI 共 7 通过、1 失败、0 跳过。旋转方法超过默认 120 秒总执行预算；日志仍记录约 171 秒完整采集，不能将随后恢复的 3 项成功当成全套通过。
+- XCUIScreen 全屏原图未出现 app.screenshot 的大黑区；该黑区属于应用截图捕获问题。横屏底栏浅色是真实外观缺陷。
+- layout JSON 显示 dock 为 874×64，唯一实际 platter 为 (277,0,320,44)。现有 width > dock.width/2 排除了 320 宽的横屏容器，导致 backdrop visible=false、DOM display:none；这是已确认根因。
+- 最新关键附件位于 release/ios-range-evidence-36651423052。通过授权 artifact 的 ZIP Range 读取并校验成员 CRC；完整 147876333 字节 ZIP 下载未完成，不能声称整包 SHA256 已验证。GitHub 记录 digest 为 ed65504021bd144e6e53ce48b7138e61910b981d02ce41886bbe72084869bcbd。
+- UI 测试优化减少重复等待与查询，仅旋转方法 executionTimeAllowance=180，保留局部 12/15 秒时限、四个横屏真实点击、双截图和稳定几何验证。修改尚待新 CI Swift 编译和实际执行。
+- 新增独立 ios-ui-originals 小附件，保留原始截图、布局、日志及摘要，方便完整下载核对 artifact digest；原有全量附件继续保留，不降低审核标准。
+- 在横屏修复和新一轮交互/视觉验收通过前，不合并 main，不发布。真机手感与生产联网不能用模拟器固定数据测试替代。
+
 ## 已核实
 
 - 源码提交：0648e4f；GitHub Actions run 36582832017 已结束。
