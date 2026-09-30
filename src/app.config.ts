@@ -47,7 +47,7 @@
       },
       {
         pagePath: 'pages/board-stock/index',
-        text: '纸板',
+        text: '纸板库存',
         iconPath: 'assets/tabbar/inbound.svg',
         selectedIconPath: 'assets/tabbar/inbound-selected.svg'
       },

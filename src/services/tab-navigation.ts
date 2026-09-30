@@ -119,7 +119,7 @@ export function installTabNavigation(nav: Navigation): () => void {
   const start = (event: TouchEvent) => {
     if (busy || event.touches.length !== 1) { cancel(); return; }
     const target = event.target as HTMLElement;
-    if (target.closest('input, textarea, select, button, a, [role="button"], taro-input-core, taro-picker-core, taro-textarea-core, .weui-tabbar, .sg-glass-dock, [class*="wrap___"], [data-no-tab-swipe]') || modalOpen()) return;
+    if (target.closest('input, textarea, select, button, a, video, [role="button"], taro-button-core, taro-input-core, taro-picker-core, taro-textarea-core, .weui-tabbar, .sg-glass-dock, [class*="wrap___"], [data-no-tab-swipe]') || modalOpen()) return;
     const touch = event.touches[0];
     const index = tabRoutes.indexOf(route());
     const back = !android && index < 0 && nav.depth() > 1 && touch.clientX < 35;

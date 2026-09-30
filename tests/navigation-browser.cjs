@@ -15,7 +15,9 @@ const server = http.createServer((req, res) => {
 
 async function swipe(page, dx, options = {}) {
   return page.evaluate(({ dx, options }) => {
-    const target = Array.from(document.querySelectorAll('.taro_page')).reverse().find(p => getComputedStyle(p).display !== 'none' && p.getBoundingClientRect().height > 0);
+    const active = Array.from(document.querySelectorAll('.taro_page')).reverse().find(p => getComputedStyle(p).display !== 'none' && p.getBoundingClientRect().height > 0);
+    const target = options.target ? active.querySelector(options.target) : active;
+    if (!target) throw new Error('Missing swipe target: ' + options.target);
     const x = options.x || innerWidth / 2, y = 300;
     function dispatch(type, x2, y2, ended) {
       const event = new Event(type, { bubbles: true, cancelable: true });
@@ -53,7 +55,7 @@ async function verify(browser, name) {
   assert.ok(before.y > 700 && before.y + before.height <= 845, JSON.stringify(before));
   assert.equal(await page.locator('.sg-glass-tab[data-tab]').count(), 4);
   assert.equal(await page.locator('.sg-glass-search').count(), 0, 'no search button');
-  assert.deepEqual(await page.locator('.sg-glass-tab[data-tab] span').allTextContents(), ['首页', '纸板', '出库', '我的']);
+  assert.deepEqual(await page.locator('.sg-glass-tab[data-tab] span').allTextContents(), ['首页', '纸板库存', '出库', '我的']);
   assert.ok(Math.abs((await page.locator('.sg-glass-rail').boundingBox()).width - (await page.locator('.sg-glass-dock').boundingBox()).width) < 1, 'four tabs fill the dock with no search gap');
   assert.equal(await page.locator('.weui-tabbar').isVisible(), false, 'old rectangular dock is replaced');
   const colors = await page.evaluate(() => ({
@@ -129,6 +131,31 @@ async function verify(browser, name) {
   assert.notEqual(await swipe(page, -110), 'none', 'gesture follows finger');
   await page.waitForURL(/board-stock/);
   await page.waitForTimeout(500);
+  await page.waitForFunction(() => document.querySelector('[data-tab="1"]').getAttribute('aria-current') === 'page');
+  for (const target of ['input', '.inventory-shortcut', '.board-tabs taro-button-core']) {
+    await swipe(page, -110, { target });
+    await page.waitForTimeout(250);
+    assert.match(page.url(), /board-stock/, 'interactive stock controls do not switch tabs: ' + target);
+  }
+  await page.locator('.inventory-shortcut.primary').click();
+  await page.waitForURL(/board-receive/);
+  await page.waitForTimeout(500);
+  await swipe(page, 120, { x: 20 });
+  await page.waitForURL(/board-stock/);
+  await page.waitForTimeout(500);
+  await page.waitForFunction(() => document.querySelector('[data-tab="1"]').getAttribute('aria-current') === 'page');
+  await swipe(page, 110);
+  await page.waitForURL(/home/);
+  await page.waitForTimeout(500);
+  await swipe(page, -110);
+  await page.waitForURL(/board-stock/);
+  await page.waitForTimeout(500);
+  await page.setViewportSize({ width: 320, height: 740 });
+  const stockLabel = page.locator('.sg-glass-tab[data-tab="1"] span');
+  assert.equal(await stockLabel.innerText(), '纸板库存');
+  assert.ok(await stockLabel.evaluate(el => el.scrollWidth <= el.clientWidth && el.getBoundingClientRect().height < 20), 'stock label fits on one line at 320px');
+  await page.screenshot({ path: 'release/board-dock-' + name + '-320.png' });
+  await page.setViewportSize({ width: 390, height: 844 });
   await swipe(page, -110);
   await page.waitForURL(/outbound/);
   await page.waitForTimeout(500);
