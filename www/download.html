@@ -38,7 +38,9 @@
       <div><dt>适用系统</dt><dd id="platform">iOS</dd></div>
       <div><dt>文件名称</dt><dd>shuguang.ipa</dd></div>
     </dl>
-    <a href="/shuguang.ipa" download="shuguang.ipa" class="download-btn">下载 IPA 文件</a>
+    <a id="lcsign-import" href="loadcontroller://import?url=https://youxishen.online/shuguang.ipa" class="download-btn">用 LCSign 下载并导入</a>
+    <p class="subtitle" style="margin:12px 0 20px">在 iPhone Safari 中打开本页，点击上方按钮并允许打开 LCSign。下载后进入「项目」，再选择证书签名安装；不会自动签名。无需添加软件源。</p>
+    <a href="/shuguang.ipa" download="shuguang.ipa" class="download-btn" style="background:#475569">直接下载 IPA 文件</a>
     <a href="/download/shuguang-android.apk" download="shuguang-android.apk" class="download-btn" style="margin-top:12px;background:#2563eb">下载 Android APK</a>
     <a href="/download/shuguang-windows-setup.exe" download="shuguang-windows-setup.exe" class="download-btn" style="margin-top:12px;background:#475569">下载 Windows 安装包</a>
     <p class="status" id="status" role="status" aria-live="polite"></p>
@@ -57,6 +59,10 @@
         document.getElementById('version').textContent = info.version + ' (Build ' + info.build + ')';
         document.getElementById('size').textContent = (info.sizeBytes / 1048576).toFixed(2) + ' MiB';
         document.getElementById('platform').textContent = info.minimumOSVersion ? 'iOS ' + info.minimumOSVersion + '+' : 'iOS';
+        var ipaUrl = 'https://youxishen.online/shuguang.ipa?build=' + encodeURIComponent(info.build);
+        var importUrl = 'loadcontroller://import?url=' + encodeURIComponent(ipaUrl) + '&name=' + encodeURIComponent('shuguang-' + info.build + '.ipa');
+        if (/^[a-f0-9]{64}$/i.test(info.sha256 || '')) importUrl += '&sha256=' + info.sha256;
+        document.getElementById('lcsign-import').href = importUrl;
       } catch (error) {
         document.getElementById('version').textContent = '暂不可用';
         document.getElementById('size').textContent = '暂不可用';
