@@ -16,7 +16,10 @@ final class NativeDockInteractionTests: XCTestCase {
             app.launchArguments.append("--dock-variant=" + variant)
         }
         app.launch()
-        assertRoute(0)
+        // The very first WebView boot on a loaded macOS runner can be slow
+        // (previous run observed ~19s before ready=1). Give launch a generous
+        // window; in-test transitions keep the tighter 12s.
+        assertRoute(0, predicateTimeout: 45)
     }
 
     override func tearDownWithError() throws {
@@ -53,7 +56,7 @@ final class NativeDockInteractionTests: XCTestCase {
         XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: object)], timeout: timeout)
     }
 
-    private func assertRoute(_ index: Int, file: StaticString = #filePath, line: UInt = #line) {
+    private func assertRoute(_ index: Int, predicateTimeout: TimeInterval = 12, file: StaticString = #filePath, line: UInt = #line) {
         let state = app.staticTexts["warehouse.native.navigation.state"]
         XCTAssertTrue(state.exists || state.waitForExistence(timeout: 30), "Missing Debug navigation observer", file: file, line: line)
         let expectedRoute = routes[index]
@@ -66,7 +69,7 @@ final class NativeDockInteractionTests: XCTestCase {
             return fields["route"] == expectedRoute && fields["selected"] == String(index)
                 && fields["pending"] == "-1" && fields["ready"] == "1"
         }
-        XCTAssertEqual(waitFor(predicate, object: state, timeout: 12), .completed,
+        XCTAssertEqual(waitFor(predicate, object: state, timeout: predicateTimeout), .completed,
                        "Native selection and acknowledged page disagree: \(String(describing: state.value))", file: file, line: line)
         XCTAssertTrue(tab(index, file: file, line: line).isSelected, "Native accessibility selection is wrong", file: file, line: line)
         // Taro retains inactive pages. A matching element merely existing in
