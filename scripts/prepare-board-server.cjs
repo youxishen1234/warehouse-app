@@ -8,6 +8,10 @@ if (!source || !destination) throw new Error('Provide baseline and staging direc
 const root = path.resolve(__dirname, '..');
 let db = fs.readFileSync(path.join(source, 'db.js'), 'utf8');
 let team = fs.readFileSync(path.join(source, 'team.js'), 'utf8');
+let server = fs.readFileSync(path.join(source, 'server.js'), 'utf8');
+const staticMarker = "app.use(express.static(path.join(__dirname, 'public')));";
+if (!server.includes(staticMarker)) throw new Error('Unknown website static root');
+server = server.replace(staticMarker, staticMarker + '\napp.get(/^\\/pages\\/[a-z-]+\\/index$/, (req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));');
 if (db.includes('function listBoards(') || team.includes("'/boards'")) throw new Error('Paperboard integration already exists; inspect the deployed version before replacing it');
 for (const marker of ['let cache = load();', 'function persist()', 'function transact(', 'module.exports = {']) if (!db.includes(marker)) throw new Error('Unrecognized database: ' + marker);
 const methods = [
@@ -25,9 +29,10 @@ routes = routes.replace("    if (!req.is('application/json')", "    if (req.user
 const insertion = "  route('post', '/sync/upload',";
 if (!team.includes(insertion)) throw new Error('Missing authenticated insertion point');
 team = team.replace(insertion, routes + insertion);
-new vm.Script(db); new vm.Script(team);
+new vm.Script(db); new vm.Script(team); new vm.Script(server);
 fs.mkdirSync(destination, { recursive: true });
 fs.writeFileSync(path.join(destination, 'db.js'), db);
 fs.writeFileSync(path.join(destination, 'team.js'), team);
+fs.writeFileSync(path.join(destination, 'server.js'), server);
 fs.copyFileSync(path.join(root, 'backend/boards.js'), path.join(destination, 'boards.js'));
 console.log('Staged compatible paperboard routes; existing authentication and other routes preserved.');

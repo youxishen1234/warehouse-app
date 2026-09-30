@@ -133,6 +133,8 @@ app.get('/download/shuguang.ipa', (req, res) => {
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
+// Paperboard labels open a direct SPA route, including after a browser reload.
+app.get(/^\/pages\/[a-z-]+\/index$/, (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 // ============ App 热更新服务 ============
 // 版本检查：客户端启动时带 设备ID/平台/原生版本/当前热更版本 来询
