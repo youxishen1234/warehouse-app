@@ -305,9 +305,11 @@ final class NativeDockInteractionTests: XCTestCase {
     func testRotateAndTapNativeTabs() {
         // Run 36651423052 needed ~171s for all four landscape destinations,
         // paired app/screen images, AX/DOM diagnostics, and return to portrait.
-        // Keep each route/layout deadline unchanged; only this richer test gets
-        // the runner's existing 180s ceiling while redundant polling is removed.
-        executionTimeAllowance = 180
+        // Keep each route/layout deadline unchanged; the waitFor short-circuit
+        // removes idle polling, but a loaded runner still needs headroom. Give
+        // this richer test 240s (the runner's raised per-test cap); other tests
+        // keep their default 120s.
+        executionTimeAllowance = 240
         assertViewport(isLandscape: false)
         // setUpWithError already verified the initial acknowledged home page.
         XCUIDevice.shared.orientation = .landscapeLeft

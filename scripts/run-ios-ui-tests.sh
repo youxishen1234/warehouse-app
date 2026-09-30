@@ -51,7 +51,7 @@ command = [
     '-resultBundlePath', sys.argv[2], '-parallel-testing-enabled', 'NO',
     '-maximum-concurrent-test-simulator-destinations', '1',
     '-test-timeouts-enabled', 'YES', '-default-test-execution-time-allowance', '120',
-    '-maximum-test-execution-time-allowance', '180',
+    '-maximum-test-execution-time-allowance', '240',
     'test-without-building'
 ]
 try:
