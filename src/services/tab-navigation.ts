@@ -16,7 +16,7 @@ type Navigation = {
   depth: () => number;
 };
 
-// One gesture owner for browser, Android and iOS, independent of dock visibility.
+// Web gestures are a fallback. A capable WKWebView owns the iOS screen edges.
 export function installTabNavigation(nav: Navigation): () => void {
   const root = document.documentElement;
   const win = window as any;
@@ -33,6 +33,7 @@ export function installTabNavigation(nav: Navigation): () => void {
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const android = /Android/i.test(navigator.userAgent) || win.Capacitor?.getPlatform?.() === 'android';
   const route = () => normalizeRoute(nav.route());
+  const nativeBack = () => win.__sgNativeDock?.backGesture === 'webkit' && !!win.webkit?.messageHandlers?.nativeTabSelected;
   const activePage = () => Array.from(document.querySelectorAll<HTMLElement>('.taro_page')).reverse()
     .find(el => getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().width > 0);
   const modalOpen = () => Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"], .sg-calc-overlay, .taro-modal, [class*="mask___"]'))
@@ -62,7 +63,8 @@ export function installTabNavigation(nav: Navigation): () => void {
     // A route is acknowledged only after its navigation settles. Sending the
     // previous route during selection makes UIKit snap its glass lens back.
     if (capability && bridge && !busy && !queued) {
-      const message = { route: route(), ready: true, modal: modalOpen(), requestId: acknowledgedRequest, navigationFailed };
+      const modal = modalOpen();
+      const message = { route: route(), ready: true, modal, canGoBack: nav.depth() > 1 && !tabRoutes.includes(route()) && !modal, requestId: acknowledgedRequest, navigationFailed };
       const serialized = JSON.stringify(message);
       if (serialized !== lastNativeState) {
         lastNativeState = serialized;
@@ -122,6 +124,9 @@ export function installTabNavigation(nav: Navigation): () => void {
     if (target.closest('input, textarea, select, button, a, video, [role="button"], taro-button-core, taro-input-core, taro-picker-core, taro-textarea-core, .weui-tabbar, .sg-glass-dock, [class*="wrap___"], [data-no-tab-swipe]') || modalOpen()) return;
     const touch = event.touches[0];
     const index = tabRoutes.indexOf(route());
+    // Do not translate the DOM or call navigateBack during WebKit's native
+    // interactive swipe. WebKit commits history only when the swipe finishes.
+    if (nativeBack() && index < 0) return;
     const back = !android && index < 0 && nav.depth() > 1 && touch.clientX < 35;
     // Reserve both Android system-back edges. Tab gestures also stay central on iOS.
     if (!back && (touch.clientX < 50 || touch.clientX > innerWidth - 50)) return;

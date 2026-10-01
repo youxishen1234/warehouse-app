@@ -1,4 +1,4 @@
-﻿export default defineAppConfig({
+export default defineAppConfig({
   pages: [
     'pages/home/index',
     'pages/board-stock/index',
@@ -25,6 +25,7 @@
     ,'pages/backup/index'
     ,'pages/print-center/index'
   ],
+  animation: { duration: 0, delay: 0 },
   window: {
     backgroundTextStyle: 'dark',
     navigationBarBackgroundColor: '#ffffff',

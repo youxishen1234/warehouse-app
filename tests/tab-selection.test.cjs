@@ -5,12 +5,19 @@ const { test } = require('node:test');
 const ts = require('typescript');
 const { setImmediate: nextTurn } = require('node:timers/promises');
 
-function harness() {
+test('H5 route animation timers are disabled with page transitions to prevent delayed iOS Back', () => {
+  const config = fs.readFileSync('src/app.config.ts', 'utf8');
+  const globalStyle = fs.readFileSync('src/app.scss', 'utf8');
+  assert.match(config, /animation:\s*\{\s*duration:\s*0,\s*delay:\s*0\s*\}/);
+  assert.match(globalStyle, /\.taro_router\s*>\s*\.taro_page[\s\S]*?transition:\s*none\s*!important/);
+});
+
+function harness({ initialRoute = '/pages/home/index', depth = 1, nativeBackGesture = '' } = {}) {
   const messages = [], calls = [], requests = [], frames = new Map();
-  let route = '/pages/home/index', frameId = 0, modal = false, mutation;
+  let route = initialRoute, frameId = 0, modal = false, mutation;
   const window = new EventTarget();
   window.matchMedia = () => ({ matches: false });
-  window.__sgNativeDock = { api: 2, bottomSpace: 72 };
+  window.__sgNativeDock = { api: 2, bottomSpace: 72, backGesture: nativeBackGesture };
   window.webkit = { messageHandlers: { nativeTabSelected: { postMessage: s => messages.push(s) } } };
   const document = {
     documentElement: { classList: { toggle() {} }, style: { setProperty() {} } }, body: {},
@@ -30,7 +37,7 @@ function harness() {
   const source = ts.transpileModule(fs.readFileSync('src/services/tab-navigation.ts', 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
   vm.runInContext(source, context);
   const dispose = exports.installTabNavigation({
-    route: () => route, depth: () => 1, back: async () => {},
+    route: () => route, depth: () => depth, back: async () => {},
     switchTab: url => {
       calls.push(url);
       return new Promise((resolve, reject) => requests.push({
@@ -49,8 +56,26 @@ function harness() {
     await nextTurn();
   }
   messages.length = 0;
-  return { messages, calls, requests, dispose, select, flush, mutation: () => mutation(), modal: value => { modal = value; mutation(); } };
+  return { messages, calls, requests, window, dispose, select, flush, mutation: () => mutation(), modal: value => { modal = value; mutation(); } };
 }
+
+test('native iOS supplies a back-capability hint and JavaScript never takes over its interactive gesture', async () => {
+  const h = harness({ initialRoute: '/pages/board-receive/index', depth: 2, nativeBackGesture: 'webkit' });
+  try {
+    h.window.dispatchEvent(new Event('sg-native-ready'));
+    await h.flush();
+    assert.equal(h.messages.at(-1).canGoBack, true);
+    const touch = new Event('touchstart', { bubbles: true, cancelable: true });
+    Object.defineProperty(touch, 'touches', { value: [{ clientX: 12, clientY: 300 }] });
+    Object.defineProperty(touch, 'target', { value: { closest: () => null } });
+    h.window.dispatchEvent(touch);
+    assert.equal(touch.defaultPrevented, false, 'WKWebView retains ownership of the screen-edge drag');
+    h.modal(true);
+    await h.flush();
+    assert.equal(h.messages.at(-1).canGoBack, false);
+    assert.equal(h.messages.at(-1).modal, true);
+  } finally { h.dispose(); }
+});
 
 test('rapid native changes keep the final destination and suppress stale route acknowledgments', async () => {
   const h = harness();

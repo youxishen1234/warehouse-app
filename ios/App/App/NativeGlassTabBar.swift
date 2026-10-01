@@ -22,6 +22,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     private var webReady = false
     private var keyboardVisible = false
     private var modalVisible = false
+    private var pageCanGoBack = false
     private var keyboardObservers: [NSObjectProtocol] = []
     private var smokeStarted = false
     private var nativeGlass = false
@@ -266,6 +267,11 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         dock.isHidden = !(nativeGlass && webReady && routeIsTab && !keyboardVisible && !modalVisible)
         layoutDockBackdrop()
         dockBackdrop?.isHidden = dock.isHidden
+        // Use WebKit's interactive history gesture, including its native
+        // cancellation and previous-page snapshot. Never leave the app from a
+        // root tab or swipe behind a modal/keyboard or pending tab selection.
+        bridgeController.webView?.allowsBackForwardNavigationGestures =
+            webReady && pageCanGoBack && !routeIsTab && !modalVisible && !keyboardVisible && pendingIndex == nil
     }
 
     private func requestTab(_ index: Int) {
@@ -274,6 +280,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         requestSequence += 1
         let sequence = requestSequence
         pendingIndex = index
+        bridgeController.webView?.allowsBackForwardNavigationGestures = false
         selectionTimeout?.cancel()
         applyNativeSelection(index)
         mountBridge(in: hosts[index])
@@ -316,6 +323,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     #endif
 
     private func installMessaging(on webView: WKWebView) {
+        webView.allowsBackForwardNavigationGestures = false
         let proxy = WeakTabMessageHandler(self)
         bridgeProxy = proxy
         let controller = webView.configuration.userContentController
@@ -352,6 +360,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     private var capabilityScript: String {
         let info: [String: Any] = [
             "api": nativeGlass ? 2 : 0,
+            "backGesture": "webkit",
             "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "",
             "build": Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "",
             "bottomSpace": 72,
@@ -376,6 +385,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
         traceSmoke("state route=\(route) request=\(String(describing: state["requestId"])) failed=\(String(describing: state["navigationFailed"])) pending=\(pendingIndex ?? -1) sequence=\(requestSequence)")
         webReady = state["ready"] as? Bool ?? false
         modalVisible = state["modal"] as? Bool ?? false
+        pageCanGoBack = state["canGoBack"] as? Bool ?? false
         if let pending = pendingIndex {
             let acknowledged = state["requestId"] as? Int
             let matching = acknowledged == requestSequence

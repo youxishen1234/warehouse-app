@@ -6,6 +6,9 @@ test('native dock smoke accepts the native/fallback visibility contract', () => 
   const source = fs.readFileSync('ios/App/App/NativeGlassTabBar.swift', 'utf8');
   assert.match(source, /dock\.isHidden == !nativeGlass/);
   assert.doesNotMatch(source, /dock\.isHidden != nativeGlass/);
+  assert.match(source, /allowsBackForwardNavigationGestures\s*=\s*false/);
+  assert.match(source, /webReady && pageCanGoBack && !routeIsTab && !modalVisible && !keyboardVisible && pendingIndex == nil/);
+  assert.match(source, /pageCanGoBack = state\["canGoBack"\] as\? Bool \?\? false/);
   assert.match(source, /systemMaterialDark/);
   assert.match(source, /dock\.standardAppearance = appearance/);
   assert.match(source, /dock\.scrollEdgeAppearance = appearance/);
