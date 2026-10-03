@@ -1,7 +1,10 @@
-﻿export default defineAppConfig({
+export default defineAppConfig({
   pages: [
     'pages/home/index',
+    'pages/business-center/index',
+    'pages/ai-assistant/index',
     'pages/board-stock/index',
+    'pages/board-calculator/index',
     'pages/board-receive/index',
     'pages/board-detail/index',
     'pages/board-scan/index',
@@ -14,8 +17,7 @@
     'pages/records/index',
     'pages/ledger/index',
     'pages/orders/index',
-    'pages/carton-calculator/index',
-    'pages/board-calculator/index',
+    'pages/customer-desk/index',
     'pages/team/index',
     'pages/suppliers/index',
     'pages/product-edit/index',
@@ -24,6 +26,7 @@
     ,'pages/custom-copy/index'
     ,'pages/backup/index'
     ,'pages/print-center/index'
+    ,'pages/qr-test/index'
   ],
   window: {
     backgroundTextStyle: 'dark',

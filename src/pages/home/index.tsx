@@ -1,4 +1,4 @@
-﻿import { useSharedRefresh } from '@/services/shared-refresh';
+import { useSharedRefresh } from '@/services/shared-refresh';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, Text, View } from '@tarojs/components';
 import Taro, { useDidShow, useDidHide } from '@tarojs/taro';
@@ -7,23 +7,8 @@ import { loadProducts } from '@/services/product-store';
 import type { Product, Stats } from '@/types';
 import { formatMoney, getStockStatus } from '@/utils/format';
 import Icon from '@/components/Icon';
-import type { IconName } from '@/components/Icon';
+
 import styles from './index.module.scss';
-
-type QuickAction = { icon: IconName; text: string; url: string; color: string; bg: string };
-
-const quickActions: QuickAction[] = [
-  { icon: 'clipboard', text: '纸板管理', url: '/pages/board-stock/index', color: '#ea580c', bg: '#fff1e8' },
-  { icon: 'clipboard', text: '库存查询', url: '/pages/inventory/index', color: '#1677ff', bg: '#eaf3ff' },
-  { icon: 'tag', text: '商品管理', url: '/pages/products/index', color: '#2563eb', bg: '#eaf3ff' },
-  { icon: 'mine', text: '客户管理', url: '/pages/customers/index', color: '#0f766e', bg: '#e8f7f3' },
-  { icon: 'mine', text: '供应商管理', url: '/pages/suppliers/index', color: '#16a34a', bg: '#eaf8ef' },
-  { icon: 'records', text: '出入库记录', url: '/pages/records/index', color: '#0891b2', bg: '#e8f7fb' },
-  { icon: 'plus', text: '新增商品', url: '/pages/product-edit/index', color: '#dc5c62', bg: '#fff0f1' },
-  { icon: 'records', text: '流水', url: '/pages/ledger/index', color: '#7c3aed', bg: '#f2edff' },
-  { icon: 'list', text: '客户订单', url: '/pages/orders/index', color: '#ea580c', bg: '#fff1e8' },
-  { icon: 'box', text: '纸箱尺寸换算', url: '/pages/carton-calculator/index', color: '#0f766e', bg: '#e8f7f3' }
-];
 
 const WEEK = ['日', '一', '二', '三', '四', '五', '六'];
 const tabUrls = new Set(['/pages/home/index', '/pages/board-stock/index', '/pages/outbound/index', '/pages/mine/index']);
@@ -145,46 +130,19 @@ export default function HomePage() {
 
   return (
     <ScrollView scrollY className={styles.container} onRefresherRefresh={() => loadData(true)} refresherEnabled refresherTriggered={false}>
-      <View className={styles.topbar}>
-        <View>
-          <Text className={styles.eyebrow}>仓库概览</Text>
-          <Text className={styles.pageTitle}>今天，星期{WEEK[today.getDay()]}</Text>
-        </View>
-        <View className={styles.topbarActions}>
-          <View className={styles.warehouseSwitch}><Text className={styles.warehouseDot} />一号仓</View>
-          <View className={styles.bell} onClick={() => Taro.showToast({ title: '暂无新的提醒', icon: 'none' })}><Icon name="alert" color="#172235" /></View>
-        </View>
-      </View>
-
       <View className={styles.heroNote}>
-        <View><Text className={styles.heroTitle}>直接进入功能</Text><Text className={styles.heroDate}>{dateText}</Text></View>
+        <Text className={styles.heroDate}>{dateText}</Text>
         <Text className={styles.linkButton} onClick={() => loadData(true)}>刷新</Text>
       </View>
-
-      <View className={styles.actionGrid}>
-        <View className={`${styles.actionCard} ${styles.actionIn}`} onClick={() => goTo('/pages/board-stock/index')}>
-          <View className={styles.actionIcon}><Icon name="inbound" color="#fff" /></View>
-          <Text className={styles.actionTitle}>纸板库存</Text>
-          <Text className={styles.actionSubtitle}>查看库存规格与预警</Text>
-        </View>
-        <View className={`${styles.actionCard} ${styles.actionOut}`} onClick={() => goTo('/pages/outbound/index')}>
-          <View className={styles.actionIcon}><Icon name="outbound" color="#fff" /></View>
-          <Text className={styles.actionTitle}>订单出库</Text>
-          <Text className={styles.actionSubtitle}>选择客户和多商品明细</Text>
-        </View>
+      <View className={styles.businessCenter} role='button' aria-label='进入业务中心' onClick={() => goTo('/pages/business-center/index')}>
+        <View className={styles.customerDeskIcon}><Icon name='clipboard' color='#fff' /></View>
+        <View><Text className={styles.customerDeskTitle}>业务中心</Text><Text className={styles.businessSubtitle}>纸板库存 · 客户管理 · 订单出库</Text></View>
+        <Text className={styles.customerDeskArrow}>›</Text>
       </View>
-
-      <View className={styles.sectionHead}>
-        <Text className={styles.sectionTitle}>功能入口</Text>
-        <Text className={styles.linkButton} onClick={() => goTo('/pages/mine/index')}>资料管理</Text>
-      </View>
-      <View className={styles.funcGrid}>
-        {quickActions.map(action => (
-          <View key={action.url} className={styles.funcItem} onClick={() => goTo(action.url)}>
-            <View className={styles.moduleIcon} style={{ background: action.bg }}><Icon name={action.icon} color={action.color} /></View>
-            <Text className={styles.funcText}>{action.text}</Text>
-          </View>
-        ))}
+      <View className={styles.customerDesk} role='button' aria-label='进入客户尺寸本' onClick={() => goTo('/pages/customer-desk/index')}>
+        <View className={styles.customerDeskIcon}><Icon name='mine' color='#fff' /></View>
+        <View><Text className={styles.customerDeskTitle}>客户尺寸本</Text><Text className={styles.customerDeskSubtitle}>选公司 · 选规格 · 填数量 · 打印或发货</Text></View>
+        <Text className={styles.customerDeskArrow}>›</Text>
       </View>
 
       <View className={styles.sectionHead}><Text className={styles.sectionTitle}>今日任务</Text><Text className={styles.cardCaption}>{loading ? '加载中…' : '实时数据'}</Text></View>

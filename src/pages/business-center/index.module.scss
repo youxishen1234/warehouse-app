@@ -1,0 +1,7 @@
+.page { min-height:100vh; padding:28PX 20PX; box-sizing:border-box; background:#f5f7fa; color:#172235; }
+.header { display:flex; align-items:center; gap:20PX; margin-bottom:16PX; }
+.title { font-size:26PX; font-weight:700; }
+.subtitle { display:block; color:#7d8999; font-size:13PX; margin-bottom:24PX; }
+.card { display:flex; justify-content:space-between; align-items:center; padding:22PX; margin:14PX 0; border-radius:18PX; background:white; }
+.name { display:block; font-size:19PX; font-weight:700; }
+.detail { display:block; font-size:13PX; color:#7d8999; margin-top:8PX; }
