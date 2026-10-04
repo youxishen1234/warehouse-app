@@ -29,6 +29,8 @@ jobs:
         run: node scripts/ios-version.cjs >> "$GITHUB_ENV"
       - name: Build current web assets
         run: |
+          rm -rf dist
+          mkdir -p www
           TARO_PUBLIC_PATH=./ npm run build:h5
           cp -R dist/. www/
       - name: Copy Capacitor assets

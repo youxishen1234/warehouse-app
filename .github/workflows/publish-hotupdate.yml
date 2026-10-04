@@ -5,67 +5,64 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: publish-hotupdate
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      TARO_OUTPUT_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+      TARO_PUBLIC_PATH: ./
+      WAREHOUSE_BUILD_STAGE: release/stage-${{ github.run_id }}-${{ github.run_attempt }}
+      HOTUPDATE_HOST: ${{ secrets.SHUGUANG_SERVER_HOST }}
+      HOTUPDATE_USER: ${{ secrets.SHUGUANG_SERVER_USER }}
+      HOTUPDATE_PASSWORD: ${{ secrets.SHUGUANG_SERVER_PASSWORD }}
+      HOTUPDATE_BASE_MANIFEST: release/base-manifest.json
+      HOTUPDATE_LOCAL_ZIP: release/www.zip
+      HOTUPDATE_LOCAL_MANIFEST: release/manifest.json
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install npm dependencies
-        run: npm install --legacy-peer-deps
-
-      - name: Build current web assets
-        run: npm run build:h5
-
-      - name: Package current web assets
-        shell: bash
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Configure actual source revision
+        run: echo "HOTUPDATE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Install dependencies
         run: |
-          set -euo pipefail
-          test -f dist/index.html
+          npm ci --legacy-peer-deps
+          sudo apt-get install -y -qq sshpass
+      - name: Capture publication baseline before building
+        run: |
           mkdir -p release
-          python3 scripts/package-hotupdate.py dist release/www.zip
-          # Include seconds so consecutive pushes cannot publish the same bundle id.
-          version="$(date -u +%Y%m%d%H%M%S)"
-          published="$(date -u '+%Y-%m-%d %H:%M:%S')"
-          printf '{"version":"%s","url":"www.zip","publishedAt":"%s"}\n' "$version" "$published" > release/manifest.json
-          unzip -t release/www.zip
-
-      - name: Ensure appupdate directory is writable on server
-        shell: bash
+          node scripts/upload-hotupdate.cjs --capture-baseline "$HOTUPDATE_BASE_MANIFEST"
+      - name: Validate source
         env:
-          SHUGUANG_SERVER_HOST: ${{ secrets.SHUGUANG_SERVER_HOST }}
-          SHUGUANG_SERVER_USER: ${{ secrets.SHUGUANG_SERVER_USER }}
-          SHUGUANG_SERVER_PASSWORD: ${{ secrets.SHUGUANG_SERVER_PASSWORD }}
+          HOTUPDATE_COMMIT: ''
         run: |
-          set -euo pipefail
-          sudo apt-get install -y -qq sshpass >/dev/null
-          sshpass -p "$SHUGUANG_SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no \
-            "$SHUGUANG_SERVER_USER@$SHUGUANG_SERVER_HOST" \
-            "sudo mkdir -p /opt/shuguang/public/appupdate && sudo chown -R $SHUGUANG_SERVER_USER:$SHUGUANG_SERVER_USER /opt/shuguang/public/appupdate && chmod 755 /opt/shuguang/public/appupdate"
-
-      - name: Upload web bundle
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SHUGUANG_SERVER_HOST }}
-          username: ${{ secrets.SHUGUANG_SERVER_USER }}
-          password: ${{ secrets.SHUGUANG_SERVER_PASSWORD }}
-          port: 22
-          source: "release/www.zip"
-          target: "/opt/shuguang/public/appupdate"
-          strip_components: 1
-          overwrite: true
-
-      - name: Upload update manifest
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SHUGUANG_SERVER_HOST }}
-          username: ${{ secrets.SHUGUANG_SERVER_USER }}
-          password: ${{ secrets.SHUGUANG_SERVER_PASSWORD }}
-          port: 22
-          source: "release/manifest.json"
-          target: "/opt/shuguang/public/appupdate"
-          strip_components: 1
-          overwrite: true
+          npm run typecheck
+          npm run lint
+          npm run test:artifacts
+      - name: Build complete current source
+        run: |
+          rm -rf dist
+          mkdir -p www
+          npm run build:h5
+          node scripts/release-provenance.cjs "$TARO_OUTPUT_DIR"
+          node scripts/verify-ai-bundle.cjs "$TARO_OUTPUT_DIR"
+          node scripts/verify-release-features.cjs "$TARO_OUTPUT_DIR"
+      - name: Package and verify
+        run: |
+          python3 scripts/package-hotupdate.py "$TARO_OUTPUT_DIR" "$HOTUPDATE_LOCAL_ZIP" "$HOTUPDATE_LOCAL_MANIFEST"
+          node scripts/verify-release-artifacts.cjs --dist "$TARO_OUTPUT_DIR" --zip "$HOTUPDATE_LOCAL_ZIP"
+      - name: Validate built user workflows
+        env:
+          LEDGER_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          npx playwright install --with-deps chromium
+          node tests/ledger-photos-browser.cjs
+      - name: Publish through shared server lock and stale-source gate
+        run: node scripts/upload-hotupdate.cjs
