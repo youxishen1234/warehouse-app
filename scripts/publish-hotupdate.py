@@ -13,29 +13,27 @@ import zipfile
 @contextmanager
 def publication_lock(root):
     try:
-        lock_file = (root / 'publish.lock').open('a+b')
+        with (root / 'publish.lock').open('a+b') as lock:
+            if os.name == 'nt':
+                import msvcrt
+                lock.seek(0)
+                if not lock.read(1):
+                    lock.write(b'0')
+                    lock.flush()
+                lock.seek(0)
+                msvcrt.locking(lock.fileno(), msvcrt.LK_LOCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(lock, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                if os.name == 'nt':
+                    msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    fcntl.flock(lock, fcntl.LOCK_UN)
     except PermissionError as error:
         raise ValueError('Another release was published since build started; rebuild from latest main') from error
-    with lock_file as lock:
-        if os.name == 'nt':
-            import msvcrt
-            lock.seek(0)
-            if not lock.read(1):
-                lock.write(b'0')
-                lock.flush()
-            lock.seek(0)
-            msvcrt.locking(lock.fileno(), msvcrt.LK_LOCK, 1)
-        else:
-            import fcntl
-            fcntl.flock(lock, fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            if os.name == 'nt':
-                lock.seek(0)
-                msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
-            else:
-                fcntl.flock(lock, fcntl.LOCK_UN)
 
 
 def publish(directory, staging):
