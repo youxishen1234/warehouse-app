@@ -1,6 +1,7 @@
 import UIKit
 import WebKit
 import Capacitor
+import CoreBluetooth
 
 // Let UIKit render and track the actual Liquid Glass tab selection on iOS 26.
 // A single live Capacitor bridge moves between lightweight tab hosts; data and
@@ -500,6 +501,7 @@ private final class WarehouseBridgeController: CAPBridgeViewController {
     var onBridgeLoaded: ((WKWebView) -> Void)?
     override func capacitorDidLoad() {
         super.capacitorDidLoad()
+        bridge?.registerPluginInstance(NiimbotPrinterPlugin())
         if let webView = webView { onBridgeLoaded?(webView) }
     }
     override func instanceDescriptor() -> InstanceDescriptor {
@@ -512,6 +514,326 @@ private final class WarehouseBridgeController: CAPBridgeViewController {
     }
 }
 
+@objc final class NiimbotPrinterPlugin: CAPPlugin, CAPBridgedPlugin, CBCentralManagerDelegate, CBPeripheralDelegate {
+    let identifier = "NiimbotPrinterPlugin"
+    let jsName = "NiimbotPrinter"
+    let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "scan", returnType: .promise),
+        CAPPluginMethod(name: "connect", returnType: .promise),
+        CAPPluginMethod(name: "disconnect", returnType: .promise),
+        CAPPluginMethod(name: "write", returnType: .promise)
+    ]
+
+    private var central: CBCentralManager?
+    private var discovered: [UUID: CBPeripheral] = [:]
+    private var scanCall: CAPPluginCall?
+    private var connectCall: CAPPluginCall?
+    private var activePeripheral: CBPeripheral?
+    private var writeCharacteristic: CBCharacteristic?
+    private var notifyCharacteristic: CBCharacteristic?
+    private var scanWork: DispatchWorkItem?
+    private var queuedWrites: [[UInt8]] = []
+    private var writeCall: CAPPluginCall?
+    private var writeTimeout: DispatchWorkItem?
+    private var writeResponsePending = false
+    private var activeWriteType: CBCharacteristicWriteType = .withoutResponse
+    private var connectTimeout: DispatchWorkItem?
+    private var discoveredService = false
+
+    private let niimbotService = CBUUID(string: "E7810A71-73AE-499D-8C15-FAA9AEF0C3F2")
+    private let niimbotCharacteristic = CBUUID(string: "BEF8D6C9-9C21-4C9E-B632-BD58C1009F9F")
+
+    override func load() {
+        // Initialize lazily when the user taps search so launch does not
+        // immediately trigger the iOS Bluetooth permission prompt.
+    }
+
+    private func ensureCentral() -> CBCentralManager {
+        if let central { return central }
+        let manager = CBCentralManager(delegate: self, queue: .main)
+        central = manager
+        return manager
+    }
+
+    @objc func scan(_ call: CAPPluginCall) {
+        let central = ensureCentral()
+        guard !central.isScanning else { call.reject("蓝牙扫描正在进行，请稍候"); return }
+        discovered.removeAll()
+        scanCall?.reject("扫描已重新开始")
+        scanCall = call
+        guard central.state == .poweredOn else {
+            if central.state == .poweredOff { call.reject("请先打开 iPhone 蓝牙") }
+            else if central.state == .unauthorized { call.reject("请在 iPhone 设置中允许曙光使用蓝牙") }
+            else { call.reject("蓝牙尚未就绪，请稍候重试") }
+            scanCall = nil
+            return
+        }
+        central.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.central?.stopScan()
+            let devices: [[String: String]] = self.discovered.values.map { p in
+                ["id": p.identifier.uuidString, "name": p.name ?? "NIIMBOT 标签打印机"]
+            }
+            self.scanCall?.resolve(["devices": devices])
+            self.scanCall = nil
+            self.notifyListeners("scanFinished", data: ["devices": devices])
+        }
+        scanWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8, execute: work)
+    }
+
+    @objc func connect(_ call: CAPPluginCall) {
+        let central = ensureCentral()
+        guard central.state == .poweredOn else { call.reject("请先打开 iPhone 蓝牙"); return }
+        guard let rawID = call.getString("id"), let id = UUID(uuidString: rawID),
+              let peripheral = discovered[id] ?? central.retrievePeripherals(withIdentifiers: [id]).first else {
+            call.reject("打印机已离开扫描范围，请重新搜索")
+            return
+        }
+        if let old = activePeripheral { central.cancelPeripheralConnection(old) }
+        activePeripheral = peripheral
+        writeCharacteristic = nil
+        notifyCharacteristic = nil
+        discoveredService = false
+        peripheral.delegate = self
+        connectCall?.reject("已切换连接设备")
+        connectCall = call
+        central.connect(peripheral, options: nil)
+        let timeout = DispatchWorkItem { [weak self] in
+            guard let self, let call = self.connectCall, self.activePeripheral === peripheral else { return }
+            self.central?.cancelPeripheralConnection(peripheral)
+            call.reject("未找到 NIIMBOT 蓝牙打印服务，请确认打印机已开机且未连接其他手机")
+            self.connectCall = nil
+            self.clearConnection(rejectPending: false)
+        }
+        connectTimeout = timeout
+        DispatchQueue.main.asyncAfter(deadline: .now() + 12, execute: timeout)
+    }
+
+    @objc func disconnect(_ call: CAPPluginCall) {
+        if let peripheral = activePeripheral { central?.cancelPeripheralConnection(peripheral) }
+        connectTimeout?.cancel()
+        clearConnection()
+        call.resolve()
+    }
+
+    @objc func write(_ call: CAPPluginCall) {
+        guard let peripheral = activePeripheral, let characteristic = writeCharacteristic else {
+            call.reject("请先连接精臣标签打印机")
+            return
+        }
+        guard writeCall == nil, let values = call.getArray("data") as? [NSNumber], !values.isEmpty else {
+            call.reject(writeCall == nil ? "打印数据为空" : "打印机正在接收数据")
+            return
+        }
+        guard values.allSatisfy({ $0.intValue >= 0 && $0.intValue <= 255 }) else {
+            call.reject("打印数据包含无效字节")
+            return
+        }
+        let bytes = values.map { UInt8($0.intValue) }
+        activeWriteType = call.getString("type") == "response" ? .withResponse : .withoutResponse
+        if activeWriteType == .withResponse && !characteristic.properties.contains(.write) {
+            activeWriteType = .withoutResponse
+        }
+        if activeWriteType == .withoutResponse && !characteristic.properties.contains(.writeWithoutResponse) {
+            call.reject("打印机不支持当前写入方式")
+            return
+        }
+        let mtu = max(20, peripheral.maximumWriteValueLength(for: activeWriteType))
+        queuedWrites = stride(from: 0, to: bytes.count, by: mtu).map { start in
+            Array(bytes[start..<min(start + mtu, bytes.count)])
+        }
+        writeCall = call
+        writeTimeout?.cancel()
+        let timeout = DispatchWorkItem { [weak self] in
+            guard let self, self.writeCall != nil else { return }
+            self.queuedWrites.removeAll()
+            self.writeResponsePending = false
+            self.writeCall?.reject("打印机写入超时，请重新连接后重试")
+            self.writeCall = nil
+        }
+        writeTimeout = timeout
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: timeout)
+        drainWrites()
+    }
+
+    private func drainWrites() {
+        guard let peripheral = activePeripheral, let characteristic = writeCharacteristic else { return }
+        if activeWriteType == .withResponse {
+            guard !writeResponsePending, !queuedWrites.isEmpty else {
+                if queuedWrites.isEmpty && !writeResponsePending {
+                    writeTimeout?.cancel()
+                    writeCall?.resolve()
+                    writeCall = nil
+                }
+                return
+            }
+            writeResponsePending = true
+            peripheral.writeValue(Data(queuedWrites.removeFirst()), for: characteristic, type: .withResponse)
+            return
+        }
+        while !queuedWrites.isEmpty && peripheral.canSendWriteWithoutResponse {
+            peripheral.writeValue(Data(queuedWrites.removeFirst()), for: characteristic, type: .withoutResponse)
+        }
+        if queuedWrites.isEmpty {
+            writeTimeout?.cancel()
+            writeCall?.resolve()
+            writeCall = nil
+        }
+    }
+
+    private func clearConnection(rejectPending: Bool = true) {
+        activePeripheral = nil
+        writeCharacteristic = nil
+        notifyCharacteristic = nil
+        queuedWrites.removeAll()
+        writeTimeout?.cancel()
+        writeTimeout = nil
+        writeResponsePending = false
+        if rejectPending { writeCall?.reject("打印机已断开") }
+        writeCall = nil
+        if rejectPending { connectCall?.reject("打印机已断开") }
+        connectCall = nil
+        discoveredService = false
+    }
+
+    func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        guard central.state != .poweredOn else { return }
+        scanWork?.cancel()
+        central.stopScan()
+        scanCall?.reject(central.state == .poweredOff ? "请先打开 iPhone 蓝牙" : "iPhone 蓝牙不可用")
+        scanCall = nil
+        connectTimeout?.cancel()
+        clearConnection()
+    }
+
+    func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
+                        advertisementData: [String: Any], rssi RSSI: NSNumber) {
+        let name = peripheral.name ?? advertisementData[CBAdvertisementDataLocalNameKey] as? String ?? ""
+        guard name.localizedCaseInsensitiveContains("niimbot") || name.localizedCaseInsensitiveContains("k3") else { return }
+        discovered[peripheral.identifier] = peripheral
+        notifyListeners("printerDiscovered", data: ["id": peripheral.identifier.uuidString, "name": name])
+    }
+
+    func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        guard activePeripheral === peripheral else {
+            central.cancelPeripheralConnection(peripheral)
+            return
+        }
+        peripheral.discoverServices([niimbotService])
+    }
+
+    func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        guard activePeripheral === peripheral else { return }
+        connectTimeout?.cancel()
+        connectCall?.reject(error?.localizedDescription ?? "连接打印机失败")
+        connectCall = nil
+        clearConnection(rejectPending: false)
+    }
+
+    func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+        guard activePeripheral === peripheral else { return }
+        clearConnection()
+        notifyListeners("disconnected", data: ["message": error?.localizedDescription ?? "打印机已断开"])
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+        guard activePeripheral === peripheral else { return }
+        guard error == nil else {
+            connectTimeout?.cancel()
+            connectCall?.reject(error!.localizedDescription)
+            connectCall = nil
+            clearConnection(rejectPending: false)
+            return
+        }
+        guard let service = peripheral.services?.first(where: { $0.uuid == niimbotService }) else {
+            connectTimeout?.cancel()
+            connectCall?.reject("未找到精臣打印服务，请确认这是 K3 标签机")
+            connectCall = nil
+            central?.cancelPeripheralConnection(peripheral)
+            clearConnection(rejectPending: false)
+            return
+        }
+        discoveredService = true
+        peripheral.discoverCharacteristics([niimbotCharacteristic], for: service)
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+        guard activePeripheral === peripheral, service.uuid == niimbotService else { return }
+        guard error == nil else {
+            connectTimeout?.cancel()
+            connectCall?.reject(error!.localizedDescription)
+            connectCall = nil
+            clearConnection(rejectPending: false)
+            return
+        }
+        guard let characteristic = service.characteristics?.first(where: { $0.uuid == niimbotCharacteristic }) else {
+            connectTimeout?.cancel()
+            connectCall?.reject("未找到精臣打印特征，请确认这是 K3 标签机")
+            connectCall = nil
+            central?.cancelPeripheralConnection(peripheral)
+            clearConnection(rejectPending: false)
+            return
+        }
+        guard characteristic.properties.contains(.writeWithoutResponse) || characteristic.properties.contains(.write) else {
+            connectTimeout?.cancel()
+            connectCall?.reject("精臣打印特征不支持写入")
+            connectCall = nil
+            clearConnection(rejectPending: false)
+            return
+        }
+        guard characteristic.properties.contains(.notify) || characteristic.properties.contains(.indicate) else {
+            connectTimeout?.cancel()
+            connectCall?.reject("精臣打印特征不支持通知")
+            connectCall = nil
+            clearConnection(rejectPending: false)
+            return
+        }
+        writeCharacteristic = characteristic
+        notifyCharacteristic = characteristic
+        peripheral.setNotifyValue(true, for: characteristic)
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
+        guard activePeripheral === peripheral, characteristic.uuid == niimbotCharacteristic else { return }
+        guard error == nil, characteristic.isNotifying else {
+            connectTimeout?.cancel()
+            connectCall?.reject(error?.localizedDescription ?? "无法打开打印机通知")
+            connectCall = nil
+            clearConnection(rejectPending: false)
+            return
+        }
+        guard discoveredService, writeCharacteristic != nil, notifyCharacteristic != nil else { return }
+        connectTimeout?.cancel()
+        let name = peripheral.name ?? "NIIMBOT 标签打印机"
+        connectCall?.resolve(["id": peripheral.identifier.uuidString, "name": name])
+        connectCall = nil
+        notifyListeners("connected", data: ["id": peripheral.identifier.uuidString, "name": name])
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+        guard error == nil, let value = characteristic.value else { return }
+        notifyListeners("data", data: ["bytes": value.map { Int($0) }])
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
+        guard activePeripheral === peripheral else { return }
+        if let error {
+            writeTimeout?.cancel()
+            writeCall?.reject(error.localizedDescription)
+            writeCall = nil
+            queuedWrites.removeAll()
+            writeResponsePending = false
+            return
+        }
+        writeResponsePending = false
+        drainWrites()
+    }
+
+    func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) { drainWrites() }
+}
+
 private final class WeakTabMessageHandler: NSObject, WKScriptMessageHandler {
     weak var target: WKScriptMessageHandler?
     init(_ target: WKScriptMessageHandler) { self.target = target }
@@ -519,4 +841,3 @@ private final class WeakTabMessageHandler: NSObject, WKScriptMessageHandler {
         target?.userContentController(userContentController, didReceive: message)
     }
 }
-
