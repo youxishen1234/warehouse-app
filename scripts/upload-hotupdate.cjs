@@ -1,73 +1,66 @@
-const fs = require('fs');
-const path = require('path');
-const crypto = require('crypto');
-
-const host = process.env.HOTUPDATE_HOST;
-const username = process.env.HOTUPDATE_USER;
-const password = process.env.HOTUPDATE_PASSWORD;
-const port = Number(process.env.HOTUPDATE_PORT || 22);
-const remoteDir = process.env.HOTUPDATE_DIR || '/opt/shuguang/public/appupdate';
+const fs = require('node:fs');
+const path = require('node:path');
+const crypto = require('node:crypto');
+const { execFileSync } = require('node:child_process');
 const root = path.resolve(__dirname, '..');
-const localZip = process.env.HOTUPDATE_LOCAL_ZIP || path.join(root, 'deploy', 'hotupdate', 'bundle.zip');
-const localManifest = process.env.HOTUPDATE_LOCAL_MANIFEST || path.join(root, 'deploy', 'hotupdate', 'manifest.json');
-
-function validateLocalRelease(zipFile = localZip, manifestFile = localManifest) {
-  if (!fs.existsSync(zipFile) || !fs.statSync(zipFile).isFile()) throw new Error(`hot-update archive does not exist: ${zipFile}`);
-  if (!fs.existsSync(manifestFile) || !fs.statSync(manifestFile).isFile()) throw new Error(`hot-update manifest does not exist: ${manifestFile}`);
-  let manifest;
-  try { manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8').replace(/^\ufeff/, '')); }
-  catch (error) { throw new Error(`hot-update manifest is invalid JSON: ${error.message}`); }
-  const versionPattern = /^(?:\d{14}|\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)$/;
-  const digestPattern = /^[a-f0-9]{64}$/i;
-  if (!manifest || typeof manifest !== 'object' || !versionPattern.test(String(manifest.version || ''))) throw new Error('hot-update manifest version is invalid');
-  if (manifest.url !== 'www.zip') throw new Error('hot-update manifest url must be www.zip');
+function validateLocalRelease(zipFile, manifestFile) {
+  if (!zipFile || !manifestFile) throw new Error('Explicit release paths are required; shared default archives cannot be published');
   const bytes = fs.readFileSync(zipFile);
+  const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8').replace(/^\ufeff/, ''));
   const digest = crypto.createHash('sha256').update(bytes).digest('hex');
-  if (manifest.size !== bytes.length) throw new Error('hot-update manifest size does not match archive');
-  if (!digestPattern.test(String(manifest.sha256 || '')) || manifest.sha256.toLowerCase() !== digest) throw new Error('hot-update manifest sha256 does not match archive');
-  if (!manifest.integrity || manifest.integrity.algorithm !== 'sha256' || String(manifest.integrity.value).toLowerCase() !== digest) throw new Error('hot-update manifest integrity does not match archive');
+  if (!/^(?:\d{14}|\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)$/.test(manifest.version || '')) throw new Error('hot-update manifest version is invalid');
+  if (manifest.url !== 'www.zip') throw new Error('hot-update manifest url must be www.zip');
+  if (manifest.size !== bytes.length || manifest.sha256 !== digest || manifest.integrity?.algorithm !== 'sha256' || manifest.integrity.value !== digest) throw new Error('hot-update manifest integrity does not match archive');
   return { manifest, size: bytes.length, sha256: digest };
 }
-
-async function upload() {
-  validateLocalRelease();
-  if (!host || !username || !password) throw new Error('HOTUPDATE_HOST, HOTUPDATE_USER and HOTUPDATE_PASSWORD are required');
-  const { Client } = require('ssh2');
-
-  const conn = new Client();
-const exec = (command) => new Promise((resolve, reject) => conn.exec(command, (err, stream) => {
-  if (err) return reject(err);
-  let out = '', error = '';
-  stream.on('data', data => { out += data; });
-  stream.stderr.on('data', data => { error += data; });
-  stream.on('close', code => code === 0 ? resolve(out) : reject(new Error(error || `remote command failed: ${code}`)));
-}));
-const put = (source, target) => new Promise((resolve, reject) => conn.sftp((err, sftp) => {
-  if (err) return reject(err);
-  sftp.fastPut(source, target, error => error ? reject(error) : resolve());
-}));
-
-  conn.on('ready', async () => {
-  try {
-    const stamp = Date.now();
-    const zipTmp = `${remoteDir}/www.zip.${stamp}.new`;
-    const manifestTmp = `${remoteDir}/manifest.json.${stamp}.new`;
-    await exec(`mkdir -p '${remoteDir}'`);
-    await put(localZip, zipTmp);
-    await put(localManifest, manifestTmp);
-    await exec(`mv '${zipTmp}' '${remoteDir}/www.zip' && mv '${manifestTmp}' '${remoteDir}/manifest.json'`);
-    const result = await exec(`cat '${remoteDir}/manifest.json' && stat -c '%n %s' '${remoteDir}/www.zip'`);
-    process.stdout.write(result);
-    conn.end();
-  } catch (error) {
-    conn.end();
-    console.error(error.message);
-    process.exitCode = 1;
-  }
-  }).on('error', error => { throw error; });
-  conn.connect({ host, port, username, password, readyTimeout: 15000 });
+function shellQuote(value) { return "'" + String(value).replaceAll("'", "'\\''") + "'"; }
+function remoteCommand(command, args, options = {}) {
+  const password = process.env.HOTUPDATE_PASSWORD;
+  return execFileSync(password ? 'sshpass' : command, password ? ['-e', command, ...args] : args, {
+    ...options, env: { ...process.env, ...(password ? { SSHPASS: password } : {}) }, encoding: 'utf8'
+  });
 }
-
-if (require.main === module) upload().catch(error => { console.error(error.message); process.exitCode = 1; });
-
-module.exports = { validateLocalRelease, upload };
+function connection() {
+  const host = process.env.HOTUPDATE_HOST, user = process.env.HOTUPDATE_USER;
+  if (!/^[A-Za-z0-9.-]+$/.test(host || '') || !/^[A-Za-z0-9_-]+$/.test(user || '')) throw new Error('HOTUPDATE_HOST and HOTUPDATE_USER are required');
+  const port = Number(process.env.HOTUPDATE_PORT || 22);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid SSH port');
+  const directory = process.env.HOTUPDATE_DIR || '/opt/shuguang/public/appupdate';
+  if (!/^\/[A-Za-z0-9_/-]+$/.test(directory)) throw new Error('Invalid update directory');
+  return { target: `${user}@${host}`, port: String(port), directory };
+}
+function ssh(command, input) {
+  const c = connection();
+  return remoteCommand('ssh', ['-p', c.port, '-o', 'ConnectTimeout=15', c.target, command], { input, maxBuffer: 8 * 1024 * 1024 });
+}
+function captureBaseline(output) {
+  const c = connection();
+  const raw = ssh(`if [ -f ${shellQuote(c.directory + '/manifest.json')} ]; then cat ${shellQuote(c.directory + '/manifest.json')}; fi`);
+  if (raw.trim()) JSON.parse(raw.replace(/^\ufeff/, ''));
+  fs.writeFileSync(output, raw);
+}
+function upload() {
+  const zip = process.env.HOTUPDATE_LOCAL_ZIP, manifestPath = process.env.HOTUPDATE_LOCAL_MANIFEST;
+  const { manifest } = validateLocalRelease(zip, manifestPath);
+  if (!/^[a-f0-9]{40,64}$/.test(manifest.commit || '') || !Array.isArray(manifest.ancestors) || !Object.hasOwn(manifest, 'baseManifestSha256')) throw new Error('Missing release provenance; use the unified publish workflow');
+  const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+  const dirty = execFileSync('git', ['status', '--porcelain', '--untracked-files=normal', '--', 'src', 'config', 'prototypes', 'scripts', 'package.json', 'package-lock.json'], { cwd: root, encoding: 'utf8' }).trim();
+  if (dirty) throw new Error('Release source has uncommitted changes; publish committed main source through CI');
+  const latest = execFileSync('git', ['ls-remote', 'origin', 'refs/heads/main'], { cwd: root, encoding: 'utf8' }).trim().split(/\s+/)[0];
+  if (manifest.commit !== head || head !== latest) throw new Error('Source is no longer the latest main commit; rebuild through the publish workflow');
+  const c = connection(), staging = c.directory + '/.incoming-' + crypto.randomUUID();
+  ssh(`mkdir -p ${shellQuote(staging)}`);
+  try {
+    for (const [source, name] of [[zip, 'www.zip'], [manifestPath, 'manifest.json']]) remoteCommand('scp', ['-P', c.port, path.resolve(source), `${c.target}:${staging}/${name}`]);
+    const result = ssh(`python3 - ${shellQuote(c.directory)} ${shellQuote(staging)}`, fs.readFileSync(path.join(__dirname, 'publish-hotupdate.py')));
+    process.stdout.write(result);
+    return result;
+  } finally { ssh(`rm -f ${shellQuote(staging + '/www.zip')} ${shellQuote(staging + '/manifest.json')}; rmdir ${shellQuote(staging)}`); }
+}
+if (require.main === module) {
+  try {
+    if (process.argv[2] === '--capture-baseline' && process.argv[3]) captureBaseline(process.argv[3]);
+    else upload();
+  } catch (error) { console.error(error.message); process.exitCode = 1; }
+}
+module.exports = { validateLocalRelease, upload, captureBaseline };
