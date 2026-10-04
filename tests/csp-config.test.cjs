@@ -4,10 +4,11 @@ const fs = require('node:fs');
 
 const read = file => fs.readFileSync(file, 'utf8');
 const requiredDirectives = ["default-src 'self'", "object-src 'none'", "frame-ancestors 'none'", "script-src 'self' 'nonce-sg-bootstrap'", "connect-src 'self'"];
+const distRoot = process.env.TARO_OUTPUT_DIR || 'dist';
 
 test('H5 and Electron publish the same constrained CSP policy', () => {
   const source = read('src/index.html');
-  const dist = read('dist/index.html');
+  const dist = read(`${distRoot}/index.html`);
   const desktop = read('desktop/main.cjs');
   for (const directive of requiredDirectives) {
     assert.match(source, new RegExp(directive.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));

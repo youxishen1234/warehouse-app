@@ -14,7 +14,7 @@ function files(root) {
   return result;
 }
 
-for (const output of ['dist', 'www']) {
+for (const output of [process.env.TARO_OUTPUT_DIR || 'dist', 'www']) {
   test(`${output} release assets do not publish source maps`, () => {
     const root = path.resolve(output);
     assert.ok(fs.existsSync(root), `${output} must exist after a build`);
