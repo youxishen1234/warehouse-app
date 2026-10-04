@@ -2,8 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>连接精臣 K3 标签打印机，通过蓝牙打印货架二维码标签。</string>
+    <key>NSBluetoothPeripheralUsageDescription</key>
+    <string>连接精臣 K3 标签打印机，通过蓝牙打印货架二维码标签。</string>
     <key>NSCameraUsageDescription</key>
     <string>扫描纸板批次标签，查看规格、库存并领料。</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>在 AI 助手中录制语音指令，识别后核对仓库操作。</string>
     <key>NSPhotoLibraryAddUsageDescription</key>
     <string>保存纸板批次二维码标签，方便打印与张贴。</string>
 	<key>CFBundleDevelopmentRegion</key>

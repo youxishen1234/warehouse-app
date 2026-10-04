@@ -7,7 +7,12 @@ const form = document.querySelector('form');
 const params = new URLSearchParams(location.hash.slice(1));
 const readOnly = params.get('view') === '1';
 const native = new URLSearchParams(location.search).get('client') === 'app';
-const nativeBluetooth = native && typeof window !== 'undefined' && Boolean(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+const nativeBluetooth = native && typeof window !== 'undefined' && Boolean(
+  window.Capacitor &&
+  window.Capacitor.isNativePlatform &&
+  window.Capacitor.isNativePlatform() &&
+  (typeof window.Capacitor.isPluginAvailable !== 'function' || window.Capacitor.isPluginAvailable('NiimbotPrinter'))
+);
 const NativePrinterAPI = nativeBluetooth && window.Capacitor.Plugins && window.Capacitor.Plugins.NiimbotPrinter
   ? window.Capacitor.Plugins.NiimbotPrinter
   : NiimbotPrinter;
@@ -102,8 +107,17 @@ function waitForPrinterReply(command, timeout = 4000) {
 
 async function sendPrinterCommand(command, payload, response, timeout) {
   const waiting = waitForPrinterReply(response, timeout);
-  await sendPrinterBytes(Protocol.packet(command, payload), 'command');
-  return waiting;
+  try {
+    await sendPrinterBytes(Protocol.packet(command, payload), 'command');
+    return await waiting;
+  } catch (error) {
+    const pending = pendingPrinterReplies.get(response);
+    if (pending) {
+      clearTimeout(pending.timer);
+      pendingPrinterReplies.delete(response);
+    }
+    throw error;
+  }
 }
 
 function infoValue(packet) { return packet.data.length ? packet.data[packet.data.length - 1] : 0; }
@@ -271,12 +285,17 @@ async function printK3() {
 
 if (nativeBluetooth) {
   printerTools.hidden = false;
-  NativePrinterAPI.addListener('data', event => resolvePrinterReplies(event.bytes || []));
-  NativePrinterAPI.addListener('disconnected', () => {
-    printerConnected = false;
-    connectButton.disabled = false;
-    directPrintButton.disabled = true;
-    setPrinterStatus('打印机已断开，请重新连接。');
+  Promise.all([
+    NativePrinterAPI.addListener('data', event => resolvePrinterReplies(event.bytes || [])),
+    NativePrinterAPI.addListener('disconnected', () => {
+      printerConnected = false;
+      connectButton.disabled = false;
+      directPrintButton.disabled = true;
+      setPrinterStatus('打印机已断开，请重新连接。');
+    }),
+  ]).catch(error => {
+    printerTools.hidden = true;
+    setPrinterStatus(error.message || '蓝牙打印功能暂不可用，请更新 App。');
   });
   document.querySelector('#printer-scan').addEventListener('click', async () => {
     connectButton.disabled = true;

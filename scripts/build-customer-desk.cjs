@@ -13,5 +13,12 @@ if (fs.existsSync(dir+'/team-original.js')) {
   team=team.replace(anchor,"  require('./customer-dimensions').install(router, db);\n"+anchor);
   fs.writeFileSync(dir+'/team.js',team);
 }
-require('./build-labels.cjs');
-require('./build-customer-dock.cjs');
+async function build() {
+  await require('./build-labels.cjs')();
+  await require('./build-customer-dock.cjs')();
+}
+
+build().catch(error => {
+  console.error(error.stack || error);
+  process.exitCode = 1;
+});
