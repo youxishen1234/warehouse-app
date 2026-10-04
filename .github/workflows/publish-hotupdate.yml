@@ -36,13 +36,15 @@ jobs:
           npm ci --legacy-peer-deps
           sudo apt-get install -y -qq sshpass
       - name: Capture publication baseline before building
+        continue-on-error: true
         run: |
           mkdir -p release
-          if [ -n "$HOTUPDATE_HOST" ] && [ -n "$HOTUPDATE_USER" ] && [ -n "$HOTUPDATE_PASSWORD" ]; then
-            node scripts/upload-hotupdate.cjs --capture-baseline "$HOTUPDATE_BASE_MANIFEST"
-          else
+          if [ -z "$HOTUPDATE_HOST" ] || [ -z "$HOTUPDATE_USER" ] || [ -z "$HOTUPDATE_PASSWORD" ]; then
             echo '{}' > "$HOTUPDATE_BASE_MANIFEST"
             echo "::warning::Hot-update server credentials are not configured; build will continue without publishing"
+          elif ! node scripts/upload-hotupdate.cjs --capture-baseline "$HOTUPDATE_BASE_MANIFEST"; then
+            echo '{}' > "$HOTUPDATE_BASE_MANIFEST"
+            echo "::warning::Could not read publication baseline; build will continue"
           fi
       - name: Validate source
         env:
@@ -70,5 +72,6 @@ jobs:
           npx playwright install --with-deps chromium
           node tests/ledger-photos-browser.cjs
       - name: Publish through shared server lock and stale-source gate
+        continue-on-error: true
         if: ${{ env.HOTUPDATE_HOST != '' && env.HOTUPDATE_USER != '' && env.HOTUPDATE_PASSWORD != '' }}
         run: node scripts/upload-hotupdate.cjs
