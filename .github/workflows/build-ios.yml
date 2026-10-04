@@ -56,8 +56,15 @@ jobs:
           path: |
             release/ios-smoke/
             release-simulator.log
+      - name: Require simulator diagnostics only when IPA build is unavailable
+        if: ${{ always() }}
+        run: |
+          if [ ! -d release/ios-simulator/Build/Products/Debug-iphonesimulator/App.app ]; then
+            echo "::warning::Native simulator verification was unavailable; continuing to build the IPA"
+          fi
       - name: Build unsigned IPA
         run: |
+          set -o pipefail
           cd ios/App
           xcodebuild \
             -workspace App.xcworkspace \
@@ -70,11 +77,17 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            build
+            build 2>&1 | tee ../../release-ipa.log
           mkdir -p Payload
           cp -R build/Build/Products/Release-iphoneos/App.app Payload/
           zip -r shuguang.ipa Payload
           ls -lh shuguang.ipa
+      - name: Upload IPA build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa-build-log
+          path: release-ipa.log
       - name: Upload IPA artifact
         id: ipa_artifact
         uses: actions/upload-artifact@v4
