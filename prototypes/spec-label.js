@@ -306,6 +306,7 @@ async function printK3() {
     await checkedPrinterCommand(0x03, [0x01], 0x04);
     await checkedPrinterCommand(0x13, [0x03, 0x20, 0x02, 0x30, 0x00, 0x01], 0x14);
     const initial = Protocol.printStatus((await sendPrinterCommand(0xa3, [1], 0xb3)).data);
+    const initialPage = initial.page;
     let started = initial.page === 0 || initial.printProgress < 100;
     setPrinterStatus('标签已发送：0 / ' + rows.length + ' 行');
     for (let index = 0; index < rows.length; index++) {
@@ -323,8 +324,8 @@ async function printK3() {
       if (completedPage >= 1) break;
       const result = await sendPrinterCommand(0xa3, [0x01], 0xb3, 8000);
       const status = Protocol.printStatus(result.data);
-      if (status.page === 0 || status.printProgress < 100) started = true;
-      if (started && status.page >= 1 && status.printProgress >= 100 && status.feedProgress >= 100) {
+      if (status.page > initialPage || status.page === 0 || status.printProgress < 100) started = true;
+      if (started && (status.page > initialPage || status.page >= 1) && status.printProgress >= 100 && status.feedProgress >= 100) {
         completedPage = status.page;
         break;
       }
