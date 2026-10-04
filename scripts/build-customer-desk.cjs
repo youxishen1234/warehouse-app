@@ -18,7 +18,8 @@ async function build() {
   await require('./build-customer-dock.cjs')();
 }
 
-build().catch(error => {
+module.exports = build;
+if (require.main === module) build().catch(error => {
   console.error(error.stack || error);
   process.exitCode = 1;
 });
