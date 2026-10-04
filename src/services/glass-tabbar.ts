@@ -1,13 +1,13 @@
 // The dock owns its pointer gesture. Page swipes are handled by tab-navigation.
 const paths = [
   '<path d="M3 10.5 12 3l9 7.5M5 9v12h5v-6h4v6h5V9"/>',
-  '<path d="m3 7 7-4 7 4-7 4-7-4Zm0 0v9l7 4v-9m7-4v5m-3 5 2.5 2.5L22 14"/>',
+  '<path d="m12 2 1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8L12 2Z"/><path d="m19 16 .8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8L19 16Z"/>',
   '<path d="M2.5 16.5v-11h12v11m0-7.5h4l3 4v3.5H20m-5.5-3.5h7M9 16.5h6m-12.5 0H4"/><circle cx="6.5" cy="17" r="2.5"/><circle cx="17.5" cy="17" r="2.5"/>',
   '<circle cx="12" cy="6.5" r="3.5"/><path d="M5 21v-2c0-3.5 3-6 7-6s7 2.5 7 6v2"/>'
 ];
 // One 24-unit grid and stroke weight for every tab, including selected copies.
 const icon = (index: number) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + paths[index] + '</svg>';
-const titles = ['首页', '纸板库存', '出库', '我的'];
+const titles = ['首页', 'AI助手', '出库', '我的'];
 
 export function createGlassTabBar(host: HTMLElement, onSelect: (index: number) => void) {
   const dock = document.createElement('div');

@@ -1,9 +1,9 @@
 export default defineAppConfig({
   pages: [
     'pages/home/index',
-    'pages/business-center/index',
     'pages/ai-assistant/index',
     'pages/board-stock/index',
+    'pages/business-center/index',
     'pages/board-calculator/index',
     'pages/board-receive/index',
     'pages/board-detail/index',
@@ -12,12 +12,10 @@ export default defineAppConfig({
     'pages/inbound/index',
     'pages/outbound/index',
     'pages/mine/index',
-    'pages/inventory/index',
     'pages/products/index',
     'pages/records/index',
     'pages/ledger/index',
     'pages/orders/index',
-    'pages/customer-desk/index',
     'pages/team/index',
     'pages/suppliers/index',
     'pages/product-edit/index',
@@ -49,10 +47,10 @@ export default defineAppConfig({
         selectedIconPath: 'assets/tabbar/home-selected.svg'
       },
       {
-        pagePath: 'pages/board-stock/index',
-        text: '纸板库存',
-        iconPath: 'assets/tabbar/inbound.svg',
-        selectedIconPath: 'assets/tabbar/inbound-selected.svg'
+        pagePath: 'pages/ai-assistant/index',
+        text: 'AI助手',
+        iconPath: 'assets/tabbar/ai.svg',
+        selectedIconPath: 'assets/tabbar/ai-selected.svg'
       },
       {
         pagePath: 'pages/outbound/index',

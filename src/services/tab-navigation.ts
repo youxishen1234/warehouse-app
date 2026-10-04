@@ -1,9 +1,7 @@
 import { createGlassTabBar } from './glass-tabbar';
 
-// The second tab is the paperboard stock dashboard.  Keep this list aligned
-// with app.config.ts so the custom glass dock cannot route users back to the
-// legacy generic inbound form by accident.
-export const tabRoutes = ['/pages/home/index', '/pages/board-stock/index', '/pages/outbound/index', '/pages/mine/index'];
+// Keep this list aligned with app.config.ts and the custom glass dock.
+export const tabRoutes = ['/pages/home/index', '/pages/ai-assistant/index', '/pages/outbound/index', '/pages/mine/index'];
 
 export function normalizeRoute(value: string): string {
   return '/' + value.replace(/^#?\/?/, '').split(/[?#]/)[0].replace(/\/$/, '');
