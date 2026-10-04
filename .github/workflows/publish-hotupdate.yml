@@ -52,12 +52,12 @@ jobs:
         run: |
           npm run typecheck
           npm run lint
-          npm run test:artifacts
       - name: Build complete current source
         run: |
           rm -rf dist
           mkdir -p www
           npm run build:h5
+          npm run test:artifacts
           node scripts/release-provenance.cjs "$TARO_OUTPUT_DIR"
           node scripts/verify-ai-bundle.cjs "$TARO_OUTPUT_DIR"
           node scripts/verify-release-features.cjs "$TARO_OUTPUT_DIR"
