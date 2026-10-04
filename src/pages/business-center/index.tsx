@@ -7,6 +7,7 @@ const entries = [
   ['客户管理', '客户档案与往来账款', '/pages/customers/index'],
   ['订单出库', '订单、发货与送货单', '/pages/outbound/index'],
   ['账单流水', '收支明细与单据凭证照片', '/pages/ledger/index'],
+  ['标签打印', '成品 · 纸板', '/pages/qr-test/index'],
 ];
 export default function BusinessCenter() {
   const open = (url: string) => {

@@ -518,10 +518,10 @@ private final class WarehouseBridgeController: CAPBridgeViewController {
     let identifier = "NiimbotPrinterPlugin"
     let jsName = "NiimbotPrinter"
     let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "scan", returnType: .promise),
-        CAPPluginMethod(name: "connect", returnType: .promise),
-        CAPPluginMethod(name: "disconnect", returnType: .promise),
-        CAPPluginMethod(name: "write", returnType: .promise)
+        CAPPluginMethod(name: "scan", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "connect", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "disconnect", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "write", returnType: CAPPluginReturnPromise)
     ]
 
     private var central: CBCentralManager?
@@ -556,18 +556,35 @@ private final class WarehouseBridgeController: CAPBridgeViewController {
     }
 
     @objc func scan(_ call: CAPPluginCall) {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { self.scan(call) }
+            return
+        }
         let central = ensureCentral()
-        guard !central.isScanning else { call.reject("蓝牙扫描正在进行，请稍候"); return }
+        guard scanCall == nil else { call.reject("蓝牙扫描正在进行，请稍候"); return }
         discovered.removeAll()
         scanCall?.reject("扫描已重新开始")
         scanCall = call
+        if central.state == .unknown || central.state == .resetting {
+            let timeout = DispatchWorkItem { [weak self] in
+                guard let self, !central.isScanning else { return }
+                self.scanCall?.reject("蓝牙授权或初始化超时，请允许蓝牙后重试")
+                self.scanCall = nil
+            }
+            scanWork = timeout
+            DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: timeout)
+            return
+        }
+        startScan(central)
+    }
+
+    private func startScan(_ central: CBCentralManager) {
         guard central.state == .poweredOn else {
-            if central.state == .poweredOff { call.reject("请先打开 iPhone 蓝牙") }
-            else if central.state == .unauthorized { call.reject("请在 iPhone 设置中允许曙光使用蓝牙") }
-            else { call.reject("蓝牙尚未就绪，请稍候重试") }
+            scanCall?.reject(central.state == .unauthorized ? "请在 iPhone 设置中允许曙光使用蓝牙" : "请先打开 iPhone 蓝牙")
             scanCall = nil
             return
         }
+        scanWork?.cancel()
         central.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
@@ -584,6 +601,11 @@ private final class WarehouseBridgeController: CAPBridgeViewController {
     }
 
     @objc func connect(_ call: CAPPluginCall) {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { self.connect(call) }
+            return
+        }
+        guard connectCall == nil else { call.reject("打印机正在连接，请稍候"); return }
         let central = ensureCentral()
         guard central.state == .poweredOn else { call.reject("请先打开 iPhone 蓝牙"); return }
         guard let rawID = call.getString("id"), let id = UUID(uuidString: rawID),
@@ -591,7 +613,16 @@ private final class WarehouseBridgeController: CAPBridgeViewController {
             call.reject("打印机已离开扫描范围，请重新搜索")
             return
         }
-        if let old = activePeripheral { central.cancelPeripheralConnection(old) }
+        scanWork?.cancel()
+        central.stopScan()
+        if let old = activePeripheral {
+            if old.identifier == id, old.state == .connected, notifyCharacteristic?.isNotifying == true {
+                call.resolve(["id": id.uuidString, "name": old.name ?? "NIIMBOT 标签打印机"])
+                return
+            }
+            central.cancelPeripheralConnection(old)
+            clearConnection()
+        }
         activePeripheral = peripheral
         writeCharacteristic = nil
         notifyCharacteristic = nil
@@ -612,6 +643,14 @@ private final class WarehouseBridgeController: CAPBridgeViewController {
     }
 
     @objc func disconnect(_ call: CAPPluginCall) {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { self.disconnect(call) }
+            return
+        }
+        scanWork?.cancel()
+        central?.stopScan()
+        scanCall?.reject("已停止搜索打印机")
+        scanCall = nil
         if let peripheral = activePeripheral { central?.cancelPeripheralConnection(peripheral) }
         connectTimeout?.cancel()
         clearConnection()
@@ -619,7 +658,12 @@ private final class WarehouseBridgeController: CAPBridgeViewController {
     }
 
     @objc func write(_ call: CAPPluginCall) {
-        guard let peripheral = activePeripheral, let characteristic = writeCharacteristic else {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { self.write(call) }
+            return
+        }
+        guard let peripheral = activePeripheral, peripheral.state == .connected,
+              notifyCharacteristic?.isNotifying == true, let characteristic = writeCharacteristic else {
             call.reject("请先连接精臣标签打印机")
             return
         }
@@ -627,7 +671,7 @@ private final class WarehouseBridgeController: CAPBridgeViewController {
             call.reject(writeCall == nil ? "打印数据为空" : "打印机正在接收数据")
             return
         }
-        guard values.allSatisfy({ $0.intValue >= 0 && $0.intValue <= 255 }) else {
+        guard values.count <= 65536, values.allSatisfy({ $0.doubleValue.isFinite && $0.doubleValue == Double($0.intValue) && $0.intValue >= 0 && $0.intValue <= 255 }) else {
             call.reject("打印数据包含无效字节")
             return
         }
@@ -637,8 +681,7 @@ private final class WarehouseBridgeController: CAPBridgeViewController {
             activeWriteType = .withoutResponse
         }
         if activeWriteType == .withoutResponse && !characteristic.properties.contains(.writeWithoutResponse) {
-            call.reject("打印机不支持当前写入方式")
-            return
+            activeWriteType = .withResponse
         }
         let mtu = max(20, peripheral.maximumWriteValueLength(for: activeWriteType))
         queuedWrites = stride(from: 0, to: bytes.count, by: mtu).map { start in
@@ -648,10 +691,11 @@ private final class WarehouseBridgeController: CAPBridgeViewController {
         writeTimeout?.cancel()
         let timeout = DispatchWorkItem { [weak self] in
             guard let self, self.writeCall != nil else { return }
-            self.queuedWrites.removeAll()
-            self.writeResponsePending = false
             self.writeCall?.reject("打印机写入超时，请重新连接后重试")
             self.writeCall = nil
+            self.central?.cancelPeripheralConnection(peripheral)
+            self.clearConnection()
+            self.notifyListeners("disconnected", data: ["message": "打印机写入超时"])
         }
         writeTimeout = timeout
         DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: timeout)
@@ -684,6 +728,9 @@ private final class WarehouseBridgeController: CAPBridgeViewController {
     }
 
     private func clearConnection(rejectPending: Bool = true) {
+        connectTimeout?.cancel()
+        connectTimeout = nil
+        if let peripheral = activePeripheral { central?.cancelPeripheralConnection(peripheral) }
         activePeripheral = nil
         writeCharacteristic = nil
         notifyCharacteristic = nil
@@ -699,13 +746,19 @@ private final class WarehouseBridgeController: CAPBridgeViewController {
     }
 
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
-        guard central.state != .poweredOn else { return }
+        if central.state == .poweredOn {
+            if scanCall != nil, !central.isScanning { startScan(central) }
+            return
+        }
+        if central.state == .unknown || central.state == .resetting { return }
         scanWork?.cancel()
         central.stopScan()
         scanCall?.reject(central.state == .poweredOff ? "请先打开 iPhone 蓝牙" : "iPhone 蓝牙不可用")
         scanCall = nil
         connectTimeout?.cancel()
+        let connected = activePeripheral != nil
         clearConnection()
+        if connected { notifyListeners("disconnected", data: ["message": "iPhone 蓝牙不可用"]) }
     }
 
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
@@ -813,7 +866,8 @@ private final class WarehouseBridgeController: CAPBridgeViewController {
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
-        guard error == nil, let value = characteristic.value else { return }
+        guard activePeripheral === peripheral, characteristic.uuid == niimbotCharacteristic,
+              error == nil, let value = characteristic.value else { return }
         notifyListeners("data", data: ["bytes": value.map { Int($0) }])
     }
 
@@ -823,15 +877,18 @@ private final class WarehouseBridgeController: CAPBridgeViewController {
             writeTimeout?.cancel()
             writeCall?.reject(error.localizedDescription)
             writeCall = nil
-            queuedWrites.removeAll()
-            writeResponsePending = false
+            clearConnection()
+            notifyListeners("disconnected", data: ["message": error.localizedDescription])
             return
         }
         writeResponsePending = false
         drainWrites()
     }
 
-    func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) { drainWrites() }
+    func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) {
+        guard activePeripheral === peripheral else { return }
+        drainWrites()
+    }
 }
 
 private final class WeakTabMessageHandler: NSObject, WKScriptMessageHandler {

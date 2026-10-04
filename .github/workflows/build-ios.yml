@@ -77,7 +77,16 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            build 2>&1 | tee ../../release-ipa.log
+            build 2>&1 | tee ../../release-ipa.log || {
+              python3 - <<'PY'
+          import pathlib
+          errors = [line for line in pathlib.Path('../../release-ipa.log').read_text(errors='replace').splitlines() if 'error:' in line]
+          for line in errors[-15:]:
+              escaped = line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print('::error title=iOS Release Build::' + escaped)
+          PY
+              exit 1
+            }
           mkdir -p Payload
           cp -R build/Build/Products/Release-iphoneos/App.app Payload/
           zip -r shuguang.ipa Payload

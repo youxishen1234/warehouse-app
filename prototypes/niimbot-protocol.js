@@ -1,12 +1,16 @@
 const SERVICE_UUID = 'e7810a71-73ae-499d-8c15-faa9aef0c3f2';
 const CHARACTERISTIC_UUID = 'bef8d6c9-9c21-4c9e-b632-bd58c1009f9f';
-const K3_MODEL_IDS = [4864, 4868];
+const K3_MODEL_IDS = [4864, 4865, 4868];
 const K3_HEAD_PIXELS = 656; // 203 dpi × 82 mm; verify margins with the physical K3.
 const LABEL_WIDTH_PIXELS = 560; // 70 mm at 203 dpi.
 const LABEL_HEIGHT_PIXELS = 800; // 100 mm at 203 dpi.
 
 function packet(command, payload = []) {
-  const bytes = [command & 255, payload.length & 255, ...payload.map(value => value & 255)];
+  if (!Number.isInteger(command) || command < 0 || command > 255 || payload.length > 255 ||
+      !payload.every(value => Number.isInteger(value) && value >= 0 && value <= 255)) {
+    throw new Error('无效的打印协议数据');
+  }
+  const bytes = [command, payload.length, ...payload];
   const checksum = bytes.reduce((value, byte) => value ^ byte, 0);
   return [0x55, 0x55, ...bytes, checksum, 0xaa, 0xaa];
 }
@@ -38,6 +42,9 @@ function parsePackets(buffer) {
 }
 
 function encodeRow(row, index, headPixels = K3_HEAD_PIXELS) {
+  if (!Number.isInteger(index) || index < 0 || index > 65535 || !row.length || row.length * 8 > headPixels) {
+    throw new Error('无效的标签行尺寸');
+  }
   const split = Math.floor(headPixels / 8 / 3);
   const counts = [0, 0, 0];
   row.forEach((byte, position) => {
@@ -45,7 +52,9 @@ function encodeRow(row, index, headPixels = K3_HEAD_PIXELS) {
     let value = byte;
     while (value) { counts[segment] += value & 1; value >>>= 1; }
   });
-  return packet(0x85, [(index >>> 8) & 255, index & 255, ...counts.map(n => Math.min(255, n)), 1, ...row]);
+  const total = counts.reduce((sum, count) => sum + count, 0);
+  const counters = row.length > split * 3 ? [0, total & 255, total >>> 8] : counts;
+  return packet(0x85, [(index >>> 8) & 255, index & 255, ...counters, 1, ...row]);
 }
 
 function encodeEmptyRows(start, count) {
@@ -75,8 +84,19 @@ function canvasToRows(canvas) {
 
 function asUInt16(bytes) { return (bytes[0] << 8) | bytes[1]; }
 
+function modelId(bytes) {
+  if (bytes.length === 1) return bytes[0] << 8;
+  if (bytes.length === 2) return asUInt16(bytes);
+  throw new Error('打印机没有返回有效型号');
+}
+
+function printStatus(bytes) {
+  if (bytes.length < 4) throw new Error('打印机没有返回有效打印状态');
+  return { page: asUInt16(bytes), printProgress: bytes[2], feedProgress: bytes[3] };
+}
+
 module.exports = {
   SERVICE_UUID, CHARACTERISTIC_UUID, K3_MODEL_IDS, K3_HEAD_PIXELS,
   LABEL_WIDTH_PIXELS, LABEL_HEIGHT_PIXELS, packet, connectPacket,
-  parsePackets, encodeRow, encodeEmptyRows, canvasToRows, asUInt16,
+  parsePackets, encodeRow, encodeEmptyRows, canvasToRows, asUInt16, modelId, printStatus,
 };
