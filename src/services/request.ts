@@ -183,17 +183,25 @@ interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   data?: any;
   header?: Record<string, string>;
+  readOnly?: boolean;
+  expectedRevision?: number;
+  timeout?: number;
+  retryAcrossOrigins?: boolean;
+  // Large uploads use an immutable client ID so retry metadata never stores
+  // the photo itself (or a multi-megabyte serialized body) on the device.
+  requestIdentity?: string;
+  persistRetryMetadata?: boolean;
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function fetchApi(url: string, method: string, data: unknown, headers: Record<string, string>, timeout: number) {
+async function fetchApi(url: string, method: string, data: unknown, headers: Record<string, string>, timeout: number, retryAcrossOrigins = true) {
   const version = originVersion;
   let lastError: unknown;
   let lastServerResponse: { statusCode: number; data: any; header: Record<string, string> } | undefined;
-  for (const origin of [...new Set([getBaseUrl(), ...API_ORIGINS])]) {
+  for (const origin of [...new Set([getBaseUrl(), ...(retryAcrossOrigins ? API_ORIGINS : [])])]) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeout);
     try {
@@ -258,9 +266,10 @@ function pendingGet(identity: string): PendingWrite | undefined {
   pending.set(identity, stored);
   return stored;
 }
-function pendingSet(identity: string, value: Omit<PendingWrite, 'createdAt'>) {
+function pendingSet(identity: string, value: Omit<PendingWrite, 'createdAt'>, persistMetadata = true) {
   const item = { ...value, createdAt: Date.now() };
   pending.set(identity, item);
+  if (!persistMetadata) return;
   const all = readPendingWrites(); all[identity] = item; writePendingWrites(all);
 }
 function pendingDelete(identity: string) {
@@ -280,7 +289,7 @@ async function recoverPending<T>(identity: string, current: { token: string }, a
 }
 watchSession(() => { knownRevision = undefined; pending.clear(); editRevisions.clear(); inFlight.clear(); writePendingWrites({}); });
 export function request<T = any>(options: RequestOptions): Promise<T> {
-  const identity = `${session()?.user.id || deviceId()}:${options.method || 'GET'}:${options.url}:${JSON.stringify(options.data || {})}`;
+  const identity = `${session()?.user.id || deviceId()}:${options.method || 'GET'}:${options.url}:${options.requestIdentity || JSON.stringify(options.data || {})}${options.expectedRevision === undefined ? '' : `:revision:${options.expectedRevision}`}`;
   if (inFlight.has(identity)) return inFlight.get(identity)!;
   const work = performRequest<T>(options, identity).finally(() => inFlight.delete(identity));
   inFlight.set(identity, work); return work;
@@ -288,7 +297,8 @@ export function request<T = any>(options: RequestOptions): Promise<T> {
 
 async function performRequest<T = any>(options: RequestOptions, identity: string): Promise<T> {
   const { url, method = 'GET', data, header } = options;
-  const isRead = method === 'GET';
+  const isRead = method === 'GET' || options.readOnly === true;
+  if (options.expectedRevision !== undefined && (!Number.isSafeInteger(options.expectedRevision) || options.expectedRevision < 0)) throw new Error('数据版本无效，请重新识别指令');
   const current = session();
   if (!current) throw new Error('正在连接共享仓库，请稍候');
   const cacheKey = `${current?.user.id || deviceId()}:${method}:${url}`;
@@ -305,9 +315,9 @@ async function performRequest<T = any>(options: RequestOptions, identity: string
         // Prefer the revision captured when this resource was last read. Fall back
         // to the latest known global revision, then the sync response. This keeps
         // an edit tied to the resource snapshot instead of a stale global header.
-        const expected = editRevisions.get(url) || knownRevision || serverRevision;
+        const expected = options.expectedRevision === undefined ? editRevisions.get(url) || knownRevision || serverRevision : String(options.expectedRevision);
         const key = `${Date.now()}-${deviceId()}-${Math.random().toString(36).slice(2, 12)}`.replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 100);
-        pendingSet(identity, { key, revision: expected });
+        pendingSet(identity, { key, revision: expected }, options.persistRetryMetadata !== false);
       }
       const attempt = pendingGet(identity)!;
       headers = { 'Idempotency-Key': attempt.key, 'If-Match': attempt.revision };
@@ -322,7 +332,7 @@ async function performRequest<T = any>(options: RequestOptions, identity: string
     let networkAttempt = 0;
     while (true) {
       try {
-        res = await fetchApi(url, method, data, requestHeaders, 15000);
+        res = await fetchApi(url, method, data, requestHeaders, options.timeout || 15000, options.retryAcrossOrigins);
         break;
       } catch (error) {
         // A write may have committed before the connection dropped. Retry once
@@ -364,7 +374,7 @@ async function performRequest<T = any>(options: RequestOptions, identity: string
       }
       throw new Error(body?.message || '请求失败');
     }
-    throw new Error((res.data as any)?.message || `HTTP ${res.statusCode}`);
+    throw Object.assign(new Error((res.data as any)?.message || `HTTP ${res.statusCode}`), { statusCode: res.statusCode });
     } catch (e: any) {
     const raw = String(e?.message || e?.errMsg || '');
 
@@ -388,6 +398,6 @@ async function performRequest<T = any>(options: RequestOptions, identity: string
     const msg = !isRead && isNetworkError(e) ? '上传结果未确认，表单已保留；请勿更改内容，联网后重试' : friendlyError(e);
     if (DEBUG_API_LOG) console.error(`[API] ${method} ${url} 失败:`, e?.message || e);
     toastOnce(msg, !isRead);
-    throw new Error(msg);
+    throw Object.assign(new Error(msg), { code: e?.code, revision: e?.revision, statusCode: e?.statusCode });
   }
 }
