@@ -55,16 +55,30 @@ jobs:
           SERVER_HOST: ${{ secrets.SHUGUANG_SERVER_HOST || secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SHUGUANG_SERVER_USER || secrets.SERVER_USER }}
           SERVER_PASSWORD: ${{ secrets.SHUGUANG_SERVER_PASSWORD || secrets.SSH_PASSWORD }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
           set -euo pipefail
-          if [ -z "$SERVER_HOST" ] || [ -z "$SERVER_USER" ] || [ -z "$SERVER_PASSWORD" ]; then
+          if [ -z "$SERVER_HOST" ] || [ -z "$SERVER_USER" ] || { [ -z "$SSH_PRIVATE_KEY" ] && [ -z "$SERVER_PASSWORD" ]; }; then
             echo "::warning::Android server upload secrets are not configured, keeping the Actions artifact only"
             exit 0
           fi
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq sshpass
-          sshpass -p "$SERVER_PASSWORD" scp -o StrictHostKeyChecking=no \
-            android/app/build/outputs/apk/release/app-release.apk \
-            "$SERVER_USER@$SERVER_HOST:/tmp/shuguang.apk"
-          sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
-            "echo '$SERVER_PASSWORD' | sudo -S mv /tmp/shuguang.apk /opt/shuguang/public/shuguang.apk && echo '$SERVER_PASSWORD' | sudo -S chmod 644 /opt/shuguang/public/shuguang.apk"
+          if [ -n "$SSH_PRIVATE_KEY" ]; then
+            # SSH key auth (new server, ubuntu@82.156.112.218)
+            mkdir -p ~/.ssh
+            echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+            chmod 600 ~/.ssh/id_rsa
+            ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            scp -o StrictHostKeyChecking=no \
+              android/app/build/outputs/apk/release/app-release.apk \
+              "$SERVER_USER@$SERVER_HOST:/tmp/shuguang.apk"
+            ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
+              "mv /tmp/shuguang.apk /opt/shuguang/public/shuguang.apk && cp /opt/shuguang/public/shuguang.apk /opt/shuguang/public/download/shuguang-android.apk && chmod 644 /opt/shuguang/public/shuguang.apk /opt/shuguang/public/download/shuguang-android.apk"
+          else
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq sshpass
+            sshpass -p "$SERVER_PASSWORD" scp -o StrictHostKeyChecking=no \
+              android/app/build/outputs/apk/release/app-release.apk \
+              "$SERVER_USER@$SERVER_HOST:/tmp/shuguang.apk"
+            sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
+              "echo '$SERVER_PASSWORD' | sudo -S mv /tmp/shuguang.apk /opt/shuguang/public/shuguang.apk && echo '$SERVER_PASSWORD' | sudo -S chmod 644 /opt/shuguang/public/shuguang.apk && echo '$SERVER_PASSWORD' | sudo -S cp /opt/shuguang/public/shuguang.apk /opt/shuguang/public/download/shuguang-android.apk"
+          fi

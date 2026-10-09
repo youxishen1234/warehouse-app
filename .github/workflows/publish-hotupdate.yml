@@ -21,6 +21,7 @@ jobs:
       HOTUPDATE_HOST: ${{ secrets.SHUGUANG_SERVER_HOST }}
       HOTUPDATE_USER: ${{ secrets.SHUGUANG_SERVER_USER }}
       HOTUPDATE_PASSWORD: ${{ secrets.SHUGUANG_SERVER_PASSWORD }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
       HOTUPDATE_BASE_MANIFEST: release/base-manifest.json
       HOTUPDATE_LOCAL_ZIP: release/www.zip
       HOTUPDATE_LOCAL_MANIFEST: release/manifest.json
@@ -39,12 +40,21 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p release
-          if [ -z "$HOTUPDATE_HOST" ] || [ -z "$HOTUPDATE_USER" ] || [ -z "$HOTUPDATE_PASSWORD" ]; then
+          if [ -z "$HOTUPDATE_HOST" ] || [ -z "$HOTUPDATE_USER" ] || { [ -z "$SSH_PRIVATE_KEY" ] && [ -z "$HOTUPDATE_PASSWORD" ]; }; then
             echo '{}' > "$HOTUPDATE_BASE_MANIFEST"
             echo "::warning::Hot-update server credentials are not configured; build will continue without publishing"
-          elif ! node scripts/upload-hotupdate.cjs --capture-baseline "$HOTUPDATE_BASE_MANIFEST"; then
-            echo '{}' > "$HOTUPDATE_BASE_MANIFEST"
-            echo "::warning::Could not read publication baseline; build will continue"
+          else
+            if [ -n "$SSH_PRIVATE_KEY" ]; then
+              export HOTUPDATE_PASSWORD=''
+              mkdir -p ~/.ssh
+              echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+              chmod 600 ~/.ssh/id_rsa
+              ssh-keyscan -H "$HOTUPDATE_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            fi
+            if ! node scripts/upload-hotupdate.cjs --capture-baseline "$HOTUPDATE_BASE_MANIFEST"; then
+              echo '{}' > "$HOTUPDATE_BASE_MANIFEST"
+              echo "::warning::Could not read publication baseline; build will continue"
+            fi
           fi
       - name: Validate source
         env:
@@ -74,5 +84,17 @@ jobs:
       - name: Run complete backend test suite
         run: node --test backend/*.test.cjs
       - name: Publish through shared server lock and stale-source gate
-        if: ${{ env.HOTUPDATE_HOST != '' && env.HOTUPDATE_USER != '' && env.HOTUPDATE_PASSWORD != '' }}
-        run: node scripts/upload-hotupdate.cjs
+        if: ${{ env.HOTUPDATE_HOST != '' && env.HOTUPDATE_USER != '' }}
+        run: |
+          if [ -z "$SSH_PRIVATE_KEY" ] && [ -z "$HOTUPDATE_PASSWORD" ]; then
+            echo "::warning::Neither SSH_PRIVATE_KEY nor SHUGUANG_SERVER_PASSWORD configured, skipping publish"
+            exit 0
+          fi
+          if [ -n "$SSH_PRIVATE_KEY" ]; then
+            export HOTUPDATE_PASSWORD=''
+            mkdir -p ~/.ssh
+            echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+            chmod 600 ~/.ssh/id_rsa
+            ssh-keyscan -H "$HOTUPDATE_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+          fi
+          node scripts/upload-hotupdate.cjs
