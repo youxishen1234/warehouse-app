@@ -52,7 +52,7 @@ function upload() {
   ssh(`mkdir -p ${shellQuote(staging)}`);
   try {
     for (const [source, name] of [[zip, 'www.zip'], [manifestPath, 'manifest.json']]) remoteCommand('scp', ['-P', c.port, path.resolve(source), `${c.target}:${staging}/${name}`]);
-    const result = ssh(`python3 - ${shellQuote(c.directory)} ${shellQuote(staging)}`, fs.readFileSync(path.join(__dirname, 'publish-hotupdate.py')));
+    const result = ssh(`python3 - ${shellQuote(c.directory)} ${shellQuote(staging)} ${shellQuote(path.posix.dirname(c.directory))}`, fs.readFileSync(path.join(__dirname, 'publish-hotupdate.py')));
     process.stdout.write(result);
     return result;
   } finally { ssh(`rm -f ${shellQuote(staging + '/www.zip')} ${shellQuote(staging + '/manifest.json')}; rmdir ${shellQuote(staging)}`); }

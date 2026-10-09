@@ -17,7 +17,7 @@ const bizNav = [
   { title: '标签打印', path: '/pages/print-center/index' }
 ];
 
-export function createGlassTabBar(host: HTMLElement, onSelect: (index: number) => void) {
+export function createGlassTabBar(host: HTMLElement, onSelect: (index: number) => void, onNavigate: (url: string) => void) {
   const dock = document.createElement('div');
   dock.className = 'sg-glass-dock';
   dock.innerHTML = '<nav class="sg-glass-rail" aria-label="主导航">' +
@@ -65,6 +65,7 @@ export function createGlassTabBar(host: HTMLElement, onSelect: (index: number) =
   let cellWidth = 1;
   let suppressClick = false;
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+  const desktop = matchMedia('(min-width: 1024px)');
   let ripplePosition = 0;
   let rippleTime = -Infinity;
   const ripple = (direction: number) => {
@@ -87,6 +88,11 @@ export function createGlassTabBar(host: HTMLElement, onSelect: (index: number) =
   const clamp = (value: number) => Math.max(0, Math.min(3, value));
   const measure = () => { cellWidth = Math.max(1, (rail.clientWidth - 16) / 4); };
   const render = () => {
+    if (desktop.matches) {
+      baseItems.style.removeProperty('mask-image');
+      baseItems.style.removeProperty('-webkit-mask-image');
+      return;
+    }
     // Geometry is read on resize / pointerdown, never after every transform
     // write. This avoids synchronous layout work in the finger-follow path.
     const cell = cellWidth;
@@ -142,6 +148,8 @@ export function createGlassTabBar(host: HTMLElement, onSelect: (index: number) =
     }
   };
   const down = (event: PointerEvent) => {
+    // Desktop tabs are vertical buttons, not cells in the mobile drag rail.
+    if (desktop.matches || !(event.target as Element).closest('[data-tab], .sg-glass-lens')) return;
     if (pointer || !event.isPrimary || event.button !== 0) return;
     cancelAnimationFrame(animation); animation = 0; velocity = 0;
     const rect = rail.getBoundingClientRect();
@@ -181,8 +189,10 @@ export function createGlassTabBar(host: HTMLElement, onSelect: (index: number) =
     if (!cancelled) onSelect(index);
   };
   const click = (event: MouseEvent) => {
+    const item = (event.target as Element).closest<HTMLElement>('[data-nav]');
+    if (item?.dataset.nav) { onNavigate(item.dataset.nav); return; }
     // Pointer selection commits on release; keyboard/assistive clicks still use this path.
-    if (event.detail && suppressClick) { suppressClick = false; event.preventDefault(); return; }
+    if (!desktop.matches && event.detail && suppressClick) { suppressClick = false; event.preventDefault(); return; }
     const button = (event.target as Element).closest<HTMLElement>('[data-tab]');
     if (button) { const index = Number(button.dataset.tab); settle(index); onSelect(index); }
   };
@@ -200,11 +210,6 @@ export function createGlassTabBar(host: HTMLElement, onSelect: (index: number) =
   rail.addEventListener('lostpointercapture', finish);
   rail.addEventListener('click', click);
   rail.addEventListener('keydown', keydown);
-  // 桌面侧边栏“业务中心”快捷跳转（hash 路由，file:// 与 H5 均可）
-  dock.addEventListener('click', (event: MouseEvent) => {
-    const item = (event.target as Element).closest<HTMLElement>('[data-nav]');
-    if (item?.dataset.nav) window.location.hash = '#' + item.dataset.nav;
-  });
   const onResize = () => { measure(); render(); };
   const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(onResize);
   resize?.observe(rail);

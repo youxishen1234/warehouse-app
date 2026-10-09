@@ -51,6 +51,7 @@ function TabSwipeNavigator() {
         return page?.route || location.hash.slice(1) || '/pages/home/index';
       },
       switchTab: url => Taro.switchTab({ url }),
+      navigateTo: url => Taro.navigateTo({ url }),
       back: () => Taro.navigateBack({ delta: 1 }),
       depth: () => Taro.getCurrentPages().length
     });

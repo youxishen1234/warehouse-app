@@ -10,6 +10,7 @@ export function normalizeRoute(value: string): string {
 type Navigation = {
   route: () => string;
   switchTab: (url: string) => Promise<unknown>;
+  navigateTo: (url: string) => Promise<unknown>;
   back: () => Promise<unknown>;
   depth: () => number;
 };
@@ -52,7 +53,7 @@ export function installTabNavigation(nav: Navigation): () => void {
     root.classList.toggle('sg-native-ios', !!native);
     const host = document.querySelector<HTMLElement>('taro-tabbar');
     if (dock && dock.host !== host) { dock.destroy(); dock = null; }
-    if (host && !dock) dock = createGlassTabBar(host, index => { void switchTo(tabRoutes[index]); });
+    if (host && !dock) dock = createGlassTabBar(host, index => { void switchTo(tabRoutes[index]); }, url => { void switchTo(url, undefined, true); });
     if (!state?.locked && !busy) dock?.update(Math.max(0, tabRoutes.indexOf(route())));
     if (native) {
       root.style.setProperty('--sg-native-bottom-space', String(capability.bottomSpace ?? 84) + 'px');
@@ -81,8 +82,8 @@ export function installTabNavigation(nav: Navigation): () => void {
     page.style.setProperty('transform', 'translate3d(' + x + 'px,0,0)', 'important');
     setTimeout(resolve, reduced ? 0 : 165);
   });
-  const switchTo = async (url: string, requestId?: number) => {
-    if (disposed || !tabRoutes.includes(url)) return;
+  const switchTo = async (url: string, requestId?: number, business = false) => {
+    if (disposed || (!tabRoutes.includes(url) && !business)) return;
     // Keep the most recent destination while Taro is switching. Native drag
     // and rapid taps must not lose their final selection to a busy guard.
     queued = { url, requestId };
@@ -96,7 +97,10 @@ export function installTabNavigation(nav: Navigation): () => void {
         acknowledgedRequest = target.requestId;
         try {
           if (modalOpen()) { navigationFailed = true; continue; }
-          if (target.url !== route()) await nav.switchTab(target.url);
+          if (target.url !== route()) {
+            if (tabRoutes.includes(target.url)) await nav.switchTab(target.url);
+            else await nav.navigateTo(target.url);
+          }
         } catch (error) {
           navigationFailed = true;
           console.error('[Navigation]', error);
@@ -164,7 +168,7 @@ export function installTabNavigation(nav: Navigation): () => void {
     finally {
       restore(current.page);
       busy = false;
-      if (queued && !disposed) void switchTo(queued.url, queued.requestId);
+      if (queued && !disposed) void switchTo(queued.url, queued.requestId, true);
       else scheduleSync();
     }
   };
