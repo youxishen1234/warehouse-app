@@ -64,11 +64,16 @@ async function main() {
     await page.mouse.up();
     await current('mine');
     assert.deepEqual(errors, []);
-    console.log('Desktop tab and business navigation, standalone navigation, responsive resize and mobile drag passed.');
   } finally {
-    await browser.close();
-    await new Promise(resolve => server.close(resolve));
-    fs.rmSync(temp, { recursive: true, force: true });
+    try {
+      // Finish proxy fetches before disposing the context used by route.fetch.
+      await page.unrouteAll({ behavior: 'wait' });
+    } finally {
+      await browser.close();
+      await new Promise(resolve => server.close(resolve));
+      fs.rmSync(temp, { recursive: true, force: true });
+    }
   }
+  console.log('Desktop tab and business navigation, standalone navigation, responsive resize and mobile drag passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

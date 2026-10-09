@@ -163,14 +163,19 @@ async function main() {
     assert.equal(db.getLedgerAttachments(income.id).length, 0);
     assert.deepEqual({ stock: db.getProduct(product.id).stock, debt: db.getCustomer(customer.id).debt, amounts: db.listLedger().map(row => row.amount) }, before);
     assert.deepEqual(errors, []);
-    console.log('Ledger photo browser checks passed: original upload, uncertain retry, multiple types/pages, draft retention, reload, zoom, download, stable amounts.');
   } catch (error) {
     console.error('Browser errors:', JSON.stringify(errors));
     if (page) { await page.screenshot({ path: path.join(artifacts, 'ledger-photos-failure.png') }); fs.writeFileSync(path.join(artifacts, 'ledger-photos-failure.txt'), await page.locator('body').innerText()); }
     throw error;
   } finally {
-    await browser.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
-    fs.rmSync(dir, { recursive: true, force: true });
+    try {
+      // Finish proxy fetches while their browser context is still available.
+      if (page) await page.unrouteAll({ behavior: 'wait' });
+    } finally {
+      await browser.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   }
+  console.log('Ledger photo browser checks passed: original upload, uncertain retry, multiple types/pages, draft retention, reload, zoom, download, stable amounts.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
