@@ -31,6 +31,9 @@ const ProductEditPage: React.FC = () => {
   const [safety, setSafety] = useState('0');
   const [unitIndex, setUnitIndex] = useState(0);
   const [saving, setSaving] = useState(false);
+  // 编辑模式下，原资料成功加载前禁止保存，避免把默认值覆盖到真实商品上。
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>(isEdit ? 'loading' : 'ready');
+  const [reloadToken, setReloadToken] = useState(0);
   const [historySpecs, setHistorySpecs] = useState<string[]>([]);
   const [historyMaterials, setHistoryMaterials] = useState<string[]>([]);
   const [specQuery, setSpecQuery] = useState('');
@@ -53,6 +56,7 @@ const ProductEditPage: React.FC = () => {
       setHistoryMaterials(unique([...localMaterials, ...products.map(product => product.material || '')]));
     }).catch(() => {});
     if (isEdit && editId) {
+      setLoadState('loading');
       getProduct(editId).then(p => {
         setName(p.name);
         setCategory(p.category);
@@ -63,12 +67,14 @@ const ProductEditPage: React.FC = () => {
         setPrice(String(p.price));
         setStock(String(p.stock));
         setSafety(String(p.safety_stock));
-      }).catch(e => console.error('[ProductEdit] load failed', e));
+        setLoadState('ready');
+      }).catch(e => { console.error('[ProductEdit] load failed', e); setLoadState('error'); });
     }
-  }, [isEdit, editId]);
+  }, [isEdit, editId, reloadToken]);
 
   const handleSave = async () => {
     if (savingRef.current) return;
+    if (isEdit && loadState !== 'ready') { Taro.showToast({ title: loadState === 'loading' ? '商品资料加载中，请稍候' : '商品资料加载失败，请重试后再保存', icon: 'none' }); return; }
     if (!name.trim()) { Taro.showToast({ title: '请输入商品名称', icon: 'none' }); return; }
     const numeric = (value: string, label: string) => {
       try { return numberValue(value, label); }
@@ -108,6 +114,8 @@ const ProductEditPage: React.FC = () => {
 
   return (
     <ScrollView scrollY className={styles.container}>
+      {isEdit && loadState === 'error' && <View className={styles.loadError} onClick={() => setReloadToken(token => token + 1)}>商品资料加载失败，点击重试（不重试直接保存会清空原资料）</View>}
+      {isEdit && loadState === 'loading' && <View className={styles.loading}>正在加载商品资料…</View>}
       <View className={styles.form}>
         <View className={styles.field}>
           <Text className={styles.label}>商品名称 *</Text>
@@ -158,7 +166,7 @@ const ProductEditPage: React.FC = () => {
         )}
 
       </View>
-      <View className={styles.btnPrimary} onClick={handleSave}>{saving ? '正在保存' : '保存'}</View>
+      <View className={styles.btnPrimary} onClick={handleSave} style={isEdit && loadState !== 'ready' ? 'opacity:0.5' : ''}>{saving ? '正在保存' : (isEdit && loadState === 'loading' ? '加载中…' : '保存')}</View>
     </ScrollView>
   );
 };

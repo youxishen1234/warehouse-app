@@ -49,6 +49,8 @@ export default function AiAssistantPage() {
   const [moreOpen, setMoreOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [deepThink, setDeepThink] = useState(false);
+  const [smartSearch, setSmartSearch] = useState(true);
   const [voiceSeconds, setVoiceSeconds] = useState<number>();
   const chatEnd = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLElement>(null);
@@ -219,9 +221,9 @@ export default function AiAssistantPage() {
 
   return <div ref={pageRef} className={styles.page} data-ai-assistant='20261003' data-ai-media='20261004' data-ai-chat='20261004-wechat'>
     <div className={styles.header}>
-      <button data-ai-control="button" className={styles.back} aria-label='返回首页' onClick={() => { if (Taro.getCurrentPages().length > 1) Taro.navigateBack(); else void navigate('/pages/home/index'); }}><ChatIcon name='back' /></button>
+      <button data-ai-control="button" className={styles.back} aria-label='打开聊天记录' onClick={() => setMenuOpen(value => !value)}><ChatIcon name='more' /></button>
       <div className={styles.heading}><span className={styles.title}>AI 助手</span></div>
-      <button data-ai-control="button" className={styles.headerMore} aria-label='聊天设置' aria-expanded={menuOpen} disabled={!canEdit} onClick={() => setMenuOpen(value => !value)}><ChatIcon name='more' /></button>
+      <button data-ai-control="button" className={styles.headerMore} aria-label='新建对话' onClick={newTask}><ChatIcon name='plus' /></button>
     </div>
     <main ref={contentRef} className={styles.content} aria-label="对话与业务结果">
       {menuOpen && <div className={styles.chatMenu} aria-label='聊天设置面板'>
@@ -244,8 +246,10 @@ export default function AiAssistantPage() {
       {settingsOpen && <AiSettings onSaved={() => void connect()} onClose={() => setSettingsOpen(false)} />}
       {catalogOpen && <div className={styles.card}><span className={styles.sectionTitle}>可以让助手做什么</span><span className={styles.hint}>选择功能可直接填写；配置模型后支持自由描述。页面类功能会打开对应页面。</span><div className={styles.catalog}>{capabilities.map(item => <button data-ai-control="button" key={item.action} disabled={!canEdit} className={styles.tool} onClick={() => startTool(item)}>{item.title}<span className={styles.toolMode}>{({ read: '查询', write: '填写后提交', print: '打印', navigate: '打开页面' })[item.mode]}</span></button>)}</div></div>}
       {messages.length === 0 && <>
-        <span className={styles.chatTime}>{new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
-        <Message item={{ id: 'welcome', role: 'assistant', at: 0, text: '你好，我是仓库 AI 助手。\n可以发文字、语音或入库单照片，我帮你整理。' }} onRetry={() => {}} onError={setError} />
+        <div className={styles.welcomeHero}>
+          <div className={styles.whaleMark} aria-hidden='true'>🐋</div>
+          <h1>今天有什么可以帮到你？</h1>
+        </div>
       </>}
       {messages.map((item, index) => <div key={item.id}>
         {(index === 0 || item.at - messages[index - 1].at >= 5 * 60 * 1000) && <span className={styles.chatTime}>{new Date(item.at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })}</span>}
@@ -285,13 +289,18 @@ export default function AiAssistantPage() {
     <div className={styles.composer}>
       {voice && !busy && <div className={styles.voicePreview}><audio controls src={voice} aria-label='待发送语音' /><button data-ai-control='button' aria-label='移除语音' disabled={!canEdit} onClick={() => setVoice('')}><ChatIcon name='close' /></button></div>}
       {photos.length > 0 && <div className={styles.photos}>{photos.map((photo, index) => <div key={index} className={styles.photo}><img className={styles.photoPreview} src={photo} alt={`单据照片 ${index + 1}`} onClick={() => Taro.previewImage({ current: photo, urls: photos })} /><button data-ai-control="button" disabled={!canEdit} className={styles.removePhoto} aria-label={`移除照片${index + 1}`} onClick={() => setPhotos(previous => previous.filter((_, i) => i !== index))}>×</button></div>)}</div>}
-      <div className={styles.chatBar}>
-        <button data-ai-control="button" className={styles.chatIcon} disabled={!canEdit} aria-label={voiceOpen ? '键盘输入' : '发语音'} onClick={() => { setVoiceOpen(value => !value); setMoreOpen(false); setEmojiOpen(false); }}><ChatIcon name={voiceOpen ? 'keyboard' : 'voice'} /></button>
-        {!voiceOpen && <textarea ref={inputRef} data-ai-control="textarea" className={styles.messageInput} aria-label='输入仓库指令' placeholder='' value={input} disabled={!canEdit} maxLength={2000} rows={1} onFocus={() => { setMoreOpen(false); setEmojiOpen(false); }} onChange={event => setInput(event.currentTarget.value)} />}
-        {voiceOpen && <VoiceInput disabled={busy || unconfirmed} available={!!status?.voice?.available} onSend={(audio, seconds) => send(input, audio, seconds)} onRecording={setRecording} onError={setError} />}
-        <button data-ai-control='button' className={styles.chatIcon} aria-label={emojiOpen ? '收起表情' : '表情'} aria-expanded={emojiOpen} disabled={!canEdit} onClick={() => { setEmojiOpen(value => !value); setMoreOpen(false); setVoiceOpen(false); inputRef.current?.blur(); }}><ChatIcon name={emojiOpen ? 'keyboard' : 'smile'} /></button>
-        {(input.trim() || photos.length || voice) ? <button data-ai-control="button" className={styles.send} disabled={!canEdit} onClick={() => send()}>{voice ? '发送语音' : photos.length ? '发送照片' : '发送'}</button>
-          : <button data-ai-control="button" className={styles.chatIcon} aria-label='更多发送方式' aria-expanded={moreOpen} disabled={!canEdit} onClick={() => { setMoreOpen(value => !value); setEmojiOpen(false); inputRef.current?.blur(); }}><ChatIcon name='plus' /></button>}
+      {voiceOpen && <VoiceInput disabled={busy || unconfirmed} available={!!status?.voice?.available} onSend={(audio, seconds) => send(input, audio, seconds)} onRecording={setRecording} onError={setError} />}
+      <div className={styles.referenceComposer}>
+        {!voiceOpen && <textarea ref={inputRef} data-ai-control="textarea" className={styles.messageInput} aria-label='输入仓库指令' placeholder='发消息或按住说话' value={input} disabled={!canEdit} maxLength={2000} rows={1} onFocus={() => { setMoreOpen(false); setEmojiOpen(false); }} onChange={event => setInput(event.currentTarget.value)} />}
+        {voiceOpen && <button data-ai-control='button' className={styles.keyboardMode} aria-label='键盘输入' onClick={() => setVoiceOpen(false)}><ChatIcon name='keyboard' /> 键盘输入</button>}
+        <div className={styles.referenceOptions}>
+          <button data-ai-control='button' className={`${styles.modeChip} ${deepThink ? styles.modeChipActive : ''}`} aria-pressed={deepThink} onClick={() => setDeepThink(value => !value)}>⌘ 深度思考</button>
+          <button data-ai-control='button' className={`${styles.modeChip} ${styles.searchChip} ${smartSearch ? styles.modeChipActive : ''}`} aria-pressed={smartSearch} onClick={() => setSmartSearch(value => !value)}>◎ 智能搜索</button>
+          <span className={styles.referenceSpacer} />
+          {(input.trim() || photos.length || voice) ? <button data-ai-control="button" className={styles.send} aria-label='发送消息' disabled={!canEdit} onClick={() => send()}>{voice ? '发送' : '↑'}</button>
+            : <button data-ai-control="button" className={styles.chatIcon} aria-label='更多发送方式' aria-expanded={moreOpen} disabled={!canEdit} onClick={() => { setMoreOpen(value => !value); setEmojiOpen(false); inputRef.current?.blur(); }}><ChatIcon name='plus' /></button>}
+          <button data-ai-control="button" className={styles.chatIcon} disabled={!canEdit} aria-label={voiceOpen ? '键盘输入' : '发语音'} onClick={() => { setVoiceOpen(value => !value); setMoreOpen(false); setEmojiOpen(false); }}><ChatIcon name={voiceOpen ? 'keyboard' : 'voice'} /></button>
+        </div>
       </div>
       {emojiOpen && <div className={styles.emojiPanel} aria-label='表情面板'>{['😀', '😊', '😂', '🤔', '👍', '👌', '🙏', '❤️', '😅', '😎', '🎉', '✅', '📦', '🧾', '🚚', '🖨️', '🙂', '😄', '🙌', '💪', '🌹', '👏', '🤝', '💡'].map(emoji => <button data-ai-control='button' key={emoji} aria-label={`插入表情 ${emoji}`} onClick={() => setInput(previous => (previous + emoji).slice(0, 2000))}>{emoji}</button>)}</div>}
       {moreOpen && <div className={styles.composerTools} aria-label='更多发送面板'>

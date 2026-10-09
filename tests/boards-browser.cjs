@@ -58,6 +58,15 @@ async function main() {
     await page.goto(base + '/pages/board-detail/index?id=' + batch.id); await expect(active().locator('.board-summary-number')).toContainText('500');
     await button('查看 / 保存标签').click();
     const qrData = await active().locator('.board-label img').getAttribute('src'); assert.ok(qrData.startsWith('data:image/png'));
+    await page.goto(base + '/pages/board-stock/index'); await button('查看批次 ›').click();
+    const row = active().locator('.board-timeline').filter({ hasText: repeated.id });
+    await row.getByText('编辑', { exact: true }).click(); await expect(field('实收数')).toHaveValue('102');
+    await field('实收数').fill('120'); await button('保存修改').click(); await page.waitForURL(/board-detail/);
+    assert.equal(db.listBoards().length, 2); assert.equal(db.listBoards().find(b => b.id === repeated.id).remainingQty, 120);
+    await page.goto(base + '/pages/board-stock/index'); await button('查看批次 ›').click();
+    await active().locator('.board-timeline').filter({ hasText: repeated.id }).getByText('删除', { exact: true }).click();
+    await page.getByText('确定', { exact: true }).click();
+    await expect(active().locator('.board-qty')).toHaveText('500'); assert.equal(db.listBoards().length, 1);
     assert.deepEqual(errors, []); console.log('PASS: real receipt, amount, overdraft, deduction, reload, responsive UI, QR photo recognition, count and template reuse (' + (process.env.BOARD_BROWSER || 'chromium') + ')');
   } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); fs.rmSync(path.dirname(process.env.WAREHOUSE_DATA_FILE), { recursive: true, force: true }); }
 }

@@ -1,1 +1,1 @@
-export default definePageConfig({ navigationBarTitleText: '账本流水', enablePullDownRefresh: true, navigationStyle: 'custom' });
+export default definePageConfig({ navigationBarTitleText: '账单流水', navigationStyle: 'custom' });

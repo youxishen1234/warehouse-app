@@ -11,7 +11,6 @@ export default function Team() {
   const me = session()?.user;
   const [members,setMembers]=useState<Member[]>([]), [events,setEvents]=useState<any[]>([]);
   const [username,setUsername]=useState(''), [password,setPassword]=useState(''), [role,setRole]=useState(1);
-  const [oldPassword,setOldPassword]=useState(''), [newPassword,setNewPassword]=useState('');
   const [resetMember, setResetMember] = useState<string | null>(null), [resetPassword, setResetPassword] = useState('');
   const [message,setMessage]=useState(''), [busy,setBusy]=useState(false), [page,setPage]=useState(1), [total,setTotal]=useState(0);
   const [loading, setLoading] = useState(true), [loadError, setLoadError] = useState('');
@@ -23,7 +22,7 @@ export default function Team() {
       const a=await accountApi(`/audit?page=${page}`);
       setEvents(a.items); setTotal(a.total);
     } catch(error) {
-      const text = error instanceof Error ? error.message : '??????????????';
+      const text = error instanceof Error ? error.message : '加载失败，请点击重试';
       setLoadError(text); setMessage(text);
     } finally { setLoading(false); }
   },[me?.role,page]);
@@ -36,7 +35,7 @@ export default function Team() {
     <Text className="team-message">{message}</Text>
     {me?.role === 'admin' && <>
       <Text className="team-section">团队成员</Text>
-      {loading ? <Text className="team-message">?????????</Text> : loadError ? <Text className="team-message" onClick={load}>{loadError} ? ????</Text> : members.length === 0 ? <Text className="team-message">??????</Text> : members.map(u=><View className="team-member" key={u.id}>
+      {loading ? <Text className="team-message">正在加载…</Text> : loadError ? <Text className="team-message" onClick={load}>{loadError} · 点击重试</Text> : members.length === 0 ? <Text className="team-message">暂无成员</Text> : members.map(u=><View className="team-member" key={u.id}>
         <Text>{u.username}</Text>
         <Picker value={roles.indexOf(u.role)} range={labels} disabled={busy} onChange={e=>action(()=>accountApi(`/team/${u.id}`,'PUT',{role:roles[Number(e.detail.value)]}))}><Text>{labels[roles.indexOf(u.role)]}</Text></Picker>
         <Switch checked={!u.disabled} disabled={busy || u.id === me.id} onChange={e=>action(()=>accountApi(`/team/${u.id}`,'PUT',{disabled:!e.detail.value}))} />
@@ -54,13 +53,11 @@ export default function Team() {
       <Picker range={labels} value={role} onChange={e=>setRole(Number(e.detail.value))}><Text className="team-select">{labels[role]}</Text></Picker>
       <Button disabled={busy} onClick={()=>action(async()=>{await accountApi('/team','POST',{username,password,role:roles[role]});setUsername('');setPassword('');})}>添加成员</Button>
       <Text className="team-section">操作记录</Text>
-      {loading ? <Text className="team-message">?????????</Text> : loadError ? <Text className="team-message" onClick={load}>{loadError} ? ????</Text> : events.length === 0 ? <Text className="team-message">??????</Text> : events.map((e,i)=><View className="team-event" key={i}><Text>{e.actor_name} · {e.operation}</Text><Text>{formatTime(e.time)}</Text></View>)}
+      {loading ? <Text className="team-message">正在加载…</Text> : loadError ? <Text className="team-message" onClick={load}>{loadError} · 点击重试</Text> : events.length === 0 ? <Text className="team-message">暂无记录</Text> : events.map((e,i)=><View className="team-event" key={i}><Text>{e.actor_name} · {e.operation}</Text><Text>{formatTime(e.time)}</Text></View>)}
       <View className="team-heading"><Button size="mini" disabled={page===1} onClick={()=>setPage(page-1)}>上一页</Button><Text>{page} / {Math.max(1,Math.ceil(total/50))}</Text><Button size="mini" disabled={page*50>=total} onClick={()=>setPage(page+1)}>下一页</Button></View>
     </>}
-    <Text className="team-section">修改我的密码</Text>
-    <Input password placeholder="当前密码" value={oldPassword} onInput={e=>setOldPassword(e.detail.value)} />
-    <Input password placeholder="新密码（至少12位）" value={newPassword} onInput={e=>setNewPassword(e.detail.value)} />
-    <Button disabled={busy} onClick={()=>action(async()=>{await accountApi('/auth/password','POST',{currentPassword:oldPassword,password:newPassword});setSession(null);})}>修改密码并重新登录</Button>
-    <Button disabled={busy} onClick={()=>action(async()=>{await accountApi('/auth/logout','POST');setSession(null);})}>退出登录</Button>
+    <Text className="team-section">连接状态</Text>
+    <Text className="team-message">当前为共享匿名模式，无需账号密码，所有设备使用同一份仓库数据。</Text>
+    <Button disabled={busy} onClick={() => setSession(null)}>重新连接仓库</Button>
   </View>;
 }

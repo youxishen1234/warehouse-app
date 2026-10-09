@@ -1,161 +1,115 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, Input, ScrollView, Picker } from '@tarojs/components';
-import Taro, { useDidShow } from '@tarojs/taro';
-import { stockOutBatch, getTransactions, getCustomers, deleteTransaction } from '@/services/api';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, Input } from '@tarojs/components';
+import Taro, { useDidShow, useRouter } from '@tarojs/taro';
+import { getOrders, getTransactions, orderOutbound } from '@/services/api';
 import { invalidateProducts, loadProducts } from '@/services/product-store';
 import { useSharedRefresh } from '@/services/shared-refresh';
-import { formatMoney, formatMoneyPreview, formatShortTime } from '@/utils/format';
-import { numberValue, previewAmount, roundDecimal, sanitizeDecimalInput } from '@/utils/stock-math';
+import type { CustomerOrder, Product, Transaction } from '@/types';
+import { formatMoney, formatShortTime } from '@/utils/format';
+import { lineAmount, numberValue, roundDecimal, sanitizeDecimalInput } from '@/utils/stock-math';
 import StockProductPicker from '@/components/StockProductPicker';
-import type { Product, Transaction, Customer } from '@/types';
+import { OutboundDocument } from './document';
 import styles from './index.module.scss';
-import { useRemoteData } from '@/hooks/useRemoteData';
-
-type EditableLine = { key: string; product_id: number | null; quantity: string; unit_price: string };
-const newLine = (): EditableLine => ({ key: `${Date.now()}-${Math.random()}`, product_id: null, quantity: '1', unit_price: '0' });
-const applyProduct = (line: EditableLine, product: Product): EditableLine => ({ ...line, product_id: product.id, unit_price: String(product.price) });
-const message = (error: unknown) => error instanceof Error ? error.message : '操作失败，请重试';
-
-type RecentOutboundRowProps = { transaction: Transaction; onVoid: (transaction: Transaction) => void };
-
-const RecentOutboundRow = React.memo(function RecentOutboundRow({ transaction, onVoid }: RecentOutboundRowProps) {
-  return <View className={styles.recentItem}>
-    <View className={styles.recentLeft}>
-      <Text className={styles.recentName}>{transaction.product_name || '未命名商品'} · -{transaction.quantity}{transaction.unit}</Text>
-      <Text className={styles.recentTime}>{formatShortTime(transaction.created_at)} · {formatMoney(Number(transaction.amount || 0))}</Text>
-      {transaction.customer_name && <Text className={styles.recentCustomer}>{transaction.customer_name}</Text>}
-    </View>
-    <Text className={styles.deleteBtn} onClick={() => onVoid(transaction)}>作废</Text>
-  </View>;
-});
+import { BoardPage, BoardButton } from '@/components/BoardUI';
+import { BoardMaterial } from '@/components/BoardUI/visuals';
 
 export default function OutboundPage() {
+  const { params } = useRouter();
+  const [orders, setOrders] = useState<CustomerOrder[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [customerId, setCustomerId] = useState<number | null>(null);
-  const [lines, setLines] = useState<EditableLine[]>([newLine()]);
-  const [operator, setOperator] = useState('');
-  const [remark, setRemark] = useState('');
   const [recent, setRecent] = useState<Transaction[]>([]);
-  const [submitting, setSubmitting] = useState(false);
+  const [query, setQuery] = useState('');
+  const [orderId, setOrderId] = useState<number | null>(null);
+  const [productId, setProductId] = useState<number | null>(null);
+  const [quantity, setQuantity] = useState('');
+  const [remark, setRemark] = useState('');
+  const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
-  const [loadError, setLoadError] = useState('');
-  const [transitId, setTransitId] = useState<number | null>(null);
-  const busy = useRef(false);
-  const lastLoadAt = useRef(0);
-  const didShowOnce = useRef(false);
-  const productMap = useMemo(() => new Map(products.map(product => [product.id, product])), [products]);
-  const loadOutboundData = useCallback(async () => {
-    lastLoadAt.current = Date.now();
-    const [p, c, r] = await Promise.all([loadProducts(true), getCustomers(), getTransactions({ type: 'out' })]);
-    return { products: p, customers: c, recent: r.slice(0, 8) };
+  const [error, setError] = useState('');
+  const [document, setDocument] = useState<Transaction[]>([]);
+  const lock = useRef(false);
+  const sequence = useRef(0);
+  const initializedOrder = useRef<number | null>(null);
+  const productMap = useMemo(() => new Map(products.map(item => [item.id, item])), [products]);
+  const orderMap = useMemo(() => new Map(orders.map(item => [item.id, item])), [orders]);
+  const shippedByOrder = useMemo(() => {
+    const totals = new Map<number, number>();
+    for (const tx of recent) if (tx.order_id != null && !tx.voided_at) totals.set(tx.order_id, (totals.get(tx.order_id) || 0) + tx.quantity);
+    return totals;
+  }, [recent]);
+  const order = orderId === null ? undefined : orderMap.get(orderId);
+  const product = productId === null ? undefined : productMap.get(productId);
+  const shipped = roundDecimal(orderId === null ? 0 : shippedByOrder.get(orderId) || 0, 6);
+  const remaining = order ? roundDecimal(order.quantity - shipped, 6) : 0;
+  const reload = useCallback(async () => {
+    const current = ++sequence.current;
+    setReady(false);
+    try {
+      const [o, p, t] = await Promise.all([getOrders(), loadProducts(true), getTransactions({ type: 'out' })]);
+      if (current !== sequence.current) return;
+      setOrders(o); setProducts(p); setRecent(t); setReady(true); setError('');
+    } catch (e) { if (current === sequence.current) { setReady(false); setError(e instanceof Error ? e.message : '加载失败，请重试'); } }
   }, []);
-  const remote = useRemoteData(loadOutboundData, { products: [] as Product[], customers: [] as Customer[], recent: [] as Transaction[] });
-  const { reload: remoteReload } = remote;
-  const load = useCallback((forceOrRevision: boolean | string = false) => {
-    const startedAt = Date.now();
-    const force = forceOrRevision === true || typeof forceOrRevision === 'string';
-    if (!force && startedAt - lastLoadAt.current < 250) return Promise.resolve();
-    lastLoadAt.current = startedAt;
-    return remoteReload();
-  }, [remoteReload]);
-  // useRemoteData owns loadSequence/requestId; if (current !== loadSequence.current), stale responses are discarded.
-  useEffect(() => {
-    if (!remote.loading && remote.ready) { setProducts(remote.data.products); setCustomers(remote.data.customers); setRecent(remote.data.recent); setReady(true); setLoadError(''); }
-    if (remote.loadError) { setReady(false); setLoadError(remote.loadError); }
-  }, [remote.loading, remote.ready, remote.loadError, remote.data]);
-  useSharedRefresh(load);
+  useEffect(() => () => { sequence.current += 1; }, []);
+  useSharedRefresh(reload);
   useDidShow(() => {
-    const firstShow = !didShowOnce.current;
-    didShowOnce.current = true;
-    if (!firstShow || remote.loadError) void load(true);
-    else if (Date.now() - lastLoadAt.current >= 250) void load();
-    const transit = Taro.getStorageSync('sg_transit'); if (!transit) return;
-    if (typeof transit.product_id === 'number') setTransitId(transit.product_id);
-    if (typeof transit.customer_id === 'number') setCustomerId(transit.customer_id);
-    Taro.removeStorageSync('sg_transit');
+    void reload();
+    const id = Taro.getStorageSync('sg_outbound_order');
+    if (params.order_id && /^\d+$/.test(params.order_id)) setOrderId(Number(params.order_id));
+    else if (id) setOrderId(Number(id));
+    if (id) Taro.removeStorageSync('sg_outbound_order');
   });
   useEffect(() => {
-    if (!transitId || !ready || submitting) return;
-    const product = transitId == null ? undefined : productMap.get(transitId);
-    if (product) setLines(current => {
-      if (current.some(line => line.product_id === product.id)) return current;
-      const blank = current.findIndex(line => !line.product_id);
-      return blank < 0 ? [...current, applyProduct(newLine(), product)] : current.map((line, index) => index === blank ? applyProduct(line, product) : line);
-    });
-    setTransitId(null);
-  }, [transitId, productMap, ready, submitting]);
-  const updateLine = (key: string, patch: Partial<EditableLine>) => { if (!busy.current) setLines(current => current.map(line => line.key === key ? { ...line, ...patch } : line)); };
-  const totalAmount = useMemo(() => { const values = lines.map(line => previewAmount(line.quantity, line.unit_price)); return values.every(Number.isFinite) ? roundDecimal(values.reduce((sum, value) => sum + value, 0), 2) : Number.NaN; }, [lines]);
-  const customer = customers.find(item => item.id === customerId);
-  const insufficient = useMemo(() => lines.filter(line => { const product = line.product_id == null ? undefined : productMap.get(line.product_id); return product && Number(line.quantity) > roundDecimal(product.stock, 6); }), [lines, productMap]);
+    if (!order) { initializedOrder.current = null; return; }
+    // A refreshed order/product object must not replace an in-progress draft.
+    if (!ready || initializedOrder.current === order.id) return;
+    initializedOrder.current = order.id;
+    setQuantity(String(remaining));
+    const matches = products.filter(item => !!order.specification && item.specification === order.specification && item.unit === order.unit && (!order.material || item.material === order.material));
+    setProductId(matches.length === 1 ? matches[0].id : null);
+    setRemark('');
+  }, [order, products, remaining, ready]);
+  const candidates = useMemo(() => orders.filter(item => item.status === '生产中' && `${item.order_no} ${item.customer_name} ${item.specification}`.toLowerCase().includes(query.toLowerCase())), [orders, query]);
+  const notes = useMemo(() => {
+    const groups = new Map<string, Transaction[]>();
+    recent.forEach(tx => { const key = tx.outbound_no || `历史-${tx.id}`; const rows = groups.get(key); if (rows) rows.push(tx); else groups.set(key, [tx]); });
+    return [...groups.entries()].slice(0, 8);
+  }, [recent]);
+  let totalAmount = quantity.trim() ? Number.NaN : 0;
+  if (order && quantity.trim()) {
+    try { totalAmount = lineAmount(numberValue(quantity, '出库数量', true), order.unit_price); } catch { /* Keep invalid input visible until corrected. */ }
+  }
+  const valid = ready && !!order && order.status === '生产中' && !!product && Number.isFinite(totalAmount) && Number(quantity) > 0 && Number(quantity) <= remaining && Number(quantity) <= Number(product.stock) && product.unit === order.unit;
   const submit = async () => {
-    if (busy.current) return;
+    if (!Number.isFinite(totalAmount)) { Taro.showToast({ title: '金额超出支持范围，请减少数量或单价', icon: 'none' }); return; }
+    if (lock.current || !valid || !order || !product) return;
+    lock.current = true; setBusy(true);
     try {
-      if (!Number.isFinite(totalAmount)) throw new Error('金额超出支持范围，请减少数量或单价');
-      if (!ready || loadError) throw new Error('请先刷新商品与客户数据');
-      if (customerId && !customer) throw new Error('客户已停用，请重新选择');
-      if (new Set(lines.map(line => line.product_id)).size !== lines.length) throw new Error('同一商品不能重复，请合并数量');
-      const payload = lines.map((line, index) => {
-        const product = line.product_id == null ? undefined : productMap.get(line.product_id);
-        if (!product) throw new Error(`第 ${index + 1} 行请选择有效商品`);
-        const quantity = numberValue(line.quantity, `第 ${index + 1} 行数量`, true);
-        if (quantity > roundDecimal(product.stock, 6)) throw new Error(`第 ${index + 1} 行库存不足，仅剩 ${product.stock}${product.unit}`);
-        return { product_id: product.id, quantity, unit_price: numberValue(line.unit_price, `第 ${index + 1} 行单价`), unit: product.unit };
-      });
-      busy.current = true; setSubmitting(true);
-      const result = await stockOutBatch(payload, operator.trim(), remark.trim(), customerId);
-      invalidateProducts();
-      setLines([newLine()]); setOperator(''); setRemark(''); setCustomerId(null);
-      Taro.showToast({ title: `出库成功，共 ${result.transactions.length} 项`, icon: 'success' }); await load();
-    } catch (error) { Taro.showToast({ title: message(error), icon: 'none' }); }
-    finally { busy.current = false; setSubmitting(false); }
+      const result = await orderOutbound(order.id, [{ product_id: product.id, quantity: numberValue(quantity, '出库数量', true), unit_price: order.unit_price, specification: product.specification, unit: product.unit }], '', remark.trim());
+      setDocument(result.transactions.map(item => item.transaction));
+      setOrderId(null); setProductId(null); invalidateProducts();
+      Taro.showToast({ title: '出库成功', icon: 'success' }); await reload();
+    } catch (e) { Taro.showToast({ title: e instanceof Error ? e.message : '出库失败', icon: 'none' }); }
+    finally { lock.current = false; setBusy(false); }
   };
-  const voidRecent = async (transaction: Transaction) => {
-    if (busy.current) return;
-    busy.current = true; setSubmitting(true);
-    try {
-      const choice = await Taro.showModal({ title: '作废出库明细', content: `恢复 ${transaction.product_name} 的 ${transaction.quantity}${transaction.unit || ''} 库存并撤回应收，历史记录保留。确定继续吗？`, confirmColor: '#dc2626' });
-      if (!choice.confirm) return;
-      await deleteTransaction(transaction.id); await load(); Taro.showToast({ title: '已作废并恢复库存', icon: 'success' });
-    } catch (error) { Taro.showToast({ title: message(error), icon: 'none' }); }
-    finally { busy.current = false; setSubmitting(false); }
-  };
-  return <ScrollView scrollY className={styles.container} refresherEnabled={false} onRefresherRefresh={() => load(true)}>
-    <View className={styles.hero}>
-      <View className={styles.heroHeading}><View><Text className={styles.eyebrow}>发货 / DISPATCH</Text><Text className={styles.title}>出库开单</Text></View><View className={styles.heroMark}>出</View></View>
-      <Text className={styles.subTitle}>确认库存，让每一笔发货有据可查</Text>
-      <View className={styles.heroSummary}><View><Text className={styles.summaryLabel}>本单货款</Text><Text className={styles.summaryValue}>{formatMoneyPreview(totalAmount)}</Text></View><Text className={styles.summaryCount}>{lines.length} 项商品</Text></View>
+  return <BoardPage back={false} title='订单出库' subtitle='选订单、核对数量，一键完成发货。' action={<BoardButton secondary disabled={busy} onClick={() => reload()}>刷新</BoardButton>}><View className={styles.container}>
+    <View className='board-summary inventory-hero'><View className='inventory-hero-main'><View><Text className='inventory-live'><i /> 发货总览</Text><Text className='board-summary-number'>{ready ? orders.filter(item => item.status === '生产中').length : '—'}<small>单待发</small></Text><Text className='board-muted'>库存校验 · 自动开单 · 交付追踪</Text></View><BoardMaterial /></View><View className='board-summary-bottom'><View><strong>{notes.length}</strong><Text className='board-muted'>最近出库单</Text></View><View><strong>{order ? remaining : '—'}</strong><Text className='board-muted'>本单待发数量</Text></View><View><strong>{order ? formatMoney(order.unit_price) : '—'}</strong><Text className='board-muted'>订单单价</Text></View></View></View>
+    {error && <View className={styles.error} onClick={() => reload()}>{error} · 点击重试</View>}
+    <View className={styles.card}><View className={styles.recentTop}><Text className={styles.cardTitle}>01 / 选择订单</Text><Text className={styles.link} onClick={() => Taro.navigateTo({ url: '/pages/orders/index' })}>管理订单 →</Text></View>
+      <Input disabled={busy} className={styles.fieldInput} placeholder='搜索客户、订单号或规格' value={query} onInput={e => setQuery(e.detail.value)} />
+      <View className={styles.orderList}>{candidates.map(item => <View key={item.id} className={`${styles.orderOption} ${item.id === orderId ? styles.orderSelected : ''}`} onClick={() => { if (!lock.current) setOrderId(item.id); }}><View><Text className={styles.recentName}>{item.customer_name || '未关联客户'}</Text><Text className={styles.infoStock}>{item.order_no} · {item.specification || '未填规格'}</Text><Text className={styles.infoStock}>交期 {item.delivery_date || '未定'} · {item.quantity}{item.unit}</Text></View><Text className={styles.tagOut}>{item.id === orderId ? '已选择' : '开单 →'}</Text></View>)}</View>
+      {!candidates.length && <View className={styles.empty}>{ready ? '暂无匹配的生产中订单' : '正在加载订单…'}</View>}
     </View>
-    {loadError && <View className={styles.error} onClick={() => load(true)}>{loadError} · 点击重试</View>}
-    <View className={styles.card}>
-      <Text className={styles.cardTitle}>收货客户</Text>
-      <Picker disabled={submitting} range={['不关联客户', ...customers.map(item => item.name)]} value={Math.max(0, customers.findIndex(item => item.id === customerId) + 1)} onChange={event => { const index = Number(event.detail.value); setCustomerId(index ? customers[index - 1]?.id || null : null); }}><View className={styles.pickerCell}><Text>{customer?.name || (customerId ? '客户已停用，请重新选择' : '选择客户（选填）')}</Text></View></Picker>
-      <Text className={styles.infoStock}>{customer ? `当前应收 ${formatMoney(Number(customer.debt || 0))}，本单增加 ${formatMoneyPreview(totalAmount)}` : '未关联客户时，仅扣库存，不登记客户应收'}</Text>
-    </View>
-    <Text className={styles.sectionTitle}>出库明细（可添加多项）</Text>
-    {lines.map((line, index) => {
-      const product = line.product_id == null ? undefined : productMap.get(line.product_id);
-      const after = product ? roundDecimal(product.stock - (Number(line.quantity) || 0), 6) : 0;
-      return <View className={styles.card} key={line.key}>
-        <View className={styles.recentTop}><Text className={styles.fieldLabel}>第 {index + 1} 项</Text>{lines.length > 1 && <Text className={styles.deleteBtn} onClick={() => { if (!busy.current) setLines(current => current.filter(item => item.key !== line.key)); }}>移除</Text>}</View>
-        <StockProductPicker products={products} value={line.product_id} disabled={submitting} excluded={lines.filter(item => item.key !== line.key).map(item => item.product_id || 0)} onSelect={selected => updateLine(line.key, applyProduct(line, selected))} />
-        {product && <View className={after < 0 ? styles.error : styles.stockPreview}><Text>当前库存 {product.stock}{product.unit} → 出库后 {after}{product.unit}</Text><Text className={styles.infoStock}>{product.specification || '未填规格'} · {product.material || product.corrugation || '未填材质'}</Text>{after < 0 && <Text>库存不足，请减少数量</Text>}</View>}
-        <View className={styles.fieldGrid}><View className={styles.field}><Text className={styles.fieldLabel}>出库数量（{product?.unit || '单位'}）</Text><Input disabled={submitting} className={styles.fieldInput} type='digit' placeholder='出库数量' value={line.quantity} onInput={event => updateLine(line.key, { quantity: sanitizeDecimalInput(event.detail.value, 6) })} /></View>
-        <View className={styles.field}><Text className={styles.fieldLabel}>单价（元/{product?.unit || '单位'}）</Text><Input disabled={submitting} className={styles.fieldInput} type='digit' placeholder='出库单价' value={line.unit_price} onInput={event => updateLine(line.key, { unit_price: sanitizeDecimalInput(event.detail.value, 2) })} /></View>
-        </View>
-        <Text className={styles.amountPreview}>本项金额 {formatMoneyPreview(previewAmount(line.quantity, line.unit_price))}</Text>
-        {line.quantity.trim() && line.unit_price.trim() && !Number.isFinite(previewAmount(line.quantity, line.unit_price)) && <Text className={styles.error}>金额超出支持范围，请减少数量或单价</Text>}
-      </View>;
-    })}
-    <View className={styles.addLine} onClick={() => { if (!busy.current) setLines(current => [...current, newLine()]); }}>＋ 添加商品</View>
-    <View className={styles.card}>
-      <Text className={styles.amountPreview}>共 {lines.length} 项 · 合计出库金额 {formatMoneyPreview(totalAmount)}</Text>{!!insufficient.length && <Text className={styles.error}>有 {insufficient.length} 项库存不足，请调整后提交</Text>}
-      <View className={styles.field}><Text className={styles.fieldLabel}>操作人</Text><Input disabled={submitting} className={styles.fieldInput} placeholder='选填，默认当前操作账号' value={operator} onInput={event => setOperator(event.detail.value)} /></View>
-      <View className={styles.fieldLast}><Text className={styles.fieldLabel}>备注</Text><Input disabled={submitting} className={styles.fieldInput} value={remark} onInput={event => setRemark(event.detail.value)} /></View>
-    </View>
-    <View className={`${styles.btnPrimary} ${submitting || !ready ? styles.btnDisabled : ''}`} onClick={submit}>{submitting ? '处理中…' : '确认出库'}</View>
-    <Text className={styles.sectionTitle}>最近出库记录</Text>
-    <View className={styles.card}>{recent.length ? recent.map(transaction => <RecentOutboundRow key={transaction.id} transaction={transaction} onVoid={voidRecent} />) : <View className={styles.empty}>暂无出库记录</View>}</View>
-  </ScrollView>;
+    {order && <View className={styles.card}><Text className={styles.cardTitle}>02 / 核对出库</Text><Text className={styles.infoStock}>{order.customer_name || '未关联客户'} · {order.order_no}</Text><View className={styles.progress}><Text>订单 {order.quantity}</Text><Text>已发 {shipped}</Text><Text>待发 {remaining}{order.unit}</Text></View>
+      <Text className={styles.fieldLabel}>库存商品 · 唯一匹配时自动选择</Text><StockProductPicker products={products} value={productId} disabled={busy} onSelect={item => setProductId(item.id)} />
+      <View className={styles.fieldGrid}><View><Text className={styles.fieldLabel}>本次发货（{order.unit}）</Text><Input disabled={busy} className={styles.fieldInput} type='digit' value={quantity} onInput={e => setQuantity(sanitizeDecimalInput(e.detail.value, 6))} /></View><View><Text className={styles.fieldLabel}>订单单价</Text><Text className={styles.fieldInput}>{formatMoney(order.unit_price)}</Text></View></View>
+      <Text className={styles.link} onClick={() => { if (!busy) setQuantity(String(remaining)); }}>填入全部待发数量</Text>
+      {product && <View className={valid ? styles.stockPreview : styles.error}>{product.unit !== order.unit ? '库存商品单位与订单不一致，请重新选择' : Number(quantity) > product.stock ? `库存不足，还缺 ${roundDecimal(Number(quantity) - product.stock, 6)}${product.unit}` : Number(quantity) > remaining ? '超过订单待发数量' : `当前库存 ${product.stock}${product.unit} · 发货后 ${roundDecimal(product.stock - Number(quantity || 0), 6)}${product.unit}`}</View>}
+      <Input disabled={busy} className={styles.fieldInput} placeholder='备注（选填）' value={remark} onInput={e => setRemark(e.detail.value)} />
+      <View className={Number.isFinite(totalAmount) ? styles.amountPreview : styles.error}>{Number.isFinite(totalAmount) ? `本单金额 ${formatMoney(totalAmount)}` : '金额超出支持范围，请减少数量或单价'}</View><Text className={styles.infoStock}>确认后自动扣库存、登记应收，并更新订单发货进度</Text>
+      <View className={`${styles.btnPrimary} ${busy || !valid ? styles.btnDisabled : ''}`} onClick={submit}>{busy ? '正在出库…' : '确认出库 · 生成送货单'}</View>
+    </View>}
+    {!!document.length && <OutboundDocument transactions={document} onClose={() => setDocument([])} />}
+    <Text className={styles.sectionTitle}>最近出库单</Text><View className={styles.card}>{notes.map(([no, rows]) => <View className={styles.recentItem} key={no}><View className={styles.recentLeft}><Text className={styles.recentName}>{rows[0].customer_name || '未关联客户'} · {no}</Text><Text className={styles.recentTime}>{formatShortTime(rows[0].created_at)} · {rows.length} 项 · {formatMoney(rows.reduce((sum, tx) => sum + Number(tx.amount || 0), 0))}</Text></View><Text className={styles.tagOut} onClick={() => setDocument(rows)}>查看单据</Text></View>)}{!notes.length && <View className={styles.empty}>暂无出库记录</View>}</View>
+  </View></BoardPage>;
 }

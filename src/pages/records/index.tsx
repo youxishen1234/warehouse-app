@@ -73,33 +73,40 @@ const RecordsPage: React.FC = () => {
   const [toDate, setToDate] = useState('');
   const [includeVoided, setIncludeVoided] = useState(false);
   const lastLoadAt = useRef(0);
+  const inFlight = useRef<Promise<{ list: Transaction[]; products: Product[] }> | null>(null);
 
   const types = ['全部', '入库', '出库'];
 
   const loadRecords = useCallback(async () => {
     const startedAt = Date.now();
-    if (startedAt - lastLoadAt.current < 250) return { list: [], products: [] };
+    // 短时间内的重复刷新复用进行中的请求：空数据不是“跳过刷新”的合法结果，
+    // 否则真实请求的结果会被较新的空结果覆盖，页面误显示“暂无记录”。
+    if (startedAt - lastLoadAt.current < 250 && inFlight.current) return inFlight.current;
     lastLoadAt.current = startedAt;
     if (fromDate && toDate && fromDate > toDate) {
       Taro.showToast({ title: '开始日期不能晚于结束日期', icon: 'none' });
       throw new Error(getCopy('recordsInvalidDates'));
     }
-    try {
-      const [tx, prods] = await Promise.all([
-        getTransactions({
-          type: type || undefined,
-          include_voided: includeVoided,
-          customer_id: filterCustomerId || undefined,
-          supplier_id: filterSupplierId || undefined
-          , from: fromDate ? new Date(`${fromDate}T00:00:00`).getTime() : undefined
-          , to: toDate ? new Date(`${toDate}T00:00:00`).getTime() : undefined
-        }), loadProducts()]);
-      return { list: tx, products: prods };
-    } catch (_error) {
-      // Keep the records page error surface Chinese and actionable even when
-      // a proxy or mocked API returns an internal English/path-bearing error.
-      throw new Error(getCopy('recordsLoadFailed'));
-    }
+    const run = (async () => {
+      try {
+        const [tx, prods] = await Promise.all([
+          getTransactions({
+            type: type || undefined,
+            include_voided: includeVoided,
+            customer_id: filterCustomerId || undefined,
+            supplier_id: filterSupplierId || undefined
+            , from: fromDate ? new Date(`${fromDate}T00:00:00`).getTime() : undefined
+            , to: toDate ? new Date(`${toDate}T00:00:00`).getTime() : undefined
+          }), loadProducts()]);
+        return { list: tx, products: prods };
+      } catch (_error) {
+        // Keep the records page error surface Chinese and actionable even when
+        // a proxy or mocked API returns an internal English/path-bearing error.
+        throw new Error(getCopy('recordsLoadFailed'));
+      }
+    })();
+    inFlight.current = run;
+    try { return await run; } finally { if (inFlight.current === run) inFlight.current = null; }
   }, [type, filterCustomerId, filterSupplierId, fromDate, toDate, includeVoided]);
 
   const remote = useRemoteData(loadRecords, { list: [] as Transaction[], products: [] as Product[] });

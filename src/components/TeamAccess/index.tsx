@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text } from '@tarojs/components';
 import { accountApi, session, setSession, watchSession } from '@/services/session';
 import { getBaseUrl } from '@/services/request';
@@ -17,7 +17,7 @@ export default function TeamAccess({ children }: { children: React.ReactNode }) 
       setBooting(true);
       accountApi('/auth/guest', 'POST')
         .then(result => setSession(result))
-        .catch(() => setBooting(false))
+        .catch(() => { /* 保持“连接中”状态：网络恢复或再次触发时自动重试，不必整页刷新 */ })
         .finally(() => { guestRequesting = false; });
     };
     const stopWatching = watchSession(() => {
@@ -27,7 +27,16 @@ export default function TeamAccess({ children }: { children: React.ReactNode }) 
       else connectGuest();
     });
     connectGuest();
-    return stopWatching;
+    // 首次断网导致访客建立失败后，网络恢复/页面可见时自动重新连接。
+    const onNetwork = () => { connectGuest(); };
+    const onVisible = () => { if (typeof document !== 'undefined' && document.visibilityState === 'visible') connectGuest(); };
+    if (typeof window !== 'undefined') window.addEventListener('online', onNetwork);
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      stopWatching();
+      if (typeof window !== 'undefined') window.removeEventListener('online', onNetwork);
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisible);
+    };
   }, []);
 
   useEffect(() => {

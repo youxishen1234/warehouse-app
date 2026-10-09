@@ -1,6 +1,6 @@
 {
   "name": "taro_template",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "main": "desktop/main.cjs",
   "description": "taro_template",
@@ -76,7 +76,7 @@
   },
   "build": {
     "appId": "com.warehouse.app.desktop",
-    "productName": "閺囨瑥鍘滄惔鎾崇摠",
+    "productName": "Shuguang Warehouse Desktop",
     "directories": {
       "output": "release/windows"
     },

@@ -10,7 +10,6 @@ test('stock workflow pages guard stale responses and initial duplicate refreshes
   const pages = [
     'src/pages/home/index.tsx',
     'src/pages/inbound/index.tsx',
-    'src/pages/outbound/index.tsx',
     'src/pages/records/index.tsx'
   ];
   for (const file of pages) {
@@ -19,7 +18,9 @@ test('stock workflow pages guard stale responses and initial duplicate refreshes
     assert.match(source, /loadSequence|requestId/, `${file} should identify each load`);
     assert.match(source, /!== (?:loadSequence|requestId)\.current/, `${file} should discard stale responses`);
   }
-  for (const file of ['src/pages/home/index.tsx', 'src/pages/inbound/index.tsx', 'src/pages/outbound/index.tsx']) {
+  // The order-based outbound page has a single initial loader; its races and
+  // draft preservation are exercised by workflow-regressions-browser.cjs.
+  for (const file of ['src/pages/home/index.tsx', 'src/pages/inbound/index.tsx']) {
     const source = read(file);
     assert.match(source, /didShowOnce/, `${file} should dedupe first useDidShow refresh`);
     assert.match(source, /Date\.now\(\) - lastLoadAt\.current >= 250/, `${file} should gate first refresh`);

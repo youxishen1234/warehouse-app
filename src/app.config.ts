@@ -13,6 +13,8 @@ export default defineAppConfig({
     'pages/outbound/index',
     'pages/mine/index',
     'pages/products/index',
+    'pages/inventory/index',
+    'pages/customer-desk/index',
     'pages/records/index',
     'pages/ledger/index',
     'pages/orders/index',

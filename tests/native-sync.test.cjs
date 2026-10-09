@@ -1,11 +1,17 @@
-﻿const { test } = require('node:test');
+const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { execFileSync } = require('node:child_process');
+// Windows 用 powershell.exe；Linux/macOS 上 pwsh 存在时用 pwsh，否则跳过该平台相关用例。
+const POWERSHELL = process.platform === 'win32' ? 'powershell.exe' : 'pwsh';
+function hasPowerShell() {
+  try { execFileSync(POWERSHELL, ['-NoProfile', '-Command', 'exit 0'], { stdio: 'ignore', timeout: 20000 }); return true; }
+  catch { return false; }
+}
 
-test('native asset sync preserves source-owned auxiliary assets and copies source-root files', () => {
+test('native asset sync preserves source-owned auxiliary assets and copies source-root files', { skip: process.platform !== 'win32' && !hasPowerShell() }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'warehouse-native-sync-'));
   const source = path.join(root, 'dist');
   const target = path.join(root, 'www');
@@ -21,7 +27,7 @@ test('native asset sync preserves source-owned auxiliary assets and copies sourc
   fs.writeFileSync(path.join(target, 'js', 'home-search.js'), 'source-search');
   fs.writeFileSync(path.join(target, 'css', 'polish.css'), 'source-polish');
   const script = path.join(__dirname, '..', 'scripts', 'sync-native-assets.ps1');
-  execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, '-Source', source, '-Target', target], { stdio: 'pipe' });
+  execFileSync(POWERSHELL, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, '-Source', source, '-Target', target], { stdio: 'pipe' });
   assert.equal(fs.readFileSync(path.join(target, 'js', 'app.js'), 'utf8'), 'built-app');
   assert.equal(fs.readFileSync(path.join(target, 'nested', 'chunk.js'), 'utf8'), 'built-chunk');
   assert.equal(fs.readFileSync(path.join(target, 'js', 'home-search.js'), 'utf8'), 'source-search');

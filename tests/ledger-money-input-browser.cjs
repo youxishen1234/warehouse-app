@@ -37,8 +37,8 @@ async function main() {
     });
     await page.goto(`${origin}/#/pages/ledger/index`);
     await page.locator('.taro_page:visible').last().waitFor();
-    await page.getByText('\u002b \u65b0\u589e\u6d41\u6c34', { exact: true }).click();
-    const amount = page.locator('input:visible').first();
+    await page.locator('[class*=bottomBar]').getByRole('button', { name: '记一笔' }).click();
+    const amount = page.locator('input[placeholder="0.00"]');
     await amount.fill('12.345');
     assert.equal(await amount.inputValue(), '12.34');
     await amount.fill('-30');

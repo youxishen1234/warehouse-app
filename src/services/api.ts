@@ -51,12 +51,19 @@ export const updateCustomer = (id: number, data: Partial<CustomerForm>) =>
 export const deleteCustomer = (id: number) =>
   request<{ id: number }>({ url: `/api/customers/${id}`, method: 'DELETE' });
 
+// 原子结算：服务端基于当前余额扣减，返回 { party, settled, balance }
+export const settleCustomer = (id: number, amount: number, remark?: string) =>
+  request<{ party: Customer; settled: number; balance: number }>({ url: `/api/customers/${id}/settlement`, method: 'POST', data: { amount, remark } });
+
 export const getSuppliers = (keyword?: string) => request<Supplier[]>({ url: `/api/suppliers?keyword=${encodeURIComponent(keyword || '')}` });
 export const getSuppliersPage = (params: PageQuery & SortQuery<'suppliers'> & { keyword?: string }) => getPage<Supplier>('/api/suppliers', params);
 export const getSupplier = (id: number) => request<Supplier>({ url: `/api/suppliers/${id}` });
 export const addSupplier = (data: CustomerForm) => request<Supplier>({ url: '/api/suppliers', method: 'POST', data });
 export const updateSupplier = (id: number, data: Partial<CustomerForm>) => request<Supplier>({ url: `/api/suppliers/${id}`, method: 'PUT', data });
 export const deleteSupplier = (id: number) => request<{ id: number }>({ url: `/api/suppliers/${id}`, method: 'DELETE' });
+
+export const settleSupplier = (id: number, amount: number, remark?: string) =>
+  request<{ party: Supplier; settled: number; balance: number }>({ url: `/api/suppliers/${id}/settlement`, method: 'POST', data: { amount, remark } });
 
 // 出入库（customer_id 关联客户，联动客户管理）
 export const stockIn = (product_id: number, quantity: number, operator = '', remark = '', supplier_id?: number | null, details: Record<string, unknown> = {}) =>
@@ -107,9 +114,11 @@ export const getDeliveryNotesPage = (params: PageQuery & SortQuery<'delivery_not
 export const addDeliveryNote = (data: Omit<DeliveryNote, 'id'|'created_at'|'total_square_meters'|'total_amount'> & { operator?: string }) => request<DeliveryNote>({ url: '/api/delivery-notes', method: 'POST', data });
 export const deliveryNoteCsvUrl = (id: number) => `/api/delivery-notes/${id}.csv`;
 export const voidDeliveryNote = (id: number) => request<DeliveryNote>({ url: `/api/delivery-notes/${id}`, method: 'DELETE' });
-export const getBackup = () => request<BackupExport>({ url: '/api/backup' });
+export const getBackup = () => request<BackupExport>({ url: '/api/backup', timeout: 120000 });
 // File contents are untrusted until the backend validates the complete dataset.
-export const restoreBackup = (data: unknown) => request<Stats>({ url: '/api/backup', method: 'POST', data: { data } });
+// Portable backups can include private photos. Retry state stays in memory so
+// serialized backup contents are not copied into device storage keys.
+export const restoreBackup = (data: unknown) => request<Stats>({ url: '/api/backup', method: 'POST', data: { data }, persistRetryMetadata: false, timeout: 120000 });
 export const uploadProductImage = (id: number, data: string) => request<Product>({ url: `/api/products/${id}/image`, method: 'POST', data: { data } });
 export type OrderFilters = SortQuery<'orders'> & { status?: CustomerOrder['status'] };
 export const getOrders = (params?: OrderFilters) => {
@@ -121,3 +130,5 @@ export const addOrder = (data: Partial<CustomerOrder>) => request<CustomerOrder>
 export const updateOrder = (id:number, data: Partial<CustomerOrder>) => request<CustomerOrder>({ url: `/api/orders/${id}`, method:'PUT', data });
 export const getOrderEvents = (id: number) => request<OrderStatusEvent[]>({ url: `/api/orders/${id}/events` });
 export const getOrderEventsPage = (id: number, params: PageQuery & SortQuery<'order_events'>) => getPage<OrderStatusEvent>(`/api/orders/${id}/events`, params);
+
+export const orderOutbound = (id: number, lines: StockOutLine[], operator = '', remark = '') => request<{ order: CustomerOrder; transactions: Array<{ product: Product; transaction: Transaction }> }>({ url: `/api/orders/${id}/outbound`, method: 'POST', data: { lines, operator, remark } });

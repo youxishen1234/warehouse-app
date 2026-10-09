@@ -50,7 +50,7 @@ async function verify(browser, name) {
   await page.waitForFunction(() => document.querySelector('[class*="funcGrid___"]'));
   assert.equal(await page.locator('.sg-home-search').count(), 0, 'search removed');
   assert.equal(await page.locator('.sg-quick-add').count(), 0);
-  assert.equal(await page.locator('.sg-corrugated-item').count(), 1, 'calculator preserved');
+  assert.equal(await page.getByText('纸箱计算器', { exact: true }).count(), 1, 'calculator entry is available');
   const before = await page.locator('taro-tabbar').boundingBox();
   assert.ok(before.y > 700 && before.y + before.height <= 845, JSON.stringify(before));
   assert.equal(await page.locator('.sg-glass-tab[data-tab]').count(), 4);
@@ -218,14 +218,14 @@ async function verify(browser, name) {
   assert.equal(await page.evaluate(() => window.__nativeMessages.length), acknowledgments.length, 'unrelated DOM changes do not resend the selection');
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('sg-native-tab', { detail: '/pages/home/index' })));
   await page.waitForURL(/home/);
-  for (const label of ['库存查询', '商品管理', '客户管理', '供应商管理', '出入库记录', '新增商品', '流水', '客户订单', '纸箱尺寸换算', '瓦楞计算']) {
+  for (const label of ['库存查询', '商品管理', '客户管理', '供应商管理', '出入库记录', '新增商品', '流水', '客户尺寸本', '纸箱计算器', '标签打印']) {
     assert.ok(pageText.includes(label), `homepage shortcut missing: ${label}`);
   }
-  await page.locator('.sg-corrugated-item').click();
-  await page.waitForSelector('.sg-calc-dialog');
-  await page.waitForFunction(() => window.__nativeMessages.at(-1)?.modal === true);
-  await page.locator('.sg-calc-close').click();
-  await page.waitForFunction(() => window.__nativeMessages.at(-1)?.modal === false);
+  await page.getByText('纸箱计算器', { exact: true }).click();
+  await page.waitForURL(/board-calculator/);
+  await page.locator('.taro_page:visible').last().getByText('客户纸箱尺寸 · cm', { exact: true }).waitFor();
+  await page.locator('.taro_page:visible').last().locator('.board-back').click();
+  await page.waitForURL(/home/);
   await page.evaluate(() => {
     delete window.__sgNativeDock;
     window.dispatchEvent(new Event('sg-native-ready'));
@@ -242,15 +242,15 @@ async function verify(browser, name) {
   await page.waitForURL(/board-stock/);
   await page.keyboard.press('Home');
   await page.waitForURL(/home/);
-  await page.locator('.sg-corrugated-item').scrollIntoViewIfNeeded();
-  await page.evaluate(() => {
-    const item = document.querySelector('.sg-corrugated-item');
+  const lastShortcut = page.locator('.taro_page:visible').last().getByText('流水', { exact: true });
+  await lastShortcut.scrollIntoViewIfNeeded();
+  await lastShortcut.evaluate(item => {
     for (let parent = item.parentElement; parent; parent = parent.parentElement) {
       if (parent.scrollHeight > parent.clientHeight) parent.scrollTop = parent.scrollHeight;
     }
   });
   await page.waitForTimeout(100);
-  const item = await page.locator('.sg-corrugated-item').boundingBox();
+  const item = await lastShortcut.boundingBox();
   const bar = await page.locator('taro-tabbar').boundingBox();
   assert.ok(item.y >= 0 && item.y + item.height < bar.y, 'last function row is reachable above dock: ' + JSON.stringify({ item, bar }));
   await page.screenshot({ path: 'release/navigation-' + name + '.png', fullPage: false });

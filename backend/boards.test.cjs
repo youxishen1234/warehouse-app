@@ -33,6 +33,22 @@ test('paperboard batches persist with atomic quantities, billing, replay and bac
       assert.equal(db.listBoards().find(b => b.id !== batch.id).remainingQty, 900);
       assert.equal((await call('/boards/' + batch.id + '/movements', 'POST', out, undefined, 0)).status, 409);
     });
+    await t.test('edit and delete preserve inventory, replay and movement guards', async () => {
+      const created = (await call('/boards', 'POST', form)).data;
+      const url = '/boards/' + created.id;
+      const changed = await call(url, 'PUT', { ...form, receivedQty: 1200, boardWidth: 120 }, 'board-edit-replay-001');
+      assert.equal(changed.status, 200); assert.equal(changed.data.remainingQty, 1200); assert.equal(changed.data.id, created.id);
+      assert.equal((await call(url, 'PUT', { ...form, receivedQty: 1200, boardWidth: 120 }, 'board-edit-replay-001', 0)).status, 200);
+      require('./boards').validate(db.backupData());
+      const before = JSON.stringify(db.backupData());
+      assert.equal((await call(url, 'PUT', { ...form, date: '2026-02-30' })).status, 400);
+      assert.equal(JSON.stringify(db.backupData()), before);
+      assert.equal((await call('/boards/' + batch.id, 'PUT', form)).status, 400);
+      assert.equal((await call('/boards/' + batch.id, 'DELETE')).status, 400);
+      assert.equal((await call(url, 'DELETE', undefined, 'board-delete-replay-001')).status, 200);
+      assert.equal((await call(url, 'DELETE', undefined, 'board-delete-replay-001', 0)).status, 200);
+      assert.equal((await call(url)).status, 404); require('./boards').validate(db.backupData());
+    });
     await t.test('count adjustment keeps audit trail and survives reload', async () => {
       const result = await call('/boards/' + batch.id + '/movements', 'POST', { type: 'count', quantity: 500, remark: '清点少4张' }); assert.equal(result.status, 200, result.message); assert.equal(result.data.movements[0].quantity, -4);
       const backup = db.backupData(); require('./boards').validate(backup);

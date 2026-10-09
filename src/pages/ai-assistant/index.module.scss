@@ -89,16 +89,16 @@
   .voiceOverlay.cancelVoice { background:#b33b42ee; }
   .voiceWave { font-size:32PX; letter-spacing:4PX; }
   .printFrame { display:block; width:100%; height:460PX; border:1PX solid #dce4ef; margin:12PX 0; background:white; }
-  background:#ededed; color:#191919;
-  .header { height:52PX; min-height:52PX; position:relative; gap:0; padding:0 10PX; background:#ededed; border-color:#d8d8d8; }
+  background:#f7f9fc; color:#1f2937;
+  .header { height:52PX; min-height:52PX; position:relative; gap:0; padding:0 10PX; background:#fff; border-color:#e7ebf2; }
   .header .back,.header .headerMore { width:42PX; height:44PX; padding:8PX; border-radius:0; color:#191919; background:transparent; flex:0 0 42PX; }
   .header .back svg { width:26PX; height:26PX; }
   .heading { text-align:center; }
   .title { font-size:17PX; font-weight:600; color:#191919; }
-  .content { background:#ededed; padding:12PX; }
+  .content { background:#f7f9fc; padding:12PX; }
   .chatTime { display:block; width:max-content; margin:12PX auto 20PX; font-size:12PX; color:#999; }
   .message { display:flex; align-items:flex-start; gap:10PX; max-width:100%; margin:16PX 0; }
-  .messageRole { display:flex; justify-content:center; align-items:center; flex:0 0 40PX; height:40PX; padding:0; color:#fff; background:#458985; border-radius:4PX; }
+  .messageRole { display:flex; justify-content:center; align-items:center; flex:0 0 40PX; height:40PX; padding:0; color:#fff; background:#6d88c4; border-radius:8PX; }
   .messageRole svg { width:28PX; height:28PX; }
   .messageBody { display:flex; flex-direction:column; gap:6PX; align-items:flex-start; min-width:0; max-width:calc(100% - 86PX); }
   .messageText { position:relative; display:block; max-width:100%; min-height:40PX; border:0; border-radius:4PX; color:#191919; padding:9PX 12PX; font-size:16PX; line-height:1.4; }
@@ -107,7 +107,7 @@
   .user .messageBody { align-items:flex-end; }
   .user .messageText { background:#95ec69; border:0; border-radius:4PX; }
   .user .messageText:before { left:auto; right:-6PX; border-right:0; border-left:7PX solid #95ec69; }
-  .user .userAvatar { background:#8ca6b8; }
+  .user .userAvatar { background:#a7b7cf; }
   .messagePending { align-self:center; width:14PX; height:14PX; border:2PX solid #bcbcbc; border-top-color:transparent; border-radius:50%; animation:chat-spin .8s linear infinite; }
   .messageFailed { align-self:center; min-height:24PX; width:24PX; border-radius:50%; background:#fa5151; color:#fff; padding:0; font-weight:700; }
   .voiceBubble { display:flex; align-items:center; justify-content:space-between; gap:12PX; max-width:100%; background:#95ec69; color:#191919; padding:9PX 12PX; border-radius:4PX; }
@@ -119,12 +119,12 @@
   .chatPhotos { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:5PX; }
   .imageBubble { display:block; padding:0; border-radius:4PX; background:transparent; overflow:hidden; }
   .imageBubble img { display:block; max-width:160PX; max-height:200PX; width:auto; height:auto; object-fit:contain; }
-  .composer { background:#f7f7f7; border-color:#d9d9d9; padding:6PX 7PX max(6PX,env(safe-area-inset-bottom,0PX)); }
+  .composer { background:#fff; border-color:#e7ebf2; padding:6PX 7PX max(6PX,env(safe-area-inset-bottom,0PX)); }
   .chatBar { display:flex; align-items:flex-end; gap:6PX; min-height:42PX; }
   .chatIcon { flex:0 0 32PX; width:32PX; height:40PX; min-height:40PX; padding:3PX; border-radius:0; color:#191919; }
   .chatIcon svg { width:28PX; height:28PX; }
   .messageInput { height:40PX; min-height:40PX; max-height:112PX; background:#fff; border:0; border-radius:5PX; padding:9PX 10PX; line-height:22PX; font-size:16PX; }
-  .send { background:#07c160; color:white; border-radius:5PX; min-height:36PX; height:36PX; padding:6PX 12PX; margin-bottom:2PX; font-size:14PX; }
+  .send { background:#4f6fe8; color:white; border-radius:5PX; min-height:36PX; height:36PX; padding:6PX 12PX; margin-bottom:2PX; font-size:14PX; }
   .voicePanel { flex:1 1 0; min-width:0; background:transparent; border:0; margin:0; padding:0; }
   .holdToTalk { width:100%; background:#fff; color:#191919; border:1PX solid #dedede; border-radius:5PX; min-height:40PX; height:40PX; font-size:16PX; font-weight:500; touch-action:none; }
   .holdToTalk.recording { background:#d8d8d8; color:#555; }
@@ -153,9 +153,46 @@
   .chatMenu { position:absolute; right:10PX; top:54PX; z-index:4; width:220PX; padding:12PX; background:#fff; border-radius:6PX; box-shadow:0 4PX 20PX #0002; }
   .chatMenu button { width:100%; text-align:left; justify-content:flex-start; border-radius:0; border-top:1PX solid #eee; color:#191919; }
   .card { border:0; border-radius:5PX; color:#191919; }
-  .primary { background:#07c160; color:white; }
+  .primary { background:#4f6fe8; color:white; }
   .secondary { background:#f3f3f3; color:#555; border-color:#ddd; }
   .thinking { color:#999; font-size:12PX; }
+  /* DeepSeek-style home state: a quiet dark canvas with a floating glass composer. */
+  background:#0e0f11; color:#f5f7fb;
+  .header { height:86PX; min-height:86PX; padding:28PX 26PX 10PX; background:transparent; border:0; }
+  .header .back,.header .headerMore { color:#f5f7fb; width:54PX; height:54PX; flex:0 0 54PX; padding:11PX; background:#2d2e31; border:1PX solid #45464a; border-radius:50%; }
+  .header .back svg { width:25PX; height:25PX; }
+  .header .headerMore svg { width:25PX; height:25PX; }
+  .heading { display:none; }
+  .content { background:#0e0f11; padding:0 24PX 180PX; }
+  .referenceActions { display:none; }
+  .referenceActions button { pointer-events:auto; width:52PX; height:52PX; min-height:52PX; padding:11PX; color:#f4f5f7; background:#2d2e31; border:1PX solid #45464a; border-radius:50%; }
+  .referenceActions svg { width:27PX; height:27PX; }
+  .welcomeHero { min-height:calc(100% - 80PX); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:170PX 0 150PX; }
+  .whaleMark { color:#5485ff; font-size:68PX; line-height:1; filter:saturate(1.3); margin-bottom:28PX; }
+  .welcomeHero h1 { margin:0; color:#f4f5f7; font-size:28PX; font-weight:600; letter-spacing:0; text-align:center; }
+  .chatTime,.message,.card,.connection,.actions,.success,.error,.thinking { display:none; }
+  .composer { position:fixed; left:24PX; right:24PX; bottom:max(18PX,env(safe-area-inset-bottom,0PX)); z-index:10; padding:20PX 22PX 16PX; background:#2a2b2eec; border:1PX solid #4b4d52; border-radius:28PX; box-shadow:0 10PX 28PX #0008; }
+  .referenceComposer { display:flex; flex-direction:column; gap:16PX; }
+  .messageInput { width:100%; height:46PX; min-height:46PX; max-height:112PX; padding:0; background:transparent; border:0; border-radius:0; color:#f5f7fb; font-size:22PX; line-height:1.35; }
+  .messageInput::placeholder { color:#94969e; opacity:1; }
+  .referenceOptions { display:flex; align-items:center; gap:12PX; min-height:44PX; }
+  .modeChip { min-height:42PX; padding:8PX 15PX; border:1PX solid #5a5c63; border-radius:24PX; color:#e5e7ec; background:transparent; font-size:16PX; }
+  .modeChipActive { color:#6f99ff; border-color:#4268d6; background:#1e2d62; }
+  .searchChip { color:#70a0ff; }
+  .referenceSpacer { flex:1; }
+  .referenceOptions .chatIcon { width:42PX; height:42PX; flex-basis:42PX; padding:6PX; color:#f1f3f8; }
+  .referenceOptions .send { width:42PX; height:42PX; min-height:42PX; padding:0; margin:0; border-radius:50%; background:#597ff3; font-size:25PX; }
+  .keyboardMode { display:flex; align-items:center; justify-content:center; width:100%; min-height:46PX; color:#f5f7fb; background:#35363a; border:1PX solid #4d4f55; border-radius:12PX; font-size:17PX; gap:8PX; }
+  .keyboardMode svg { width:22PX; height:22PX; }
+  .voicePanel { width:100%; }
+  .holdToTalk { min-height:46PX; height:46PX; background:#35363a; color:#f5f7fb; border-color:#55575e; border-radius:12PX; }
+  .holdToTalk.recording { background:#4b4c50; }
+  .photos,.voicePreview,.emojiPanel,.composerTools { background:#303136; border-color:#4b4d52; }
+  .chatMenu { top:92PX; right:24PX; background:#2a2b2e; color:#f5f7fb; border:1PX solid #4b4d52; box-shadow:0 10PX 28PX #0008; }
+  .chatMenu button { color:#f5f7fb; border-color:#4b4d52; }
+  .moreOpen .composerTools { color:#f5f7fb; }
+  .primary { background:#597ff3; }
+  @media (max-width:500PX) { .composer { left:14PX; right:14PX; bottom:max(10PX,env(safe-area-inset-bottom,0PX)); padding:17PX 16PX 13PX; border-radius:24PX; } .content { padding-left:14PX; padding-right:14PX; } .referenceActions { left:18PX; right:18PX; } .welcomeHero h1 { font-size:25PX; } .modeChip { padding-left:11PX; padding-right:11PX; font-size:14PX; } }
   @keyframes chat-spin { to { transform:rotate(360deg); } }
   @keyframes voice-pulse { to { opacity:.3; } }
   @keyframes voice-bars { to { height:8PX; } }

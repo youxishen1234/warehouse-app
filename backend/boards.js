@@ -1,5 +1,6 @@
 // Paperboard batches share the main database transaction, backup and revision.
 const crypto = require('node:crypto');
+const { roundDecimal, localDate } = require('./stock-math');
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 const text = (value, label, required = false, max = 120) => {
   if (value != null && typeof value !== 'string') fail(`${label}格式不正确`);
@@ -13,7 +14,7 @@ const number = (value, label, positive = false, integer = false) => {
   if (!Number.isFinite(result) || result < 0 || result > 100000000 || (positive && result === 0) || (integer && !Number.isSafeInteger(result))) fail(`${label}必须为${positive ? '正' : '非负'}${integer ? '整数' : '数'}，且不超过一亿`);
   return result;
 };
-const round = (value, digits = 2) => Number(value.toFixed(digits));
+const round = (value, digits = 2) => roundDecimal(value, digits);
 function validateSpec(raw) {
   const spec = {};
   for (const field of ['boardLength', 'boardWidth', 'cartonLength', 'cartonWidth', 'cartonHeight']) spec[field] = number(raw[field], field.startsWith('board') ? '纸板尺寸（cm）' : '纸箱尺寸（cm）', true);
@@ -30,7 +31,12 @@ function state(data) {
 }
 function list(data) {
   const { batches, movements } = state(data);
-  return batches.map(batch => ({ ...batch, movements: movements.filter(m => m.batchId === batch.id).slice().reverse() })).reverse();
+  const byBatch = new Map();
+  for (let i = movements.length - 1; i >= 0; i--) {
+    const movement = movements[i], entries = byBatch.get(movement.batchId);
+    if (entries) entries.push(movement); else byBatch.set(movement.batchId, [movement]);
+  }
+  return batches.map(batch => ({ ...batch, movements: byBatch.get(batch.id) || [] })).reverse();
 }
 function receive(data, raw) {
   if (!raw || Array.isArray(raw) || typeof raw !== 'object') fail('入库单格式不正确');
@@ -64,7 +70,7 @@ function move(data, id, raw) {
   const before = batch.remainingQty;
   const balance = raw.type === 'out' ? before - value : value;
   if (before === balance) fail('实盘数量与账面一致，无需调整');
-  const movement = { id: crypto.randomUUID(), batchId: id, type: raw.type, quantity: raw.type === 'out' ? value : balance - before, before, balance, recipient, remark, createdAt: Date.now() };
+  const movement = { id: crypto.randomUUID(), batchId: id, type: raw.type, quantity: raw.type === 'out' ? value : balance - before, before, balance, recipient, remark, date: localDate(), createdAt: Date.now() };
   batch.remainingQty = balance;
   data.board_movements ||= []; data.board_movements.push(movement);
   return { ...batch, movements: data.board_movements.filter(m => m.batchId === id).slice().reverse() };
@@ -73,6 +79,11 @@ function validate(data) {
   if (data.board_batches === undefined && data.board_movements === undefined) return;
   if (!Array.isArray(data.board_batches) || !Array.isArray(data.board_movements)) fail('纸板备份缺少批次或流水');
   const ids = new Set(); const movementIds = new Set();
+  const byBatch = new Map();
+  for (const movement of data.board_movements) {
+    const entries = byBatch.get(movement.batchId);
+    if (entries) entries.push(movement); else byBatch.set(movement.batchId, [movement]);
+  }
   for (const b of data.board_batches) {
     if (!/^BOARD-[0-9]{8}-[A-F0-9]{12}$/.test(b.id) || ids.has(b.id)) fail('纸板批次编号无效或重复');
     ids.add(b.id); validateSpec(b);
@@ -80,9 +91,11 @@ function validate(data) {
     text(b.supplier, '板厂', true); number(b.remainingQty, '批次库存', false, true); number(b.receivedQty, '实收数', true, true); number(b.orderedQty, '订购数', true, true);
     number(b.billedArea, '计费平米', true); number(b.unitPrice, '每平米单价'); number(b.warningQty, '预警数量', false, true);
     if (b.amount !== round(b.billedArea * b.unitPrice) || b.giftQty !== Math.max(0, b.receivedQty - b.orderedQty) || b.shortageQty !== Math.max(0, b.orderedQty - b.receivedQty)) fail('纸板金额或赠送数量不一致');
+    if (typeof b.date !== 'string' || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(b.date) || !Number.isFinite(Date.parse(b.date)) || new Date(b.date).toISOString().slice(0, 10) !== b.date) fail('纸板批次日期无效');
     let balance = 0; let inbound = 0;
-    for (const m of data.board_movements.filter(m => m.batchId === b.id)) {
+    for (const m of byBatch.get(b.id) || []) {
       if (!['in', 'out', 'count'].includes(m.type) || !Number.isSafeInteger(m.quantity) || !Number.isSafeInteger(m.createdAt)) fail('纸板流水无效');
+      if (m.date !== undefined && (typeof m.date !== 'string' || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(m.date) || !Number.isFinite(Date.parse(m.date)))) fail('纸板流水日期无效');
       if (m.type === 'in') { inbound++; if (inbound !== 1 || balance !== 0 || m.quantity !== b.receivedQty) fail('纸板入库流水不一致'); }
       else if (!inbound || m.before !== balance || (m.type === 'out' && m.quantity <= 0)) fail('纸板领料流水不一致');
       balance += m.type === 'out' ? -m.quantity : m.quantity;
@@ -92,4 +105,23 @@ function validate(data) {
   }
   for (const m of data.board_movements) { if (!ids.has(m.batchId) || !m.id || movementIds.has(m.id)) fail('纸板流水引用无效或重复'); movementIds.add(m.id); }
 }
-module.exports = { list, receive, move, validate };
+function update(data, id, raw) {
+  const batch = state(data).batches.find(b => b.id === id);
+  if (!batch) fail('找不到这批纸板', 404);
+  const movements = state(data).movements.filter(m => m.batchId === id);
+  if (movements.some(m => m.type !== 'in')) fail('已有领料或盘点记录，不能编辑入库单，请使用盘点功能调整库存');
+  const draft = {};
+  const next = receive(draft, raw);
+  Object.assign(batch, next, { id, createdAt: batch.createdAt });
+  Object.assign(movements[0], { quantity: next.receivedQty, balance: next.receivedQty, date: next.date, remark: next.remark });
+  return list(data).find(b => b.id === id);
+}
+function remove(data, id) {
+  const batch = state(data).batches.find(b => b.id === id);
+  if (!batch) fail('找不到这批纸板', 404);
+  if (state(data).movements.some(m => m.batchId === id && m.type !== 'in')) fail('已有领料或盘点记录，不能删除这批纸板');
+  data.board_batches = data.board_batches.filter(b => b.id !== id);
+  data.board_movements = data.board_movements.filter(m => m.batchId !== id);
+  return { id };
+}
+module.exports = { list, receive, move, update, remove, validate };

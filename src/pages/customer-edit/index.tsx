@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, Input, Textarea, ScrollView } from '@tarojs/components';
 import Taro, { useRouter } from '@tarojs/taro';
 import { getCustomer, addCustomer, updateCustomer, getSupplier, addSupplier, updateSupplier } from '@/services/api';
 import type { CustomerForm } from '@/types';
 import { sanitizeNonNegativeMoneyInput } from '@/utils/form-input';
+import { session, watchSession } from '@/services/session';
 import styles from './index.module.scss';
 
 const CustomerEditPage: React.FC = () => {
@@ -14,6 +15,12 @@ const CustomerEditPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const editId = router.params.id ? Number(router.params.id) : null;
   const isEdit = !!editId;
+  const [loading, setLoading] = useState(isEdit);
+  const [loadError, setLoadError] = useState('');
+  const [retry, setRetry] = useState(0);
+  const [sessionToken, setSessionToken] = useState(() => session()?.token);
+  const saveLock = useRef(false);
+  const backTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const [name, setName] = useState('');
   const [contact, setContact] = useState('');
@@ -21,21 +28,29 @@ const CustomerEditPage: React.FC = () => {
   const [address, setAddress] = useState('');
   const [remark, setRemark] = useState('');
 
+  useEffect(() => watchSession(() => setSessionToken(session()?.token)), []);
   useEffect(() => {
+    let active = true;
     if (isEdit && editId) {
+      setLoading(true); setLoadError('');
+      if (!sessionToken) return () => { active = false; };
       (supplier ? getSupplier(editId) : getCustomer(editId)).then(c => {
+        if (!active) return;
         setBalance(String(supplier ? c.payable || 0 : c.debt || 0));
         setName(c.name);
         setContact(c.contact || '');
         setPhone(c.phone || '');
         setAddress(c.address || '');
         setRemark(c.remark || '');
-      }).catch(e => console.error('[CustomerEdit] load failed', e));
+      }).catch(e => { if (active) setLoadError(e instanceof Error ? e.message : '资料加载失败，请重试'); })
+        .finally(() => { if (active) setLoading(false); });
     }
-  }, [isEdit, editId, supplier]);
+    return () => { active = false; };
+  }, [isEdit, editId, supplier, retry, sessionToken]);
+  useEffect(() => () => { if (backTimer.current) clearTimeout(backTimer.current); }, []);
 
   const handleSave = async () => {
-    if (saving) return;
+    if (saveLock.current || loading || loadError) return;
     if (!name.trim()) { Taro.showToast({ title: `请输入${label}名称`, icon: 'none' }); return; }
     if (!/^\d+(\.\d{1,2})?$/.test(balance)) { Taro.showToast({ title: '金额须为非负数，最多两位小数', icon: 'none' }); return; }
     if (phone && !/^[\d\-+\s()]{6,20}$/.test(phone.trim())) {
@@ -50,6 +65,7 @@ const CustomerEditPage: React.FC = () => {
       ...(supplier ? { payable: Number(balance) } : { debt: Number(balance) })
     };
     try {
+      saveLock.current = true;
       setSaving(true);
       if (isEdit && editId) {
         await (supplier ? updateSupplier(editId, data) : updateCustomer(editId, data));
@@ -57,12 +73,19 @@ const CustomerEditPage: React.FC = () => {
         await (supplier ? addSupplier(data) : addCustomer(data));
       }
       Taro.showToast({ title: '保存成功', icon: 'success' });
-      setTimeout(() => Taro.navigateBack(), 800);
-    } catch (e) { console.error('[CustomerEdit] save failed', e); Taro.showToast({ title: e?.message || '保存失败', icon: 'none' }); } finally { setSaving(false); }
+      backTimer.current = setTimeout(() => {
+        if (Taro.getCurrentPages().length > 1) void Taro.navigateBack();
+        else void Taro.redirectTo({ url: supplier ? '/pages/suppliers/index' : '/pages/customers/index' });
+      }, 800);
+    } catch (e) { saveLock.current = false; Taro.showToast({ title: e?.message || '保存失败', icon: 'none' }); } finally { setSaving(false); }
   };
 
   return (
     <ScrollView scrollY className={styles.container}>
+      <Text className={styles.label}>{isEdit ? '编辑' : '新增'}{label}</Text>
+      {loading && <View>正在加载{label}资料…</View>}
+      {loadError && <View onClick={() => setRetry(value => value + 1)}>{loadError} · 点击重试</View>}
+      {!loading && !loadError &&
       <View className={styles.form}>
         <View className={styles.field}>
           <Text className={styles.label}>{label}名称 *</Text>
@@ -91,7 +114,7 @@ const CustomerEditPage: React.FC = () => {
 
         <View className={styles.field}><Text className={styles.label}>{supplier ? '应付款（元）' : '当前欠款（元）'}</Text><Input className={styles.input} type="digit" value={balance} onInput={e => setBalance(sanitizeNonNegativeMoneyInput(e.detail.value))} /></View>
         <View className={styles.btnPrimary} onClick={handleSave}>{saving ? '保存中' : '保存'}</View>
-      </View>
+      </View>}
     </ScrollView>
   );
 };

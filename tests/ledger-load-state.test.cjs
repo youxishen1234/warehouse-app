@@ -8,6 +8,8 @@ test('ledger page separates loading, load failure and empty results', () => {
   assert.match(source, /const \[loadError, setLoadError\] = useState\(''\)/);
   assert.match(source, /setLoadError\(error instanceof Error \? error\.message : 'LOAD_FAILED'\)/);
   assert.match(source, /\{loading \? <View className=\{styles\.empty\}/);
-  assert.match(source, /: loadError \? <View className=\{styles\.empty\} onClick=\{load\}/);
-  assert.match(source, /: list\.length === 0 \? <View className=\{styles\.empty\}/);
+  assert.match(source, /: loadError \? <View className=\{styles\.empty\}/);
+  assert.match(source, /onClick=\{load\}>重新加载/);
+  assert.match(source, /: filtered\.length === 0 \? <View className=\{styles\.empty\}/);
+  assert.match(source, /const ready = !loading && !loadError/);
 });

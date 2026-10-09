@@ -61,3 +61,9 @@
 .addrBtns { display: flex; gap: 12rpx; margin-top: 24rpx; }
 .addrBtnGhost, .addrBtnPrimary { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 88rpx; border-radius: 18rpx; font-size: 24rpx; }
 .addrBtnGhost { color: #4c5d75; background: #f1f5fb; }.addrBtnPrimary { color: #fff; background: #2563eb; font-weight: 700; }
+
+// ===== 电脑端（桌面窗口 ≥1024px）：容器加宽、功能菜单 4 列 =====
+@media (min-width: 1024PX) {
+  .container { padding: 32PX 44PX calc(140PX + env(safe-area-inset-bottom)); }
+  .menuGrid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}

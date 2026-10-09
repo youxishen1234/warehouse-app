@@ -68,7 +68,7 @@
 .board-page :focus-visible { outline: 3PX solid #6c9e7c; outline-offset: 3PX; }
 @media (min-width: 760PX) { .board-page { padding-left: 32PX; padding-right: 32PX; } .board-stock-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14PX; } .board-card { margin: 0; } .board-stock-list .board-card { margin-bottom: 4PX; } }
 @media (prefers-color-scheme: dark) { .board-page { --board-ink: #edf2e9; --board-muted: #a6b3a9; --board-line: #34483a; background: #17251e; } .board-section,.board-card,.board-empty { background: #21332a; } .board-input-wrap { background: #1b2b22; border-color: #405345; } .board-input-wrap input { color: #edf2e9; } .board-field-label,.board-card-meta,.board-subtitle { color: #b2bcb3; } .board-tabs :is(button,taro-button-core),.board-note { background: #2a4032; color: #c2d2c1; } .board-detail-row,.board-card-footer { border-color: #34483a; } .board-label { color: #1b3029; } }
-@media print { body * { visibility: hidden; } .board-label,.board-label * { visibility: visible; } .board-label { position: absolute; top: 0; left: 0; width: 80mm; padding: 4mm; border: 0; } }
+@media print { body * { visibility: hidden; } body { overflow: visible !important; height: auto !important; } .board-label,.board-label * { visibility: visible; } /* 打印时用 fixed 定位脱离滚动容器，避免页面滚动导致标签（二维码）被裁掉 */ .board-label { position: fixed; top: 0; left: 0; width: 80mm; padding: 4mm; border: 0; } }
 
 .board-header > .board-button { flex: none; width: auto; min-height: 38PX; font-size: 12PX; padding: 8PX 12PX; }
 .board-heading { min-width: 0; flex: 1; }

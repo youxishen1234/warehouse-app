@@ -1,6 +1,7 @@
 import Taro from '@tarojs/taro';
 import { getBaseUrl } from '@/services/request';
 import { deviceId } from '@/services/session';
+import { isNewerVersion } from './update-version';
 
 // ============================================
 // App 内「检查更新」：点击即检查，发现新版本自动下载并在下次启动时应用
@@ -121,7 +122,7 @@ export async function checkAndUpdate(): Promise<CheckUpdateResult> {
   if (!latest) {
     return { hasUpdate: false, message: '获取更新信息失败，请检查服务器地址或网络' };
   }
-  if (latest === cur) {
+  if (!isNewerVersion(latest, cur)) {
     console.log(`[UPDATE] 已是最新版本 v${latest}`);
     return { hasUpdate: false, message: `已是最新版本 v${latest}` };
   }

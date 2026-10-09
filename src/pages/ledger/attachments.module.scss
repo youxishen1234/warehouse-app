@@ -1,0 +1,51 @@
+.panel { border-top: 1PX dashed #dfe8d2; margin-top: 16PX; padding-top: 20PX; }
+.heading, .heading > *, .caption, .pendingHeading, .draft, .addActions, .viewerHeader, .viewerFooter { display: flex; align-items: center; justify-content: space-between; }
+.heading > * { gap: 9PX; }
+.title { font-size: 16PX; font-weight: 600; color: #304d34; }
+.count { border-radius: 6PX; padding: 2PX 7PX; color: #728861; background: #eff4e8; font-size: 11PX; }
+.status { color: #91826b; font-size: 10PX; }
+.description { display: block; color: #829074; font-size: 11PX; margin-top: 7PX; line-height: 1.7; }
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9PX; margin: 16PX 0; }
+.panel .photoCard { width: 100%; min-width: 0; overflow: hidden; text-align: left; background: #fff; border: 1PX solid #e2e8db; border-radius: 10PX; }
+.thumbnail { height: 108PX; padding: 7PX; position: relative; background: #eef1e9; display: flex; justify-content: center; align-items: center; }
+.thumbnail image, .thumbnail taro-image-core { width: 100%; height: 100%; }
+.photoNumber { position: absolute; bottom: 5PX; right: 5PX; color: #fff; background: rgba(53, 69, 47, .55); border-radius: 4PX; padding: 0 4PX; font-size: 9PX; }
+.thumbPlaceholder { font-size: 10PX; color: #8b967e; }
+.caption { padding: 9PX 7PX; gap: 3PX; flex-wrap: wrap; font-size: 11PX; color: #465d38; }
+.caption > :last-child { font-size: 9PX; color: #89987c; }
+.kindTabs { display: flex; padding: 3PX; border-radius: 9PX; background: #f0f4e9; gap: 3PX; margin: 15PX 0 10PX; }
+.panel .kindTabs [role='button'] { flex: 1; min-width: 0; padding: 7PX 3PX; border-radius: 7PX; color: #859276; font-size: 12PX; }
+.panel .kindTabs .kindActive { background: #fff; color: #30603d; box-shadow: 0 1PX 4PX #dce4d2; font-weight: 550; }
+.addActions { gap: 9PX; }
+.panel .choose { display: flex; align-items: center; justify-content: center; gap: 7PX; border: 1PX dashed #b8caaa; background: #f7faf2; color: #4c7446; padding: 13PX 7PX; border-radius: 10PX; font-size: 12PX; flex: 1; }
+.choose image, .choose taro-image-core { width: 17PX; height: 17PX; }
+.panel .camera { border: 1PX solid #d6e2ca; padding: 13PX 17PX; color: #58834b; border-radius: 10PX; font-size: 12PX; }
+.limits { display: block; font-size: 9PX; color: #95a187; line-height: 1.7; margin-top: 9PX; }
+.pending { margin-top: 16PX; border: 1PX solid #e2e7d8; border-radius: 12PX; padding: 12PX; background: #fafbf7; }
+.pendingHeading { color: #5e7553; font-size: 12PX; gap: 5PX; margin-bottom: 10PX; }
+.pendingHeading > :last-child { color: #98a08f; font-size: 9PX; }
+.draft { gap: 10PX; margin-top: 10PX; }
+.panel .draftPreview { width: 44PX; height: 54PX; background: #ecefe6; border-radius: 5PX; padding: 3PX; flex-shrink: 0; }
+.draftPreview image, .draftPreview taro-image-core { width: 100%; height: 100%; }
+.draftInfo { flex: 1; min-width: 0; }
+.filename { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #536648; font-size: 12PX; }
+.draftStatus, .error { display: block; margin-top: 4PX; font-size: 10PX; color: #93a184; line-height: 1.5; overflow-wrap: anywhere; }
+.error { color: #ae624a; }
+.panel .remove { font-size: 21PX; padding: 8PX; color: #9a9e91; }
+.panel .upload { width: 100%; background: #2b7053; color: #fff; border-radius: 9PX; margin-top: 13PX; padding: 11PX; font-size: 13PX; }
+.message { display: block; color: #8b784f; font-size: 11PX; margin: 10PX 0; line-height: 1.7; }
+.note { display: flex; gap: 7PX; margin-top: 13PX; align-items: center; color: #98a18b; font-size: 10PX; line-height: 1.7; }
+.note image, .note taro-image-core { width: 13PX; height: 13PX; flex-shrink: 0; }
+.viewer { position: fixed; inset: 0; z-index: 1100; background: #15231f; color: #fff; display: flex; flex-direction: column; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+.viewerHeader { padding: 18PX 20PX; gap: 15PX; flex-shrink: 0; font-size: 15PX; }
+.viewerHeader > :first-child { min-width: 0; }
+.viewerName { display: block; font-size: 11PX; margin-top: 4PX; color: #acbcb4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.panel .viewerHeader [role='button'] { font-size: 29PX; padding: 3PX 10PX; color: #fff; }
+.viewerCanvas { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.viewerCanvas .original { display: block; width: 100%; height: 100%; }
+.viewerCanvas.zoomed .original { width: 1400PX; max-width: none; height: auto; }
+.viewerFooter { padding: 16PX 20PX; gap: 12PX; flex-shrink: 0; }
+.panel .viewerFooter [role='button'], .panel .viewerLoading [role='button'] { font-size: 13PX; padding: 12PX 20PX; border-radius: 9PX; color: #e4efe9; background: #32463d; }
+.viewerFooter [role='button'] { flex: 1; }
+.viewerLoading { display: flex; gap: 20PX; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #b7c7bf; font-size: 13PX; padding: 20PX; text-align: center; }
+@media (max-width: 359px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .limits { font-size: 8PX; } }

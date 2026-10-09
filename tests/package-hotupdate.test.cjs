@@ -19,7 +19,7 @@ test('package-hotupdate emits a SHA256 manifest for the exact archive', () => {
   fs.writeFileSync(path.join(source, 'js', 'app.js'), 'console.log("hot-update");\n');
   try {
     execFileSync(python, [script, source, output, manifestPath], {
-      env: { ...process.env, HOTUPDATE_VERSION: '2026.09.27-test', HOTUPDATE_RELEASE_NOTES: 'integrity test' },
+      env: { ...process.env, HOTUPDATE_COMMIT: '', HOTUPDATE_VERSION: '2026.09.27-test', HOTUPDATE_RELEASE_NOTES: 'integrity test' },
       stdio: ['ignore', 'pipe', 'pipe']
     });
     const archive = fs.readFileSync(output);
@@ -36,7 +36,7 @@ test('package-hotupdate emits a SHA256 manifest for the exact archive', () => {
 
     for (const invalidVersion of ['latest', '2026.09', '../2026.09.27', '2026-09-27']) {
       assert.throws(() => execFileSync(python, [script, source, output, manifestPath], {
-        env: { ...process.env, HOTUPDATE_VERSION: invalidVersion },
+        env: { ...process.env, HOTUPDATE_COMMIT: '', HOTUPDATE_VERSION: invalidVersion },
         stdio: ['ignore', 'pipe', 'pipe']
       }), new RegExp('HOTUPDATE_VERSION'));
     }

@@ -5,3 +5,9 @@
 .card { display:flex; justify-content:space-between; align-items:center; padding:22PX; margin:14PX 0; border-radius:18PX; background:white; }
 .name { display:block; font-size:19PX; font-weight:700; }
 .detail { display:block; font-size:13PX; color:#7d8999; margin-top:8PX; }
+
+// ===== 电脑端（桌面窗口 ≥1024px）：功能卡片 3 列网格横排 =====
+@media (min-width: 1024PX) {
+  .page { padding: 32PX 44PX; }
+  .card { box-sizing: border-box; display: inline-flex; width: calc(33.333% - 8PX); margin: 0 8PX 14PX 0; vertical-align: top; min-height: 120PX; }
+}

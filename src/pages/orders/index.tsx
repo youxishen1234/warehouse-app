@@ -36,6 +36,7 @@ const OrderListRow = React.memo(function OrderListRow({ order, history, onStatus
       {history.length > 0 && <View className={styles.events}><Text className={styles.eventsTitle}>状态记录</Text>{history.map(event => <Text key={event.id}>{event.from} → {event.to} · {formatShortTime(event.created_at)}</Text>)}</View>}
     </View>
     <Picker range={nextStatusMap[order.status] || [order.status]} value={0} onChange={event => onStatusChange(order, Number(event.detail.value))}><Text className={styles.status}>{order.status}</Text></Picker>
+    {order.status === '生产中' && <Text className={styles.status} onClick={() => { Taro.setStorageSync('sg_outbound_order', order.id); void Taro.switchTab({ url: '/pages/outbound/index' }); }}>出库</Text>}
   </View>;
 });
 
@@ -52,7 +53,10 @@ export default function Orders() {
   const [delivery, setDelivery] = useState('');
   const [remark, setRemark] = useState('');
   const [customer, setCustomer] = useState<number | null>(null);
+  const [unit, setUnit] = useState('件');
+  const [unitIndex, setUnitIndex] = useState(0);
   const [saving, setSaving] = useState(false);
+  const orderUnits = ['件', '箱', '个', '千克'];
 
   // A stable loader prevents every state update from starting another request.
   const loadOrders = useCallback(async () => {
@@ -73,7 +77,7 @@ export default function Orders() {
   useSharedRefresh(load);
 
   const resetForm = () => {
-    setOrderNo(''); setSpec(''); setMaterial(''); setQty('1'); setPrice('0'); setDelivery(''); setRemark(''); setCustomer(null);
+    setOrderNo(''); setSpec(''); setMaterial(''); setQty('1'); setPrice('0'); setDelivery(''); setRemark(''); setCustomer(null); setUnit('件'); setUnitIndex(0);
   };
 
   const save = async () => {
@@ -87,7 +91,7 @@ export default function Orders() {
     setSaving(true);
     try {
       const c = customers.find(item => item.id === customer);
-      await addOrder({ order_no: orderNo.trim(), customer_id: customer, customer_name: c?.name || '', specification: spec, material, quantity, unit: '件', unit_price: unitPrice, delivery_date: delivery, status: '待生产', remark });
+      await addOrder({ order_no: orderNo.trim(), customer_id: customer, customer_name: c?.name || '', specification: spec, material, quantity, unit, unit_price: unitPrice, delivery_date: delivery, status: '待生产', remark });
       Taro.showToast({ title: '订单保存成功', icon: 'success' });
       resetForm(); setShow(false); await load();
     } catch (error) {
@@ -115,6 +119,7 @@ export default function Orders() {
       <Picker range={customers.map(c => c.name)} onChange={e => setCustomer(customers[Number(e.detail.value)]?.id || null)}><View>选择客户（可选）</View></Picker>
       <Input placeholder="规格（可选，如 300×200×150mm）" value={spec} onInput={e => setSpec(e.detail.value)} />
       <Input placeholder="材质（可选，如五层AB楞）" value={material} onInput={e => setMaterial(e.detail.value)} />
+      <Picker mode="selector" range={orderUnits} value={unitIndex} onChange={e => { const idx = Number(e.detail.value); setUnitIndex(idx); setUnit(orderUnits[idx]); }}><View>单位：{unit}</View></Picker>
       <Input type="number" placeholder="数量" value={qty} onInput={e => setQty(sanitizeDecimalInput(e.detail.value, 6))} />
       <Input type="digit" placeholder="单价" value={price} onInput={e => setPrice(sanitizeDecimalInput(e.detail.value, 2))} />
       <Picker mode="date" value={delivery} onChange={e => setDelivery(e.detail.value)}><View>交货日期：{delivery || '未设置'}</View></Picker>

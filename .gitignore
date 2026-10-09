@@ -15,3 +15,5 @@ android/local.properties
 /backend/data.json
 /backend/accounts.json
 /backend/update-log.jsonl
+/backend/runtime/
+/backend/*.attachments/

@@ -2,57 +2,65 @@ import { useEffect, useState } from 'react';
 import { aiSettingsRequest } from '@/services/ai';
 import type { AiConnection } from '@/services/ai';
 import { session } from '@/services/session';
+import Taro from '@tarojs/taro';
 import styles from './index.module.scss';
 
+const ADMIN_KEY_STORAGE = 'sg_ai_admin_key';
+
 export default function AiSettings({ onSaved, onClose }: { onSaved: () => void; onClose: () => void }) {
-  const [token, setToken] = useState(session()?.user.role === 'admin' ? session()!.token : '');
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('');
+  // 免登录共享模式：读取配置无需管理员；写操作需要服务器配置的管理密钥（X-Warehouse-Admin-Key）。
+  const [adminKey, setAdminKey] = useState(() => { try { return String(Taro.getStorageSync(ADMIN_KEY_STORAGE) || ''); } catch { return ''; } });
+  const [keyInput, setKeyInput] = useState('');
+  const [needKey, setNeedKey] = useState(false);
   const [config, setConfig] = useState<AiConnection>({ baseUrl: '', model: '', apiKey: '' });
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState('');
+
   useEffect(() => {
-    if (!token) return;
     let alive = true;
     setReady(false); setBusy(true); setError('');
-    aiSettingsRequest<AiConnection>('/ai/config', 'GET', undefined, token)
+    aiSettingsRequest<AiConnection>('/ai/config', 'GET', undefined, session()?.token || '')
       .then(value => { if (alive) { setConfig({ ...value, apiKey: '' }); setReady(true); } })
-      .catch(e => { if (alive) { setError(e.message); setToken(''); } })
+      .catch(e => { if (alive) setError(e.message); })
       .finally(() => { if (alive) setBusy(false); });
     return () => { alive = false; };
-  }, [token]);
-  const login = async (event: React.FormEvent) => {
-    event.preventDefault(); if (busy) return;
-    setBusy(true); setError('');
-    try {
-      const account = await aiSettingsRequest<{ token: string; user: { role: string } }>('/auth/login', 'POST', { username, password }, '');
-      if (account.user.role !== 'admin') throw new Error('请使用仓库管理员账号');
-      setPassword(''); setToken(account.token);
-    } catch (e) { setError(e.message); }
-    finally { setBusy(false); }
-  };
+  }, []);
+
   const save = async (testOnly: boolean) => {
     if (busy || !ready) return;
     setBusy(true); setError(''); setResult('');
     try {
+      const headers: Record<string, string> = {};
+      if (adminKey) headers['X-Warehouse-Admin-Key'] = adminKey;
       const value = await aiSettingsRequest<AiConnection & { message: string }>(testOnly ? '/ai/config/test' : '/ai/config', testOnly ? 'POST' : 'PUT', {
         baseUrl: config.baseUrl, model: config.model, apiKey: config.apiKey || '', reasoningEffort: config.reasoningEffort || ''
-      }, token);
+      }, session()?.token || '', headers);
       setResult(testOnly ? value.message : '已保存并生效。' + value.message);
       if (!testOnly) { setConfig({ ...value, apiKey: '' }); onSaved(); }
-    } catch (e) { setError(e.message); }
+    } catch (e) {
+      setError(e.message);
+      if (/管理密钥|管理员|403/.test(e.message)) { setNeedKey(true); setAdminKey(''); }
+    }
     finally { setBusy(false); }
   };
+
+  const confirmKey = () => {
+    const value = keyInput.trim();
+    if (!value) { setError('请输入管理密钥'); return; }
+    setAdminKey(value);
+    try { Taro.setStorageSync(ADMIN_KEY_STORAGE, value); } catch { /* 会话内仍有效 */ }
+    setNeedKey(false); setKeyInput(''); setError('');
+  };
+
   return <section className={styles.card} aria-label='模型接入设置'>
     <div className={styles.row}><span className={styles.sectionTitle}>重新设置 AI 模型</span><button data-ai-control="button" className={styles.textButton} disabled={busy} onClick={onClose}>收起</button></div>
     <p className={styles.hint}>填写支持工具调用的模型接口。拍单入库还需要图片识别能力；保存前会实际测试连接，失败时保留原设置。</p>
-    {!token ? <form onSubmit={login}>
-      <p className={styles.hint}>模型设置会对整个仓库生效，请先验证管理员身份。</p>
-      <label className={styles.label}>管理员账号<input data-ai-control="input" className={styles.input} autoComplete='username' value={username} onChange={e => setUsername(e.currentTarget.value)} required disabled={busy} /></label>
-      <label className={styles.label}>管理员密码<input data-ai-control="input" className={styles.input} type='password' autoComplete='current-password' value={password} onChange={e => setPassword(e.currentTarget.value)} required disabled={busy} /></label>
-      <button data-ai-control="button" type='submit' className={styles.primary} disabled={busy}>{busy ? '正在验证…' : '验证管理员'}</button>
+    {needKey ? <form onSubmit={event => { event.preventDefault(); confirmKey(); }}>
+      <p className={styles.hint}>模型设置对整个仓库生效。请输入服务器配置的管理密钥（联系管理员获取）。</p>
+      <label className={styles.label}>管理密钥<input data-ai-control="input" className={styles.input} type='password' autoComplete='off' value={keyInput} onChange={e => setKeyInput(e.currentTarget.value)} disabled={busy} /></label>
+      <div className={styles.actions}><button data-ai-control="button" type='button' className={styles.secondary} onClick={() => setNeedKey(false)} disabled={busy}>取消</button><button data-ai-control="button" type='submit' className={styles.primary} disabled={busy}>确认密钥</button></div>
     </form> : <form onSubmit={event => { event.preventDefault(); void save(false); }}>
       <label className={styles.label}>服务地址（Base URL）<input data-ai-control="input" className={styles.input} type='url' autoComplete='off' placeholder='https://你的模型服务地址/v1' value={config.baseUrl} onChange={e => { setConfig({ ...config, baseUrl: e.currentTarget.value }); setResult(''); }} required disabled={busy || !ready} /></label>
       <label className={styles.label}>模型名称<input data-ai-control="input" className={styles.input} autoComplete='off' placeholder='填写服务商提供的准确模型名称' value={config.model} onChange={e => { setConfig({ ...config, model: e.currentTarget.value }); setResult(''); }} required disabled={busy || !ready} /></label>

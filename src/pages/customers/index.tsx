@@ -1,12 +1,12 @@
-﻿import { useSharedRefresh } from '@/services/shared-refresh';
+import { useSharedRefresh } from '@/services/shared-refresh';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { View, Text, Input, ScrollView } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
-import { getCustomers, deleteCustomer, getTransactions, getSuppliers, deleteSupplier, updateCustomer, updateSupplier } from '@/services/api';
+import { getCustomers, deleteCustomer, getTransactions, getSuppliers, deleteSupplier, settleCustomer, settleSupplier } from '@/services/api';
 import type { Customer, Transaction } from '@/types';
 import Icon from '@/components/Icon';
 import SwipeRow from '@/components/SwipeRow';
-import { numberValue, roundDecimal } from '@/utils/stock-math';
+import { numberValue } from '@/utils/stock-math';
 import { formatMoney, formatMoneyInput } from '@/utils/format';
 import styles from './index.module.scss';
 
@@ -42,32 +42,32 @@ const CustomerListRow = React.memo(function CustomerListRow({ party, stats, supp
     onOpenChange={nextOpen => onOpenChange(party.id, nextOpen)}
     onTap={() => handleRecords(party)}
     actions={[
-      { text: '??', bg: '#64748b', onClick: () => handleRecords(party) },
-      { text: '??', bg: '#2f6bff', onClick: () => handleEdit(party.id) },
-      { text: '??', bg: '#dc2626', onClick: () => handleDelete(party) }
+      { text: '记录', bg: '#64748b', onClick: () => handleRecords(party) },
+      { text: '编辑', bg: '#2f6bff', onClick: () => handleEdit(party.id) },
+      { text: '停用', bg: '#dc2626', onClick: () => handleDelete(party) }
     ]}
   >
     <View className={styles.listItem}>
       <View className={styles.itemTop}>
         <Text className={styles.itemName}>{party.name}</Text>
-        <Text className={styles.itemBadge}>{stats.count} ???</Text>
+        <Text className={styles.itemBadge}>{stats.count} 笔</Text>
       </View>
       <View className={styles.itemMeta}>
-        {party.contact ? `????${party.contact}` : '?????'}
-        {party.phone ? ` ? ???${party.phone}` : ''}
-        {party.address ? `\n???${party.address}` : ''}
-        {party.remark ? `\n???${party.remark}` : ''}
+        {party.contact ? `联系人：${party.contact}` : '无联系方式'}
+        {party.phone ? ` · 电话：${party.phone}` : ''}
+        {party.address ? `\n地址：${party.address}` : ''}
+        {party.remark ? `\n备注：${party.remark}` : ''}
       </View>
       <View className={styles.itemStats}>
-        <Text className={styles.statItem}>{supplier ? '???' : '??'} {formatMoney(Number(supplier ? party.payable || 0 : party.debt || 0))}</Text>
-        <Text className={styles.statItem}>??<Text className={`${styles.statNum} ${styles.statNumOut}`}>{stats.outQty}</Text></Text>
-        <Text className={styles.statItem}>??<Text className={`${styles.statNum} ${styles.statNumIn}`}>{stats.inQty}</Text></Text>
+        <Text className={styles.statItem}>{supplier ? '应付' : '应收'} {formatMoney(Number(supplier ? party.payable || 0 : party.debt || 0))}</Text>
+        <Text className={styles.statItem}>出库<Text className={`${styles.statNum} ${styles.statNumOut}`}>{stats.outQty}</Text></Text>
+        <Text className={styles.statItem}>入库<Text className={`${styles.statNum} ${styles.statNumIn}`}>{stats.inQty}</Text></Text>
       </View>
       <View className={styles.itemActions}>
-        <View className={styles.btnOut} onClick={event => { event.stopPropagation(); openSettlement(party); }}>??</View>
-        <View className={styles.btnIn} onClick={event => { event.stopPropagation(); handleEdit(party.id); }}>??</View>
-        {!supplier && <View className={styles.btnOut} onClick={event => { event.stopPropagation(); goOutbound(party); }}>??</View>}
-        {supplier && <View className={styles.btnIn} onClick={event => { event.stopPropagation(); Taro.setStorageSync(TRANSIT_KEY, { supplier_id: party.id, supplier_name: party.name }); Taro.switchTab({ url: '/pages/inbound/index' }); }}>??</View>}
+        <View className={styles.btnOut} onClick={event => { event.stopPropagation(); openSettlement(party); }}>结算</View>
+        <View className={styles.btnIn} onClick={event => { event.stopPropagation(); handleEdit(party.id); }}>编辑</View>
+        {!supplier && <View className={styles.btnOut} onClick={event => { event.stopPropagation(); goOutbound(party); }}>出库</View>}
+        {supplier && <View className={styles.btnIn} onClick={event => { event.stopPropagation(); Taro.setStorageSync(TRANSIT_KEY, { supplier_id: party.id, supplier_name: party.name }); Taro.switchTab({ url: '/pages/inbound/index' }); }}>入库</View>}
       </View>
     </View>
   </SwipeRow>;
@@ -121,7 +121,7 @@ const CustomersPage: React.FC<{ supplier?: boolean }> = ({ supplier = false }) =
   const statsByParty = useMemo(() => {
     const map = new Map<number, { outQty: number; inQty: number; count: number }>();
     txList.forEach(transaction => {
-      const id = transaction.customer_id;
+      const id = supplier ? transaction.supplier_id : transaction.customer_id;
       if (id == null) return;
       const current = map.get(id) || { outQty: 0, inQty: 0, count: 0 };
       current.count += 1;
@@ -130,7 +130,7 @@ const CustomersPage: React.FC<{ supplier?: boolean }> = ({ supplier = false }) =
       map.set(id, current);
     });
     return map;
-  }, [txList]);
+  }, [txList, supplier]);
 
   const handleAdd = () => {
     Taro.navigateTo({ url: `/pages/customer-edit/index?party=${supplier ? 'supplier' : 'customer'}` });
@@ -175,13 +175,15 @@ const CustomersPage: React.FC<{ supplier?: boolean }> = ({ supplier = false }) =
     try { amount = numberValue(settleAmount, '结算金额', true); }
     catch (error) { Taro.showToast({ title: error instanceof Error ? error.message : '请输入有效结算金额', icon: 'none' }); return; }
     if (amount > settling.balance) { Taro.showToast({ title: '结算金额不能超过当前余额', icon: 'none' }); return; }
-    const next = roundDecimal(settling.balance - amount, 2);
     settleSaving.current = true;
     try {
-      if (supplier) await updateSupplier(settling.party.id, { payable: next, settlement_remark: settleRemark.trim() });
-      else await updateCustomer(settling.party.id, { debt: next, settlement_remark: settleRemark.trim() });
+      // 提交本次结算金额，由服务端基于当前余额原子扣减，避免多设备并发时记错金额。
+      const result = supplier
+        ? await settleSupplier(settling.party.id, amount, settleRemark.trim())
+        : await settleCustomer(settling.party.id, amount, settleRemark.trim());
+      const balance = Number(result?.balance ?? 0);
       setSettling(null); setSettleAmount(''); setSettleRemark('');
-      Taro.showToast({ title: next === 0 ? '已全部结清' : '部分结算成功', icon: 'success' });
+      Taro.showToast({ title: balance === 0 ? '已全部结清' : '部分结算成功', icon: 'success' });
       await load();
     } catch (error) { Taro.showToast({ title: error?.message || '结算失败', icon: 'none' }); }
     finally { settleSaving.current = false; }

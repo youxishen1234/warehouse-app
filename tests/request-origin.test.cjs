@@ -58,6 +58,23 @@ test('configured address applies to business reads and downloads immediately', a
   assert.equal(api.getBaseUrl(), PRIMARY);
 });
 
+test('private backup retry identities stay in memory and reuse the original submit key', async () => {
+  let fail = true; const keys = [];
+  const { api, storage } = setup(async (url, options) => {
+    if (url.endsWith('/api/sync')) return response(200, { revision: 1 });
+    if (url.includes('/sync/receipt/')) return response(404);
+    keys.push(options.headers['Idempotency-Key']);
+    if (fail) throw new Error('network error');
+    return response(200, { restored: true });
+  });
+  const options = { url: '/api/backup', method: 'POST', data: { data: { ledger_attachment_files: { test: 'private-evidence-photo-bytes' } } }, persistRetryMetadata: false, retryAcrossOrigins: false };
+  await assert.rejects(api.request(options), /上传结果未确认/);
+  assert.equal(JSON.stringify([...storage.entries()]).includes('private-evidence-photo-bytes'), false);
+  fail = false;
+  await api.request(options);
+  assert.equal(new Set(keys).size, 1);
+});
+
 test('server failure switches future reads and CSV downloads to the working origin', async () => {
   const urls = [];
   const { api, download, downloads } = setup(async url => { urls.push(url); return response(url.startsWith(PRIMARY) ? 503 : 200); });

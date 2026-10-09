@@ -18,6 +18,17 @@ test('orderToOutbound reuses batch stock and is atomic', () => {
   assert.equal(db.getProduct(product.id).stock, 3);
   assert.equal(db.listOrders()[0].status, '已发货');
   const before = JSON.stringify(db.backupData());
-  assert.throws(() => db.orderToOutbound(order.id, [{ product_id: product.id, quantity: 99 }]), /库存不足/);
+  assert.throws(() => db.orderToOutbound(order.id, [{ product_id: product.id, quantity: 99 }]), /不能出库|可以出库/);
   assert.equal(JSON.stringify(db.backupData()), before);
+  const partial = db.addOrder({ order_no: 'PARTIAL', customer_id: customer.id, quantity: 3, unit_price: 2, status: '生产中' });
+  const first = db.orderToOutbound(partial.id, [{ product_id: product.id, quantity: 1, unit_price: 2 }]);
+  assert.equal(first.order.status, '生产中');
+  assert.equal(first.transactions[0].transaction.order_id, partial.id);
+  assert.match(first.transactions[0].transaction.outbound_no, /^CK/);
+  assert.throws(() => db.orderToOutbound(partial.id, [{ product_id: product.id, quantity: 3 }]), /剩余待发/);
+  const second = db.orderToOutbound(partial.id, [{ product_id: product.id, quantity: 2, unit_price: 2 }]);
+  assert.equal(second.order.status, '已发货');
+  db.deleteTransaction(second.transactions[0].transaction.id);
+  assert.equal(db.listOrders().find(item => item.id === partial.id).status, '生产中');
+  assert.equal(db.getProduct(product.id).stock, 2);
 });

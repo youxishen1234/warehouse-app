@@ -88,6 +88,20 @@
   .actionGrid { max-width: 680px; }
   .funcGrid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 }
+
+// ===== 电脑端（桌面窗口 ≥1024px）宽屏适配：内容用满窗口、卡片横排 =====
+// 注：Taro 构建会把 @media 块提升到基础规则之前，同特异性会被基础规则覆盖，
+// 因此这里全部用 `.container .xxx`（双类选择器）提高特异性。
+@media (min-width: 1024PX) {
+  .container { max-width: 1280PX; padding: 32PX 44PX calc(140PX + env(safe-area-inset-bottom)); }
+  .container .topbar { margin-bottom: 30PX; }
+  .container .businessCenter, .container .customerDesk { box-sizing: border-box; width: calc(50% - 12PX); display: inline-flex; vertical-align: top; margin: 0 12PX 18PX 0; padding: 30PX 34PX; }
+  .container .customerDesk { margin-right: 0; }
+  .container .businessCenter, .container .customerDesk { min-height: 128PX; }
+  .container .taskCard { padding: 32PX 20PX; }
+  .container .flowCard, .container .warningCard { padding: 28PX 34PX; }
+  .container .footerNote { font-size: 14PX; }
+}
 .customerDesk { display:flex; align-items:center; gap:18rpx; margin:20rpx 0 30rpx; padding:24rpx; border-radius:24rpx; background:linear-gradient(120deg,#202c43,#263c61); color:#fff; box-shadow:0 12rpx 30rpx rgba(27,53,95,.15); }.customerDeskIcon { width:72rpx; height:72rpx; display:flex; align-items:center; justify-content:center; border-radius:20rpx; background:#4d86f5; }.customerDeskTitle { display:block; font-size:31rpx; font-weight:700; }.customerDeskSubtitle { display:block; margin-top:6rpx; color:#b8c8e6; font-size:22rpx; }.customerDeskArrow { margin-left:auto; color:#b8c8e6; font-size:50rpx; font-weight:200; }
 
 .businessCenter { display:flex; align-items:center; gap:18rpx; padding:24rpx; min-height:110rpx; margin:0 0 14rpx; border-radius:24rpx; background:linear-gradient(110deg,#1268ee,#2476e9); color:#fff; }

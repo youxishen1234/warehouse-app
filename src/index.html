@@ -145,7 +145,16 @@
               } catch (e) { m = null; }
             }
             if (!m || !m.version || !m.url) return;
+            // 服务端明确给出否定更新结果时跳过。
+            if (m.update === false) return;
             if (curV === m.version) return;
+            // 与后端 isNewerVersion 语义一致：仅当服务端版本确实更新时下载，防止旧包降级。
+            var isNewer = false;
+            if (/^\d{14}$/.test(String(m.version))) {
+              if (curV === 'builtin' || !/^\d{14}$/.test(String(curV))) isNewer = true;
+              else isNewer = String(m.version) > String(curV);
+            }
+            if (!isNewer) return;
             // 热更包要求更高原生版本时跳过（等整包更新）
             if (m.minNativeVersion && nativeV && cmpVer(nativeV, m.minNativeVersion) < 0) return;
 

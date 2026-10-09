@@ -71,7 +71,8 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           node tests/ledger-photos-browser.cjs
+      - name: Run complete backend test suite
+        run: node --test backend/*.test.cjs
       - name: Publish through shared server lock and stale-source gate
-        continue-on-error: true
         if: ${{ env.HOTUPDATE_HOST != '' && env.HOTUPDATE_USER != '' && env.HOTUPDATE_PASSWORD != '' }}
         run: node scripts/upload-hotupdate.cjs

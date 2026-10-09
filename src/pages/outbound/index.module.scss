@@ -1,6 +1,24 @@
 @use '@/styles/workflow.scss' as flow;
 .container { @include flow.page; }
+.container { padding: 0; background: transparent; min-height: 0; }
 .hero { @include flow.hero(#076a62, #17847e); }
+.hero { background: linear-gradient(120deg, #132d31, #174d4c); box-shadow: 0 16rpx 40rpx rgba(13, 58, 54, .14); }
+.orderList { max-height: 620rpx; overflow-y: auto; margin-top: 20rpx; }
+.orderOption { display: flex; justify-content: space-between; gap: 16rpx; align-items: center; padding: 24rpx; border: 2rpx solid #edf0f2; border-radius: 20rpx; margin-top: 14rpx; background: #fafcfc; }
+.orderSelected { border-color: #17847e; background: #edf7f4; }
+.link { display: inline-block; color: #076a62; font-size: 24rpx; padding: 14rpx 0; }
+.progress { display: flex; justify-content: space-between; padding: 24rpx 0; margin: 16rpx 0; border-top: 1rpx solid #edf0f2; border-bottom: 1rpx solid #edf0f2; font-size: 25rpx; font-weight: 650; color: #174d4c; }
+.documentCard { @include flow.surface; }
+.documentActions { display: flex; justify-content: space-between; align-items: center; gap: 16rpx; }
+.paperScroll { overflow-x: auto; margin: 20rpx 0; }
+.paper { width: 1000px; padding: 30px; box-sizing: border-box; background: #fff; color: #111; font-size: 14px; }
+.paperTitle { display: block; text-align: center; font-size: 28px; font-weight: 700; letter-spacing: 8px; margin-bottom: 24px; }
+.paperMeta { display: flex; justify-content: space-between; padding: 12px 0; }
+.paperTable { border: 1px solid #222; }
+.paperRow { display: grid; grid-template-columns: 65px 170px 170px 55px 100px 85px 105px 1fr; border-bottom: 1px solid #222; min-height: 46px; }
+.paperRow > * { padding: 8px; border-right: 1px solid #222; display: flex; align-items: center; overflow-wrap: anywhere; }
+.paperRow > :last-child { border: 0; }
+.paperTotal { display: flex; justify-content: space-between; padding: 12px; }
 @include flow.heroContents;
 .card { @include flow.surface; }
 .sectionTitle { display: block; color: #172235; font-size: 31rpx; font-weight: 750; margin: 32rpx 4rpx 18rpx; }
@@ -14,3 +32,24 @@
 .addLine { display: flex; align-items: center; justify-content: center; min-height: 90rpx; padding: 18rpx; margin: 16rpx 0 24rpx; border: 2rpx dashed #8bbeb6; border-radius: 22rpx; background: #eaf6f2; color: #076a62; font-size: 28rpx; font-weight: 600; }
 .btnPrimary { @include flow.action(#076a62); }.btnDisabled { opacity: .5; pointer-events: none; }
 .recentItem { display: flex; align-items: flex-start; gap: 18rpx; padding: 22rpx 0; border-bottom: 1rpx solid #e7edf2; }.recentItem:last-child { border: 0; }.recentLeft { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12rpx; }.recentTop { display: flex; justify-content: space-between; align-items: center; gap: 14rpx; margin-bottom: 14rpx; }.recentName { color: #172235; font-size: 27rpx; font-weight: 600; }.recentCustomer { color: #076a62; background: #edf8f5; border-radius: 10rpx; padding: 6rpx 12rpx; font-size: 22rpx; align-self: flex-start; }.recentTime,.recentRemark { color: #61728a; font-size: 22rpx; line-height: 1.5; }.deleteBtn { padding: 14rpx 18rpx; background: #fff0f1; color: #b42332; border-radius: 14rpx; font-size: 23rpx; flex-shrink: 0; }.tagOut { color: #076a62; background: #edf8f5; border-radius: 14rpx; padding: 10rpx 16rpx; font-size: 24rpx; font-weight: 600; }.empty { padding: 28rpx 0; color: #66778d; font-size: 25rpx; text-align: center; }
+/* Match the shared paperboard inventory surfaces. */
+.container .card,.container .documentCard { background:linear-gradient(140deg,#202630,#191e27); border:1PX solid #ffffff0e; border-radius:22PX; padding:20PX; margin:16PX 0; box-shadow:0 8PX 25PX #00000010; }
+.container .cardTitle,.container .sectionTitle,.container .recentName { color:#eff3fc; }
+.container .sectionTitle { font-size:16PX; margin:24PX 0 14PX; }
+.container .cardTitle { display:block; font-size:16PX; font-weight:650; }
+.container .infoStock,.container .recentTime,.container .fieldLabel { color:#98a6bd; font-size:12PX; }
+.container .fieldInput { color:#e8efff; background:#ffffff04; border:1PX solid #ffffff0c; border-radius:12PX; padding:12PX; min-height:46PX; font-size:14PX; }
+.container .orderOption { padding:16PX; background:#ffffff03; border:1PX solid #ffffff0b; border-radius:16PX; margin-top:12PX; }
+.container .orderSelected { border-color:#6b9bfc; background:#598bff12; box-shadow:inset 3PX 0 #6b9bfc; }
+.container .orderList { max-height:420PX; }
+.container .link { color:#9ebffa; font-size:12PX; }
+.container .tagOut { color:#a9c5ff; background:#578dfa10; border:1PX solid #578dfa14; border-radius:9PX; font-size:12PX; padding:9PX 12PX; white-space:nowrap; }
+.container .progress { color:#d3e2ff; border-color:#ffffff0a; font-size:13PX; gap:8PX; }
+.container .stockPreview { color:#79d6b3; background:#4edca20e; border:1PX solid #4edca217; border-radius:12PX; font-size:13PX; }
+.container .amountPreview { color:#e1eafb; border-color:#ffffff0a; font-size:20PX; }
+.container .btnPrimary { background:linear-gradient(135deg,#468cfb,#3566eb); border:1PX solid #ffffff16; border-radius:14PX; font-size:14PX; padding:15PX; margin-top:20PX; }
+.container .btnDisabled { color:#65738c; background:#202735; opacity:1; }
+.container .recentItem { border-color:#ffffff0a; }
+.container .empty { color:#929eb1; font-size:13PX; }
+.container .error { color:#f9b6a9; background:#4e2729; border-color:#ffffff0b; font-size:13PX; }
+.container .paper { color:#111; color-scheme:light; }

@@ -102,14 +102,15 @@ const ProductListRow = React.memo(function ProductListRow({
 });
 
 const ProductsPage: React.FC = () => {
-  const loadProductData = useCallback(() => loadProducts(), []);
+  // 手动刷新与共享刷新都强制读取：30 秒缓存只用于页面切换时的导航共享。
+  const loadProductData = useCallback(() => loadProducts(true), []);
   const remote = useRemoteData(loadProductData, [] as Product[]);
   const list = remote.data;
   const loading = remote.loading;
   const loadError = remote.loadError;
   const load = remote.reload;
   useSharedRefresh(load);
-  // ????????????????
+  // 当前左滑展开的行（一次只开一行）
   const [activeId, setActiveId] = useState<number | null>(null);
   const handleActiveChange = useCallback((id: number, open: boolean) => {
     setActiveId(open ? id : null);

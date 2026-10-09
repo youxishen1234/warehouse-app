@@ -1,8 +1,8 @@
-import { useCallback, useMemo, useState } from 'react';
+﻿import { useCallback, useMemo, useState } from 'react';
 import { View, Text, Button } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
 import { BoardPage, BoardButton, BoardField, BoardEmpty, BoardError } from '../../components/BoardUI';
-import { BoardBatch, getBoards, boardSpec, cartonSpec, today } from '../../services/boards';
+import { BoardBatch, getBoards, boardSpec, cartonSpec, today, deleteBoard } from '../../services/boards';
 import { useSharedRefresh } from '../../services/shared-refresh';
 import { BoardGlyph, BoardMaterial } from '../../components/BoardUI/visuals';
 export default function BoardStock() {
@@ -24,6 +24,7 @@ export default function BoardStock() {
     return haystack.includes(query.toLowerCase().replace(/[ ×x*]/g, '')) && (filter === 'all' || (filter === 'warning' ? g.warning > 0 && g.quantity <= g.warning : g.quantity === 0));
   });
   const go = (page: string, id = '') => Taro.navigateTo({ url: '/pages/' + page + '/index' + (id ? '?id=' + encodeURIComponent(id) : '') });
+  const remove = async (b: BoardBatch) => { const ok = await Taro.showModal({ title: '删除这批纸板？', content: '删除后将从库存和历史记录中移除。' }); if (!ok.confirm) return; try { await deleteBoard(b.id); await load(); } catch (e) { Taro.showToast({ title: e.message, icon: 'none' }); } };
   return <BoardPage back={false} title='纸板库存' subtitle='来料、领用、余量，一眼掌握。' action={<BoardButton secondary onClick={load}>刷新</BoardButton>}>
     <View className='board-summary inventory-hero' aria-label='库存总览'><View className='inventory-hero-main'><View><Text className='inventory-live'><i /> 实时库存</Text><Text className='board-summary-number'>{loading || error ? '—' : total.toLocaleString()}<small>张</small></Text><Text className='board-muted'>{batches.filter(b => b.remainingQty > 0).length} 批来料在库</Text></View><BoardMaterial /></View><View className='board-summary-bottom'><View><strong>{loading || error ? '—' : groups.length}</strong><Text className='board-muted'>纸板规格</Text></View><View className={warnings ? 'inventory-warning' : ''}><strong>{loading || error ? '—' : warnings}</strong><Text className='board-muted'>待补货</Text></View><View><strong>{loading || error ? '—' : monthIn.toLocaleString()}</strong><Text className='board-muted'>本月来料 / 张</Text></View></View></View>
     <View className='board-actions inventory-shortcuts'><Button className='inventory-shortcut primary' onClick={() => go('board-receive')}><View className='shortcut-icon'><BoardGlyph kind='plus' /></View><View><strong>来料入库</strong><Text>记一笔新来料</Text></View><BoardGlyph kind='arrow' /></Button><Button className='inventory-shortcut' onClick={() => go('board-scan')}><View className='shortcut-icon'><BoardGlyph kind='scan' /></View><View><strong>扫码找纸板</strong><Text>找到眼前这批</Text></View></Button></View>
@@ -39,7 +40,8 @@ export default function BoardStock() {
       <Text className='inventory-supplier'>{[...new Set(g.batches.map(b => b.supplier))].join(' / ')}<Text> · {g.batches.length} 个批次</Text></Text>
       <View className='board-card-footer'><View><Text className='board-qty'>{g.quantity.toLocaleString()}</Text><Text className='board-qty-unit'>张可用</Text></View><Button onClick={() => setExpanded(expanded === g.batch.specKey ? '' : g.batch.specKey)}>{expanded === g.batch.specKey ? '收起批次' : '查看批次 ›'}</Button></View>
       <View className='board-quick-restock'><BoardButton onClick={() => Taro.navigateTo({ url: '/pages/board-receive/index?from=' + encodeURIComponent(g.batch.id) })}>同规格一键入库</BoardButton><Text className='board-muted'>沿用最近一次规格和板厂，填写本次数量后确认。</Text></View>
-      {expanded === g.batch.specKey && <View>{g.batches.slice().sort((a, b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt).map(b => <View key={b.id} className='board-timeline'><View className='board-row'><strong>{b.supplier}</strong><Text>{b.remainingQty} 张</Text></View><Text className='board-muted'>{b.date} 入库 · {b.location || '未填写库位'}</Text><Text className='board-batch-id'>{b.id}</Text><View className='board-actions'><BoardButton secondary onClick={() => go('board-detail', b.id)}>详情 / 标签</BoardButton><BoardButton disabled={b.remainingQty === 0} onClick={() => go('board-outbound', b.id)}>领料</BoardButton></View></View>)}<BoardButton secondary onClick={() => Taro.navigateTo({ url: '/pages/board-receive/index?from=' + g.batch.id })}>按此规格再进一批</BoardButton></View>}
+      {expanded === g.batch.specKey && <View>{g.batches.slice().sort((a, b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt).map(b => <View key={b.id} className='board-timeline'><View className='board-row'><strong>{b.supplier}</strong><Text>{b.remainingQty} 张</Text></View><Text className='board-muted'>{b.date} 入库 · {b.location || '未填写库位'}</Text><Text className='board-batch-id'>{b.id}</Text><View className='board-actions'><BoardButton secondary onClick={() => go('board-detail', b.id)}>详情 / 标签</BoardButton><BoardButton secondary onClick={() => go('board-receive', b.id)}>编辑</BoardButton><BoardButton secondary onClick={() => remove(b)}>删除</BoardButton><BoardButton disabled={b.remainingQty === 0} onClick={() => go('board-outbound', b.id)}>领料</BoardButton></View></View>)}<BoardButton secondary onClick={() => Taro.navigateTo({ url: '/pages/board-receive/index?from=' + g.batch.id })}>按此规格再进一批</BoardButton></View>}
     </View>)}</View>}
   </BoardPage>;
 }
+

@@ -49,6 +49,7 @@ async function main() {
 
     // Cold-open this secondary page before a guest session exists.
     await page.goto(base + '/pages/print-center/index');
+    await page.getByRole('button', { name: '流水报表', exact: true }).click();
     await page.getByText('出入库流水（已加载 200 条）', { exact: true }).waitFor();
     const rows = page.locator('[class*="row___"]:visible');
     await expect(rows).toHaveCount(200);

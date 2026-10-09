@@ -214,10 +214,10 @@ async function fetchApi(url: string, method: string, data: unknown, headers: Rec
       headers,
       body: data === undefined ? undefined : JSON.stringify(data)
       });
-      let body: any = null;
-      try { body = await response.json(); } catch (error) { /* non JSON errors use the HTTP status below */ }
+      let body: any = null; let bodyParseFailed = false;
+      try { body = await response.json(); } catch (error) { bodyParseFailed = true; /* non JSON errors use the HTTP status below */ }
       const revision = response.headers.get('X-Warehouse-Revision');
-      const result: { statusCode: number; data: any; header: Record<string, string> } = { statusCode: response.status, data: body, header: {} };
+      const result: { statusCode: number; data: any; header: Record<string, string>; bodyParseFailed: boolean } = { statusCode: response.status, data: body, header: {}, bodyParseFailed };
       if (revision) result.header['x-warehouse-revision'] = revision;
       if (response.status >= 500) {
         lastServerResponse = result;
@@ -279,7 +279,7 @@ function pendingDelete(identity: string) {
 }
 async function recoverPending<T>(identity: string, current: { token: string }, attempt: PendingWrite): Promise<T | undefined> {
   try {
-    const response = await fetchApi(`/api/sync/receipt/${encodeURIComponent(attempt.key)}`, 'GET', undefined, { Authorization: `Bearer ${current.token}` }, 5000);
+    const response = await fetchApi(`/api/sync/receipt/${encodeURIComponent(attempt.key)}`, 'GET', undefined, { Authorization: `Bearer ${current.token}`, 'X-Warehouse-Device': deviceId() }, 5000);
     if (response.statusCode !== 200 || !(response.data as any)?.success) return undefined;
     pendingDelete(identity);
     const payload = (response.data as any).data;
@@ -287,9 +287,9 @@ async function recoverPending<T>(identity: string, current: { token: string }, a
     return payload?.data as T;
   } catch (error) { return undefined; }
 }
-watchSession(() => { knownRevision = undefined; pending.clear(); editRevisions.clear(); inFlight.clear(); writePendingWrites({}); });
+watchSession(() => { knownRevision = undefined; editRevisions.clear(); inFlight.clear(); /* 未确认的写入保留：访客重建后仍可用原提交编号查询回执，避免重复执行 */ });
 export function request<T = any>(options: RequestOptions): Promise<T> {
-  const identity = `${session()?.user.id || deviceId()}:${options.method || 'GET'}:${options.url}:${options.requestIdentity || JSON.stringify(options.data || {})}${options.expectedRevision === undefined ? '' : `:revision:${options.expectedRevision}`}`;
+  const identity = `${deviceId()}:${options.method || 'GET'}:${options.url}:${options.requestIdentity || JSON.stringify(options.data || {})}${options.expectedRevision === undefined ? '' : `:revision:${options.expectedRevision}`}`;
   if (inFlight.has(identity)) return inFlight.get(identity)!;
   const work = performRequest<T>(options, identity).finally(() => inFlight.delete(identity));
   inFlight.set(identity, work); return work;
@@ -323,10 +323,8 @@ async function performRequest<T = any>(options: RequestOptions, identity: string
       headers = { 'Idempotency-Key': attempt.key, 'If-Match': attempt.revision };
     }
     const requestHeaders: Record<string, string> = { ...header, ...headers };
-    if (method !== 'GET') {
-      requestHeaders['Content-Type'] = 'application/json';
-      requestHeaders['X-Warehouse-Device'] = deviceId();
-    }
+    if (method !== 'GET') requestHeaders['Content-Type'] = 'application/json';
+    requestHeaders['X-Warehouse-Device'] = deviceId();
     if (current?.token) requestHeaders.Authorization = `Bearer ${current.token}`;
     let res;
     let networkAttempt = 0;
@@ -346,11 +344,13 @@ async function performRequest<T = any>(options: RequestOptions, identity: string
       }
     }
     if (current && session()?.token !== current.token) throw new Error('账号已切换');
-    if (res.statusCode === 401) { setSession(null); knownRevision = undefined; pending.clear(); throw new Error('登录已过期，请重新登录'); }
-    if (res.statusCode < 500) pendingDelete(identity);
+    if (res.statusCode === 401) { setSession(null); knownRevision = undefined; throw new Error('仓库连接已过期，正在自动恢复，请重试'); }
+    // 2xx 但响应体缺失/无法解析时，服务端可能已经提交：保留提交编号，先查回执再决定成败。
+    const ambiguousSuccess = !isRead && res.statusCode >= 200 && res.statusCode < 300 && (res.bodyParseFailed || !res.data || typeof res.data !== 'object' || res.data.success === undefined);
+    if (res.statusCode < 500 && !ambiguousSuccess) pendingDelete(identity);
     const revisionHeader = Object.entries(res.header || {}).find(([key]) => key.toLowerCase() === 'x-warehouse-revision')?.[1];
     if (revisionHeader !== undefined && res.statusCode >= 200 && res.statusCode < 300) knownRevision = String(revisionHeader);
-    if (isRead && revisionHeader !== undefined && /^\/api\/\w+\/\d+$/.test(url)) editRevisions.set(url, String(revisionHeader));
+    if (isRead && revisionHeader !== undefined && /^\/api\/(?:\w+\/\d+|boards\/[A-Za-z0-9_-]+)$/.test(url)) editRevisions.set(url, String(revisionHeader));
     if (!isRead && res.statusCode >= 200 && res.statusCode < 300) editRevisions.delete(url);
     if (res.statusCode === 409) {
       // The API returns the current revision in the conflict body. Prefer the
@@ -371,6 +371,14 @@ async function performRequest<T = any>(options: RequestOptions, identity: string
         if (isRead) cacheSet(cacheKey, body.data);
         else { refreshSharedData(revisionHeader === undefined ? undefined : String(revisionHeader)); }
         return body.data as T;
+      }
+      if (ambiguousSuccess) {
+        const attempt = pendingGet(identity);
+        if (attempt) {
+          const recovered = await recoverPending<T>(identity, current, attempt);
+          if (recovered !== undefined) return recovered;
+        }
+        throw Object.assign(new Error('上传结果未确认，表单已保留；请勿重复提交，联网后重试'), { code: 'UNCONFIRMED_WRITE' });
       }
       throw new Error(body?.message || '请求失败');
     }

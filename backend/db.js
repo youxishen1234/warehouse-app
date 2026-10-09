@@ -4,13 +4,16 @@ const path = require('path');
 const { roundDecimal, numberValue, lineAmount, dimensions, localDate, MONEY_DECIMALS } = require('./stock-math');
 const { ORDER_STATUSES } = require('./list-sort');
 const { parseDateQuery } = require('./date-query');
+const customerDimensions = require('./customer-dimensions');
 
 const DB_PATH = process.env.WAREHOUSE_DATA_FILE || path.join(__dirname, 'data.json');
+const ledgerAttachments = require('./ledger-attachments').createStore(DB_PATH);
 const SCHEMA_VERSION = 1;
 const BACKUP_DIR = process.env.WAREHOUSE_BACKUP_DIR || path.join(path.dirname(DB_PATH), 'backups');
 const AUTO_BACKUP_KEEP = Math.max(1, Math.min(100, Number(process.env.WAREHOUSE_BACKUP_KEEP) || 7));
 const AUTO_BACKUP_MAX_DAYS = Math.max(1, Math.min(3650, Number(process.env.WAREHOUSE_BACKUP_MAX_DAYS) || 30));
 let loadWarnings = [];
+let migratedDimensions = false;
 
 function normalizeTimestampFields(data) {
   const fields = ['created_at', 'updated_at', 'profile_updated_at', 'stock_updated_at', 'balance_updated_at', 'counted_at', 'voided_at'];
@@ -96,7 +99,10 @@ function createAutoBackup(reason) {
     try { fs.chmodSync(BACKUP_DIR, 0o700); } catch (error) { /* Windows ACLs are managed by the host */ }
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     const target = path.join(BACKUP_DIR, `warehouse-data-${stamp}-${reason}.json`);
-    fs.copyFileSync(DB_PATH, target, fs.constants.COPYFILE_EXCL);
+    const raw = fs.readFileSync(DB_PATH, 'utf8');
+    let snapshot;
+    try { snapshot = JSON.parse(raw); } catch { /* Preserve corrupt databases for manual recovery. */ }
+    fs.writeFileSync(target, snapshot ? JSON.stringify(ledgerAttachments.portable(snapshot)) : raw, { flag: 'wx', mode: 0o600 });
     try { fs.chmodSync(target, 0o600); } catch (error) { /* best effort */ }
     rotateAutoBackups();
     return target;
@@ -146,6 +152,15 @@ function load() {
     normalizeTimestampFields(d);
     if (!d._meta.nextDeliveryNoteId) d._meta.nextDeliveryNoteId = d.delivery_notes.length + 1;
     d._meta.nextDeliveryNoteId = d.delivery_notes.reduce((next, row) => Math.max(next, Number(row.id) + 1), Number(d._meta.nextDeliveryNoteId) || 1);
+    if (d.customer_dimensions === undefined) {
+      const legacyFiles = process.env.WAREHOUSE_DIMENSIONS_FILE ? [process.env.WAREHOUSE_DIMENSIONS_FILE] : [path.join(path.dirname(DB_PATH), 'customer-dimensions.json'), path.join(__dirname, 'customer-dimensions.json')];
+      const legacyFile = legacyFiles.find(file => fs.existsSync(file));
+      if (legacyFile) {
+        d.customer_dimensions = customerDimensions.validateDocument(JSON.parse(fs.readFileSync(legacyFile, 'utf8')));
+        migratedDimensions = true;
+        loadWarnings.push('customer dimensions migrated into the warehouse database');
+      } else d.customer_dimensions = customerDimensions.empty();
+    } else d.customer_dimensions = customerDimensions.validateDocument(d.customer_dimensions);
     loadWarnings = loadWarnings.concat(scanReferenceWarnings(d));
     if (loadWarnings.length) console.warn(`[db] startup reference warnings: ${loadWarnings.length}`);
     return d;
@@ -182,44 +197,100 @@ function deleteLedger(id) {
   if (!entry || entry.voided_at) throw new Error('账本记录不存在或已作废');
   if (entry.transaction_id) throw new Error('出入库生成的账务请通过原单作废');
   if (entry.delivery_note_id) throw new Error('送货单生成的账务请通过原单作废');
-  entry.voided_at = Date.now(); persist(); return entry;
+  return atomicMutation(() => {
+    // 作废与往来对象关联的账本流水时，同步恢复往来余额，保证余额与有效账本一致。
+    if (entry.party_id != null) {
+      const partyType = ledgerPartyType(entry, cache);
+      const amount = roundDecimal(Number(entry.amount || 0), MONEY_DECIMALS);
+      const delta = entry.type === 'settlement' ? amount : -amount;
+      if (partyType === 'customer') {
+        const party = getCustomer(entry.party_id);
+        if (party) {
+          const next = roundDecimal(Number(party.debt || 0) + delta, MONEY_DECIMALS);
+          if (next < 0) throw new Error('作废该账本记录后客户应收将为负数，请先核对往来流水');
+          party.debt = next; party.balance_updated_at = Date.now();
+        }
+      } else if (partyType === 'supplier') {
+        const party = getSupplier(entry.party_id);
+        if (party) {
+          const next = roundDecimal(Number(party.payable || 0) + delta, MONEY_DECIMALS);
+          if (next < 0) throw new Error('作废该账本记录后供应商应付将为负数，请先核对往来流水');
+          party.payable = next; party.balance_updated_at = Date.now();
+        }
+      }
+    }
+    entry.voided_at = Date.now();
+    persist(); return entry;
+  });
+}
+function getLedgerAttachments(id) {
+  const entry = cache.ledger.find(row => row.id === Number(id));
+  if (!entry) throw Object.assign(new Error('流水不存在'), { status: 404 });
+  return entry.attachments || [];
+}
+function addLedgerAttachment(id, upload) {
+  const entry = cache.ledger.find(row => row.id === Number(id));
+  if (!entry) throw Object.assign(new Error('流水不存在'), { status: 404 });
+  const transaction = cache.transactions.find(row => row.id === entry.transaction_id);
+  const meta = ledgerAttachments.add(entry, upload, {
+    party_id: entry.party_id || null, party_type: entry.party_type || null, party_name: entry.party_name || '',
+    transaction_id: entry.transaction_id || null, delivery_note_id: entry.delivery_note_id || transaction?.delivery_note_id || null,
+    document_no: transaction?.outbound_no || transaction?.order_no || '', amount: entry.amount, ledger_created_at: entry.created_at
+  });
+  persist(); return meta;
+}
+function readLedgerAttachment(id, attachmentId) {
+  const meta = getLedgerAttachments(id).find(item => item.id === attachmentId);
+  if (!meta) throw Object.assign(new Error('凭证不存在或不属于这笔流水'), { status: 404 });
+  return { data: ledgerAttachments.read(meta) };
 }
 function systemLedger(type, amount, partyId, partyName, transactionId, remark, partyType = null) {
   if (!Number.isFinite(amount) || amount <= 0) return null;
   const entry = { id: cache._meta.nextLedgerId++, type, amount: roundDecimal(amount, MONEY_DECIMALS), remark: String(remark || ''), party_id: partyId ? Number(partyId) : null, party_type: partyType || null, party_name: String(partyName || ''), transaction_id: transactionId ? Number(transactionId) : null, created_at: Date.now() };
   cache.ledger.push(entry); return entry;
 }
-function ledgerPartyType(entry, data) {
+function ledgerPartyType(entry, data, partyIds) {
   if (entry.party_type === 'customer' || entry.party_type === 'supplier') return entry.party_type;
   if (entry.type === 'receivable') return 'customer';
   if (entry.type === 'payable') return 'supplier';
   if (entry.type !== 'settlement' || entry.party_id == null) return null;
-  const customer = (data.customers || []).some(row => Number(row.id) === Number(entry.party_id));
-  const supplier = (data.suppliers || []).some(row => Number(row.id) === Number(entry.party_id));
+  const customer = partyIds ? partyIds.customers.has(Number(entry.party_id)) : (data.customers || []).some(row => Number(row.id) === Number(entry.party_id));
+  const supplier = partyIds ? partyIds.suppliers.has(Number(entry.party_id)) : (data.suppliers || []).some(row => Number(row.id) === Number(entry.party_id));
   return customer === supplier ? null : customer ? 'customer' : 'supplier';
 }
-function ledgerBalance(data, partyType, partyId) {
-  return roundDecimal((data.ledger || []).reduce((sum, entry) => {
-    if (entry.voided_at || Number(entry.party_id) !== Number(partyId) || ledgerPartyType(entry, data) !== partyType) return sum;
-    const amount = Number(entry.amount) || 0;
-    return sum + (entry.type === 'settlement' ? -amount : amount);
-  }, 0), 2);
-}
-function movementBalance(data, productId) {
-  return roundDecimal((data.transactions || []).reduce((sum, tx) => {
-    if (tx.voided_at || Number(tx.product_id) !== Number(productId)) return sum;
-    if (tx.type === 'in') return sum + Number(tx.quantity || 0);
-    if (tx.type === 'out') return sum - Number(tx.quantity || 0);
-    return sum + Number(tx.adjustment ?? tx.quantity ?? 0);
-  }, 0), 6);
+function accountingBalances(data) {
+  const movements = new Map(), customer = new Map(), supplier = new Map();
+  const partyIds = {
+    customers: new Set((data.customers || []).map(row => Number(row.id))),
+    suppliers: new Set((data.suppliers || []).map(row => Number(row.id)))
+  };
+  for (const tx of data.transactions || []) {
+    if (tx.voided_at) continue;
+    const id = Number(tx.product_id);
+    const delta = tx.type === 'in' ? Number(tx.quantity || 0) : tx.type === 'out' ? -Number(tx.quantity || 0) : Number(tx.adjustment ?? tx.quantity ?? 0);
+    movements.set(id, (movements.get(id) ?? 0) + delta);
+  }
+  for (const entry of data.ledger || []) {
+    if (entry.voided_at) continue;
+    const type = ledgerPartyType(entry, data, partyIds);
+    if (!type) continue;
+    const totals = type === 'customer' ? customer : supplier;
+    const id = Number(entry.party_id), amount = Number(entry.amount) || 0;
+    totals.set(id, (totals.get(id) ?? 0) + (entry.type === 'settlement' ? -amount : amount));
+  }
+  // Preserve the original per-record addition order and final rounding.
+  for (const [id, amount] of movements) movements.set(id, roundDecimal(amount, 6));
+  for (const totals of [customer, supplier]) for (const [id, amount] of totals) totals.set(id, roundDecimal(amount, 2));
+  return { movements, customer, supplier };
 }
 function validateAccountingDelta(before, after) {
+  const beforeBalances = accountingBalances(before), afterBalances = accountingBalances(after);
   const beforeProducts = new Map((before.products || []).map(row => [Number(row.id), row]));
   for (const product of after.products || []) {
     const previous = beforeProducts.get(Number(product.id));
     if (!previous) continue; // Initial stock has no transaction baseline.
     const stockDelta = roundDecimal(Number(product.stock || 0) - Number(previous.stock || 0), 6);
-    const movementDelta = roundDecimal(movementBalance(after, product.id) - movementBalance(before, product.id), 6);
+    const movementDelta = roundDecimal((afterBalances.movements.get(Number(product.id)) || 0) - (beforeBalances.movements.get(Number(product.id)) || 0), 6);
     if (Math.abs(stockDelta - movementDelta) > 1e-6) throw new Error(`库存与出入库流水不一致：商品 ${product.id}`);
   }
   const checkParty = (partyType, balanceField, rows) => {
@@ -228,23 +299,30 @@ function validateAccountingDelta(before, after) {
       const previous = previousRows.get(Number(party.id));
       if (!previous) continue; // Opening balance is created together with its ledger entry.
       const balanceDelta = roundDecimal(Number(party[balanceField] || 0) - Number(previous[balanceField] || 0), 2);
-      const ledgerDelta = roundDecimal(ledgerBalance(after, partyType, party.id) - ledgerBalance(before, partyType, party.id), 2);
+      const ledgerDelta = roundDecimal((afterBalances[partyType].get(Number(party.id)) || 0) - (beforeBalances[partyType].get(Number(party.id)) || 0), 2);
       if (Math.abs(balanceDelta - ledgerDelta) > 0.005) throw new Error(`往来余额与账本不一致：${partyType} ${party.id}`);
     }
   };
   checkParty('customer', 'debt', 'customers');
   checkParty('supplier', 'payable', 'suppliers');
   const beforeTransactions = new Map((before.transactions || []).map(row => [Number(row.id), row]));
+  const linkedLedger = new Map();
+  for (const entry of after.ledger || []) {
+    const id = Number(entry.transaction_id);
+    const entries = linkedLedger.get(id);
+    if (entries) entries.push(entry); else linkedLedger.set(id, [entry]);
+  }
+  const stocktakes = new Map((after.stocktakes || []).map(row => [Number(row.id), row]));
   for (const tx of after.transactions || []) {
     const previous = beforeTransactions.get(Number(tx.id));
     // Existing stocktake adjustments must remain ledger-consistent on every
     // transaction, even when the adjustment row itself did not change (for
     // example, when a caller tries to attach an extra ledger entry later).
     if (previous && previous.voided_at === tx.voided_at && previous.amount === tx.amount && tx.type !== 'adjustment') continue;
-    const linked = (after.ledger || []).filter(entry => Number(entry.transaction_id) === Number(tx.id));
+    const linked = linkedLedger.get(Number(tx.id)) || [];
     const active = linked.filter(entry => !entry.voided_at);
       if (tx.type === 'adjustment') {
-      const take = (after.stocktakes || []).find(row => Number(row.id) === Number(tx.stocktake_id));
+      const take = stocktakes.get(Number(tx.stocktake_id));
       if (take && (Number(tx.product_id) !== Number(take.product_id)
         || roundDecimal(Number(tx.adjustment ?? 0), 6) !== roundDecimal(Number(take.diff ?? 0), 6)
         || roundDecimal(Number(tx.quantity), 6) !== roundDecimal(Math.abs(Number(take.diff ?? 0)), 6))) {
@@ -262,9 +340,15 @@ function validateAccountingDelta(before, after) {
         throw new Error(`盘点流水 ${tx.id} 金额不一致`);
       }
     }
-    const requiresLedger = tx.customer_id != null || tx.supplier_id != null;
-    if (requiresLedger && (tx.voided_at ? active.length : active.length !== 1)) throw new Error(`交易与账本流水不一致：交易 ${tx.id}`);
-    if (requiresLedger && !tx.voided_at && active.length === 1 && roundDecimal(Number(active[0].amount), 2) !== roundDecimal(Number(tx.amount), 2)) throw new Error(`交易与账本金额不一致：交易 ${tx.id}`);
+    const hasParty = tx.customer_id != null || tx.supplier_id != null;
+    const zeroAmount = roundDecimal(Number(tx.amount || 0), 2) === 0;
+    if (hasParty && zeroAmount) {
+      // 零金额交易（赠品/免费样）保留往来对象关联但不产生应收应付账本。
+      if (active.length !== 0) throw new Error(`交易与账本流水不一致：交易 ${tx.id}`);
+    } else if (hasParty) {
+      if (tx.voided_at ? active.length : active.length !== 1) throw new Error(`交易与账本流水不一致：交易 ${tx.id}`);
+      if (!tx.voided_at && active.length === 1 && roundDecimal(Number(active[0].amount), 2) !== roundDecimal(Number(tx.amount), 2)) throw new Error(`交易与账本金额不一致：交易 ${tx.id}`);
+    }
   }
 }
 function listOrders(f={}) {
@@ -294,6 +378,9 @@ function addOrder(d){
   if (!ORDER_STATUSES.includes(status)) throw new Error('订单状态无效');
    const x={id:cache._meta.nextOrderId++,order_no:orderNo,customer_id:d.customer_id?Number(d.customer_id):null,customer_name:(d.customer_id && getCustomer(Number(d.customer_id))) ? String(getCustomer(Number(d.customer_id)).name) : String(d.customer_name||''),specification:String(d.specification||''),material:String(d.material||''),quantity:q,unit:String(d.unit||'件'),unit_price:p,amount:lineAmount(q,p),delivery_date:String(d.delivery_date||''),status,remark:String(d.remark||''),created_at:Date.now()};cache.orders.push(x);persist();return x;
 }
+function orderShippedQuantity(orderId) {
+  return roundDecimal(cache.transactions.filter(tx => tx.order_id === Number(orderId) && tx.type === 'out' && !tx.voided_at).reduce((sum, tx) => sum + Number(tx.quantity || 0), 0), 6);
+}
 const ORDER_TRANSITIONS = { '待生产': ['生产中', '已取消'], '生产中': ['已发货', '已取消'], '已发货': ['已完成'], '已完成': [] };
 function updateOrder(id,d){
   const x=cache.orders.find(o=>o.id===Number(id));
@@ -308,6 +395,10 @@ function updateOrder(id,d){
   if (['已完成', '已取消'].includes(before) && (d.quantity !== undefined || d.unit_price !== undefined)) throw new Error('终态订单不能修改数量或单价，请新建订单修正');
   if (d.quantity !== undefined) d.quantity = numberValue(d.quantity, '订单数量', true);
   if (d.unit_price !== undefined) d.unit_price = numberValue(d.unit_price, '订单单价');
+  const shipped = orderShippedQuantity(x.id);
+  if (d.quantity !== undefined && roundDecimal(Number(d.quantity), 6) < shipped) throw new Error(`订单数量不能小于已发货数量 ${shipped}，请先作废出库或新建订单修正`);
+  if (d.customer_id !== undefined && shipped > 0 && Number(d.customer_id) !== Number(x.customer_id)) throw new Error('订单已有出库记录，不能更换客户，请先作废出库后再修改');
+  if (d.unit !== undefined && shipped > 0 && String(d.unit) !== String(x.unit)) throw new Error('订单已有出库记录，不能修改单位，请先作废出库后再修改');
   if (d.status !== undefined) {
     if (!ORDER_STATUSES.includes(d.status)) throw new Error('订单状态无效');
     if (d.status !== before && !(ORDER_TRANSITIONS[before] || []).includes(d.status)) throw new Error(`订单不能从「${before}」变更为「${d.status}」`);
@@ -322,7 +413,10 @@ function updateOrder(id,d){
 }
 function parseDateValue(value, fallback = Date.now()) {
   if (value === undefined || value === null || value === '') return fallback;
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (value > Date.now()) throw new Error('盘点日期不能晚于今天');
+    return value;
+  }
   const text = String(value).trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
     const [year, month, day] = text.split('-').map(Number);
@@ -407,6 +501,7 @@ cleanupResidualTemps();
 createAutoBackup('startup');
 let batching = false;
 let cache = load();
+if (migratedDimensions) persist();
 function atomicMutation(action) {
   if (batching) return action();
   const before = JSON.stringify(cache);
@@ -467,25 +562,37 @@ function persist() {
     try { fs.writeFileSync(fd, JSON.stringify(cache, null, 2)); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
     fs.renameSync(tmp, DB_PATH);
     syncDirectory(path.dirname(DB_PATH));
-  } finally { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); }
+  } catch (error) {
+    // Persistence failures are server errors, not user-correctable validation.
+    throw Object.assign(error, { status: 500 });
+  } finally {
+    try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); }
+    catch (error) { console.warn('[db] temporary file cleanup failed:', error.message); }
+  }
 }
 
 function revision() { return cache._collaboration?.revision || 0; }
 function audit() { return cache._collaboration?.audit || []; }
+function generation() { return Number(cache._collaboration?.generation) || 0; }
 function receipt(actorId, key) {
   const state = cache._collaboration || { receipts: {} };
   const item = state.receipts?.[`${actorId}:${key}`];
-  if (!item || item.time < Date.now() - 7 * 86400000) return null;
+  if (!item) return null;
+  const itemGeneration = Number.isInteger(item.generation) ? item.generation : 0;
+  if (itemGeneration !== (Number(state.generation) || 0) || item.time < Date.now() - 7 * 86400000) return null;
   return JSON.parse(JSON.stringify(item));
 }
 // The service has one Node process; synchronous mutations and one atomic file replacement
 // commit the stock, balances, audit entry and idempotency receipt together.
-function transact(actor, key, fingerprint, expected, operation, action) {
+function transact(actor, key, fingerprint, expected, operation, action, options = {}) {
   const previous = JSON.stringify(cache);
-  const state = cache._collaboration || { revision: 0, audit: [], receipts: {} };
+  const state = cache._collaboration || { revision: 0, audit: [], receipts: {}, generation: 0 };
+  if (!Number.isInteger(state.generation)) state.generation = 0;
   const receiptKey = `${actor.id}:${key}`;
   const storedReceipt = state.receipts[receiptKey];
   if (storedReceipt) {
+    const storedGeneration = Number.isInteger(storedReceipt.generation) ? storedReceipt.generation : 0;
+    if (storedGeneration !== state.generation) throw Object.assign(new Error('提交编号对应的数据已被恢复覆盖，请刷新后重新核对'), { status: 409 });
     if (storedReceipt.fingerprint !== fingerprint) throw Object.assign(new Error('重复请求编号对应不同内容'), { status: 409 });
     return { data: storedReceipt.data, revision: revision(), replayed: true };
   }
@@ -498,10 +605,10 @@ function transact(actor, key, fingerprint, expected, operation, action) {
       if (cache[collection].some(row => row[field] !== undefined && (!Number.isFinite(row[field]) || row[field] < 0))) throw new Error('数量、库存或金额无效');
     }
     validateNonNegativeState(cache);
-    validateAccountingDelta(JSON.parse(previous), cache);
+    if (!options.skipAccountingDelta) validateAccountingDelta(JSON.parse(previous), cache);
     state.revision++;
     state.audit.push({ id: state.revision, actor_id: actor.id, actor_name: actor.username, operation, time: Date.now(), record_id: data?.id || data?.transaction?.id || null });
-    state.receipts[receiptKey] = { fingerprint, data: JSON.parse(JSON.stringify(data)), time: Date.now() };
+    state.receipts[receiptKey] = { fingerprint, data: JSON.parse(JSON.stringify(data)), time: Date.now(), generation: state.generation };
     for (const k of Object.keys(state.receipts)) if (state.receipts[k].time < Date.now() - 7 * 86400000) delete state.receipts[k];
     batching = false;
     persist();
@@ -608,7 +715,12 @@ function addCustomer(d) {
   persist(); return c;
 }
 function updateCustomer(id, d) {
+  if (d.specs !== undefined) {
+    if (!Array.isArray(d.specs) || d.specs.length > 500 || d.specs.some(s => !s || typeof s.id !== 'string' || !String(s.goods || '').trim() || !String(s.specification || '').trim() || !Number.isFinite(s.price) || s.price < 0)) throw new Error('客户规格资料无效');
+    if (new Set(d.specs.map(s => s.id)).size !== d.specs.length) throw new Error('客户规格编号重复');
+  }
   const c = getCustomer(id); if (!c) throw new Error('客户不存在');
+  if (d.specs !== undefined) c.specs = d.specs.map(s => ({ id: s.id, goods: String(s.goods).trim(), specification: String(s.specification).trim(), material: String(s.material || ''), unit: String(s.unit || '个'), price: s.price }));
   const beforeProfile = JSON.stringify({ name: c.name, contact: c.contact, phone: c.phone, address: c.address, remark: c.remark });
   if (d.name!==undefined) { if (!String(d.name).trim()) throw new Error('名称不能为空'); c.name = String(d.name).trim(); }
   if (d.contact!==undefined) c.contact = d.contact;
@@ -631,6 +743,7 @@ function updateCustomer(id, d) {
 function deleteCustomer(id) {
   const i = cache.customers.findIndex(c => c.id===id);
   if (i===-1) throw new Error('客户不存在');
+  if (roundDecimal(Number(cache.customers[i].debt || 0), MONEY_DECIMALS) !== 0) throw new Error('客户仍有未结清应收，请先结清后再停用');
   cache.customers[i].deleted_at = Date.now();
   cache.customers[i].updated_at = Date.now();
   persist(); return true;
@@ -678,6 +791,7 @@ function updateSupplier(id,d) {
 }
 function deleteSupplier(id) {
   const i=cache.suppliers.findIndex(s=>s.id===id); if(i===-1) throw new Error('供应商不存在');
+  if (roundDecimal(Number(cache.suppliers[i].payable || 0), MONEY_DECIMALS) !== 0) throw new Error('供应商仍有未结清应付，请先结清后再停用');
   cache.suppliers[i].deleted_at = Date.now(); cache.suppliers[i].updated_at = Date.now(); persist(); return true;
 }
 
@@ -833,7 +947,7 @@ function deleteTransaction(id) {
   const tx = cache.transactions.find(t => t.id === Number(id));
   if (!tx) throw new Error('交易记录不存在');
   if (tx.delivery_note_id) throw new Error('送货单明细请从入库页面整单作废，不能单独删除');
-  return atomicMutation(() => { const result = reverseTransaction(tx); persist(); return result; });
+  return atomicMutation(() => { const result = reverseTransaction(tx); const order = cache.orders.find(item => item.id === tx.order_id); if (order && (order.status === '已发货' || order.status === '已完成')) { const remaining = orderShippedQuantity(order.id); const next = remaining >= roundDecimal(Number(order.quantity || 0), 6) ? '已发货' : '生产中'; if (order.status !== next) { const before = order.status; order.status = next; cache.order_events.push({ id: cache._meta.nextOrderEventId++, order_id: order.id, from: before, to: order.status, created_at: Date.now() }); } } persist(); return result; });
 }
 function voidDeliveryNote(id) {
   const note = getDeliveryNote(id);
@@ -903,13 +1017,24 @@ function stockOutBatch(lines, op='', rmk='', customerId=null) {
 
 function orderToOutbound(orderId, lines, op='', rmk='') {
   const order = cache.orders.find(item => item.id === Number(orderId));
-  if (!order) throw new Error('?????');
-  if (order.status === '\u5df2\u53d6\u6d88' || order.status === '\u5f85\u751f\u4ea7') throw new Error('当前订单状态不能出库');
-  if (!Array.isArray(lines) || !lines.length) throw new Error('??????????');
-  const customerId = order.customer_id || null;
-  const result = stockOutBatch(lines.map(line => ({ ...line, remark: line.remark || rmk })), op, rmk || ('???? ' + order.order_no), customerId);
-  if (order.status !== '\u5df2\u5b8c\u6210') updateOrder(order.id, { status: '\u5df2\u53d1\u8d27' });
-  return { order, transactions: result };
+  if (!order) throw new Error('订单不存在');
+  if (order.status !== '生产中') throw new Error('仅生产中的订单可以出库');
+  if (!Array.isArray(lines) || !lines.length) throw new Error('至少添加一项出库商品');
+  const shipped = cache.transactions.filter(tx => tx.order_id === order.id && tx.type === 'out' && !tx.voided_at).reduce((sum, tx) => sum + tx.quantity, 0);
+  const quantity = roundDecimal(lines.reduce((sum, line) => sum + numberValue(line.quantity, '出库数量', true), 0), 6);
+  if (quantity > roundDecimal(order.quantity - shipped, 6)) throw new Error('出库数量超过订单剩余待发数量');
+  for (const line of lines) {
+    const product = getProduct(Number(line.product_id));
+    if (product && product.unit !== order.unit) throw new Error('商品单位与订单单位不一致');
+  }
+  return atomicMutation(() => {
+    const result = stockOutBatch(lines, op, rmk || ('订单出库 ' + order.order_no), order.customer_id || null);
+    const noteNo = 'CK' + String(result[0].transaction.id).padStart(8, '0');
+    for (const item of result) Object.assign(item.transaction, { order_id: order.id, order_no: order.order_no, outbound_no: noteNo });
+    if (roundDecimal(shipped + quantity, 6) === roundDecimal(order.quantity, 6)) updateOrder(order.id, { status: '已发货' });
+    persist();
+    return { order, transactions: result };
+  });
 }
 
 function portableImageUrl(value) {
@@ -917,10 +1042,10 @@ function portableImageUrl(value) {
   const match = raw.match(/(?:^|[\\/])uploads[\\/]products[\\/]([A-Za-z0-9._-]+)$/i);
   return match ? `/uploads/products/${match[1]}` : (raw.startsWith('/uploads/products/') && /^[A-Za-z0-9._/-]+$/.test(raw) ? raw : '');
 }
-function backupData() {
+function backupData(options = {}) {
   const snapshot = JSON.parse(JSON.stringify(cache));
   snapshot.products = (snapshot.products || []).map(product => ({ ...product, image_url: portableImageUrl(product.image_url) }));
-  return snapshot;
+  return options.includeAttachments ? ledgerAttachments.portable(snapshot, options.maxBytes) : snapshot;
 }
 function health() {
   let readable = false; let writable = false;
@@ -929,6 +1054,7 @@ function health() {
   return { online: readable && writable, dataReadable: readable, dataWritable: writable, revision: revision(), warningCount: loadWarnings.length };
 }
 function validateBackupData(data) {
+  if (data?.customer_dimensions !== undefined) customerDimensions.validateDocument(data.customer_dimensions);
   require('./boards').validate(data || {});
   const collections = ['products', 'customers', 'suppliers', 'transactions', 'ledger', 'orders', 'order_events', 'stocktakes', 'delivery_notes'];
   if (!data || Number(data?._meta?.schemaVersion) > SCHEMA_VERSION) throw new Error('backup requires a newer schema version');
@@ -995,6 +1121,10 @@ function validateBackupData(data) {
       : transaction.type === 'out' && transaction.customer_id != null ? 'customer' : null;
     if (!expectedPartyType) {
       if (linked.length) throw new Error(`交易 ${transaction.id} 不应关联往来账本流水`);
+      continue;
+    }
+    if (roundDecimal(Number(transaction.amount), 2) === 0) {
+      if (linked.length) throw new Error(`交易 ${transaction.id} 零金额交易不应关联往来账本流水`);
       continue;
     }
     if (linked.length !== 1) throw new Error(`交易 ${transaction.id} 与账本流水不一致`);
@@ -1081,25 +1211,76 @@ function validateBackupData(data) {
     timestamp(note.created_at, `delivery note ${note.id}`); timestamp(note.voided_at, `delivery note ${note.id}`);
   }
 }
-function restoreData(value) {
+function settleParty(partyType, id, amount, remark = '') {
+  const isCustomer = partyType === 'customer';
+  const party = isCustomer ? getCustomer(id) : getSupplier(id);
+  if (!party) throw new Error(isCustomer ? '客户不存在' : '供应商不存在');
+  if (party.deleted_at) throw new Error(isCustomer ? '客户已停用' : '供应商已停用');
+  const field = isCustomer ? 'debt' : 'payable';
+  const before = roundDecimal(Number(party[field] || 0), MONEY_DECIMALS);
+  const payment = roundDecimal(numberValue(amount, '结算金额', true), MONEY_DECIMALS);
+  if (payment > before) throw new Error(`结算金额不能超过当前${isCustomer ? '应收' : '应付'}余额 ${before} 元`);
+  return atomicMutation(() => {
+    party[field] = roundDecimal(before - payment, MONEY_DECIMALS);
+    party.balance_updated_at = Date.now();
+    systemLedger('settlement', payment, party.id, party.name, null, String(remark || '').trim() || `${isCustomer ? '客户' : '供应商'}结清 · ${party.name}`, isCustomer ? 'customer' : 'supplier');
+    persist();
+    return { party, settled: payment, balance: party[field] };
+  });
+}
+function restoreSafetySnapshot() {
+  if (!fs.existsSync(DB_PATH)) return null;
   createAutoBackup('restore');
+  try {
+    fs.mkdirSync(BACKUP_DIR, { recursive: true, mode: 0o700 });
+    const target = path.join(BACKUP_DIR, `warehouse-data-restore-guard-${Date.now()}.json`);
+    fs.copyFileSync(DB_PATH, target);
+    try { fs.chmodSync(target, 0o600); } catch (error) { /* best effort */ }
+    return target;
+  } catch (error) {
+    throw Object.assign(new Error(`恢复前无法备份当前数据，已中止恢复：${error.message}`), { status: 500 });
+  }
+}
+function restoreData(value) {
+  restoreSafetySnapshot();
   validateBackupData(value);
   const next = JSON.parse(JSON.stringify(value));
-  const collaboration = cache._collaboration || { revision: 0, audit: [], receipts: {} };
+  // Old backups predate the dimensions collection and must not erase it.
+  const restoredDimensions = next.customer_dimensions === undefined ? getCustomerDimensions() : customerDimensions.validateDocument(next.customer_dimensions);
+  next.customer_dimensions = { ...restoredDimensions, revision: Math.max(restoredDimensions.revision, getCustomerDimensions().revision) + 1 };
+  const collaboration = cache._collaboration || { revision: 0, audit: [], receipts: {}, generation: 0 };
+  // 恢复后的数据集与恢复前的回执不再对应：递增数据代次，旧回执重放会得到明确的 409 提示，而不是静默重新执行。
+  collaboration.generation = (Number(collaboration.generation) || 0) + 1;
   next.orders = Array.isArray(next.orders) ? next.orders : []; next.order_events = Array.isArray(next.order_events) ? next.order_events : []; next.stocktakes = Array.isArray(next.stocktakes) ? next.stocktakes : []; next.delivery_notes = Array.isArray(next.delivery_notes) ? next.delivery_notes : [];
   next.products = (next.products || []).map(product => ({ ...product, image_url: portableImageUrl(product.image_url) }));
   if (!next._meta) next._meta = {};
   next._meta.schemaVersion = SCHEMA_VERSION;
   for (const [collection, counter] of [['products','nextProductId'],['customers','nextCustomerId'],['suppliers','nextSupplierId'],['transactions','nextTransactionId'],['ledger','nextLedgerId'],['orders','nextOrderId'],['delivery_notes','nextDeliveryNoteId'],['order_events','nextOrderEventId'],['stocktakes','nextStocktakeId']]) { next[collection] = Array.isArray(next[collection]) ? next[collection] : []; next._meta[counter] = next[collection].reduce((n, row) => Math.max(n, Number(row.id) + 1), Number(next._meta[counter]) || 1); }
   normalizeGhostStock(next, 'restore');
+  ledgerAttachments.restore(next);
+  delete next.ledger_attachment_files;
   next._collaboration = collaboration;
   cache = next; persist(); return stats();
 }
 
+function getCustomerDimensions() { return JSON.parse(JSON.stringify(cache.customer_dimensions)); }
+function updateCustomerDimensions(raw) {
+  return atomicMutation(() => {
+    const previous = cache.customer_dimensions;
+    if (raw?.revision !== previous.revision) throw Object.assign(new Error('资料已更新，请刷新后重试'), { status: 409 });
+    const next = { schemaVersion: 1, revision: previous.revision + 1, ...customerDimensions.validate(raw) };
+    cache.customer_dimensions = next;
+    persist();
+    return getCustomerDimensions();
+  });
+}
 function listBoards() { return require('./boards').list(cache); }
 function receiveBoard(raw) { return atomicMutation(() => { const batch = require('./boards').receive(cache, raw); persist(); return batch; }); }
 function moveBoard(id, raw) { return atomicMutation(() => { const batch = require('./boards').move(cache, id, raw); persist(); return batch; }); }
-module.exports = { listBoards, receiveBoard, moveBoard, listProducts, getProduct, addProduct, updateProduct, deleteProduct,
+function updateBoard(id, raw) { return atomicMutation(() => { const result = require('./boards').update(cache, id, raw); persist(); return result; }); }
+function deleteBoard(id) { return atomicMutation(() => { const result = require('./boards').remove(cache, id); persist(); return result; }); }
+module.exports = { getCustomerDimensions, updateCustomerDimensions, listBoards, receiveBoard, moveBoard, updateBoard, deleteBoard, listProducts, getProduct, addProduct, updateProduct, deleteProduct,
+  getLedgerAttachments, addLedgerAttachment, readLedgerAttachment, prepareLedgerAttachment: ledgerAttachments.prepare,
   listCustomers, getCustomer, addCustomer, updateCustomer, deleteCustomer,
   listSuppliers, getSupplier, addSupplier, updateSupplier, deleteSupplier,
-  stockIn, stockOut, stockOutBatch, orderToOutbound, listTx, streamTx, deleteTransaction, listLedger, streamLedger, addLedger, deleteLedger, listOrders, listOrderEvents, addOrder, updateOrder, addStocktake, listStocktakes, listDeliveryNotes, getDeliveryNote, addDeliveryNote, voidDeliveryNote, backupData, restoreData, health, stats, transact, revision, audit, receipt };
+  stockIn, stockOut, stockOutBatch, orderToOutbound, listTx, streamTx, deleteTransaction, listLedger, streamLedger, addLedger, deleteLedger, listOrders, listOrderEvents, addOrder, updateOrder, addStocktake, listStocktakes, listDeliveryNotes, getDeliveryNote, addDeliveryNote, voidDeliveryNote, backupData, restoreData, health, stats, transact, revision, audit, receipt, settleParty };

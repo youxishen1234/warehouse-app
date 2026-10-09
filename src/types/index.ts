@@ -1,4 +1,4 @@
-// 商品类型
+﻿// 商品类型
 export interface Product {
   id: number;
   name: string;
@@ -22,6 +22,8 @@ export interface Product {
 
 // 客户类型
 export interface Customer {
+  specs?: CustomerSpec[];
+
   debt?: number;
   payable?: number;
   id: number;
@@ -37,6 +39,9 @@ export interface Customer {
 
 // 出入库记录类型
 export interface Transaction {
+  order_id?: number;
+  order_no?: string;
+  outbound_no?: string;
   voided_at?: number;
   adjustment?: number;
   specification?: string;
@@ -82,6 +87,8 @@ export interface Stats {
 
 // 客户表单数据
 export interface CustomerForm {
+
+  specs?: CustomerSpec[];
   debt?: number;
   payable?: number;
   settlement_remark?: string;
@@ -91,6 +98,7 @@ export interface CustomerForm {
   address: string;
   remark: string;
 }
+export interface CustomerSpec { id: string; goods: string; specification: string; material: string; unit: string; price: number; }
 
 // API 通用响应
 export interface ApiResponse<T> {
@@ -125,6 +133,21 @@ export interface StocktakeForm { product_id: number; counted_stock: number; coun
 
 export type LedgerType = 'income' | 'expense' | 'receivable' | 'payable' | 'settlement';
 
+export type LedgerAttachmentKind = 'delivery' | 'signed' | 'payment';
+export interface LedgerAttachment {
+  id: string;
+  ledger_id: number;
+  client_id: string;
+  kind: LedgerAttachmentKind;
+  name: string;
+  mime: string;
+  size: number;
+  sha256: string;
+  created_at: number;
+  status: 'unreviewed';
+  source: { party_id: number | null; party_type: string | null; party_name: string; transaction_id: number | null; delivery_note_id: number | null; document_no: string; amount: number; ledger_created_at: number };
+}
+
 export interface LedgerEntry {
   id: number;
   type: LedgerType;
@@ -133,7 +156,12 @@ export interface LedgerEntry {
   party_id?: number | null;
   party_name?: string;
   party_current_name?: string;
+  party_type?: 'customer' | 'supplier' | null;
+  transaction_id?: number | null;
+  delivery_note_id?: number | null;
+  voided_at?: number;
   created_at: number;
+  attachments?: LedgerAttachment[];
 }
 
 export interface DeliveryLine {
@@ -223,3 +251,4 @@ export interface BackupExport {
   exportedAt: string;
   data: WarehouseBackupData;
 }
+

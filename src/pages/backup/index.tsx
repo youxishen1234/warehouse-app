@@ -90,7 +90,7 @@ export default function BackupPage() {
   return (
     <ScrollView scrollY className={styles.page}>
       <Text className={styles.title}>备份与恢复</Text>
-      <Text className={styles.hint}>备份包含商品、客户、供应商、库存、流水、订单和盘点记录。大文件会直接下载或从文件中读取，不再放入超长文本框。</Text>
+      <Text className={styles.hint}>备份包含商品、客户、供应商、客户尺寸本、纸板批次、库存、流水、订单和盘点记录。旧版备份没有尺寸本时，会保留当前尺寸本。恢复请求默认支持 64 MiB，服务器可按需配置。</Text>
       <View className={styles.actions}>
         <View className={styles.primary} onClick={busy ? undefined : exportBackup}>{busy ? '处理中…' : '导出备份 JSON'}</View>
         <View className={styles.secondary} onClick={busy ? undefined : chooseRestoreFile}>选择 JSON 恢复</View>

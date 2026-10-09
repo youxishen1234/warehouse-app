@@ -14,7 +14,7 @@ const PORT = Number(process.env.PORT || 4000);
 const APP_DOWNLOADS_RATE_LIMIT = Math.max(2, Math.min(1000, Number(process.env.WAREHOUSE_APP_DOWNLOADS_RATE_LIMIT) || 20));
 const appDownloadsBuckets = new Map();
 const appUpdateReportBuckets = new Map();
-const CONTENT_SECURITY_POLICY = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'nonce-sg-bootstrap'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://youxishen.online http://localhost:* https://localhost:* http://127.0.0.1:*; font-src 'self' data:; connect-src 'self' https://youxishen.online capacitor://localhost http://localhost:* https://localhost:* http://127.0.0.1:*; worker-src 'self' blob:;";
+const CONTENT_SECURITY_POLICY = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'nonce-sg-bootstrap'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://youxishen.online http://localhost:* https://localhost:* http://127.0.0.1:*; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://youxishen.online capacitor://localhost http://localhost:* https://localhost:* http://127.0.0.1:*; worker-src 'self' blob:;";
 
 const trustedProxyRules = String(process.env.WAREHOUSE_TRUSTED_PROXY_CIDRS || '127.0.0.1/32,::1/128')
   .split(',').map(value => value.trim()).filter(Boolean);
@@ -55,7 +55,7 @@ app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
-  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=()');
+  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=()');
   res.setHeader('Content-Security-Policy', CONTENT_SECURITY_POLICY);
   req.warehouseClientIp = clientIp(req);
   const origin = req.get('Origin');
@@ -71,12 +71,16 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
-const BODY_LIMITS = Object.freeze({ general: 1024 * 1024, imageJson: 2.5 * 1024 * 1024, imageDecoded: 2 * 1024 * 1024, backup: 5 * 1024 * 1024 });
+const BODY_LIMITS = Object.freeze({ general: 1024 * 1024, imageJson: 2.5 * 1024 * 1024, imageDecoded: 2 * 1024 * 1024, backup: require('./backup-limits').BACKUP_MAX_BYTES });
 // Parse each large-body route with its own ceiling before the general parser.
 // The JSON envelope is capped at the documented 2.5 MiB; decoded image bytes
 // retain the separate 2 MiB business limit in the route handler.
 app.use('/api/products/:id/image', express.json({ limit: `${BODY_LIMITS.imageJson}b` }));
+app.use('/api/ledger/:id/attachments', express.json({ limit: require('./ledger-attachments').JSON_LIMIT }));
 app.use('/api/backup', express.json({ limit: `${BODY_LIMITS.backup}b` }));
+app.use('/api/ai/command', express.json({ limit: '9mb' }));
+app.use('/api/ai/photo', express.json({ limit: '9mb' }));
+app.use('/api/ai/voice', express.json({ limit: '17mb' }));
 app.use('/api', express.json({ limit: `${BODY_LIMITS.general}b` }));
 app.use('/api', require('./team')(db));
 
@@ -132,9 +136,12 @@ app.get('/download/shuguang.ipa', (req, res) => {
   sendPackageDownload(req, res, path.join(__dirname, 'public', 'download', 'shuguang.ipa'), 'shuguang.ipa', 'ios');
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+const WEB_ROOT = process.env.WAREHOUSE_WEB_ROOT ? path.resolve(process.env.WAREHOUSE_WEB_ROOT) : path.join(__dirname, 'public');
+app.use(express.static(WEB_ROOT));
+// Keep previously printed /workspace labels and older app links usable.
+app.use('/workspace', express.static(WEB_ROOT));
 // Paperboard labels open a direct SPA route, including after a browser reload.
-app.get(/^\/pages\/[a-z-]+\/index$/, (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.get(/^\/pages\/[a-z-]+\/index$/, (req, res) => res.sendFile(path.join(WEB_ROOT, 'index.html')));
 
 // ============ App 热更新服务 ============
 // 版本检查：客户端启动时带 设备ID/平台/原生版本/当前热更版本 来询
@@ -166,13 +173,13 @@ app.get('/api/appupdate/check', (req, res) => {
         ...(m.integrity ? { integrity: m.integrity } : {}),
         forceUpdate: !!m.forceUpdate,
         minNativeVersion: m.minNativeVersion || null,
-        update: (q.current || '') !== m.version
+        update: require('./update-version').isNewerVersion(m.version, q.current || '')
       }
     });
   } catch (e) {
     const status = Number.isInteger(e?.status) && e.status >= 400 && e.status < 500 ? e.status : 500;
     if (status >= 500) console.error('[api-error]', JSON.stringify({ requestId: res.get('X-Request-Id') || '', method: req.method, path: req.path, status, message: e?.message || String(e) }));
-    res.status(status).json({ success: false, message: status < 500 ? e.message : '???????????' });
+    res.status(status).json({ success: false, message: status < 500 ? e.message : '服务器暂时无法处理请求' });
   }
 });
 
@@ -200,7 +207,7 @@ app.post('/api/appupdate/report', (req, res) => {
   } catch (e) {
     const status = Number.isInteger(e?.status) && e.status >= 400 && e.status < 500 ? e.status : 500;
     if (status >= 500) console.error('[api-error]', JSON.stringify({ requestId: res.get('X-Request-Id') || '', method: req.method, path: req.path, status, message: e?.message || String(e) }));
-    res.status(status).json({ success: false, message: status < 500 ? e.message : '???????????' });
+    res.status(status).json({ success: false, message: status < 500 ? e.message : '服务器暂时无法处理请求' });
   }
 });
 
@@ -242,7 +249,7 @@ app.get('/api/app/downloads', (req, res) => {
   } catch (e) {
     const status = Number.isInteger(e?.status) && e.status >= 400 && e.status < 500 ? e.status : 500;
     if (status >= 500) console.error('[api-error]', JSON.stringify({ requestId: res.get('X-Request-Id') || '', method: req.method, path: req.path, status, message: e?.message || String(e) }));
-    res.status(status).json({ success: false, message: status < 500 ? e.message : '???????????' });
+    res.status(status).json({ success: false, message: status < 500 ? e.message : '服务器暂时无法处理请求' });
   }
 });
 

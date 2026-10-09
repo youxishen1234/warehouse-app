@@ -105,15 +105,19 @@ function install(db) {
   const actorFor = req => {
     const token = bearer(req);
     const session = token ? guestSessions.get(digest(token)) : null;
-    if (session && session.expires > Date.now()) return session.actor;
+    // 回执与审计使用设备级稳定身份：访客令牌在服务重启后会失效，若身份随之变化，
+    // 重试会因找不到原回执而重复扣库存。设备头 + IP 派生的身份在重启前后保持一致。
     const device = `${String(req.get('X-Warehouse-Device') || 'anonymous').slice(0, 80)}:${String(req.warehouseClientIp || req.ip || 'unknown')}`;
-    return { id: `anonymous:${digest(device).slice(0, 40)}`, username: '\u533f\u540d\u7528\u6237' };
+    const stableId = `anonymous:${digest(device).slice(0, 40)}`;
+    if (session && session.expires > Date.now()) return { ...session.actor, id: stableId };
+    return { id: stableId, username: '\u533f\u540d\u7528\u6237' };
   };
   // Guest bootstrap is optional for clients that retain a session token.
   // The token identifies an anonymous actor only; it grants no role or account privileges.
   route('post', '/auth/guest', (req, res) => {
     const now = Date.now();
     for (const [key, session] of guestSessions) if (session.expires <= now) guestSessions.delete(key);
+    if (guestSessions.size >= 10000) { const oldest = guestSessions.keys().next().value; if (oldest) guestSessions.delete(oldest); }
     const token = crypto.randomBytes(32).toString('hex');
     const actor = { id: `guest:${crypto.randomUUID()}`, username: '\u533f\u540d\u7528\u6237' };
     const expires = now + 12 * 3600000;
@@ -141,15 +145,41 @@ function install(db) {
     const bucketKey = `${scope}:${source}`;
     return consumeRateLimit(rateBuckets, bucketKey, { limit, windowMs });
   };
+  // 客户端可以伪造设备头来切换限流键，因此额外按纯 IP 设置总限额。
+  const rateLimitIp = (req, scope, limit, windowMs) => consumeRateLimit(rateBuckets, `${scope}:ip:${req.warehouseClientIp || req.ip || 'unknown'}`, { limit, windowMs });
   router.use((req, res, next) => {
     const exportRequest = req.method === 'GET' && (/\.csv$/.test(req.path) || req.path === '/backup');
     const writeRequest = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
-    if ((writeRequest && !rateLimit(req, 'write', Math.max(20, Number(process.env.WAREHOUSE_WRITE_RATE_LIMIT) || 300), 60000)) ||
-      (exportRequest && !rateLimit(req, 'export', Math.max(2, Number(process.env.WAREHOUSE_EXPORT_RATE_LIMIT) || 20), 60000))) {
+    if ((writeRequest && (!rateLimit(req, 'write', Math.max(20, Number(process.env.WAREHOUSE_WRITE_RATE_LIMIT) || 300), 60000) || !rateLimitIp(req, 'write-ip', Math.max(600, Number(process.env.WAREHOUSE_WRITE_IP_RATE_LIMIT) || 1200), 60000))) ||
+      (exportRequest && (!rateLimit(req, 'export', Math.max(2, Number(process.env.WAREHOUSE_EXPORT_RATE_LIMIT) || 20), 60000) || !rateLimitIp(req, 'export-ip', Math.max(30, Number(process.env.WAREHOUSE_EXPORT_IP_RATE_LIMIT) || 60), 60000)))) {
       res.set('Retry-After', '60');
       return next(error('操作过于频繁，请稍后重试', 429));
     }
     next();
+  });
+  require('./customer-dimensions').install(router, db);
+  require('./ai').install(router, db);
+  const requirePhotoSession = req => {
+    const current = guestSessions.get(req.sessionKey);
+    if (!current || current.expires <= Date.now()) throw error('仓库连接已过期，请重试', 401);
+  };
+  // Evidence uses the existing shared guest session, never a public static URL.
+  // The shared warehouse does not provide per-user authorization.
+  route('get', '/ledger/:id/attachments', (req, res) => {
+    requirePhotoSession(req);
+    ok(res, db.getLedgerAttachments(req.params.id));
+  });
+  route('get', '/ledger/:id/attachments/:attachmentId/content', (req, res) => {
+    requirePhotoSession(req);
+    ok(res, db.readLedgerAttachment(req.params.id, req.params.attachmentId));
+  });
+  route('post', '/ledger/:id/attachments', (req, res) => {
+    requirePhotoSession(req);
+    const upload = db.prepareLedgerAttachment(req.body);
+    const fingerprint = digest(JSON.stringify([req.params.id, upload.client_id, upload.kind, upload.name, upload.sha256]));
+    const result = db.transact(req.user, req.get('Idempotency-Key'), fingerprint, req.get('If-Match'), `POST /ledger/${req.params.id}/attachments`, () => db.addLedgerAttachment(req.params.id, upload));
+    res.set('X-Warehouse-Revision', String(result.revision));
+    ok(res, result.data);
   });
   // Keep the hot-update dashboard on the shared anonymous API router. Defining
   // it here avoids the router's unknown-route guard swallowing this endpoint.
@@ -200,8 +230,12 @@ function install(db) {
     rows.push(['货款合计', '', '', '', '', '', '', note.total_amount], ['总平米', note.total_square_meters], ['备注', note.remark]);
     res.attachment(`delivery-note-${note.id}.csv`).type('text/csv').send('\ufeff' + rows.map(row => row.map(csvCell).join(',')).join('\r\n'));
   });
-  route('get', '/backup', (req, res) => { streamJson(res, { success: true, data: { exportedAt: new Date().toISOString(), data: db.backupData() } }); });
-  route('post', '/backup', (req, res) => { const key=req.get('Idempotency-Key'); const payload=req.body?.data || req.body; const result=db.transact(req.user,key,digest(JSON.stringify(payload)),req.get('If-Match'),'POST /backup',()=>db.restoreData(payload)); res.set('X-Warehouse-Revision',String(result.revision)); ok(res,result.data); });
+  route('get', '/backup', (req, res) => {
+    const snapshot = db.backupData();
+    if ((snapshot.ledger || []).some(entry => entry.attachments?.length)) requirePhotoSession(req);
+    streamJson(res, { success: true, data: { exportedAt: new Date().toISOString(), data: db.backupData({ includeAttachments: true, maxBytes: require('./backup-limits').BACKUP_MAX_BYTES }) } });
+  });
+  route('post', '/backup', (req, res) => { const key=req.get('Idempotency-Key'); const payload=req.body?.data || req.body; const result=db.transact(req.user,key,digest(JSON.stringify(payload)),req.get('If-Match'),'POST /backup',()=>db.restoreData(payload), { skipAccountingDelta: true }); res.set('X-Warehouse-Revision',String(result.revision)); ok(res,result.data); });
   route('post', '/stock/out/batch', (req, res) => { const key=req.get('Idempotency-Key'); const body=req.body||{}; const result=db.transact(req.user,key,digest('POST /stock/out/batch'+JSON.stringify(body)),req.get('If-Match'),'POST /stock/out/batch',()=>({ transactions: db.stockOutBatch(body.lines,body.operator||req.user.username,body.remark||'',body.customer_id) })); res.set('X-Warehouse-Revision',String(result.revision)); ok(res,result.data); });
   route('post', '/orders/:id/outbound', (req, res) => { const key=req.get('Idempotency-Key'); const body=req.body||{}; const lines=Array.isArray(body.lines) ? body.lines : (body.product_id !== undefined ? [{ product_id: body.product_id, quantity: body.quantity, unit_price: body.unit_price }] : []); const result=db.transact(req.user,key,digest('POST /orders/'+req.params.id+'/outbound'+JSON.stringify(body)),req.get('If-Match'),'POST /orders/:id/outbound',()=>db.orderToOutbound(Number(req.params.id), lines, body.operator||req.user.username, body.remark||'')); res.set('X-Warehouse-Revision',String(result.revision)); ok(res,result.data); });
   route('get', '/export/transactions.csv', async (req, res) => {
@@ -209,14 +243,14 @@ function install(db) {
     const streamed = !req.query.sort && !req.query.order && db.streamTx ? db.streamTx(req.query) : null;
     const rows = streamed ? streamed.rows : sortList(db.listTx(req.query), req.query, 'transactions');
     if (streamed ? streamed.count === 0 : rows.length === 0) throw error('\u6ca1\u6709\u7b26\u5408\u6761\u4ef6\u7684\u6d41\u6c34\u53ef\u5bfc\u51fa', 404);
-    await streamCsv(res, ['??','??','??','??','??','??','??','??','??','??','???','??','??'], rows, t => [new Date(t.created_at).toISOString(),t.type,t.product_name||'',t.specification||'',t.material||'',t.type === 'adjustment' ? t.adjustment : t.quantity||0,t.unit||'',t.unit_price||0,t.amount||0,t.customer_name||'',t.supplier_name||'',t.remark||'',t.voided_at ? '????????????' : '??']);
+    await streamCsv(res, ['时间','类型','商品','规格','材质','数量','单位','单价','金额','客户','供应商','备注','状态'], rows, t => [new Date(t.created_at).toISOString(),t.type,t.product_name||'',t.specification||'',t.material||'',t.type === 'adjustment' ? t.adjustment : t.quantity||0,t.unit||'',t.unit_price||0,t.amount||0,t.customer_name||'',t.supplier_name||'',t.remark||'',t.voided_at ? '已作废' : '正常']);
   });
   route('get', '/export/ledger.csv', async (req, res) => {
     validateListQuery(req.query, 'ledger');
     const streamed = !req.query.sort && !req.query.order && db.streamLedger ? db.streamLedger(req.query) : null;
     const rows = streamed ? streamed.rows : sortList(db.listLedger(req.query), req.query, 'ledger');
     if (streamed ? streamed.count === 0 : rows.length === 0) throw error('\u6ca1\u6709\u7b26\u5408\u6761\u4ef6\u7684\u8d26\u672c\u6d41\u6c34\u53ef\u5bfc\u51fa', 404);
-    await streamCsv(res, ['??','??','??','????','??'], rows, x => [new Date(x.created_at).toISOString(),x.type,x.amount,x.party_name||'',x.remark||'']);
+    await streamCsv(res, ['时间','类型','金额','往来单位','备注'], rows, x => [new Date(x.created_at).toISOString(),x.type,x.amount,x.party_name||'',x.remark||'']);
   });
   route('post', '/stocktake', (req, res) => { const key=req.get('Idempotency-Key'); const result=db.transact(req.user,key,digest(JSON.stringify(req.body)),req.get('If-Match'), 'POST /stocktake',()=>db.addStocktake(req.body)); res.set('X-Warehouse-Revision',String(result.revision)); ok(res,result.data); });
   route('get', '/stocktakes', (req, res) => { validateListQuery(req.query, 'stocktakes'); return ok(res, paginateList(sortList(db.listStocktakes(req.query), req.query, 'stocktakes'), req.query)); });
@@ -248,6 +282,14 @@ function install(db) {
     res.set('X-Warehouse-Revision', String(result.revision));
     ok(res, result.data);
   });
+  for (const method of ['put', 'delete']) route(method, '/boards/:id', (req, res) => {
+    if (req.user.role === 'viewer') throw error('只读账号不能修改纸板库存', 403);
+    if (!/^[A-Za-z0-9_-]{16,100}$/.test(String(req.get('Idempotency-Key') || ''))) throw error('缺少有效的提交编号');
+    if (method === 'put' && (!req.is('application/json') || !req.body || Array.isArray(req.body))) throw error('请提交有效的纸板数据');
+    const operation = req.method + ' ' + req.path;
+    const result = db.transact(req.user, req.get('Idempotency-Key'), digest(operation + JSON.stringify(req.body)), req.get('If-Match'), operation, () => method === 'put' ? db.updateBoard(req.params.id, req.body) : db.deleteBoard(req.params.id));
+    res.set('X-Warehouse-Revision', String(result.revision)); ok(res, result.data);
+  });
   route('post', '/sync/upload', (req, res) => ok(res, { ok: true, received: true }));
   route('post', '/products/:id/image', (req, res) => {
     const key = req.get('Idempotency-Key');
@@ -275,7 +317,7 @@ function install(db) {
         created = true;
       }
       const result = db.transact(req.user, key, digest(`${product.id}:${match[1]}:${contentHash}`), req.get('If-Match'), `POST /products/${product.id}/image`, () => db.updateProduct(product.id, { image_url: imageUrl }));
-      if (oldImage && oldImage !== imageUrl) {
+      if (!result.replayed && oldImage && oldImage !== imageUrl) {
         const oldPath = productImagePath(oldImage);
         if (oldPath && oldPath !== target) { try { fs.unlinkSync(oldPath); } catch (fileError) { if (fileError.code !== 'ENOENT') console.warn('[upload] failed to remove old image', fileError.message); } }
       }
@@ -361,13 +403,26 @@ function install(db) {
       if (line.product_id === undefined || line.quantity === undefined && line.delivered_qty === undefined) throw error(`第 ${index + 1} 行缺少商品或数量`);
     });
   };
+  // 原子结算：提交本次结算金额，由服务端基于当前余额扣减，避免并发结算记错金额。
+  route('post', '/customers/:id/settlement', (req, res) => {
+    const key = req.get('Idempotency-Key'); const body = req.body || {};
+    const operation = `POST /customers/${req.params.id}/settlement`;
+    const result = db.transact(req.user, key, digest(operation + JSON.stringify(body)), req.get('If-Match'), operation, () => db.settleParty('customer', Number(req.params.id), body.amount, body.remark));
+    res.set('X-Warehouse-Revision', String(result.revision)); ok(res, result.data);
+  });
+  route('post', '/suppliers/:id/settlement', (req, res) => {
+    const key = req.get('Idempotency-Key'); const body = req.body || {};
+    const operation = `POST /suppliers/${req.params.id}/settlement`;
+    const result = db.transact(req.user, key, digest(operation + JSON.stringify(body)), req.get('If-Match'), operation, () => db.settleParty('supplier', Number(req.params.id), body.amount, body.remark));
+    res.set('X-Warehouse-Revision', String(result.revision)); ok(res, result.data);
+  });
   const collections = { products: ['listProducts','getProduct','addProduct','updateProduct','deleteProduct'], customers: ['listCustomers','getCustomer','addCustomer','updateCustomer','deleteCustomer'], suppliers: ['listSuppliers','getSupplier','addSupplier','updateSupplier','deleteSupplier'], orders: ['listOrders',null,'addOrder','updateOrder'], transactions: ['listTx',null,null,null,'deleteTransaction'], ledger: ['listLedger',null,'addLedger',null,'deleteLedger'] };
   route('get', '/stats', (req,res) => ok(res, db.stats()));
   router.use((req, res, next) => {
     try {
       const match = /^\/(products|customers|suppliers|orders|transactions|ledger)(?:\/(\d+))?\/?$/.exec(req.path);
       const stock = /^\/stock\/(in|out)$/.exec(req.path);
-      if (!match && !stock) throw error('接口不存在', 404);
+      if (!match && !stock) return next();
       const body = req.body || {}, collection = match?.[1], id = match?.[2] ? Number(match[2]) : null;
       validateWriteBody(req, body);
       if (req.method === 'GET' && match) {

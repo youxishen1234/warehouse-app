@@ -103,10 +103,19 @@ function install(router, db, options = {}) {
     return next(error);
   }));
   const send = (res, data) => { res.set('X-Warehouse-Revision', String(db.revision())); return res.json({ success: true, data: { ...data, revision: db.revision() } }); };
-  route('get', '/ai/status', (req, res) => send(res, { ...providerStatus(settings.current()), canConfigure: req.user?.role === 'admin', settingsAvailable: true,
+  const adminKeyConfigured = () => Boolean(String(options.env?.WAREHOUSE_ADMIN_KEY || '').trim());
+  route('get', '/ai/status', (req, res) => send(res, { ...providerStatus(settings.current()), canConfigure: req.user?.role === 'admin' || adminKeyConfigured(), settingsAvailable: true,
     voice: (options.speechStatusImpl || speech.speechStatus)(options.env || process.env), photos: { available: providerStatus(settings.current()).mode === 'model', maxCount: 3, maxBytes: 2 * 1024 * 1024 } }));
-  const admin = req => { if (req.user?.role !== 'admin') throw fail('请使用仓库管理员账号设置模型', 403); };
-  route('get', '/ai/config', (req, res) => { admin(req); return send(res, settings.publicConfig()); });
+  // 匿名共享模式下没有管理员账号：写操作由服务器配置的管理密钥（WAREHOUSE_ADMIN_KEY）保护；
+  // 保留 role==='admin' 作为测试注入与未来账号体系的兼容路径。
+  const admin = req => {
+    if (req.user?.role === 'admin') return;
+    const configured = String(options.env?.WAREHOUSE_ADMIN_KEY || '').trim();
+    if (!configured) throw fail('服务器未配置管理密钥（WAREHOUSE_ADMIN_KEY），请联系管理员', 403);
+    const provided = String(req.get('X-Warehouse-Admin-Key') || req.body?.admin_key || '').trim();
+    if (!provided || provided !== configured) throw fail('管理密钥不正确', 403);
+  };
+  route('get', '/ai/config', (req, res) => send(res, settings.publicConfig()));
   const checkConnection = async env => {
     if (providerStatus(env).mode !== 'model') throw fail('请先完整填写服务地址、API Key 和模型名称');
     const result = await interpret('查询库存', undefined, { ...options, env, timeoutMs: 25000 });

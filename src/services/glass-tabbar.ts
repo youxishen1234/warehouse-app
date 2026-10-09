@@ -8,6 +8,14 @@ const paths = [
 // One 24-unit grid and stroke weight for every tab, including selected copies.
 const icon = (index: number) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + paths[index] + '</svg>';
 const titles = ['首页', 'AI助手', '出库', '我的'];
+// 桌面侧边栏的“业务中心”快捷入口（仅 ≥1024px 显示，手机端 CSS 隐藏）
+const bizNav = [
+  { title: '纸板库存', path: '/pages/board-stock/index' },
+  { title: '客户管理', path: '/pages/customers/index' },
+  { title: '订单出库', path: '/pages/orders/index' },
+  { title: '账单流水', path: '/pages/ledger/index' },
+  { title: '标签打印', path: '/pages/print-center/index' }
+];
 
 export function createGlassTabBar(host: HTMLElement, onSelect: (index: number) => void) {
   const dock = document.createElement('div');
@@ -16,7 +24,10 @@ export function createGlassTabBar(host: HTMLElement, onSelect: (index: number) =
     '<div class="sg-glass-items">' + titles.map((title, index) =>
       '<button type="button" class="sg-glass-tab" data-tab="' + index + '">' + icon(index) + '<span>' + title + '</span></button>').join('') + '</div>' +
     '<div class="sg-glass-lens" aria-hidden="true"><div class="sg-glass-refraction"></div><div class="sg-glass-lens-ink"><div class="sg-glass-lens-items">' + titles.map((title, index) =>
-      '<div class="sg-glass-tab">' + icon(index) + '<span>' + title + '</span></div>').join('') + '</div></div></div></nav>';
+      '<div class="sg-glass-tab">' + icon(index) + '<span>' + title + '</span></div>').join('') + '</div></div></div>' +
+    '<div class="sg-biz-nav"><div class="sg-biz-title">业务中心</div>' +
+    bizNav.map(item => '<button type="button" class="sg-biz-item" data-nav="' + item.path + '"><span>' + item.title + '</span></button>').join('') +
+    '</div></nav>';
   // A smooth lens normal map bends actual background pixels (not a stock texture).
   const canvas = document.createElement('canvas');
   canvas.width = 128; canvas.height = 96;
@@ -189,6 +200,11 @@ export function createGlassTabBar(host: HTMLElement, onSelect: (index: number) =
   rail.addEventListener('lostpointercapture', finish);
   rail.addEventListener('click', click);
   rail.addEventListener('keydown', keydown);
+  // 桌面侧边栏“业务中心”快捷跳转（hash 路由，file:// 与 H5 均可）
+  dock.addEventListener('click', (event: MouseEvent) => {
+    const item = (event.target as Element).closest<HTMLElement>('[data-nav]');
+    if (item?.dataset.nav) window.location.hash = '#' + item.dataset.nav;
+  });
   const onResize = () => { measure(); render(); };
   const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(onResize);
   resize?.observe(rail);

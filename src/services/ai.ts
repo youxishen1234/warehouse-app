@@ -23,12 +23,12 @@ export const testAiConnection = () => request<{ connected: boolean; message: str
 export interface AiConnection { baseUrl: string; model: string; hasKey?: boolean; apiKey?: string; reasoningEffort?: string }
 // Configuration credentials travel only to our HTTPS server, never a fallback
 // HTTP origin, local storage, the model provider or the ordinary request cache.
-export async function aiSettingsRequest<T>(url: string, method: 'GET' | 'POST' | 'PUT', data?: unknown, token = session()?.token || ''): Promise<T> {
+export async function aiSettingsRequest<T>(url: string, method: 'GET' | 'POST' | 'PUT', data?: unknown, token = session()?.token || '', extraHeaders: Record<string, string> = {}): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 35000);
   try {
     const response = await fetch(`${PUBLIC_ORIGIN}/api${url}`, { method, redirect: 'error', cache: 'no-store', signal: controller.signal,
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, ...(data === undefined ? {} : { body: JSON.stringify(data) }) });
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...extraHeaders }, ...(data === undefined ? {} : { body: JSON.stringify(data) }) });
     const body = await response.json();
     if (!response.ok || !body.success) throw new Error(body.message || '模型设置请求失败');
     return body.data;
