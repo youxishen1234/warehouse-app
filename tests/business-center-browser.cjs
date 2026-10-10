@@ -1,0 +1,158 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const express = require('express');
+const { chromium, webkit, expect } = require('@playwright/test');
+
+async function main() {
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'business-dashboard-'));
+  process.env.WAREHOUSE_DATA_FILE = path.join(temporary, 'data.json');
+  process.env.WAREHOUSE_ACCOUNTS_FILE = path.join(temporary, 'accounts.json');
+  process.env.WAREHOUSE_DIMENSIONS_FILE = path.join(temporary, 'dimensions.json');
+  fs.writeFileSync(process.env.WAREHOUSE_DATA_FILE, JSON.stringify({ products: [], customers: [], suppliers: [], transactions: [], orders: [], ledger: [], _meta: {} }));
+  fs.writeFileSync(process.env.WAREHOUSE_ACCOUNTS_FILE, JSON.stringify({ users: [{ id: 'test-admin', username: 'isolated-admin', role: 'admin', disabled: false }], events: [] }));
+  const backendRoot = path.resolve(process.env.BUSINESS_BACKEND_ROOT || 'backend');
+  const db = require(path.join(backendRoot, 'db'));
+  const app = express(); app.use(express.json()); app.use('/api', require(path.join(backendRoot, 'team'))(db));
+  const root = path.resolve(process.env.BUSINESS_WEB_DIR || process.env.TARO_OUTPUT_DIR || 'dist');
+  app.use(express.static(root));
+  const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
+  const origin = 'http://127.0.0.1:' + server.address().port;
+  const engine = process.env.BUSINESS_BROWSER === 'webkit' ? webkit : chromium;
+  const browser = await engine.launch();
+  const artifacts = path.resolve(process.env.BUSINESS_EVIDENCE_DIR || 'release/business-dashboard-check');
+  fs.mkdirSync(artifacts, { recursive: true });
+  try {
+    const context = await browser.newContext({ viewport: { width: 430, height: 1180 }, deviceScaleFactor: 2 });
+    let failDimensions = false;
+    let dropDimensionReplies = false;
+    const saveAttempts = [];
+    await context.route('**/*', async route => {
+      const url = new URL(route.request().url());
+      if (url.pathname.startsWith('/api/')) {
+        if (failDimensions && url.pathname === '/api/customer-dimensions' && route.request().method() === 'GET') return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ success: false, message: '测试读取失败，请重试' }) });
+        if (dropDimensionReplies && url.pathname.includes('/sync/receipt/')) return route.abort();
+        const response = await route.fetch({ url: origin + url.pathname + url.search });
+        if (dropDimensionReplies && url.pathname === '/api/customer-dimensions' && route.request().method() === 'PUT') {
+          saveAttempts.push(route.request().headers()['idempotency-key']);
+          return route.abort();
+        }
+        return route.fulfill({ response, headers: { ...response.headers(), 'access-control-allow-origin': '*', 'access-control-expose-headers': 'X-Warehouse-Revision' } });
+      }
+      return url.origin === origin ? route.continue() : route.abort();
+    });
+    const page = await context.newPage(); page.setDefaultTimeout(12000);
+    const errors = []; page.on('pageerror', error => errors.push(error.message));
+    const dashboard = () => page.getByTestId('business-dashboard');
+    const go = async () => { await page.goto('about:blank'); await page.goto(origin + '/#/pages/business-center/index'); await expect(page.getByTestId('boards-section')).toBeVisible(); };
+    const button = (scope, text) => text.startsWith('收起纸板') || text.startsWith('展开纸板') ? scope.getByLabel(text, { exact: true }) : scope.getByText(text, { exact: true });
+    const dialog = () => page.getByRole('dialog');
+    const input = (scope, text) => text === '搜索全部业务' ? scope.locator('input[placeholder="搜公司、尺寸、货名或订单号"]') : scope.locator('[class*="__field___"]').filter({ hasText: text }).locator('input');
+    await go();
+    await expect(dashboard()).toContainText('0 家客户 · 0 种纸板 · 0 单待发');
+    await page.screenshot({ path: path.join(artifacts, 'restored-business-empty.png'), fullPage: true });
+    failDimensions = true;
+    await button(dashboard(), '刷新').click();
+    await expect(dashboard()).toContainText('同步失败，请重试');
+    await expect(page.getByTestId('boards-section')).toHaveCount(0);
+    failDimensions = false;
+    await button(dashboard(), '重新读取').click();
+    await expect(page.getByTestId('boards-section')).toBeVisible();
+    await button(dashboard(), '＋ 新增客户').click();
+    await input(dialog(), '公司名称').fill('恢复测试公司');
+    dropDimensionReplies = true;
+    await button(dialog(), '确认').click();
+    await expect(dialog()).toContainText('上传结果未确认', { timeout: 45000 });
+    assert.equal(db.getCustomerDimensions().customers.length, 1);
+    assert.equal(new Set(saveAttempts).size, 1, 'uncertain saves reuse a submission ID');
+    dropDimensionReplies = false;
+    await button(dialog(), '确认').click();
+    await expect(page.getByTestId('customer-row')).toContainText('恢复测试公司');
+    await button(page.getByTestId('customer-row'), '＋ 规格').click();
+    await input(dialog(), '规格尺寸').fill('40×30×20');
+    await button(dialog(), '确认').click();
+    await expect(page.getByTestId('spec-row')).toContainText('40×30×20');
+    assert.equal(db.getCustomerDimensions().customers.length, 1);
+    assert.equal(db.getCustomerDimensions().customers[0].specs.length, 1);
+    const product = db.addProduct({ name: '测试纸箱', specification: '40×30×20 cm', unit: '个', material: '', stock: 100, price: 2 });
+    const batch = db.receiveBoard({ supplier: '测试板厂', date: '2026-10-01', boardLength: 160, boardWidth: 110, cartonLength: 40, cartonWidth: 30, cartonHeight: 20, fluteType: 'B', layers: 3, faceGsm: 0, linerGsm: 0, flutingGsm: 0, orderedQty: 100, receivedQty: 100, billedArea: 176, unitPrice: 1, warningQty: 0, deliveryNo: 'L001', location: 'A01', remark: '' });
+    await button(dashboard(), '刷新').click();
+    await expect(page.getByTestId('spec-row')).toContainText('库存 100 个');
+    await button(dashboard(), '纸板').click();
+    await expect(page.getByTestId('customers-section')).toHaveCount(0);
+    await button(dashboard(), '查看批次明细').click();
+    await expect(dashboard()).toContainText('L001');
+    await button(dashboard(), '收起纸板库存').click();
+    await expect(page.getByTestId('board-row')).toHaveCount(0);
+    await button(dashboard(), '展开纸板库存').click();
+    await button(dashboard(), '全部').click();
+    await input(dashboard(), '搜索全部业务').fill('40*30*20');
+    await expect(page.getByTestId('spec-row')).toHaveCount(1);
+    await expect(page.getByTestId('board-row')).toHaveCount(1);
+    await input(dashboard(), '搜索全部业务').fill('不存在的公司');
+    await expect(page.getByTestId('customer-row')).toHaveCount(0);
+    await button(dashboard(), '清空').click();
+    await button(page.getByTestId('spec-row'), '成品入库').click();
+    await input(dialog(), '入库数量（个）').fill('5');
+    await button(dialog(), '确认').click();
+    await expect(page.getByTestId('spec-row')).toContainText('库存 105 个');
+    await button(page.getByTestId('spec-row'), '开单').click();
+    await input(dialog(), '数量（个）').fill('10');
+    await input(dialog(), '单价（元）').fill('2');
+    await button(dialog(), '确认').click();
+    await expect(page.getByTestId('order-row')).toContainText('剩余待发 10 个');
+    assert.equal(db.listOrders().length, 1);
+    assert.equal(db.getProduct(product.id).stock, 105, 'creating an order does not deduct stock');
+    await button(page.getByTestId('order-row'), '核对出库').click();
+    await page.waitForURL('**/pages/outbound/index');
+    await page.getByText('确认出库 · 生成送货单', { exact: true }).click();
+    await expect.poll(() => db.getProduct(product.id).stock).toBe(95);
+    await go();
+    await expect(page.getByTestId('shipment-row')).toHaveCount(1);
+    await expect(dashboard()).toContainText('0 单待发');
+    await button(page.getByTestId('shipment-row'), '查看单据').click();
+    await expect(page.getByText('送货单预览', { exact: true })).toBeVisible();
+    await go();
+    await button(page.getByTestId('spec-row'), '编辑规格').click();
+    await input(dialog(), '规格尺寸').fill('42×32×22');
+    const concurrent = db.getCustomerDimensions(); concurrent.customers.push({ id: 'other-device', name: '另一台设备的客户', specs: [] }); db.updateCustomerDimensions(concurrent);
+    await button(dialog(), '确认').click();
+    await expect(dialog()).toContainText('资料已更新');
+    await expect(input(dialog(), '规格尺寸')).toHaveValue('42×32×22');
+    assert.equal(db.getCustomerDimensions().customers[0].specs[0].size, '40×30×20');
+    assert.equal(db.getCustomerDimensions().customers.length, 2, 'stale editor preserves another device edits');
+    await button(dialog(), '取消').click();
+    await go();
+    for (const width of [320, 390, 430, 1280]) {
+      await page.setViewportSize({ width, height: 1180 });
+      assert.equal(await dashboard().evaluate(el => el.scrollWidth <= el.clientWidth + 1), true, 'no horizontal overflow ' + width);
+      await page.screenshot({ path: path.join(artifacts, 'restored-business-' + width + '.png'), fullPage: true });
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
+    if (engine === chromium) {
+      const cdp = await context.newCDPSession(page);
+      await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: { top: 59, bottom: 34, left: 0, right: 0 } });
+      const title = await dashboard().getByText('业务总台', { exact: true }).boundingBox();
+      assert.ok(title.y >= 59 && title.y < 140, 'header clears the status area without applying its inset twice');
+      await page.screenshot({ path: path.join(artifacts, 'restored-business-safe-area.png') });
+      await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: { top: 0, bottom: 0, left: 0, right: 0 } });
+      await cdp.detach();
+    }
+    await button(dashboard(), '查看账单流水').click();
+    await page.waitForURL('**/pages/ledger/index');
+    await expect(page.getByText('流水明细', { exact: true })).toBeVisible();
+    await go();
+    await button(dashboard(), '同规格入库').click();
+    await page.waitForURL('**/pages/board-receive/index?from=' + batch.id);
+    await expect(page.getByText('已带入规格 · 本次另建新批次', { exact: true })).toBeVisible();
+    await go();
+    await button(dashboard(), '纸板库存 ›').click();
+    await page.waitForURL('**/pages/board-stock/index');
+    await expect(page.getByText('同规格一键入库', { exact: true })).toBeVisible();
+    assert.deepEqual(errors, []);
+    console.log('PASS business dashboard: layouts, read retry, idempotent saves, search/filter/collapse, stock receipt, order/outbound, preview, conflict protection, ledger/board navigation and responsive layout (' + (process.env.BUSINESS_BROWSER || 'chromium') + ')');
+    await context.unrouteAll({ behavior: 'wait' });
+  } finally { await browser.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+}
+main().catch(error => { console.error(error); process.exitCode = 1; });

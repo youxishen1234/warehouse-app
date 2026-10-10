@@ -1,1 +1,1 @@
-export default definePageConfig({ navigationBarTitleText: '业务中心', navigationStyle: 'custom' });
+export default definePageConfig({ navigationBarTitleText: '业务总台', navigationStyle: 'custom' });
