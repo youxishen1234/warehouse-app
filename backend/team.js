@@ -80,7 +80,7 @@ async function streamJson(res, value) {
 }
 const error = (message, status = 400) => Object.assign(new Error(message), { status });
 const IDENTITY_KEY_PATTERN = /^[\w-]{16,100}$/;
-const requiresIdempotencyKey = pathName => /^\/(?:products|customers|suppliers|orders|transactions|ledger|stock(?:\/in|\/out|\/out\/batch)?|backup|stocktake|delivery-notes)(?:\/|$)/.test(pathName);
+const requiresIdempotencyKey = pathName => /^\/(?:products|customers|suppliers|orders|transactions|ledger|stock(?:\/in|\/out|\/out\/batch)?|backup|stocktake|delivery-notes|print-notes)(?:\/|$)/.test(pathName);
 function install(db) {
   const router = require('express').Router();
   const guestSessions = new Map();
@@ -418,6 +418,28 @@ function install(db) {
   });
   const collections = { products: ['listProducts','getProduct','addProduct','updateProduct','deleteProduct'], customers: ['listCustomers','getCustomer','addCustomer','updateCustomer','deleteCustomer'], suppliers: ['listSuppliers','getSupplier','addSupplier','updateSupplier','deleteSupplier'], orders: ['listOrders',null,'addOrder','updateOrder'], transactions: ['listTx',null,null,null,'deleteTransaction'], ledger: ['listLedger',null,'addLedger',null,'deleteLedger'] };
   route('get', '/stats', (req,res) => ok(res, db.stats()));
+  route('get', '/print-notes', (req, res) => {
+    const page = Number(req.query.page || 1), size = Number(req.query.page_size || 30);
+    if (!Number.isSafeInteger(page) || page < 1 || !Number.isInteger(size) || size < 1 || size > 100 || !Number.isSafeInteger(page * size)) throw error('页码无效');
+    const rows = db.listPrintNotes(req.query.keyword || '');
+    ok(res, { items: rows.slice((page - 1) * size, page * size), total: rows.length, page, page_size: size });
+  });
+  route('get', '/print-notes/:id', (req, res) => {
+    const note = db.listPrintNotes().find(row => row.id === Number(req.params.id));
+    if (!note) throw error('送货单不存在', 404);
+    ok(res, note);
+  });
+  for (const method of ['post', 'put']) route(method, method === 'post' ? '/print-notes' : '/print-notes/:id', (req, res) => {
+    const operation = `${req.method} ${req.path}`;
+    const result = db.transact(req.user, req.get('Idempotency-Key'), digest(operation + JSON.stringify(req.body)), req.get('If-Match'), operation,
+      () => db.savePrintNote(req.body, method === 'post' ? undefined : Number(req.params.id)));
+    res.set('X-Warehouse-Revision', String(result.revision)); ok(res, result.data);
+  });
+  route('post', '/print-notes/:id/ship', (req, res) => {
+    const operation = 'POST ' + req.path;
+    const result = db.transact(req.user, req.get('Idempotency-Key'), digest(operation + JSON.stringify(req.body || {})), req.get('If-Match'), operation, () => db.shipPrintNote(Number(req.params.id)));
+    res.set('X-Warehouse-Revision', String(result.revision)); ok(res, result.data);
+  });
   router.use((req, res, next) => {
     try {
       const match = /^\/(products|customers|suppliers|orders|transactions|ledger)(?:\/(\d+))?\/?$/.exec(req.path);

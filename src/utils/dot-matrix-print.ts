@@ -37,7 +37,7 @@ export function normalizePrintSettings(value: unknown): DotMatrixSettings {
   const highClarity = typeof source.highClarity === 'boolean' ? source.highClarity : true;
   const template = ['blank', 'preprinted-outbound', 'outbound-four', 'delivery-note'].includes(source.template || '')
     ? source.template! : DEFAULT_PRINT_SETTINGS.template;
-  const fixedForm = template !== 'blank';
+  const fixedForm = template !== 'blank' && template !== 'delivery-note';
   const fixedPaper = template === 'outbound-four' || template === 'delivery-note' ? '241-93' : '241-140';
   const fixedHeight = template === 'outbound-four' || template === 'delivery-note' ? 93 : 140;
   const normalizedPaper = fixedForm ? fixedPaper : (preset?.id || (source.paper === 'custom' ? 'custom' : DEFAULT_PRINT_SETTINGS.paper));
@@ -49,7 +49,7 @@ export function normalizePrintSettings(value: unknown): DotMatrixSettings {
     company: typeof source.company === 'string' ? source.company.slice(0, 50) : DEFAULT_PRINT_SETTINGS.company,
     // 标题尊重用户输入；未填写时才回落到默认标题（此前强制覆盖导致“标题改不动”）。
     formTitle: typeof source.formTitle === 'string' && source.formTitle.trim() ? source.formTitle.slice(0, 60) : DEFAULT_PRINT_SETTINGS.formTitle,
-    fontSize: template === 'outbound-four' || template === 'delivery-note' ? 10 : Math.round(number('fontSize', highClarity ? 10 : 9, 12)), rowsPerPage: template === 'blank' ? Math.round(number('rowsPerPage', 1, 20)) : template === 'delivery-note' ? 5 : template === 'outbound-four' ? 4 : 6,
+    fontSize: template === 'delivery-note' ? 11 : template === 'outbound-four' ? 10 : Math.round(number('fontSize', highClarity ? 10 : 9, 12)), rowsPerPage: template === 'blank' ? Math.round(number('rowsPerPage', 1, 20)) : template === 'delivery-note' ? (normalizedPaper === 'a4' ? 20 : normalizedPaper === '241-140' ? 10 : 5) : template === 'outbound-four' ? 4 : 6,
     offsetX: number('offsetX', -5, 5), offsetY: number('offsetY', -5, 5),
     showPrices: typeof source.showPrices === 'boolean' ? source.showPrices : true,
     highClarity,
@@ -188,7 +188,7 @@ ${header}
 <table aria-label="${delivery ? '三等分送货明细' : '四格出库明细'}"><colgroup>${columns.map(value => `<col style="width:${value}%">`).join('')}</colgroup><thead><tr>${headings.map(value => `<th>${value}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>
 ${totalMarkup}
 ${signatures}
-${delivery ? '<div class="delivery-copies">本单一式三联：第一联（白）存根联；第二联（蓝）开票结算联；第三联（红）客户留存联</div>' : ''}
+${delivery ? '<div class="delivery-copies">本单一式三联：第一联（白）存根联；第二联（蓝）备查联；第三联（红）客户留存联</div>' : ''}
 ${count > 1 ? `<div class="four-page">第 ${page + 1} / ${count} 页 · 合计为本页金额</div>` : ''}</div></section>`;
   }).join('');
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="color-scheme" content="light"><title>${e(settings.formTitle)} · ${e(doc.number)}</title><style>
@@ -204,10 +204,96 @@ table{width:100%;table-layout:fixed;border-collapse:collapse;border:.14mm solid 
 </style></head><body>${sections}</body></html>`;
 }
 
+// Matches the supplied delivery-note form. Keep this module self-contained for the native renderer.
+function buildDeliveryNoteHtml(doc: PrintDocument, settings: DotMatrixSettings): string {
+  const e = escapeHtml;
+  const a4 = settings.paper === 'a4';
+  const top = a4 ? 10 : settings.height <= 100 ? 9 : 6;
+  const width = a4 ? 190 : 195;
+  const priceDigits = Math.max(2, ...doc.lines.map(line => {
+    const [whole, exponent = '0'] = String(line.unit_price ?? '').toLowerCase().split('e');
+    return Math.max(0, (whole.split('.')[1] || '').length - Number(exponent));
+  }));
+  const formatPrice = (value?: number) => value == null ? '' : value.toFixed(Math.min(20, priceDigits));
+  const spec = (value: unknown) => String(value ?? '').replace(/(\d)\s*(?:mm|ｍｍ|毫米)(?=\s*(?:[×xX*＊✕]|乘|$))/gi, '$1').replace(/\s*(?:[×xX*＊✕]|乘)\s*/g, '×').trim();
+  const rows = doc.lines.filter(line => !line.blank).map((line, index) => `<tr data-line="${index}"><td>${index + 1}</td><td>${e(line.product_name)}</td><td class="spec"><span>${e(spec(line.specification))}</span></td><td>个</td><td class="num">${e(line.quantity)}</td><td class="num">${settings.showPrices ? e(formatPrice(line.unit_price)) : ''}</td><td class="num">${settings.showPrices ? e(money(line.amount)) : ''}</td><td class="remark">${e(line.remark)}</td></tr>`).join('');
+  const total = totalMoney(doc.lines.filter(line => !line.blank));
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="color-scheme" content="light"><title>${e(doc.number)} · 送货单</title><style>
+*{box-sizing:border-box}html,body{margin:0;padding:0;background:#e8ebef;color:#000;font:11pt/1.2 "Microsoft YaHei","PingFang SC",sans-serif;color-scheme:light}
+@page{size:${settings.width}mm ${settings.height}mm;margin:0;@top-left{content:""}@top-center{content:""}@top-right{content:""}@bottom-left{content:""}@bottom-center{content:""}@bottom-right{content:""}}
+.sheet{position:relative;width:${settings.width}mm;height:${settings.height - .2}mm;background:white;margin:12px;break-after:page;page-break-after:always}.sheet:last-child{break-after:auto;page-break-after:auto}
+.delivery-content{position:absolute;left:${(a4 ? 10 : 6) + settings.offsetX}mm;top:${top + settings.offsetY}mm;width:${width}mm}
+h1,h2{margin:0;text-align:center;font-weight:700;overflow-wrap:anywhere}h1{font-size:15pt;line-height:1.2;margin-bottom:.8mm;letter-spacing:1px}h2{font-size:18pt;font-weight:400;line-height:1.1;margin-bottom:1mm}
+.meta{display:flex;align-items:baseline;justify-content:space-between;gap:2mm;margin-bottom:.7mm}.party{flex:1;min-width:0;overflow-wrap:anywhere}.date{white-space:nowrap}.address{overflow-wrap:anywhere;margin-bottom:.7mm}
+.document{border:1.5pt solid #000}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:.5pt solid #000;padding:.35mm .4mm;height:5.5mm;text-align:center;overflow-wrap:anywhere}th{font-weight:700}thead th{border-top:0}th:first-child,td:first-child{border-left:0}th:last-child,td:last-child{border-right:0}tbody tr:last-child td{border-bottom:0}tr{break-inside:avoid;page-break-inside:avoid}
+.spec span{display:block;white-space:nowrap;overflow-wrap:normal}.num{font-family:Consolas,"Courier New",monospace;text-align:right;padding-right:1.5mm;font-variant-numeric:tabular-nums;white-space:nowrap}.remark{text-align:left}
+.total{display:flex;justify-content:space-between;align-items:baseline;gap:2mm;border-top:1.5pt solid #000;min-height:6mm;padding:.7mm 1mm}.upper{min-width:0;overflow-wrap:anywhere}.amount{white-space:nowrap;flex-shrink:0}.sign{display:grid;grid-template-columns:1fr 1fr;gap:2mm;border-top:.5pt solid #000;padding:1mm .5mm 2.5mm;min-height:8.5mm;font-size:10pt}.sign>div{display:flex;min-width:0}.sign b{font-weight:400;white-space:nowrap}.signature{flex:1;min-width:0;min-height:5mm;border-bottom:.5pt solid #000;overflow-wrap:anywhere}.page-number{font-size:8pt;text-align:right;margin-top:1mm}.page-number:empty{display:none}
+@media print{html,body{background:white}.sheet{margin:0}}
+</style></head><body><section class="sheet"><div class="delivery-content"><header><h1>${e(settings.company)}</h1><h2>送 货 单</h2><div class="meta"><span class="party">收货单位：${e(doc.party)}</span><span class="date">送货日期：${e(preprintedDate(doc.date))}</span></div><div class="address">收货地址：${e(doc.address || '')}</div></header>
+<div class="document"><table aria-label="送货明细"><colgroup>${[6, 22, 18, 6, 9, 10, 14, 15].map(n => `<col style="width:${n}%">`).join('')}</colgroup><thead><tr>${['编号', '产品名称', '规格尺寸', '单位', '数量', '单价', '金额', '备注'].map((name, i) => `<th${i >= 4 && i <= 6 ? ' class="num"' : ''}>${name}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>
+<footer><div class="total"><span class="upper"><span data-total-label>合计：人民币大写</span> <span data-upper>${settings.showPrices && total !== null ? e(moneyUpper(total)) : ''}</span></span><span class="amount">合计：<span data-total>${settings.showPrices ? money(total) : ''}</span></span></div><div class="sign"><div><b>收货人：</b><span class="signature">${e(doc.receiver || '')}</span></div><div><b>送货人：</b><span class="signature">${e(doc.operator)}</span></div></div></footer></div><div class="page-number"></div></div></section></body></html>`;
+}
+function paginateDeliveryNote(document: Document, doc: PrintDocument, settings: DotMatrixSettings) {
+  const original = document.querySelector<HTMLElement>('.sheet');
+  if (!original) throw new Error('打印预览未加载');
+  const lines = doc.lines.filter(line => !line.blank);
+  const rows = Array.from(original.querySelectorAll<HTMLTableRowElement>('tbody tr[data-line]'));
+  rows.forEach(row => row.remove());
+  const template = original.cloneNode(true) as HTMLElement;
+  const sheets = [original];
+  let sheet = original;
+  const updateTotal = () => {
+    const pageLines = Array.from(sheet.querySelectorAll<HTMLElement>('tbody [data-line]')).map(row => lines[Number(row.dataset.line)]);
+    const total = totalMoney(pageLines);
+    sheet.querySelector('[data-total-label]')!.textContent = '本页合计：人民币大写';
+    if (settings.showPrices) { sheet.querySelector('[data-upper]')!.textContent = total === null ? '金额未完整记录' : moneyUpper(total); sheet.querySelector('[data-total]')!.textContent = money(total); }
+    // Reserve page-number space before measuring rows; the final page count can add a page.
+    sheet.querySelector<HTMLElement>('.page-number')!.style.minHeight = '4mm';
+    sheet.querySelector<HTMLElement>('.page-number')!.style.display = 'block';
+  };
+  const fits = () => { updateTotal(); return sheet.querySelector('.delivery-content')!.getBoundingClientRect().bottom <= sheet.getBoundingClientRect().bottom - 5 * 96 / 25.4; };
+  const fitSpec = (row: HTMLElement) => row.querySelectorAll<HTMLElement>('.spec span').forEach(span => {
+    const range = document.createRange(); range.selectNodeContents(span);
+    const width = range.getBoundingClientRect().width;
+    if (width > span.clientWidth) span.style.fontSize = `${Math.max(6, 11 * span.clientWidth / width)}pt`;
+    if (span.scrollWidth > span.clientWidth + 1) throw new Error('规格文字过长，请缩短后打印');
+  });
+  for (const [index, row] of rows.entries()) {
+    const body = () => sheet.querySelector('tbody')!;
+    if (body().children.length >= settings.rowsPerPage) { sheet = template.cloneNode(true) as HTMLElement; document.body.appendChild(sheet); sheets.push(sheet); }
+    body().appendChild(row); fitSpec(row);
+    if (!fits() && body().children.length > 1) { row.remove(); updateTotal(); sheet = template.cloneNode(true) as HTMLElement; document.body.appendChild(sheet); sheets.push(sheet); body().appendChild(row); fitSpec(row); }
+    if (!fits()) throw new Error(`第 ${index + 1} 行内容放不下，请选择更大的纸张或缩短备注`);
+  }
+  for (const [index, current] of sheets.entries()) {
+    sheet = current;
+    sheet.querySelectorAll<HTMLElement>('td.num').forEach(cell => {
+      if (cell.scrollWidth > cell.clientWidth + 1) throw new Error('数量或金额过长，无法在纸张列内完整显示，请核对数值');
+    });
+    const body = sheet.querySelector('tbody')!;
+    const pageLines = Array.from(body.querySelectorAll<HTMLElement>('[data-line]')).map(row => lines[Number(row.dataset.line)]);
+    const total = totalMoney(pageLines);
+    if (settings.showPrices) { sheet.querySelector('[data-upper]')!.textContent = total === null ? '金额未完整记录' : moneyUpper(total); sheet.querySelector('[data-total]')!.textContent = money(total); }
+    if (sheets.length > 1) {
+      sheet.querySelector('[data-total-label]')!.textContent = '本页合计：人民币大写';
+      sheet.querySelector('.page-number')!.textContent = `第 ${index + 1} / ${sheets.length} 页 · 整单合计 ${money(totalMoney(lines))} 元`;
+    }
+    if (!fits()) throw new Error('合计或签字内容超出纸张，请选择更大的纸张');
+    while (body.children.length < Math.min(5, settings.rowsPerPage)) {
+      const row = document.createElement('tr');
+      for (let i = 0; i < 8; i++) row.appendChild(document.createElement('td'));
+      body.appendChild(row); if (!fits()) { row.remove(); break; }
+    }
+    if (sheets.length === 1) sheet.querySelector('[data-total-label]')!.textContent = '合计：人民币大写';
+  }
+  return { pages: sheets.length, height: document.body.scrollHeight + 12 };
+}
+
 /** A script-free, isolated document. Physical dimensions never pass through Taro's px transform. */
 export function buildDotMatrixHtml(doc: PrintDocument, rawSettings: DotMatrixSettings): string {
   const settings = normalizePrintSettings(rawSettings);
-  if (settings.template === 'outbound-four' || settings.template === 'delivery-note') return buildFourRowForm(doc, settings);
+  if (settings.template === 'delivery-note') return buildDeliveryNoteHtml(doc, settings);
+  if (settings.template === 'outbound-four') return buildFourRowForm(doc, settings);
   const e = escapeHtml;
   const total = totalMoney(doc.lines);
   // The LQ-630K driver exposes only about 203 mm of printable width, even on
@@ -271,9 +357,10 @@ ${settings.showPrices ? `<div class="total"><span>整单合计（大写）：${t
 /** Measure the actual font and wrapped rows before allowing print; never silently cut off a row. */
 export function paginateDotMatrixDocument(document: Document, doc: PrintDocument, rawSettings: DotMatrixSettings): { pages: number; height: number } {
   const settings = normalizePrintSettings(rawSettings);
+  if (settings.template === 'delivery-note') return paginateDeliveryNote(document, doc, settings);
   const original = document.querySelector<HTMLElement>('.sheet');
   if (!original) throw new Error('打印预览未加载，请重试');
-  if (settings.template === 'outbound-four' || settings.template === 'delivery-note') {
+  if (settings.template === 'outbound-four') {
     if (!settings.formTitle.trim()) throw new Error('请填写单据标题');
     const sheets = Array.from(document.querySelectorAll<HTMLElement>('.four-sheet'));
     sheets.forEach((sheet, page) => {

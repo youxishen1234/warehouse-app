@@ -14,6 +14,20 @@ const { normalizePrintSettings, DEFAULT_PRINT_SETTINGS, documentFromTransactions
 
 const line = (id, changes = {}) => ({ id, product_id: 3, type: 'out', outbound_no: 'CK-008', customer_id: 4, customer_name: '历史客户名称', created_at: 1790985600000, quantity: 2, unit: '个', unit_price: 1.25, amount: 2.5, operator: '经手人', remark: '', ...changes });
 
+test('new delivery form matches supplied headings, supports all three papers, and preserves price precision', () => {
+  for (const [paper, width, height, rows] of [['241-93', 241, 93, 5], ['241-140', 241, 140, 10], ['a4', 210, 297, 20]]) {
+    const settings = normalizePrintSettings({ template: 'delivery-note', paper });
+    assert.deepEqual([settings.width, settings.height, settings.rowsPerPage], [width, height, rows]);
+    const doc = documentFromTransactions([line(1, { specification: '400mm x 300毫米 * 200mm', unit: '箱', unit_price: 1.23456, amount: 2.47, product_name: '<img src=x onerror=alert(1)>' })]);
+    doc.address = '<script>bad</script>';
+    const html = buildDotMatrixHtml(doc, settings);
+    assert.ok(html.includes('<h2>送 货 单</h2>')); assert.match(html, /收货地址/);
+    assert.match(html, /400×300×200/); assert.ok(html.includes('<td>个</td>')); assert.ok(html.includes('1.23456'));
+    assert.match(html, /&lt;img/); assert.doesNotMatch(html, /<img|<script/);
+    assert.match(html, new RegExp(`size:${width}mm ${height}mm`));
+  }
+});
+
 test('one outbound document preserves its original transaction snapshots and orders every line', () => {
   const doc = documentFromTransactions([line(2), line(1)]);
   assert.deepEqual(doc.lines.map(item => item.id), [1, 2]);

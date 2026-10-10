@@ -47,44 +47,7 @@ async function main() {
     page.setDefaultTimeout(15000);
     page.on('pageerror', error => errors.push(error.message));
 
-    // Cold-open this secondary page before a guest session exists.
-    await page.goto(base + '/pages/print-center/index');
-    await page.getByRole('button', { name: '流水报表', exact: true }).click();
-    await page.getByText('出入库流水（已加载 200 条）', { exact: true }).waitFor();
-    const rows = page.locator('[class*="row___"]:visible');
-    await expect(rows).toHaveCount(200);
-    await page.getByText('加载更多流水', { exact: true }).click();
-    await page.getByText('加载失败，点击重试', { exact: true }).click();
-    await page.getByText('出入库流水（已加载 400 条）', { exact: true }).waitFor();
-    await expect(rows).toHaveCount(400);
-    assert.deepEqual(pageRequests.filter(value => value > 1), [2, 2], 'retry must request the failed page, not the previous successful page');
-    await page.getByText('加载更多流水', { exact: true }).click();
-    await page.getByText('已显示全部流水', { exact: true }).waitFor();
-    await expect(rows).toHaveCount(405);
-    assert(!(await rows.first().innerText()).includes('¥¥'), 'currency sign must only appear once');
-    await expect(page.getByText('加载更多流水', { exact: true })).toHaveCount(0);
-    assert.deepEqual(pageRequests.filter(value => value > 1), [2, 2, 3]);
-
-    await page.evaluate(() => { window.__reportPrintCalls = 0; window.print = () => { window.__reportPrintCalls++; }; });
-    await page.getByText('打印当前流水', { exact: true }).click();
-    assert.equal(await page.evaluate(() => window.__reportPrintCalls), 1);
-    await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
-    await page.emulateMedia({ media: 'print' });
-    await expect(page.getByText('打印当前流水', { exact: true })).toBeHidden();
-    await expect(rows).toHaveCount(405);
-    const printStyles = await rows.first().evaluate(element => ({ visibility: getComputedStyle(element).visibility, breakInside: getComputedStyle(element).breakInside }));
-    assert.equal(printStyles.visibility, 'visible');
-    assert.equal(printStyles.breakInside, 'avoid');
-    if (name === 'chromium') {
-      const pdf = await page.pdf({ path: path.join(artifactDir, 'transactions.pdf'), format: 'A4', printBackground: true });
-      assert((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length > 1, 'large print output must paginate instead of clipping to a single screen');
-    }
-    await page.emulateMedia({ media: 'screen' });
-    await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
-    assert.equal(await page.locator('body').getAttribute('data-warehouse-print'), null);
-    await page.getByText('出入库流水（已加载 405 条）', { exact: true }).scrollIntoViewIfNeeded();
-    await page.screenshot({ path: path.join(artifactDir, 'print-center.png') });
-
+    // Delivery-note printing is exercised in print-center-browser.cjs.
     await page.goto(base + '/pages/ledger/index');
     await page.getByText('expense-test', { exact: false }).waitFor();
     await expect(page.getByText('+¥7.25', { exact: true })).toBeVisible();
@@ -129,7 +92,7 @@ async function main() {
     assert.equal(db.listTx({}).length, 405);
     assert.equal(db.getProduct(product.id).stock, 405);
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ engine: name, coldOpen: 'passed', pageRequests, failedPageRetry: 'passed', printMedia: 'passed', pdfPagination: name === 'chromium' ? 'passed' : 'not available', ledgerDownload: 'passed', backupDownloadAndRestore: 'passed', pageErrors: errors }));
+    console.log(JSON.stringify({ engine: name, ledgerDownload: 'passed', backupDownloadAndRestore: 'passed', pageErrors: errors }));
   } catch (error) {
     if (page) { await page.screenshot({ path: path.join(artifactDir, 'failure.png') }); console.error((await page.locator('body').innerText()).slice(0, 1800)); }
     throw error;

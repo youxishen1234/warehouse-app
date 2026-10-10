@@ -132,6 +132,8 @@ function load() {
     if (!Array.isArray(d.order_events)) d.order_events = [];
     if (!Array.isArray(d.stocktakes)) d.stocktakes = [];
     if (!Array.isArray(d.delivery_notes)) d.delivery_notes = [];
+    require('./print-notes').validateBackup(d);
+    if (!d.print_notes) d.print_notes = [];
     if (!d._meta.nextLedgerId) d._meta.nextLedgerId = d.ledger.length + 1;
     for (const [collection, counter] of [['products','nextProductId'],['customers','nextCustomerId'],['suppliers','nextSupplierId'],['transactions','nextTransactionId'],['ledger','nextLedgerId'],['orders','nextOrderId'],['order_events','nextOrderEventId'],['stocktakes','nextStocktakeId']]) {
       if (!Array.isArray(d[collection])) d[collection] = [];
@@ -1054,6 +1056,7 @@ function health() {
   return { online: readable && writable, dataReadable: readable, dataWritable: writable, revision: revision(), warningCount: loadWarnings.length };
 }
 function validateBackupData(data) {
+  require('./print-notes').validateBackup(data || {});
   if (data?.customer_dimensions !== undefined) customerDimensions.validateDocument(data.customer_dimensions);
   require('./boards').validate(data || {});
   const collections = ['products', 'customers', 'suppliers', 'transactions', 'ledger', 'orders', 'order_events', 'stocktakes', 'delivery_notes'];
@@ -1245,6 +1248,12 @@ function restoreData(value) {
   restoreSafetySnapshot();
   validateBackupData(value);
   const next = JSON.parse(JSON.stringify(value));
+  // Older backups must not erase documents created in the new print center.
+  if (next.print_notes === undefined) next.print_notes = JSON.parse(JSON.stringify(cache.print_notes || []));
+  next.print_notes.forEach(note => {
+    const current = (cache.print_notes || []).find(row => row.id === note.id);
+    note.version = Math.max(note.version, current?.version || 0) + 1;
+  });
   // Old backups predate the dimensions collection and must not erase it.
   const restoredDimensions = next.customer_dimensions === undefined ? getCustomerDimensions() : customerDimensions.validateDocument(next.customer_dimensions);
   next.customer_dimensions = { ...restoredDimensions, revision: Math.max(restoredDimensions.revision, getCustomerDimensions().revision) + 1 };
@@ -1274,12 +1283,40 @@ function updateCustomerDimensions(raw) {
     return getCustomerDimensions();
   });
 }
+function listPrintNotes(keyword) { return JSON.parse(JSON.stringify(require('./print-notes').list(cache, keyword))); }
+function savePrintNote(raw, id) { return atomicMutation(() => { const note = require('./print-notes').save(cache, raw, id); persist(); return note; }); }
+function shipPrintNote(id) {
+  return atomicMutation(() => {
+    const note = cache.print_notes.find(row => row.id === Number(id));
+    if (!note) throw Object.assign(new Error('送货单不存在'), { status: 404 });
+    if (note.outbound_at) return JSON.parse(JSON.stringify(note));
+    const seen = new Set();
+    const lines = note.items.map(item => {
+      let product = item.product_id == null ? null : cache.products.find(row => row.id === Number(item.product_id) && !row.deleted_at);
+      if (!product) {
+        const matches = cache.products.filter(row => !row.deleted_at && row.unit === '个' && row.name === item.name && String(row.specification || '') === String(item.specification || ''));
+        if (matches.length !== 1) throw new Error('商品无法唯一匹配库存，请先在商品管理核对名称和规格');
+        product = matches[0]; item.product_id = product.id;
+      }
+      if (product.unit !== '个') throw new Error('库存商品单位不是个，不能从送货单出库');
+      if (seen.has(product.id)) throw new Error('同一商品重复出现，请合并送货明细');
+      seen.add(product.id);
+      return { product_id: product.id, quantity: item.quantity, specification: item.specification, unit: '个', unit_price: item.price, remark: item.remark };
+    });
+    const outboundNo = 'CK' + String(cache._meta.nextTransactionId).padStart(8, '0');
+    const results = stockOutBatch(lines, note.sender || '送货单出库', '送货单 ' + note.number, note.customer_id || null);
+    const now = Date.now();
+    const transactionIds = results.map(result => { Object.assign(result.transaction, { outbound_no: outboundNo, print_note_id: note.id }); return result.transaction.id; });
+    note.outbound_at = now; note.outbound_no = outboundNo; note.transaction_ids = transactionIds; note.version = Number(note.version || 1) + 1; note.updated_at = now;
+    persist(); return JSON.parse(JSON.stringify(note));
+  });
+}
 function listBoards() { return require('./boards').list(cache); }
 function receiveBoard(raw) { return atomicMutation(() => { const batch = require('./boards').receive(cache, raw); persist(); return batch; }); }
 function moveBoard(id, raw) { return atomicMutation(() => { const batch = require('./boards').move(cache, id, raw); persist(); return batch; }); }
 function updateBoard(id, raw) { return atomicMutation(() => { const result = require('./boards').update(cache, id, raw); persist(); return result; }); }
 function deleteBoard(id) { return atomicMutation(() => { const result = require('./boards').remove(cache, id); persist(); return result; }); }
-module.exports = { getCustomerDimensions, updateCustomerDimensions, listBoards, receiveBoard, moveBoard, updateBoard, deleteBoard, listProducts, getProduct, addProduct, updateProduct, deleteProduct,
+module.exports = { listPrintNotes, savePrintNote, shipPrintNote, getCustomerDimensions, updateCustomerDimensions, listBoards, receiveBoard, moveBoard, updateBoard, deleteBoard, listProducts, getProduct, addProduct, updateProduct, deleteProduct,
   getLedgerAttachments, addLedgerAttachment, readLedgerAttachment, prepareLedgerAttachment: ledgerAttachments.prepare,
   listCustomers, getCustomer, addCustomer, updateCustomer, deleteCustomer,
   listSuppliers, getSupplier, addSupplier, updateSupplier, deleteSupplier,
