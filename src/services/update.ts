@@ -15,6 +15,22 @@ interface NativeUpdater {
   next?(opts: { id: string }): Promise<boolean>;
 }
 
+// Native updater calls are bridge operations. A stalled WKWebView bridge must
+// never leave the Mine page's update dialog in "检查中" forever.
+const UPDATER_CURRENT_TIMEOUT = 8000;
+const UPDATER_DOWNLOAD_TIMEOUT = 45000;
+const UPDATER_NEXT_TIMEOUT = 8000;
+
+function withTimeout<T>(promise: Promise<T>, timeout: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), timeout);
+  });
+  return Promise.race([promise, deadline]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
 function getUpdater(): NativeUpdater | null {
   if (typeof window === 'undefined') return null;
   const cap = (window as any).Capacitor;
@@ -70,7 +86,7 @@ export async function checkAndUpdate(): Promise<CheckUpdateResult> {
   // 当前运行的版本（首次安装为 builtin）
   let cur = 'builtin';
   try {
-    const c = await tu.current();
+    const c = await withTimeout(tu.current(), UPDATER_CURRENT_TIMEOUT, '读取当前更新版本超时');
     if (c?.bundle?.version) cur = c.bundle.version;
     if (c?.native) nativeVersion = c.native;
   } catch (e) { /* ignore */ }
@@ -135,10 +151,10 @@ export async function checkAndUpdate(): Promise<CheckUpdateResult> {
   const downloadUrl = `${downloadOrigin}/appupdate/${(info?.url || 'www.zip').replace(/^\//, '')}?t=${now}`;
   report('download_attempt', cur, latest, downloadUrl);
   try {
-    const res = await tu.download({
+    const res = await withTimeout(tu.download({
       url: downloadUrl,
       version: latest
-    });
+    }), UPDATER_DOWNLOAD_TIMEOUT, '更新包下载超时');
     bid = (res && res.id) || '';
   } catch (e: any) {
     report('download_failed', cur, latest, String(e?.message || 'download error'));
@@ -152,7 +168,7 @@ export async function checkAndUpdate(): Promise<CheckUpdateResult> {
 
   // 3) iOS 只在下次启动时切换更新包，避免 WebView 运行中切包闪退。
   try {
-    const nx = tu.next ? await tu.next({ id: bid }) : null;
+    const nx = tu.next ? await withTimeout(tu.next({ id: bid }), UPDATER_NEXT_TIMEOUT, '更新包切换超时') : null;
     if (nx !== null) {
       report('pending_restart', cur, latest);
       return { hasUpdate: true, message: '更新已下载，请关闭后重新打开 App 生效' };
