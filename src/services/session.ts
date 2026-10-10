@@ -1,9 +1,9 @@
 import Taro from '@tarojs/taro';
-export const TEAM_ORIGIN = 'http://152.136.100.200';
 export const PUBLIC_ORIGIN = 'https://youxishen.online';
+// Keep the alias for callers, but never send requests to the retired IP.
+export const TEAM_ORIGIN = PUBLIC_ORIGIN;
 export function sessionOrigin(): string {
-  // The public HTTPS endpoint is the canonical route for every client,
-  // including Capacitor iOS. The raw HTTP IP is only a last-resort fallback.
+  // DNS follows server migrations for browsers and native clients alike.
   return PUBLIC_ORIGIN;
 }
 export type Member = { id: string; username: string; role: 'admin' | 'operator' | 'viewer'; disabled?: boolean };

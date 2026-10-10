@@ -3,12 +3,11 @@ import { View, Text, ScrollView, Input } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
 import Icon from '@/components/Icon';
 
-import { autoBestBase, getBaseUrl, setBaseUrl } from '@/services/request';
+import { autoBestBase, checkServerHealth, getBaseUrl, setBaseUrl } from '@/services/request';
 import { checkAndUpdate } from '@/services/update';
 import styles from './index.module.scss';
 
-import { getStats } from '@/services/api';
-import { session, watchSession, PUBLIC_ORIGIN, TEAM_ORIGIN } from '@/services/session';
+import { PUBLIC_ORIGIN, TEAM_ORIGIN } from '@/services/session';
 
 const MineContent: React.FC = () => {
   const [addrOpen, setAddrOpen] = useState(false);
@@ -25,22 +24,43 @@ const MineContent: React.FC = () => {
   const [nativeVersion, setNativeVersion] = useState('');
   const [connection, setConnection] = useState('检测中');
   const [updateKind, setUpdateKind] = useState<'web' | 'ipa'>('web');
+  const [connectionDetail, setConnectionDetail] = useState('');
   const connectionRequest = React.useRef(0);
-  const refreshConnection = React.useCallback(async () => {
+  const connectionPending = React.useRef<Promise<boolean> | null>(null);
+  const refreshConnection = React.useCallback((): Promise<boolean> => {
+    if (connectionPending.current) return connectionPending.current;
     const request = ++connectionRequest.current;
-    if (!session()) { setConnection('连接中'); return; }
     setConnection('检测中');
-    try {
-      await getStats();
+    setConnectionDetail('');
+    const work = checkServerHealth().then(() => {
       if (request === connectionRequest.current) setConnection('已连接');
-    } catch (error) {
-      if (request === connectionRequest.current) setConnection('连接异常');
-    }
+      return true;
+    }).catch((error) => {
+      if (request === connectionRequest.current) {
+        const message = String(error?.message || '');
+        setConnection(message.includes('超时') ? '连接超时' : message.includes('网络未连接') ? '网络未连接' : '连接异常');
+        setConnectionDetail(/^(连接超时|网络未连接|服务器)/.test(message) ? message : '无法连接服务器，请检查网络后点击状态重试');
+      }
+      return false;
+    }).finally(() => {
+      if (request === connectionRequest.current) connectionPending.current = null;
+    });
+    connectionPending.current = work;
+    return work;
   }, []);
   useDidShow(() => { void refreshConnection(); });
   React.useEffect(() => {
-    const unwatch = watchSession(() => { void refreshConnection(); });
-    return () => { unwatch(); connectionRequest.current += 1; };
+    const onOnline = () => { void refreshConnection(); };
+    const onVisible = () => { if (document.visibilityState === 'visible') void refreshConnection(); };
+    void refreshConnection();
+    window.addEventListener('online', onOnline);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      document.removeEventListener('visibilitychange', onVisible);
+      connectionRequest.current += 1;
+      connectionPending.current = null;
+    };
   }, [refreshConnection]);
   React.useEffect(() => {
     const win = window as any;
@@ -80,19 +100,9 @@ const MineContent: React.FC = () => {
     try {
       const target = normalizeBase(url || addrVal || getBaseUrl());
       if (![PUBLIC_ORIGIN, TEAM_ORIGIN].includes(target)) throw new Error('地址必须是共享仓库服务器地址');
-      const token = session()?.token;
-      if (!token) throw new Error('仓库连接尚未建立，请稍后测试');
-      const res: any = await Taro.request({
-        url: `${target}/api/sync`,
-        method: 'GET',
-        header: { Authorization: `Bearer ${token}` },
-        timeout: 10000
-      });
-      const ok = res && res.statusCode >= 200 && res.statusCode < 300 && res.data?.success === true;
-      if (target === getBaseUrl()) setConnection(ok ? '已连接' : '连接异常');
-      setTestResult(ok
-        ? '连接成功 ✓ 服务器可以正常访问'
-        : '连接失败：服务器返回异常，请检查地址');
+      await checkServerHealth(target);
+      setTestResult('连接成功 ✓ 服务器可以正常访问');
+      if (target === getBaseUrl()) void refreshConnection();
     } catch (e: any) {
       setTestResult(e?.message || e?.errMsg || '连接测试失败');
     } finally {
@@ -114,14 +124,9 @@ const MineContent: React.FC = () => {
       setBaseUrl(addrVal);
       setAddrOpen(false);
       Taro.showToast({ title: '地址已保存', icon: 'success' });
-      // 用新地址做一次连通测试；失败仅提示，不阻断使用
-      try {
-        await getStats();
-        setConnection('已连接');
-      } catch (e) {
-        setConnection('连接异常');
-        Taro.showToast({ title: '已保存，但连接测试未通过', icon: 'none' });
-      }
+      connectionRequest.current += 1;
+      connectionPending.current = null;
+      if (!await refreshConnection()) Taro.showToast({ title: '已保存，但连接测试未通过', icon: 'none' });
     } catch (e: any) {
       Taro.showToast({ title: e?.message || '地址格式不正确', icon: 'none' });
     } finally {
@@ -202,8 +207,9 @@ const MineContent: React.FC = () => {
             <Text className={styles.heroTitle}>我的工作台</Text>
             <Text className={styles.heroSubtitle}>连接与更新设置</Text>
           </View>
-          <View className={`${styles.heroBadge} ${connection === '连接异常' ? styles.connectionError : ''}`} onClick={() => { void refreshConnection(); }}><View className={styles.liveDot} /><Text>{connection}</Text></View>
+          <View className={`${styles.heroBadge} ${connectionDetail ? styles.connectionError : ''}`} onClick={() => { void refreshConnection(); }}><View className={styles.liveDot} /><Text>{connection}</Text></View>
         </View>
+        {connectionDetail && <Text className={styles.connectionDetail}>{connectionDetail}</Text>}
         <View className={styles.connectionBar} onClick={() => setAddrOpen(true)}>
           <View className={styles.connectionIcon}><Icon name="trend" color="#2563eb" className={styles.connectionIconImg} /></View>
           <View className={styles.connectionCopy}><Text>当前服务节点</Text><Text>{addrSummary}</Text></View>

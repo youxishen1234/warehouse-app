@@ -15,7 +15,7 @@ function normalizeBase(url: string): string {
   const candidate = /^https?:\/\//i.test(value) ? value : (/^152\.136\.100\.200(?::\d+)?\/?$/.test(value) ? 'http://' : 'https://') + value;
   const parsed = new URL(candidate);
   if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || !['', '/'].includes(parsed.pathname) || parsed.search || parsed.hash) throw new Error('请输入服务器地址，不要包含下载路径');
-  return parsed.origin;
+  return parsed.hostname === '152.136.100.200' ? PUBLIC_ORIGIN : parsed.origin;
 }
 
 function readCustomBase(): string {
@@ -23,11 +23,7 @@ function readCustomBase(): string {
     const v = Taro.getStorageSync(CUSTOM_BASE_KEY);
     if (typeof v !== 'string' || !v.trim()) return '';
     const normalized = normalizeBase(v);
-    if (/^http:\/\/152\.136\.100\.200:4000$/i.test(normalized)) {
-      const migrated = 'http://152.136.100.200';
-      Taro.setStorageSync(CUSTOM_BASE_KEY, migrated);
-      return migrated;
-    }
+    if (normalized !== v && API_ORIGINS.includes(normalized)) Taro.setStorageSync(CUSTOM_BASE_KEY, normalized);
     return API_ORIGINS.includes(normalized) ? normalized : '';
   } catch (e) { return ''; }
 }
@@ -79,24 +75,44 @@ export function setBaseUrl(url: string): void {
 // 打开 App 时自动探测：优先服务器地址，必要时再尝试用户自定义地址。
 // ============================================
 
+/** Health is independent of business statistics and guest-session renewal. */
+export async function checkServerHealth(origin = getBaseUrl()): Promise<void> {
+  if (!API_ORIGINS.includes(origin)) throw new Error('地址必须是共享仓库服务器地址');
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('网络未连接，请联网后重试');
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error('连接超时，请检查网络后重试'));
+      controller.abort();
+    }, 6000);
+  });
+  try {
+    // Bound JSON parsing too, even when a native fetch bridge ignores abort.
+    await Promise.race([deadline, (async () => {
+      const response = await fetch(origin + '/api/health', { cache: 'no-store', signal: controller.signal });
+      if (!response.ok) throw new Error('服务器暂时不可用（HTTP ' + response.status + '），请稍后重试');
+      let body: any;
+      try { body = await response.json(); } catch (error) { throw new Error('服务器响应无效，请稍后重试'); }
+      if (body?.success !== true || body?.data?.online !== true) throw new Error('服务器健康检查未通过，请稍后重试');
+      if (body.data.dataReadable === false || body.data.dataWritable === false) throw new Error('服务器存储异常，请联系管理员');
+    })()]);
+  } finally { if (timer !== undefined) clearTimeout(timer); }
+}
+
 /** 依次探测候选地址，返回第一个可用的；全部失败返回 null */
 export async function autoBestBase(): Promise<string | null> {
   // Prefer the currently selected route; a background probe must not undo failover.
   const version = originVersion;
   const candidates = [...new Set([getBaseUrl(), ...API_ORIGINS])];
   for (const c of candidates) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
     try {
-      const response = await fetch(`${c}/api/health`, { cache: 'no-store', signal: controller.signal });
-      if (response.ok) {
-        if (version !== originVersion) return getBaseUrl();
-        acceptApiOrigin(c, version);
-        setOffline(false);
-        return getBaseUrl();
-      }
+      await checkServerHealth(c);
+      if (version !== originVersion) return getBaseUrl();
+      acceptApiOrigin(c, version);
+      setOffline(false);
+      return getBaseUrl();
     } catch (e) { /* 当前候选不可达，继续下一个 */ }
-    finally { clearTimeout(timer); }
   }
   return null;
 }

@@ -5,7 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const ts = require('typescript');
 
-const PRIMARY = 'http://152.136.100.200';
+const PRIMARY = 'https://secondary.example.test';
 const FALLBACK = 'https://youxishen.online';
 const response = (status = 200, data = []) => new Response(JSON.stringify({ success: status < 400, data, message: status >= 400 ? '暂时不可用' : undefined }), { status, headers: { 'Content-Type': 'application/json', 'X-Warehouse-Revision': '1' } });
 const defer = () => {
@@ -120,7 +120,7 @@ test('a late business response cannot undo a newer manual address selection', as
 
 test('health probes prefer the selected route and failed probes leave it unchanged', async () => {
   const urls = [];
-  const { api, storage } = setup(async url => { urls.push(url); return response(url.startsWith(PRIMARY) ? 200 : 503); }, FALLBACK);
+  const { api, storage } = setup(async url => { urls.push(url); return response(url.startsWith(PRIMARY) ? 200 : 503, { online: true }); }, FALLBACK);
   assert.equal(await api.autoBestBase(), PRIMARY);
   assert.deepEqual(urls, [FALLBACK + '/api/health', PRIMARY + '/api/health']);
   assert.equal(storage.get('sg_custom_base'), FALLBACK, 'automatic failover does not rewrite the explicit preference');
@@ -142,7 +142,7 @@ test('untrusted stored addresses are ignored while legacy approved addresses mig
   const invalid = setup(async url => { urls.push(url); return response(); }, 'https://untrusted.invalid');
   await invalid.api.request({ url: '/api/products' });
   assert.deepEqual(urls, [PRIMARY + '/api/products']);
-  const legacy = setup(async () => response(), PRIMARY + ':4000');
-  assert.equal(legacy.api.getBaseUrl(), PRIMARY);
-  assert.equal(legacy.storage.get('sg_custom_base'), PRIMARY);
+  const legacy = setup(async () => response(), 'http://152.136.100.200:4000');
+  assert.equal(legacy.api.getBaseUrl(), FALLBACK);
+  assert.equal(legacy.storage.get('sg_custom_base'), FALLBACK);
 });

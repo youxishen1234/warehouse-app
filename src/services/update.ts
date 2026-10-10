@@ -1,6 +1,6 @@
 import Taro from '@tarojs/taro';
 import { getBaseUrl } from '@/services/request';
-import { deviceId } from '@/services/session';
+import { deviceId, PUBLIC_ORIGIN } from '@/services/session';
 import { isNewerVersion } from './update-version';
 
 // ============================================
@@ -98,7 +98,7 @@ export async function checkAndUpdate(): Promise<CheckUpdateResult> {
     finally { clearTimeout(timer); }
   };
 
-  // 1) 检查更新：原生 Taro 请求失败时，使用 WebView fetch 和备用 IP。
+  // 1) 检查更新：原生 Taro 请求失败时，使用 WebView fetch 和正式域名。
   let info: { version?: string; url?: string } | null = null;
   try {
     const res = await Taro.request({
@@ -112,7 +112,7 @@ export async function checkAndUpdate(): Promise<CheckUpdateResult> {
   } catch (e) { /* ignore */ }
 
   if (!info) {
-    for (const origin of [...new Set([base, 'https://youxishen.online', 'http://152.136.100.200'])]) {
+    for (const origin of [...new Set([base, PUBLIC_ORIGIN])]) {
       try { const body = await fetchJson(`${origin}/api/appupdate/check?current=${encodeURIComponent(cur)}&t=${now}`); if (body?.success && body.data?.version) { info = body.data; break; } } catch (e) { /* try next */ }
     }
   }
@@ -129,7 +129,7 @@ export async function checkAndUpdate(): Promise<CheckUpdateResult> {
   }
 
   if (!info) {
-    for (const origin of [...new Set([base, 'https://youxishen.online', 'http://152.136.100.200'])]) {
+    for (const origin of [...new Set([base, PUBLIC_ORIGIN])]) {
       try { const body = await fetchJson(`${origin}/appupdate/manifest.json?t=${now}`); if (body?.version) { info = body; break; } } catch (e) { /* try next */ }
     }
   }
@@ -147,7 +147,7 @@ export async function checkAndUpdate(): Promise<CheckUpdateResult> {
 
   // 2) 下载更新包
   let bid = '';
-  const downloadOrigin = base || 'http://152.136.100.200';
+  const downloadOrigin = base || PUBLIC_ORIGIN;
   const downloadUrl = `${downloadOrigin}/appupdate/${(info?.url || 'www.zip').replace(/^\//, '')}?t=${now}`;
   report('download_attempt', cur, latest, downloadUrl);
   try {

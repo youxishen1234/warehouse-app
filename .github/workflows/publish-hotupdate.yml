@@ -81,6 +81,7 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           node tests/ledger-photos-browser.cjs
+          node tests/mine-connection-browser.cjs
           NAV_WEB_DIR="$TARO_OUTPUT_DIR" node tests/desktop-navigation-browser.cjs
           BUSINESS_WEB_DIR="$TARO_OUTPUT_DIR" node tests/business-center-browser.cjs
       - name: Run complete backend test suite

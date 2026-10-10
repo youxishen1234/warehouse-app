@@ -15,7 +15,10 @@ test('H5 and Electron publish the same constrained CSP policy', () => {
     assert.match(dist, new RegExp(directive.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     assert.match(desktop, new RegExp(directive.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
-  for (const artifact of [source, dist, desktop]) assert.match(artifact, /http:\/\/152\.136\.100\.200:\*/);
+  for (const artifact of [source, dist, desktop]) {
+    assert(artifact.includes('https://youxishen.online'));
+    assert(!artifact.includes('152.136.100.200'), 'retired server must not remain in the connection policy');
+  }
   assert.doesNotMatch(source, /script-src\s+[^;]*unsafe-inline/);
   assert.doesNotMatch(source, /connect-src\s+\*/);
   for (const html of [source, dist]) {
