@@ -83,9 +83,17 @@ async function main() {
     await page.getByLabel('送货人', { exact: true }).fill('张师傅');
     await page.getByLabel('第1项备注').fill('请轻拿轻放');
     await noOverflow();
-    const dateBounds=await page.getByLabel('送货日期',{exact:true}).evaluate(input=>{const r=input.getBoundingClientRect(),p=input.parentElement.getBoundingClientRect();return {right:r.right,parentRight:p.right,height:r.height};});
+    const dateInput=page.getByLabel('送货日期',{exact:true});
+    await dateInput.fill('2026-10-12');
+    await expect(dateInput.locator('..')).toContainText('2026/10/12');
+    await dateInput.fill('2026-10-11');
+    const dateBounds=await dateInput.evaluate(input=>{const r=input.parentElement.getBoundingClientRect(),p=input.parentElement.parentElement.getBoundingClientRect();return {right:r.right,parentRight:p.right,height:r.height};});
     assert.ok(dateBounds.right<=dateBounds.parentRight+1,'localized date stays inside its column');
     assert.equal(dateBounds.height,46,'date matches the other input heights');
+    await dateInput.evaluate(input=>{input.style.minWidth='300px';input.style.minHeight='70px';});
+    const dateClipping=await dateInput.evaluate(input=>{const wrapper=input.parentElement,r=wrapper.getBoundingClientRect(),sender=document.querySelector('input[aria-label="送货人"]'),s=sender.getBoundingClientRect();return {height:r.height,clips:getComputedStyle(wrapper).overflow,right:r.right,senderLeft:s.left,hit:document.elementFromPoint(s.left+s.width/2,s.top+s.height/2)===sender};});
+    assert.equal(dateClipping.height,46);assert.equal(dateClipping.clips,'hidden');assert.ok(dateClipping.right<dateClipping.senderLeft);assert.ok(dateClipping.hit,'oversized iOS picker cannot cover sender');
+    await dateInput.evaluate(input=>{input.style.removeProperty('min-width');input.style.removeProperty('min-height');});
     const main=page.locator('main').first();
     await main.evaluate(element=>element.style.setProperty('--print-safe-top','59px'));
     await page.getByLabel('送货日期',{exact:true}).scrollIntoViewIfNeeded();

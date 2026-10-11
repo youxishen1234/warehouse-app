@@ -155,7 +155,7 @@ export default function PrintCenterPage() {
   };
   const addItem = (item = blankItem()) => { if (draft.items.length < 200) change({ items: [...draft.items, item] }); };
   const amount = draftTotal(draft);
-  const input = (key: keyof Omit<NoteDraft, 'items' | 'customer_id' | 'paper'>, label: string, limit: number, type = 'text') => <label className={styles.field}>{label}<input aria-label={label} type={type} value={draft[key]} maxLength={limit} onChange={event => change({ [key]: event.target.value })} /></label>;
+  const input = (key: keyof Omit<NoteDraft, 'items' | 'customer_id' | 'paper'>, label: string, limit: number, type = 'text') => <label className={styles.field}>{label}{type === 'date' ? <span className={styles.dateControl}><span aria-hidden='true'>{draft[key].replace(/-/g, '/')}</span><input aria-label={label} type='date' value={draft[key]} onChange={event => change({ [key]: event.target.value })} /></span> : <input aria-label={label} type={type} value={draft[key]} maxLength={limit} onChange={event => change({ [key]: event.target.value })} />}</label>;
 
   return <main className={styles.page}>
     <div className={styles.shell}>
