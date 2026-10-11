@@ -39,7 +39,12 @@ async function main() {
     assert.equal(await page.locator('.sg-glass-items').evaluate(el => getComputedStyle(el).maskImage), 'none');
     for (const name of ['board-stock', 'customers', 'orders', 'ledger', 'print-center']) {
       await page.locator(`button[data-nav="/pages/${name}/index"]`).click();
-      await current(name);
+      if (name === 'customers') {
+        await page.waitForURL(/customer-desk\.html/);
+        await page.getByRole('button', { name: '资料 / 账款' }).click();
+        await current('customers');
+        await page.getByText('+ 新增', { exact: true }).waitFor();
+      } else await current(name);
       await page.goto(origin);
       await current('home');
     }
