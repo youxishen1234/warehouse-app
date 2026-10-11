@@ -29,7 +29,7 @@ async function main() {
   const errors = [];
   let page;
   try {
-    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, locale: 'zh-CN' });
     let failSave = false, failHistory = false, holdCustomer = false, releaseCustomer;
     await context.route('**/*', async route => {
       const request = route.request(), url = new URL(request.url());
@@ -52,7 +52,7 @@ async function main() {
     const active = () => page.locator('.taro_page:visible').last();
     const button = name => page.getByRole('button', { name, exact: true });
     const noOverflow = async () => {
-      await expect.poll(() => active().evaluate(element => element.scrollWidth <= element.clientWidth + 1), { message: 'mobile page must not overflow horizontally' }).toBe(true);
+      await expect.poll(() => page.locator('main').first().evaluate(element => element.scrollWidth <= element.clientWidth + 1), { message: 'mobile page must not overflow horizontally' }).toBe(true);
       assert.equal(await active().locator('input:visible,select:visible').evaluateAll(elements => elements.filter(element => element.getBoundingClientRect().right > innerWidth + 1 || element.getBoundingClientRect().left < -1).length), 0, 'fields fit viewport');
     };
     await page.goto(origin + '/#/pages/print-center/index');
@@ -83,6 +83,21 @@ async function main() {
     await page.getByLabel('送货人', { exact: true }).fill('张师傅');
     await page.getByLabel('第1项备注').fill('请轻拿轻放');
     await noOverflow();
+    const dateBounds=await page.getByLabel('送货日期',{exact:true}).evaluate(input=>{const r=input.getBoundingClientRect(),p=input.parentElement.getBoundingClientRect();return {right:r.right,parentRight:p.right,height:r.height};});
+    assert.ok(dateBounds.right<=dateBounds.parentRight+1,'localized date stays inside its column');
+    assert.equal(dateBounds.height,46,'date matches the other input heights');
+    const main=page.locator('main').first();
+    await main.evaluate(element=>element.style.setProperty('--print-safe-top','59px'));
+    await page.getByLabel('送货日期',{exact:true}).scrollIntoViewIfNeeded();
+    await page.screenshot({path:path.join(artifacts,'mobile-date-safe-area.png')});
+    await main.evaluate(element=>{element.scrollTop=360;});
+    const scrollLayout=await main.evaluate(element=>{const bar=element.querySelector('footer'),r=bar.getBoundingClientRect();return {top:element.getBoundingClientRect().top,background:getComputedStyle(bar).backgroundColor,bottom:r.bottom,height:r.height,scrollTop:element.scrollTop};});
+    assert.equal(scrollLayout.top,59,'scroll viewport starts below the status bar');
+    assert.equal(scrollLayout.background,'rgb(244, 246, 248)','action bar fully hides content behind it');
+    assert.ok(scrollLayout.scrollTop>0);
+    assert.ok(scrollLayout.bottom<=844&&scrollLayout.bottom>=840,'action bar stays at the viewport bottom');
+    await page.screenshot({path:path.join(artifacts,'mobile-scroll-actions.png')});
+    await main.evaluate(element=>{element.style.removeProperty('--print-safe-top');element.scrollTop=0;});
     await page.screenshot({ path: path.join(artifacts, 'mobile-editor.png'), fullPage: true });
     await button('保存单据').click();
     await expect.poll(() => db.listPrintNotes().length).toBe(1);

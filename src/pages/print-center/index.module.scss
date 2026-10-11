@@ -1,4 +1,4 @@
-.page { min-height: 100vh; background: #f4f6f8; color: #172b3a; font: 14PX/1.5 -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif; color-scheme: light; padding: calc(env(safe-area-inset-top, 0PX) + 20PX) 20PX calc(env(safe-area-inset-bottom, 0PX) + 110PX); box-sizing: border-box; }
+.page { position: fixed; inset: var(--print-safe-top, env(safe-area-inset-top, 0PX)) 0 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; background: #f4f6f8; color: #172b3a; font: 14PX/1.5 -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif; color-scheme: light; padding: 20PX 20PX calc(env(safe-area-inset-bottom, 0PX) + 24PX); box-sizing: border-box; }
 .page *, .backdrop * { box-sizing: border-box; }
 .shell { width: 100%; max-width: 820PX; margin: 0 auto; }
 .page h1, .page h2, .page h3, .backdrop h2 { margin: 0; line-height: 1.4; }
@@ -26,6 +26,9 @@
 .page .textButton, .backdrop .textButton { background: transparent; color: #236778; padding: 8PX 0 8PX 8PX; }
 .field { display: block; color: #6c7e8a; font-size: 12PX; min-width: 0; margin-bottom: 14PX; }
 .field [aria-label]:is([maxlength], [type=search]), .field select { margin-top: 6PX; }
+.field input[type=date] { appearance: none; -webkit-appearance: none; width: 100%; max-width: 100%; min-width: 0; height: 46PX; overflow: hidden; font-size: 14PX; text-align: left; }
+.field input[type=date]::-webkit-date-and-time-value { min-width: 0; text-align: left; }
+.field input[type=date]::-webkit-datetime-edit { padding: 0; }
 .grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 14PX; }
 .item { border-top: 1PX solid #e9edf0; padding: 16PX 0 8PX; min-width: 0; }
 .item:first-child { border-top: 0; padding-top: 0; }
@@ -43,7 +46,7 @@
 .settings summary { padding: 17PX 20PX; cursor: pointer; color: #647c89; font-size: 13PX; }
 .settings summary span { float: right; color: #97a5ad; }
 .settingsBody { padding: 2PX 20PX 6PX; }
-.actions { position: sticky; bottom: 12PX; z-index: 3; display: flex; gap: 12PX; background: #f4f6f8f5; padding: 14PX 0 0; margin-top: 8PX; }
+.actions { position: sticky; bottom: calc(-1 * (env(safe-area-inset-bottom, 0PX) + 24PX)); z-index: 3; display: flex; gap: 12PX; background: #f4f6f8; padding: 14PX 20PX calc(env(safe-area-inset-bottom, 0PX) + 16PX); margin: 8PX -20PX -24PX; border-top: 1PX solid #e4e9ed; }
 .actions [type=button] { flex: 1; height: 49PX; font-weight: 600; font-size: 15PX; }
 .page .primary, .backdrop .primary { background: #245f72; color: #fff; }
 .page .secondary, .backdrop .secondary { background: white; border: 1PX solid #d2dee4; color: #315769; }
@@ -84,8 +87,8 @@
 .frameShell iframe { position: absolute; top: 0; left: 0; border: 0; transform-origin: top left; display: block; }
 .previewActions { display: flex; gap: 12PX; justify-content: flex-end; margin-top: 16PX; }
 @media (max-width: 520PX) {
-  .page { padding-left: 14PX; padding-right: 14PX; padding-top: calc(env(safe-area-inset-top, 0PX) + 14PX); }
+  .page { padding-left: 14PX; padding-right: 14PX; padding-top: 14PX; }
   .toolbar { margin-bottom: 18PX; }.card { padding: 18PX 16PX; }.grid { gap: 0 10PX; }.sectionHeading { margin-bottom: 12PX; }
   .backdrop { padding: 12PX; align-items: center; }.dialog { padding: 20PX 16PX; }.previewDialog { padding: 16PX 12PX; border-radius: 14PX; }.historyCard { padding: 16PX !important; }
-  .actions { bottom: calc(env(safe-area-inset-bottom, 0PX) + 8PX); gap: 10PX; }.previewActions [type=button] { flex: 1; }.previewControls select { flex-basis: 100%; }
+  .actions { gap: 10PX; margin-left: -14PX; margin-right: -14PX; padding-left: 14PX; padding-right: 14PX; }.previewActions [type=button] { flex: 1; }.previewControls select { flex-basis: 100%; }
 }
