@@ -84,6 +84,8 @@ async function main() {
     await page.getByLabel('第1项备注').fill('请轻拿轻放');
     await noOverflow();
     const dateInput=page.getByLabel('送货日期',{exact:true});
+    assert.equal(await dateInput.evaluate(element=>getComputedStyle(element).opacity),'0','native date chrome is hidden in the compiled app');
+    assert.equal(await dateInput.evaluate(element=>getComputedStyle(element).position),'absolute','native date editor cannot contribute intrinsic grid width');
     await dateInput.fill('2026-10-12');
     await expect(dateInput.locator('..')).toContainText('2026/10/12');
     await dateInput.fill('2026-10-11');

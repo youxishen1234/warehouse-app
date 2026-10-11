@@ -29,7 +29,7 @@
 .dateControl { position: relative; display: flex; align-items: center; width: 100%; min-width: 0; height: 46PX; margin-top: 6PX; padding: 10PX 12PX; overflow: hidden; isolation: isolate; border: 1PX solid #dce2e7; border-radius: 9PX; background: #fff; color: #172b3a; font-size: 16PX; white-space: nowrap; }
 .dateControl > span { overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
 // iOS gives its native date editor an intrinsic size; it must not size the grid.
-.page .dateControl input[type=date] { position: absolute; inset: 0; display: block; width: 100%; max-width: 100%; min-width: 0; height: 100%; margin: 0; padding: 0; border: 0; opacity: 0; font-size: 16PX; cursor: pointer; }
+.page .dateControl [type=date] { position: absolute; inset: 0; display: block; width: 100%; max-width: 100%; min-width: 0; height: 100%; margin: 0; padding: 0; border: 0; opacity: 0; font-size: 16PX; cursor: pointer; }
 .dateControl:focus-within { border-color: #1f6175; box-shadow: 0 0 0 3PX #1f617512; }
 .grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 14PX; }
 .item { border-top: 1PX solid #e9edf0; padding: 16PX 0 8PX; min-width: 0; }
