@@ -60,6 +60,10 @@
 .notice { background: #e8f4ef; color: #36735e; padding: 10PX 14PX; font-size: 13PX; border-radius: 10PX; margin-bottom: 14PX; }
 .muted { color: #80919c; font-size: 13PX; margin: 10PX 0; overflow-wrap: anywhere; }
 .historySearch { display: flex; gap: 8PX; margin-bottom: 16PX; }
+.historyEntry { margin-bottom: 12PX; background: white; border: 1PX solid #e4e9ed; border-radius: 14PX; overflow: hidden; }
+.page .historyEntry .historyCard { margin: 0; border: 0; border-radius: 0; }
+.historyPrint { display: flex; align-items: center; justify-content: space-between; gap: 12PX; padding: 12PX 16PX; border-top: 1PX solid #edf0f3; color: #647c89; font-size: 12PX; }
+.historyPrint > span { min-width: 0; overflow-wrap: anywhere; }.historyPrint small { display: block; margin-top: 3PX; font-size: 11PX; color: #8b9ba5; }.historyPrint [type=button] { flex-shrink: 0; }
 .historySearch [aria-label]:is([maxlength], [type=search]) { flex: 1; }
 .historySearch [type=button] { color: #416779; background: #e7eef1; flex-shrink: 0; }
 .page .historyCard { display: flex; justify-content: space-between; gap: 16PX; width: 100%; text-align: left; padding: 20PX; margin-bottom: 12PX; border: 1PX solid #e4e9ed; background: white; color: #223c4a; border-radius: 14PX; }

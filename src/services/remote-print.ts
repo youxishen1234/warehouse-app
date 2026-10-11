@@ -9,5 +9,6 @@ export const readPrintAttempt = (fingerprint:string): string => { try { return T
 export const savePrintAttempt = (fingerprint:string,id:string) => Taro.setStorageSync(key+':'+fingerprint,id);
 const header = () => ({'X-Print-Client':readPrintPair()});
 export const getRemoteDevice = () => request<RemoteDevice>({url:'/api/remote-print/device',header:header()});
+export const getRemotePrintHistory = () => request<{note_id:number;printed_at:number}[]>({url:'/api/remote-print/history',header:header()});
 export const submitRemotePrint = (data: { id:string; note_id:number; version:number; paper:string }) => request<RemoteJob>({url:'/api/remote-print/jobs',method:'POST',header:header(),data});
 export const getRemotePrintJob = (id:string) => request<RemoteJob>({url:'/api/remote-print/jobs/'+encodeURIComponent(id),header:header()});

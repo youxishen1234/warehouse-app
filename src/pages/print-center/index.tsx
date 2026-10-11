@@ -13,6 +13,7 @@ import { blankItem, draftFromTransactions, draftTotal, newNote, normalizeSpecifi
 import type { ItemDraft, NoteDraft } from './model';
 import { formatSpecificationInput } from './specification-input';
 import PrintPreview from './preview';
+import { getRemotePrintHistory, readPrintPair } from '@/services/remote-print';
 import styles from './index.module.scss';
 
 const currency = (value: number) => Number.isFinite(value) ? value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
@@ -26,6 +27,9 @@ export default function PrintCenterPage() {
   const [dirty, setDirty] = useState(false);
   const [tab, setTab] = useState<'edit' | 'history' | 'detail'>('edit');
   const [preview, setPreview] = useState<PrintNoteInput>();
+  const [printTimes,setPrintTimes]=useState<Record<number,number>>({});
+  const [printTimeError,setPrintTimeError]=useState('');
+  useEffect(()=>{if(tab!=='history'||!readPrintPair())return;let active=true;setPrintTimeError('');getRemotePrintHistory().then(rows=>{if(active)setPrintTimes(Object.fromEntries(rows.map(row=>[row.note_id,row.printed_at])));}).catch(()=>{if(active)setPrintTimeError('打印时间暂时无法获取，请稍后刷新');});return()=>{active=false;};},[tab]);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const [error, setError] = useState('');
@@ -124,9 +128,9 @@ export default function PrintCenterPage() {
     void load(); return () => { active = false; stop(); };
   }, [params.transaction_id]);
 
-  const openNote = (id: number) => guard(() => {
+  const openNote = (id: number, reprint = false) => guard(() => {
     busyRef.current = true; setBusy(true); setError(''); setNotice('');
-    getPrintNote(id).then(note => { setSaved(note); setDraft(noteDraft(note)); setDirty(false); setChosenCustomer(undefined); setTab('detail'); })
+    getPrintNote(id).then(note => { setSaved(note); setDraft(noteDraft(note)); setDirty(false); setChosenCustomer(undefined); if(reprint)setPreview(note);else setTab('detail'); })
       .catch(issue => setError(messageOf(issue))).finally(() => { busyRef.current = false; setBusy(false); });
   });
   const save = async () => {
@@ -168,7 +172,7 @@ export default function PrintCenterPage() {
         <div className={styles.historySearch}><input type='search' aria-label='搜索历史单据' placeholder='搜索客户、单号、商品或规格' value={query} onChange={event => setQuery(event.target.value)} /><button type='button' onClick={() => void loadHistory()} disabled={historyLoading}>刷新</button></div>
         {historyError && <div role='alert' className={styles.error}>{historyError}<button type='button' onClick={() => void loadHistory()}>重试</button></div>}
         {!history.length && !historyLoading && !historyError && <div className={styles.empty}><strong>{query ? '没有找到单据' : '还没有送货单'}</strong><p>{query ? '换个客户名称、单号或规格试试' : '新建第一张，之后随时查看和修改'}</p>{!query && <button type='button' onClick={startNew}>新建送货单</button>}</div>}
-        {history.map(note => <button type='button' className={styles.historyCard} key={note.id} disabled={busy} onClick={() => openNote(note.id)}><span><strong>{note.customer_name}</strong><small>{note.date} · {note.items.length} 项</small><small>{note.number}</small><span className={styles.historyItems}>{note.items.map(item => item.name).join('、')}</span></span><span className={styles.historyAmount}>¥ {currency(note.total)}<small>查看详情 ›</small></span></button>)}
+        {printTimeError&&<p role='alert' className={styles.error}>{printTimeError}</p>}{!readPrintPair()&&<p className={styles.muted}>连接打印电脑后可查看远程打印时间。</p>}{history.map(note => <article className={styles.historyEntry} key={note.id}><button type='button' className={styles.historyCard} key={note.id} disabled={busy} onClick={() => openNote(note.id)}><span><strong>{note.customer_name}</strong><small>{note.date} · {note.items.length} 项</small><small>{note.number}</small><span className={styles.historyItems}>{note.items.map(item => item.name).join('、')}</span></span><span className={styles.historyAmount}>¥ {currency(note.total)}<small>查看详情 ›</small></span></button><div className={styles.historyPrint}><span>{printTimes[note.id] ? '打印时间：'+new Date(printTimes[note.id]).toLocaleString('zh-CN', { hour12: false }) : '暂无远程打印记录'}<small>以送入电脑打印队列的时间为准</small></span><button type='button' className={styles.secondary} disabled={busy} onClick={()=>openNote(note.id,true)}>重新打印</button></div></article>)}
         {historyLoading && <p className={styles.muted} role='status'>正在加载单据…</p>}
         {!historyLoading && history.length < totalRecords && <button type='button' className={styles.addButton} onClick={() => void loadHistory(historyPage + 1)}>加载更多</button>}
       </section> : tab === 'detail' && saved ? <>
@@ -203,4 +207,7 @@ export default function PrintCenterPage() {
     {preview && <PrintPreview note={preview} saved={saved} onClose={() => setPreview(undefined)} />}
   </main>;
 }
+
+
+
 

@@ -184,6 +184,13 @@ async function main() {
     await page.getByText(/远程打印到店里/).click();
     await expect(button('再打印一份')).toBeEnabled();
     assert.equal(JSON.parse(fs.readFileSync(process.env.WAREHOUSE_REMOTE_PRINT_FILE)).jobs.length,2,'reopening preview only queries the last job');
+    await button('返回单据').click();await button('历史单据').click();
+    await expect(page.getByText(/^打印时间：/)).toBeVisible();
+    await button('重新打印').click();
+    await expect(page.getByRole('dialog',{name:'送货单预览'})).toBeVisible();
+    await expect(frame().locator('body')).not.toContainText('打印时间');
+    await page.getByText(/远程打印到店里/).click();
+    await expect(button('再打印一份')).toBeEnabled();
     await page.getByText(/远程打印到店里/).click();
     await page.screenshot({ path: path.join(artifacts, 'mobile-preview.png'), fullPage: true });
     for (const paper of ['241-93', '241-140', 'a4']) {
@@ -205,7 +212,7 @@ async function main() {
     await page.setViewportSize({ width: 390, height: 844 });
     saved = db.listPrintNotes()[0];
     const multi = db.savePrintNote({ ...saved, customer_name: '多页送货客户', items: Array.from({ length: 12 }, (_, index) => ({ ...saved.items[0], name: '纸箱 ' + (index + 1), remark: '多页测试', quantity: 10, price: 1.23456 })) });
-    failHistory = true; await button('历史单据').click();
+    await button('当前单据').click(); failHistory = true; await button('历史单据').click();
     await expect(page.getByRole('alert')).toContainText('测试历史加载失败');
     await button('重试').click(); await page.getByRole('button', { name: /多页送货客户/ }).click();
     await button('编辑单据').click();
@@ -235,3 +242,4 @@ async function main() {
   }
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
+

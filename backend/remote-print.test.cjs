@@ -15,6 +15,10 @@ test('paired print jobs persist, claim once, deduplicate, and never resend uncer
   now+=180001;assert.equal(store.status(pair.client,job.id).status,'uncertain');
   store.enqueue(pair.client,{id:'remote-print-task-002',paper:'a4'},note);assert.equal(store.claim(pair.agent,true).job,null);
   store.acknowledge(pair.agent,job.id,{lease:claim.lease,status:'queued'});assert.equal(store.status(pair.client,job.id).status,'queued');
+  assert.deepEqual(store.history(pair.client),[{note_id:1,printed_at:now}]);
+  const other=store.register('其他电脑','其他打印机');assert.deepEqual(store.history(other.client),[]);
+  assert.throws(()=>store.history(pair.agent),/配对/);
+  assert.equal(note.printed_at,undefined,'print time stays outside delivery data');
   assert.equal(createStore(file,()=>now).claim(pair.agent,true).job.id,'remote-print-task-002');
   const raw=fs.readFileSync(file,'utf8');assert.ok(!raw.includes(pair.client));assert.ok(!raw.includes(pair.agent));
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
