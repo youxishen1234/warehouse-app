@@ -6,10 +6,12 @@ import { listCustomerPhotos, readCustomerPhoto, uploadCustomerPhoto } from '@/se
 import type { CustomerPhoto } from '@/services/customer-photos';
 import styles from './index.module.scss';
 
+const decodeCustomerName = (value?: string) => { try { return decodeURIComponent(value || '客户'); } catch { return value || '客户'; } };
+
 export default function CustomerPhotosPage() {
   const { params } = useRouter();
   const customerId = Number(params.id);
-  const customerName = params.name || '客户';
+  const customerName = decodeCustomerName(params.name);
   const [items, setItems] = useState<CustomerPhoto[]>([]);
   const [drafts, setDrafts] = useState<PhotoDraft[]>([]);
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
@@ -56,6 +58,11 @@ export default function CustomerPhotosPage() {
   const choose = async (camera: boolean) => {
     setError('');
     try {
+      if ((globalThis as any).Capacitor?.isNativePlatform?.()) {
+        const photos = await chooseNativePhotos('delivery', Math.min(camera ? 1 : 9, MAX_PHOTOS - items.length - drafts.length), camera, MAX_CUSTOMER_PHOTO_BYTES);
+        setDrafts(previous => [...previous, ...photos]);
+        return;
+      }
       if (typeof document !== 'undefined') {
         const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/jpeg,image/png,image/webp'; input.multiple = !camera;
         if (camera) input.setAttribute('capture', 'environment');
