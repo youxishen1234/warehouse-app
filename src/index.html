@@ -21,7 +21,9 @@
         if (route && !window.location.hash && window.location.protocol !== 'file:') {
           window.history.replaceState(null, '', (route[1] || '') + '/#' + route[2] + '/index' + window.location.search);
         }
-        var href = window.location.protocol === 'file:' ? './' : '/';
+        var nativeApp = Boolean(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+        if (!nativeApp && /^https?:$/.test(window.location.protocol) && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname)) nativeApp = true;
+        var href = window.location.protocol === 'file:' || nativeApp ? './' : '/';
         // document.write keeps the base element ahead of Webpack's injected
         // script/link tags while the HTML parser is still resolving them.
         document.write('<base href="' + href + '">');
@@ -202,7 +204,9 @@
       // keeping them out of static HTML prevents the browser preload scanner
       // from resolving ./js and ./css against a deep route.
       (function() {
-        var root = window.location.protocol === 'file:' ? './' : '/';
+        var nativeApp = Boolean(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+        if (!nativeApp && /^https?:$/.test(window.location.protocol) && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname)) nativeApp = true;
+        var root = window.location.protocol === 'file:' || nativeApp ? './' : '/';
         document.write('<script defer src="' + root + 'js/home-search.js"><\/script>');
         document.write('<link rel="stylesheet" href="' + root + 'css/polish.css">');
       })();
