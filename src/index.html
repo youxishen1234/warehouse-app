@@ -51,18 +51,32 @@
 
           // 启动时检查更新；下载失败静默处理，不影响当前版本使用。
 
-          // 服务器/更新地址：优先使用「我的-服务器地址」里保存的自定义地址，否则用默认穿透地址
-          var ROOT = (function() {
-            try {
-              var c = localStorage.getItem('sg_custom_base');
-              if (c && (/^http:\/\/152\.136\.100\.200(?::4000)?\/?$/i.test(c) || /^https?:\/\/youxishen\.online(?::4000)?\/?$/i.test(c))) {
-                c = 'https://youxishen.online';
-                localStorage.setItem('sg_custom_base', c);
-              }
-              if (c && c.length) return /\/$/.test(c) ? c : c + '/';
-            } catch (e) {}
-            return 'https://youxishen.online/';
-          })();
+          // Taro stores { data: address }, while older builds stored plain text.
+          // Every release and API uses the canonical domain after server migration.
+          var ROOT = 'https://youxishen.online/';
+          try {
+            var saved = localStorage.getItem('sg_custom_base');
+            var wrapped = null;
+            try { wrapped = JSON.parse(saved); } catch (e) {}
+            var address = wrapped && typeof wrapped === 'object' ? wrapped.data : saved;
+            if (address) localStorage.setItem('sg_custom_base', JSON.stringify({ data: ROOT.slice(0, -1) }));
+          } catch (e) {}
+
+          var withDeadline = function(work, ms, message) {
+            var timer;
+            var deadline = new Promise(function(_, reject) {
+              timer = setTimeout(function() { reject(new Error(message)); }, ms);
+            });
+            return Promise.race([Promise.resolve().then(work), deadline]).finally(function() { clearTimeout(timer); });
+          };
+          var fetchJson = function(url) {
+            var controller = new AbortController();
+            return withDeadline(async function() {
+              var response = await fetch(url, { cache: 'no-store', signal: controller.signal });
+              if (!response.ok) throw new Error('HTTP ' + response.status);
+              return await response.json();
+            }, 6000, '获取更新信息超时').finally(function() { controller.abort(); });
+          };
           var API = ROOT + 'api/appupdate/';
           var FILES = ROOT + 'appupdate/';
 
@@ -108,10 +122,10 @@
           var getNativeVersion = function() {
             var App = cap.Plugins && cap.Plugins.App;
             if (!App || !App.getInfo) return Promise.resolve('');
-            return App.getInfo().then(function(i) { return (i && (i.version || i.build)) || ''; }).catch(function() { return ''; });
+            return withDeadline(function() { return App.getInfo(); }, 2000, '读取 App 信息超时').then(function(i) { return (i && (i.version || i.build)) || ''; }).catch(function() { return ''; });
           };
           var currentVersion = function() {
-            return TU.current().then(function(cur) {
+            return withDeadline(function() { return TU.current(); }, 8000, '读取当前版本超时').then(function(cur) {
               var cb = cur && cur.bundle;
               return !cb ? 'builtin' : (cb.id === 'builtin' ? 'builtin' : (cb.version || 'builtin'));
             }).catch(function() { return 'builtin'; });
@@ -131,17 +145,15 @@
             // 向服务器检查更新；接口不通时回退静态 manifest.json（兼容旧服务器）
             var m = null;
             try {
-              var r = await fetch(API + 'check?device_id=' + encodeURIComponent(did) +
+              var j = await fetchJson(API + 'check?device_id=' + encodeURIComponent(did) +
                 '&platform=' + encodeURIComponent(platform) +
                 '&native_version=' + encodeURIComponent(nativeV) +
-                '&current=' + encodeURIComponent(curV) + '&t=' + Date.now(), { cache: 'no-store' });
-              var j = await r.json();
+                '&current=' + encodeURIComponent(curV) + '&t=' + Date.now());
               if (j && j.success && j.data && j.data.version) m = j.data;
             } catch (e) {}
             if (!m) {
               try {
-                var r2 = await fetch(FILES + 'manifest.json?t=' + Date.now(), { cache: 'no-store' });
-                m = r2.ok ? await r2.json() : null;
+                m = await fetchJson(FILES + 'manifest.json?t=' + Date.now());
               } catch (e) { m = null; }
             }
             if (!m || !m.version || !m.url) return;
@@ -159,13 +171,13 @@
             if (m.minNativeVersion && nativeV && cmpVer(nativeV, m.minNativeVersion) < 0) return;
 
             // 已下载过该版本则直接应用，否则下载
-            var list = await TU.list().catch(function() { return { bundles: [] }; });
+            var list = await withDeadline(function() { return TU.list(); }, 8000, '读取已下载版本超时').catch(function() { return { bundles: [] }; });
             var hit = null;
             (list.bundles || []).forEach(function(b) { if (b.version === m.version) hit = b; });
             var bid = hit ? hit.id : null;
             if (!bid) {
               toast('发现新版本，正在自动更新…');
-              var res = await TU.download({ url: FILES + m.url + '?t=' + Date.now(), version: m.version }).catch(function(e) {
+              var res = await withDeadline(function() { return TU.download({ url: FILES + m.url + '?t=' + Date.now(), version: m.version }); }, 45000, '更新下载超时').catch(function(e) {
                 report('download_failed', { current: curV, native_version: nativeV, to_version: m.version, message: (e && e.message) || 'download error' });
                 toast('更新下载失败，请检查网络后重试');
                 return null;
@@ -176,7 +188,7 @@
             }
             if (!bid) return;
             // 发现新版本后自动下载，重启后生效；iOS 运行中切换网页包会导致 WebView 闪退。
-            var nx = await TU.next({ id: bid }).catch(function() { return null; });
+            var nx = await withDeadline(function() { return TU.next({ id: bid }); }, 8000, '安排更新超时').catch(function() { return null; });
             if (nx !== null) {
               report('pending_restart', { current: curV, native_version: nativeV, to_version: m.version });
               toast('更新已下载，请关闭后重新打开 App 生效');
