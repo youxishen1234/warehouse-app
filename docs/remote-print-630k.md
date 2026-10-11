@@ -1,0 +1,11 @@
+# 630K 远程打印
+
+手机保存送货单，在预览里展开“远程打印到店里”，粘贴电脑提供的配对码，然后发送到630K。电脑和打印机必须保持开机联网。
+
+服务器的 remote-print.json 和电脑 agent.json 是私有配置，不能提交到 Git 或放在 public 目录。服务器保存配对凭据的摘要；手机凭据仅允许向对应电脑发任务，电脑凭据仅用于接收和回执。配对码需要保密。
+
+接收程序启动命令为 node scripts/remote-print-agent.cjs 加上 agent.json 绝对路径。配置字段为 origin、agent、printer；origin 固定为 https://youxishen.online，printer 为 Windows 完整驱动名称。注册在服务器本地调用 remote-print.js 的 createStore(...).register(name, printer)，不提供公开注册接口。
+
+电脑每5秒检查任务，只有指定实体打印机可用时才领取。领取后服务器不自动重新投递；电脑在调用打印驱动前落盘任务编号，网络重试和程序重启不会自动重复打印。发生结果不确定时队列暂停，需要核对实际出纸。状态“已送入打印队列”表示 Windows 接受任务，不等于已经出纸。
+
+远程打印只发单据快照，不执行出库、改订单或账务。使用“确认出库并打印”完成出库后，也可在预览发送远程打印。

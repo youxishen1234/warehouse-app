@@ -158,6 +158,7 @@ function install(db) {
     next();
   });
   require('./customer-dimensions').install(router, db);
+  require('./remote-print').install(router, db);
   require('./ai').install(router, db);
   const requirePhotoSession = req => {
     const current = guestSessions.get(req.sessionKey);

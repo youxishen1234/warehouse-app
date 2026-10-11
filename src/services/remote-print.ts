@@ -1,0 +1,13 @@
+import Taro from '@tarojs/taro';
+import { request } from './request';
+export type RemoteDevice = { id: string; name: string; printer: string; online: boolean; ready: boolean };
+export type RemoteJob = { id: string; status: 'waiting' | 'processing' | 'queued' | 'failed' | 'uncertain' | 'expired'; message: string };
+const key='warehouse_remote_print_pair_v1';
+export const readPrintPair = (): string => { try { return Taro.getStorageSync(key) || ''; } catch { return ''; } };
+export const savePrintPair = (value: string) => Taro.setStorageSync(key,value);
+export const readPrintAttempt = (fingerprint:string): string => { try { return Taro.getStorageSync(key+':'+fingerprint) || ''; } catch { return ''; } };
+export const savePrintAttempt = (fingerprint:string,id:string) => Taro.setStorageSync(key+':'+fingerprint,id);
+const header = () => ({'X-Print-Client':readPrintPair()});
+export const getRemoteDevice = () => request<RemoteDevice>({url:'/api/remote-print/device',header:header()});
+export const submitRemotePrint = (data: { id:string; note_id:number; version:number; paper:string }) => request<RemoteJob>({url:'/api/remote-print/jobs',method:'POST',header:header(),data});
+export const getRemotePrintJob = (id:string) => request<RemoteJob>({url:'/api/remote-print/jobs/'+encodeURIComponent(id),header:header()});

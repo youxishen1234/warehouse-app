@@ -62,7 +62,7 @@ app.use((req, res, next) => {
   if (origin && allowedOrigin(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Idempotency-Key, If-Match, If-None-Match, X-Request-Id, X-Warehouse-Device');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Idempotency-Key, If-Match, If-None-Match, X-Request-Id, X-Warehouse-Device, X-Print-Client, X-Print-Agent');
     res.setHeader('Access-Control-Expose-Headers', 'X-Warehouse-Revision');
     res.setHeader('Vary', 'Origin');
   } else if (origin && req.method === 'OPTIONS') {
