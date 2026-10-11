@@ -4,14 +4,21 @@ import { browserPhotoDraft, chooseNativePhotos, MAX_CUSTOMER_PHOTO_BYTES, MAX_PH
 import type { PhotoDraft } from '@/services/ledger-photos';
 import { listCustomerPhotos, readCustomerPhoto, uploadCustomerPhoto } from '@/services/customer-photos';
 import type { CustomerPhoto } from '@/services/customer-photos';
+import { getCustomers } from '@/services/api';
+import type { Customer } from '@/types';
 import styles from './index.module.scss';
 
 const decodeCustomerName = (value?: string) => { try { return decodeURIComponent(value || '客户'); } catch { return value || '客户'; } };
 
 export default function CustomerPhotosPage() {
   const { params } = useRouter();
-  const customerId = Number(params.id);
-  const customerName = decodeCustomerName(params.name);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer>();
+  const [customerList, setCustomerList] = useState<Customer[]>([]);
+  const [customerQuery, setCustomerQuery] = useState('');
+  const [customerLoading, setCustomerLoading] = useState(false);
+  const [customerListError, setCustomerListError] = useState('');
+  const customerId = Number(params.id) || selectedCustomer?.id || 0;
+  const customerName = params.name ? decodeCustomerName(params.name) : selectedCustomer?.name || '客户';
   const [items, setItems] = useState<CustomerPhoto[]>([]);
   const [drafts, setDrafts] = useState<PhotoDraft[]>([]);
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
@@ -21,10 +28,24 @@ export default function CustomerPhotosPage() {
   const [viewer, setViewer] = useState<{ name: string; data?: string; attachment?: CustomerPhoto }>();
   const loaded = useRef(new Set<string>());
   const load = useCallback(async () => {
+    if (!customerId) { setItems([]); setError(''); return; }
     if (!Number.isSafeInteger(customerId) || customerId < 1) { setError('客户编号无效'); return; }
+    setError('');
     try { setItems(await listCustomerPhotos(customerId)); }
     catch (issue) { setError(issue instanceof Error ? issue.message : '照片加载失败'); }
   }, [customerId]);
+  useEffect(() => {
+    if (params.id) return;
+    let active=true;setCustomerLoading(true);setCustomerListError('');
+    const term = customerQuery.trim();
+    const timer = setTimeout(() => {
+      getCustomers(term)
+        .then(rows => { if (active) setCustomerList(rows.filter(customer => !customer.deleted_at)); })
+        .catch(issue => { if (active) setCustomerListError(issue instanceof Error ? issue.message : '客户加载失败，请重试'); })
+        .finally(() => { if (active) setCustomerLoading(false); });
+    }, 180);
+    return()=>{active=false;clearTimeout(timer);};
+  },[params.id,customerQuery]);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
     let active = true;
@@ -33,7 +54,7 @@ export default function CustomerPhotosPage() {
       loaded.current.add(item.id);
       void readCustomerPhoto(customerId, item.id).then(content => photoThumbnail(content.data)).then(src => {
         if (active) setThumbnails(previous => ({ ...previous, [item.id]: src }));
-      }).catch(() => { loaded.current.delete(item.id); });
+      }).catch(() => { loaded.current.delete(item.id); setError('部分照片缩略图加载失败，点击刷新重试'); });
     }
     return () => { active = false; };
   }, [customerId, items]);
@@ -69,7 +90,7 @@ export default function CustomerPhotosPage() {
         input.onchange = () => { const files = Array.from(input.files || []); input.remove(); void accept(files); };
         input.addEventListener('cancel', () => input.remove(), { once: true }); document.body.appendChild(input); input.click(); return;
       }
-      const photos=await chooseNativePhotos('delivery', Math.min(camera ? 1 : 9, MAX_PHOTOS - items.length - drafts.length), camera, MAX_CUSTOMER_PHOTO_BYTES); setDrafts(previous => [...previous, ...photos]);
+      const photos=await chooseNativePhotos('delivery', Math.min(camera ? 1 : 9, MAX_PHOTOS-items.length-drafts.length), camera, MAX_CUSTOMER_PHOTO_BYTES); setDrafts(previous => [...previous, ...photos]);
     } catch (issue) { if (!/cancel|取消/i.test(String((issue as any)?.errMsg || issue))) setError(issue instanceof Error ? issue.message : '拍照或选择照片失败'); }
   };
   const upload = async () => {
@@ -91,24 +112,19 @@ export default function CustomerPhotosPage() {
     catch (issue) { Taro.showToast({ title: issue instanceof Error ? issue.message : '保存原图失败', icon: 'none' }); }
   };
   return <main className={styles.page}>
-    <header className={styles.header}><h1>{customerName}</h1><p>拍摄三联送货单，上传并保存到客户档案</p></header>
-    <section className={styles.card}>
+    <header className={styles.header}><h1>{customerId ? customerName : '客户单据照片'}</h1><p>拍摄三联送货单，上传并保存到客户档案</p></header>
+    {!customerId&&<section className={styles.card}><div className={styles.sectionTitle}>先选择客户</div><input className={styles.customerSearch} type='search' aria-label='搜索客户名称或电话' placeholder='搜索客户名称或电话' value={customerQuery} onChange={event=>setCustomerQuery(event.target.value)} />{customerLoading?<p className={styles.empty}>正在加载客户…</p>:customerListError?<p role='alert' className={styles.error}>{customerListError}<button type='button' onClick={()=>setCustomerQuery(value=>value+' ')}>重试</button></p>:customerList.length?<div className={styles.customerList}>{customerList.map(customer=><button type='button' key={customer.id} onClick={()=>setSelectedCustomer(customer)}><strong>{customer.name}</strong><span>{[customer.contact,customer.phone].filter(Boolean).join(' · ')||'客户档案'}</span></button>)}</div>:<p className={styles.empty}>暂无客户资料，请先在“客户”页面新增客户，再上传照片。</p>}</section>}
+    {customerId&&<><section className={styles.card}>
       <div className={styles.sectionTitle}>上传客户单据照片 · {items.length}/{MAX_PHOTOS}</div>
       <div className={styles.actions}><button type='button' disabled={busy} onClick={() => void choose(true)}>拍照</button><button type='button' disabled={busy} onClick={() => void choose(false)}>从相册选择</button></div>
       <p>保留相机原图，不缩小、不压缩。支持 JPG、PNG、WebP，单张最大 24 MB；每位客户最多保存 {MAX_PHOTOS} 张。</p>
-      {drafts.map(item => <p key={item.client_id}>{item.name} · 待上传</p>)}
-      {drafts.length > 0 && <button type='button' className={styles.primary} disabled={busy} onClick={() => void upload()}>{busy ? '正在上传…' : '上传照片到客户档案'}</button>}
+      {drafts.length > 0 && <div className={styles.pending}>{drafts.map(item => <div className={styles.pendingRow} key={item.client_id}><img src={item.data} alt='' /><span>{item.name} · 待上传{item.error && <><br />{item.error}</>}</span><button type='button' className={styles.remove} disabled={busy} onClick={() => setDrafts(previous => previous.filter(row => row.client_id !== item.client_id))}>移除</button></div>)}<button type='button' className={styles.primary} disabled={busy} onClick={() => void upload()}>{busy ? '正在上传…' : '上传照片到客户档案'}</button></div>}
       {error && <p role='alert' className={styles.error}>{error}</p>}{message && <p role='status' className={styles.message}>{message}</p>}
     </section>
+    <button type='button' className={styles.changeCustomer} onClick={()=>{setSelectedCustomer(undefined);setCustomerQuery('');setCustomerListError('');setItems([]);setDrafts([]);setThumbnails({});loaded.current.clear();}}>返回客户列表</button></>}
     <section className={styles.card}><div className={styles.sectionTitle}>已上传 · {items.length} 张</div>
       {items.length ? <div className={styles.grid}>{items.map(item => <button type='button' className={styles.photo} key={item.id} onClick={() => setViewer({ name: item.name, attachment: item })}><img src={thumbnails[item.id] || ''} alt='' /><span>{item.name}<br />{new Date(item.created_at).toLocaleString('zh-CN')}</span></button>)}</div> : <p className={styles.empty}>还没有照片，可拍照或从相册选择</p>}
     </section>
     {viewer && <div className={styles.viewer} role='dialog' aria-modal='true' aria-label='客户单据原图'><header className={styles.viewerHeader}><span>{viewer.name}</span><button type='button' onClick={() => setViewer(undefined)}>关闭</button></header><div className={styles.canvas}>{viewer.data ? <img src={viewer.data} alt={viewer.name} /> : <p>正在读取原图…</p>}</div><footer className={styles.viewerActions}><button type='button' onClick={() => void download()} disabled={!viewer.data}>保存原图</button></footer></div>}
   </main>;
 }
-
-
-
-
-
-

@@ -2,6 +2,7 @@
 .page * { box-sizing: border-box; }
 .header { margin: 8PX 2PX 18PX; }.header h1 { font-size: 21PX; margin: 0; }.header p { font-size: 13PX; color: #80919c; margin: 6PX 0; }
 .card { padding: 18PX; background: #fff; border: 1PX solid #e4e9ed; border-radius: 15PX; margin-bottom: 14PX; }
+.customerSearch { display:block;width:100%;height:46PX;margin:12PX 0;padding:10PX 12PX;border:1PX solid #dce2e7;border-radius:9PX;background:#fff;font:inherit;font-size:16PX; }.customerList{max-height:48dvh;overflow:auto}.customerList button{display:flex;flex-direction:column;align-items:flex-start;width:100%;margin-top:7PX;background:#f8fafb}.customerList span{margin-top:3PX;color:#80919c;font-size:12PX}.changeCustomer{display:block;width:100%;margin-bottom:18PX}
 .actions, .viewerActions { display: flex; gap: 10PX; margin-top: 12PX; }.actions button, .viewerActions button { flex: 1; }
 .page button { min-height: 44PX; border: 1PX solid #d5e1e5; background: #fff; border-radius: 10PX; color: #315769; font: inherit; padding: 9PX 12PX; }
 .page .primary { background: #245f72; border-color: #245f72; color: #fff; }.page button:disabled { opacity: .48; }

@@ -1,7 +1,7 @@
 import { useSharedRefresh } from '@/services/shared-refresh';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { View, Text, Input, ScrollView } from '@tarojs/components';
-import Taro, { useDidShow } from '@tarojs/taro';
+import Taro, { useDidShow, useRouter } from '@tarojs/taro';
 import { getCustomers, deleteCustomer, getTransactions, getSuppliers, deleteSupplier, settleCustomer, settleSupplier } from '@/services/api';
 import type { Customer, Transaction } from '@/types';
 import Icon from '@/components/Icon';
@@ -9,6 +9,7 @@ import SwipeRow from '@/components/SwipeRow';
 import { numberValue } from '@/utils/stock-math';
 import { formatMoney, formatMoneyInput } from '@/utils/format';
 import styles from './index.module.scss';
+import { standalonePageUrl } from '@/services/standalone-page';
 
 // 跨页联动中转键：tabBar 页（入库/出库）无法通过 URL 传参，用 storage 中转
 const TRANSIT_KEY = 'sg_transit';
@@ -75,7 +76,7 @@ const CustomerListRow = React.memo(function CustomerListRow({ party, stats, supp
   </SwipeRow>;
 });
 
-const CustomersPage: React.FC<{ supplier?: boolean }> = ({ supplier = false }) => {
+const LegacyCustomersPage: React.FC<{ supplier?: boolean }> = ({ supplier = false }) => {
   const label = supplier ? '供应商' : '客户';
   const [list, setList] = useState<Customer[]>([]);
   const [txList, setTxList] = useState<Transaction[]>([]);
@@ -229,6 +230,7 @@ const CustomersPage: React.FC<{ supplier?: boolean }> = ({ supplier = false }) =
           <Text className={styles.quickLinkText}>出库</Text>
         </View>
       </View>
+      {!supplier && <View className={styles.customerPhotoQuickAction} onClick={() => Taro.navigateTo({ url: '/pages/customer-photos/index' })}><Text>客户单据照片</Text><Text>拍照上传三联送货单</Text></View>}
 
       {loading ? (
         <View className={styles.empty}>正在加载{label}资料…</View>
@@ -254,6 +256,19 @@ const CustomersPage: React.FC<{ supplier?: boolean }> = ({ supplier = false }) =
       {settling && <View className={styles.settleMask} onClick={() => { if (!settleSaving.current) setSettling(null); }}><View className={styles.settleDialog} onClick={e => e.stopPropagation()}><Text className={styles.settleTitle}>{supplier ? '供应商结算' : '客户结算'} · {settling.party.name}</Text><Text className={styles.settleHint}>当前余额 {formatMoney(settling.balance)}，支持部分结算</Text><Input className={styles.settleInput} type="digit" value={settleAmount} placeholder="结算金额" onInput={e => setSettleAmount(e.detail.value)} disabled={settleSaving.current} /><Input className={styles.settleInput} value={settleRemark} placeholder="结算备注（可选）" onInput={e => setSettleRemark(e.detail.value)} disabled={settleSaving.current} /><View className={styles.settleActions}><View className={styles.settleCancel} onClick={() => { if (!settleSaving.current) setSettling(null); }}>取消</View><View className={styles.settleConfirm} onClick={submitSettlement}>{settleSaving.current ? '保存中…' : '确认结算'}</View></View></View></View>}
     </ScrollView>
   );
+};
+
+const CustomerDeskRedirect: React.FC = () => {
+  useDidShow(() => {
+    if (typeof window !== 'undefined') window.location.replace(standalonePageUrl('customer-desk.html').href);
+  });
+  return <View className={styles.empty}>正在打开新版客户中心…</View>;
+};
+
+const CustomersPage: React.FC<{ supplier?: boolean }> = ({ supplier = false }) => {
+  const { params } = useRouter();
+  if (supplier || params.view === 'records') return <LegacyCustomersPage supplier={supplier} />;
+  return <CustomerDeskRedirect />;
 };
 
 export default CustomersPage;

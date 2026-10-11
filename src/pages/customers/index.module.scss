@@ -14,6 +14,8 @@
   align-items: center;
 }
 .toolbar { display:flex; justify-content:flex-end; margin-bottom:24rpx; }
+.customerPhotoQuickAction { display:flex; justify-content:space-between; align-items:center; margin:0 0 24rpx; padding:24rpx; border:1rpx solid #dce8ed; border-radius:16rpx; background:#fff; color:#245f72; font-weight:600; }
+.customerPhotoQuickAction text+text { color:#8295a0; font-size:23rpx; font-weight:400; }
 
 .quickLinks {
   display: grid;
