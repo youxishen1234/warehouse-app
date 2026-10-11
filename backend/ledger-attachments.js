@@ -3,7 +3,8 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
-const JSON_LIMIT = 17 * 1024 * 1024;
+const CUSTOMER_IMAGE_BYTES = 24 * 1024 * 1024;
+const JSON_LIMIT = 33 * 1024 * 1024;
 const MAX_ATTACHMENTS = 20;
 const KINDS = ['delivery', 'signed', 'payment'];
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
@@ -41,12 +42,12 @@ function structurallyValid(mime, bytes) {
   return false;
 }
 
-function decode(raw) {
-  if (typeof raw !== 'string' || raw.length > Math.ceil(MAX_IMAGE_BYTES / 3) * 4 + 40) throw invalid('每张照片不能超过 12 MB');
+function decode(raw, maxBytes = MAX_IMAGE_BYTES) {
+  if (typeof raw !== 'string' || raw.length > Math.ceil(maxBytes / 3) * 4 + 40) throw invalid('原图大小超过限制');
   const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(raw);
   if (!match) throw invalid('请选择 JPG、PNG 或 WebP 照片');
   const bytes = Buffer.from(match[2], 'base64');
-  if (bytes.length === 0 || bytes.length > MAX_IMAGE_BYTES) throw invalid('每张照片不能超过 12 MB');
+  if (bytes.length === 0 || bytes.length > maxBytes) throw invalid('原图大小超过限制');
   if (bytes.toString('base64') !== match[2] || !validMime(match[1], bytes) || !structurallyValid(match[1], bytes)) throw invalid('照片文件损坏或内容与格式不一致，请重新选择');
   return { bytes, mime: match[1], sha256: hash(bytes) };
 }
@@ -81,11 +82,11 @@ function createStore(databasePath) {
       return `data:${meta.mime};base64,${bytes.toString('base64')}`;
     } catch (error) { throw Object.assign(error, { status: 500 }); }
   }
-  function prepare(raw) {
+  function prepare(raw, options = {}) {
     if (!KINDS.includes(raw?.kind)) throw invalid('请选择凭证类型');
     if (typeof raw.client_id !== 'string' || !/^[A-Za-z0-9_-]{16,100}$/.test(raw.client_id)) throw invalid('凭证提交编号无效');
     if (typeof raw.name !== 'string' || !raw.name.trim() || raw.name.length > 160 || /[\x00-\x1f]/.test(raw.name)) throw invalid('照片名称无效');
-    return { ...decode(raw.data), name: path.basename(raw.name.replace(/\\/g, '/')), kind: raw.kind, client_id: raw.client_id };
+    return { ...decode(raw.data, options.maxBytes || MAX_IMAGE_BYTES), name: path.basename(raw.name.replace(/\\/g, '/')), kind: raw.kind, client_id: raw.client_id };
   }
   function add(entry, upload, source) {
     if (entry.voided_at) throw invalid('流水已作废，无法添加凭证');
@@ -101,6 +102,31 @@ function createStore(databasePath) {
     entry.attachments = [...attachments, meta];
     return meta;
   }
+  function addCustomer(customer, upload) {
+    const attachments=customer.customer_attachments||[];
+    const prior=attachments.find(item=>item.client_id===upload.client_id);
+    if(prior&&(prior.sha256!==upload.sha256||prior.kind!==upload.kind||prior.name!==upload.name))throw invalid('同一提交编号不能更换照片');
+    const duplicate=prior||attachments.find(item=>item.sha256===upload.sha256&&item.kind===upload.kind);
+    if(duplicate)return duplicate;
+    if(attachments.length>=MAX_ATTACHMENTS)throw invalid(`每位客户最多保存 ${MAX_ATTACHMENTS} 张单据照片`);
+    if(upload.bytes.length>CUSTOMER_IMAGE_BYTES)throw invalid('相机原图不能超过 24 MB');
+    try{write(upload.bytes,upload.sha256);}catch(error){throw Object.assign(error,{status:500});}
+    const meta={id:crypto.randomBytes(24).toString('hex'),customer_id:customer.id,client_id:upload.client_id,kind:'delivery',name:upload.name,mime:upload.mime,size:upload.bytes.length,sha256:upload.sha256,created_at:Date.now(),status:'unreviewed'};
+    customer.customer_attachments=[...attachments,meta];return meta;
+  }
+  function prepareCustomer(raw){return prepare(raw,{maxBytes:CUSTOMER_IMAGE_BYTES});}
+  function customerMetadata(snapshot) {
+    const found=[];const ids=new Set();
+    for(const customer of snapshot.customers||[]){
+      if(customer.customer_attachments===undefined)continue;
+      if(!Array.isArray(customer.customer_attachments)||customer.customer_attachments.length>MAX_ATTACHMENTS)throw invalid('客户单据照片索引无效');
+      for(const item of customer.customer_attachments){
+        if(!item||!/^[a-f0-9]{48}$/.test(item.id)||ids.has(item.id)||item.customer_id!==customer.id||item.kind!=='delivery'||!/^[a-f0-9]{64}$/.test(item.sha256)||!Number.isSafeInteger(item.size)||item.size<=0||item.size>CUSTOMER_IMAGE_BYTES||!['image/jpeg','image/png','image/webp'].includes(item.mime)||item.status!=='unreviewed'||!Number.isSafeInteger(item.created_at)||item.created_at<0||typeof item.name!=='string'||item.name.length>160||!/^[A-Za-z0-9_-]{16,100}$/.test(item.client_id))throw invalid('客户单据照片索引无效');
+        ids.add(item.id);found.push(item);
+      }
+    }
+    return found;
+  }
   function metadata(snapshot) {
     const found = []; const ids = new Set();
     const transactions = new Map((snapshot.transactions || []).map(row => [row.id, row]));
@@ -110,7 +136,7 @@ function createStore(databasePath) {
       for (const item of entry.attachments) {
         const transaction = transactions.get(entry.transaction_id);
         if (!item || !/^[a-f0-9]{48}$/.test(item.id) || ids.has(item.id) || item.ledger_id !== entry.id || !KINDS.includes(item.kind)
-          || !/^[a-f0-9]{64}$/.test(item.sha256) || !Number.isSafeInteger(item.size) || item.size <= 0 || item.size > MAX_IMAGE_BYTES
+          || !/^[a-f0-9]{64}$/.test(item.sha256) || !Number.isSafeInteger(item.size) || item.size <= 0 || item.size > (item.customer_id ? CUSTOMER_IMAGE_BYTES : MAX_IMAGE_BYTES)
           || !['image/jpeg', 'image/png', 'image/webp'].includes(item.mime) || item.status !== 'unreviewed'
           || !Number.isSafeInteger(item.created_at) || item.created_at < 0 || typeof item.name !== 'string' || item.name.length > 160
           || !/^[A-Za-z0-9_-]{16,100}$/.test(item.client_id) || !item.source
@@ -123,6 +149,8 @@ function createStore(databasePath) {
         ids.add(item.id); found.push(item);
       }
     }
+    const ledgerIds=new Set(found.map(item=>item.id));
+    for(const item of customerMetadata(snapshot)){if(ledgerIds.has(item.id))throw invalid('客户单据照片编号重复');ledgerIds.add(item.id);found.push(item);}
     return found;
   }
   function portable(snapshot, maxBytes = Infinity) {
@@ -143,7 +171,7 @@ function createStore(databasePath) {
     const decoded = new Map();
     for (const item of items) {
       if (!files || !Object.prototype.hasOwnProperty.call(files, item.sha256)) throw invalid('备份缺少凭证原图，无法恢复');
-      const value = decoded.get(item.sha256) || decode(files[item.sha256]);
+      const value = decoded.get(item.sha256) || decode(files[item.sha256], item.customer_id ? CUSTOMER_IMAGE_BYTES : MAX_IMAGE_BYTES);
       if (value.sha256 !== item.sha256 || value.mime !== item.mime || value.bytes.length !== item.size) throw invalid('备份凭证校验失败');
       decoded.set(item.sha256, value);
     }
@@ -152,7 +180,9 @@ function createStore(databasePath) {
     try { for (const [sha256, value] of decoded) write(value.bytes, sha256); }
     catch (error) { throw Object.assign(error, { status: 500 }); }
   }
-  return { prepare, add, read, portable, restore };
+  return { prepare, prepareCustomer, add, addCustomer, read, portable, restore };
 }
 
-module.exports = { createStore, MAX_IMAGE_BYTES, MAX_ATTACHMENTS, JSON_LIMIT, structurallyValid };
+module.exports = { createStore, MAX_IMAGE_BYTES, CUSTOMER_IMAGE_BYTES, MAX_ATTACHMENTS, JSON_LIMIT, structurallyValid };
+
+

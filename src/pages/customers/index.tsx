@@ -33,10 +33,11 @@ type CustomerListRowProps = {
   handleEdit: (id: number) => void;
   handleDelete: (party: Customer) => void;
   openSettlement: (party: Customer) => void;
+  handlePhotos: (party: Customer) => void;
 };
 
 // Keep customer and supplier rows isolated from settlement modal input state.
-const CustomerListRow = React.memo(function CustomerListRow({ party, stats, supplier, open, onOpenChange, handleRecords, handleEdit, handleDelete, openSettlement }: CustomerListRowProps) {
+const CustomerListRow = React.memo(function CustomerListRow({ party, stats, supplier, open, onOpenChange, handleRecords, handleEdit, handleDelete, openSettlement, handlePhotos }: CustomerListRowProps) {
   return <SwipeRow
     open={open}
     onOpenChange={nextOpen => onOpenChange(party.id, nextOpen)}
@@ -66,6 +67,7 @@ const CustomerListRow = React.memo(function CustomerListRow({ party, stats, supp
       <View className={styles.itemActions}>
         <View className={styles.btnOut} onClick={event => { event.stopPropagation(); openSettlement(party); }}>结算</View>
         <View className={styles.btnIn} onClick={event => { event.stopPropagation(); handleEdit(party.id); }}>编辑</View>
+        {!supplier && <View className={styles.btnIn} onClick={event => { event.stopPropagation(); handlePhotos(party); }}>单据照片</View>}
         {!supplier && <View className={styles.btnOut} onClick={event => { event.stopPropagation(); goOutbound(party); }}>出库</View>}
         {supplier && <View className={styles.btnIn} onClick={event => { event.stopPropagation(); Taro.setStorageSync(TRANSIT_KEY, { supplier_id: party.id, supplier_name: party.name }); Taro.switchTab({ url: '/pages/inbound/index' }); }}>入库</View>}
       </View>
@@ -155,6 +157,7 @@ const CustomersPage: React.FC<{ supplier?: boolean }> = ({ supplier = false }) =
   const handleEdit = useCallback((id: number) => {
     Taro.navigateTo({ url: `/pages/customer-edit/index?id=${id}&party=${supplier ? 'supplier' : 'customer'}` });
   }, [supplier]);
+  const handlePhotos = useCallback((party: Customer) => { Taro.navigateTo({ url: `/pages/customer-photos/index?id=${party.id}&name=${encodeURIComponent(party.name)}` }); }, []);
 
   const handleRecords = useCallback((c: Customer) => {
     // 跳出入库记录页并带上客户筛选（记录页读取 customer_id 参数）
@@ -245,6 +248,7 @@ const CustomersPage: React.FC<{ supplier?: boolean }> = ({ supplier = false }) =
           handleEdit={handleEdit}
           handleDelete={handleDelete}
           openSettlement={openSettlement}
+          handlePhotos={handlePhotos}
         />)
       )}
       {settling && <View className={styles.settleMask} onClick={() => { if (!settleSaving.current) setSettling(null); }}><View className={styles.settleDialog} onClick={e => e.stopPropagation()}><Text className={styles.settleTitle}>{supplier ? '供应商结算' : '客户结算'} · {settling.party.name}</Text><Text className={styles.settleHint}>当前余额 {formatMoney(settling.balance)}，支持部分结算</Text><Input className={styles.settleInput} type="digit" value={settleAmount} placeholder="结算金额" onInput={e => setSettleAmount(e.detail.value)} disabled={settleSaving.current} /><Input className={styles.settleInput} value={settleRemark} placeholder="结算备注（可选）" onInput={e => setSettleRemark(e.detail.value)} disabled={settleSaving.current} /><View className={styles.settleActions}><View className={styles.settleCancel} onClick={() => { if (!settleSaving.current) setSettling(null); }}>取消</View><View className={styles.settleConfirm} onClick={submitSettlement}>{settleSaving.current ? '保存中…' : '确认结算'}</View></View></View></View>}

@@ -246,6 +246,10 @@ function readLedgerAttachment(id, attachmentId) {
   if (!meta) throw Object.assign(new Error('凭证不存在或不属于这笔流水'), { status: 404 });
   return { data: ledgerAttachments.read(meta) };
 }
+function listCustomerAttachments(id){const customer=getCustomer(Number(id));if(!customer)throw Object.assign(new Error('客户不存在'),{status:404});return customer.customer_attachments||[];}
+function addCustomerAttachment(id,upload){return atomicMutation(()=>{const customer=getCustomer(Number(id));if(!customer||customer.deleted_at)throw Object.assign(new Error('客户不存在或已停用'),{status:404});const result=ledgerAttachments.addCustomer(customer,upload);persist();return result;});}
+function prepareCustomerAttachment(raw){return ledgerAttachments.prepareCustomer(raw);}
+function readCustomerAttachment(id,attachmentId){const item=listCustomerAttachments(id).find(row=>row.id===attachmentId);if(!item)throw Object.assign(new Error('照片不存在或不属于此客户'),{status:404});return{data:ledgerAttachments.read(item)};}
 function systemLedger(type, amount, partyId, partyName, transactionId, remark, partyType = null) {
   if (!Number.isFinite(amount) || amount <= 0) return null;
   const entry = { id: cache._meta.nextLedgerId++, type, amount: roundDecimal(amount, MONEY_DECIMALS), remark: String(remark || ''), party_id: partyId ? Number(partyId) : null, party_type: partyType || null, party_name: String(partyName || ''), transaction_id: transactionId ? Number(transactionId) : null, created_at: Date.now() };
@@ -1317,7 +1321,7 @@ function moveBoard(id, raw) { return atomicMutation(() => { const batch = requir
 function updateBoard(id, raw) { return atomicMutation(() => { const result = require('./boards').update(cache, id, raw); persist(); return result; }); }
 function deleteBoard(id) { return atomicMutation(() => { const result = require('./boards').remove(cache, id); persist(); return result; }); }
 module.exports = { listPrintNotes, savePrintNote, shipPrintNote, getCustomerDimensions, updateCustomerDimensions, listBoards, receiveBoard, moveBoard, updateBoard, deleteBoard, listProducts, getProduct, addProduct, updateProduct, deleteProduct,
-  getLedgerAttachments, addLedgerAttachment, readLedgerAttachment, prepareLedgerAttachment: ledgerAttachments.prepare,
+  getLedgerAttachments, addLedgerAttachment, readLedgerAttachment, listCustomerAttachments, addCustomerAttachment, readCustomerAttachment, prepareLedgerAttachment: ledgerAttachments.prepare, prepareCustomerAttachment,
   listCustomers, getCustomer, addCustomer, updateCustomer, deleteCustomer,
   listSuppliers, getSupplier, addSupplier, updateSupplier, deleteSupplier,
   stockIn, stockOut, stockOutBatch, orderToOutbound, listTx, streamTx, deleteTransaction, listLedger, streamLedger, addLedger, deleteLedger, listOrders, listOrderEvents, addOrder, updateOrder, addStocktake, listStocktakes, listDeliveryNotes, getDeliveryNote, addDeliveryNote, voidDeliveryNote, backupData, restoreData, health, stats, transact, revision, audit, receipt, settleParty };

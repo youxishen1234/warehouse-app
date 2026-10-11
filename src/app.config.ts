@@ -26,6 +26,7 @@ export default defineAppConfig({
     ,'pages/custom-copy/index'
     ,'pages/backup/index'
     ,'pages/print-center/index'
+    ,'pages/customer-photos/index'
     ,'pages/qr-test/index'
   ],
   window: {

@@ -80,7 +80,7 @@ async function streamJson(res, value) {
 }
 const error = (message, status = 400) => Object.assign(new Error(message), { status });
 const IDENTITY_KEY_PATTERN = /^[\w-]{16,100}$/;
-const requiresIdempotencyKey = pathName => /^\/(?:products|customers|suppliers|orders|transactions|ledger|stock(?:\/in|\/out|\/out\/batch)?|backup|stocktake|delivery-notes|print-notes)(?:\/|$)/.test(pathName);
+const requiresIdempotencyKey = pathName => { if (pathName.startsWith('/customers/') && pathName.includes('/attachments')) return false; const prefixes = ['/products', '/customers', '/suppliers', '/orders', '/transactions', '/ledger', '/backup', '/stocktake', '/delivery-notes', '/print-notes']; return prefixes.some(prefix => pathName === prefix || pathName.startsWith(prefix + '/')) || ['/stock/in', '/stock/out', '/stock/out/batch'].includes(pathName); };
 function install(db) {
   const router = require('express').Router();
   const guestSessions = new Map();
@@ -179,6 +179,16 @@ function install(db) {
     const upload = db.prepareLedgerAttachment(req.body);
     const fingerprint = digest(JSON.stringify([req.params.id, upload.client_id, upload.kind, upload.name, upload.sha256]));
     const result = db.transact(req.user, req.get('Idempotency-Key'), fingerprint, req.get('If-Match'), `POST /ledger/${req.params.id}/attachments`, () => db.addLedgerAttachment(req.params.id, upload));
+    res.set('X-Warehouse-Revision', String(result.revision));
+    ok(res, result.data);
+  });
+  route('get', '/customers/:id/attachments', (req, res) => { requirePhotoSession(req); ok(res, db.listCustomerAttachments(req.params.id)); });
+  route('get', '/customers/:id/attachments/:attachmentId/content', (req, res) => { requirePhotoSession(req); ok(res, db.readCustomerAttachment(req.params.id, req.params.attachmentId)); });
+  route('post', '/customers/:id/attachments', (req, res) => {
+    requirePhotoSession(req);
+    const upload = db.prepareCustomerAttachment({ ...req.body, kind: 'delivery' });
+    const operation = 'POST /customers/' + req.params.id + '/attachments';
+    const result = db.transact(req.user, req.get('Idempotency-Key'), digest(JSON.stringify([req.params.id, upload.client_id, upload.kind, upload.name, upload.sha256])), req.get('If-Match'), operation, () => db.addCustomerAttachment(req.params.id, upload));
     res.set('X-Warehouse-Revision', String(result.revision));
     ok(res, result.data);
   });

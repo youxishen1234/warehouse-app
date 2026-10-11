@@ -7,6 +7,7 @@ export const photoKinds: { value: LedgerAttachmentKind; label: string }[] = [
 ];
 export const MAX_PHOTOS = 20;
 const MAX_BYTES = 12 * 1024 * 1024;
+export const MAX_CUSTOMER_PHOTO_BYTES = 24 * 1024 * 1024;
 export type PhotoDraft = { client_id: string; kind: LedgerAttachmentKind; name: string; data: string; error?: string };
 export const photoLabel = (kind: LedgerAttachmentKind) => photoKinds.find(item => item.value === kind)?.label || '凭证';
 export const listLedgerPhotos = (id: number) => request<LedgerAttachment[]>({ url: `/api/ledger/${id}/attachments` });
@@ -22,26 +23,29 @@ const readFile = (file: Blob) => new Promise<string>((resolve, reject) => {
   reader.onerror = () => reject(new Error('照片读取失败，请重新选择'));
   reader.readAsDataURL(file);
 });
-export async function browserPhotoDraft(file: File, kind: LedgerAttachmentKind): Promise<PhotoDraft> {
-  if (file.size > MAX_BYTES) throw new Error(`${file.name} 超过 12 MB，请选择较小的原图`);
+export async function browserPhotoDraft(file: File, kind: LedgerAttachmentKind, maxBytes = MAX_BYTES): Promise<PhotoDraft> {
+  if (file.size > maxBytes) throw new Error(`${file.name} 超过上传大小限制`);
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) throw new Error('支持 JPG、PNG、WebP；请将 HEIC 照片另存为 JPG 后上传');
   return { client_id: clientId(), kind, name: file.name.slice(0, 160), data: await readFile(file) };
 }
-export async function chooseNativePhotos(kind: LedgerAttachmentKind, count: number, camera: boolean): Promise<PhotoDraft[]> {
+export async function chooseNativePhotos(kind: LedgerAttachmentKind, count: number, camera: boolean, maxBytes = MAX_BYTES): Promise<PhotoDraft[]> {
   const result = await Taro.chooseImage({ count: Math.min(count, 9), sizeType: ['original'], sourceType: camera ? ['camera'] : ['album'] });
   const drafts: PhotoDraft[] = [];
   for (let index = 0; index < result.tempFilePaths.length; index++) {
     const filePath = result.tempFilePaths[index];
     const file = result.tempFiles?.[index];
-    if (file?.size > MAX_BYTES) throw new Error('每张照片不能超过 12 MB');
+    if (file?.size > maxBytes) throw new Error('每张照片不能超过 24 MB');
     const base64 = await new Promise<string>((resolve, reject) => Taro.getFileSystemManager().readFile({ filePath, encoding: 'base64', success: contents => resolve(String(contents.data)), fail: () => reject(new Error('照片读取失败，请检查相册权限后重试')) }));
     const mime = base64.startsWith('/9j/') ? 'image/jpeg' : base64.startsWith('iVBORw0KGgo') ? 'image/png' : base64.startsWith('UklGR') ? 'image/webp' : '';
     if (!mime) throw new Error('请选择 JPG、PNG 或 WebP 照片');
-    if (base64.length > Math.ceil(MAX_BYTES / 3) * 4) throw new Error('每张照片不能超过 12 MB');
+    if (base64.length > Math.ceil(maxBytes / 3) * 4) throw new Error('每张照片不能超过 24 MB');
     drafts.push({ client_id: clientId(), kind, name: filePath.split('/').pop()?.slice(0, 160) || `照片-${index + 1}.jpg`, data: `data:${mime};base64,${base64}` });
   }
   return drafts;
 }
+
+// Keep the existing ledger-evidence contract separate: only delivery photos
+// stored under a customer's profile use the larger camera-original ceiling.
 
 // This small display derivative is kept only in memory. The uploaded original
 // remains byte-for-byte unchanged and is fetched separately for full preview.
@@ -77,3 +81,5 @@ export async function savePhotoOriginal(data: string, name: string) {
   const link = document.createElement('a'); link.href = url; link.download = name; document.body.appendChild(link); link.click(); link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
+
+

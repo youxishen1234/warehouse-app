@@ -39,7 +39,7 @@ test('ledger evidence persists original photos, retries safely, and travels with
   let meta; let exported;
   const financial = () => {
     const snapshot = db.backupData();
-    return JSON.stringify({ products: snapshot.products, customers: snapshot.customers, suppliers: snapshot.suppliers, transactions: snapshot.transactions, ledger: snapshot.ledger.map(({ attachments, ...row }) => row) });
+    return JSON.stringify({ products: snapshot.products, customers: snapshot.customers.map(({ customer_attachments, ...row }) => row), suppliers: snapshot.suppliers, transactions: snapshot.transactions, ledger: snapshot.ledger.map(({ attachments, ...row }) => row) });
   };
   try {
     await t.test('original bytes and stable business linkage survive reload without changing money or inventory', async () => {
@@ -58,6 +58,31 @@ test('ledger evidence persists original photos, retries safely, and travels with
       assert.equal(content.data.data.data, dataUrl);
       const list = await call('/ledger');
       assert.equal(JSON.stringify(list).includes('base64'), false, 'ordinary ledger responses contain metadata only');
+    });
+
+    await t.test('customer delivery photos are private customer attachments and survive portable backups', async () => {
+      const customer=db.addCustomer({name:'三联单照片客户'});
+      const originalCustomerImage=Buffer.alloc(3*1024*1024,0x5a);
+      const photo={kind:'delivery',client_id:'customer-photo-client-id-001',name:'三联送货单.jpg',data:'data:image/jpeg;base64,'+Buffer.concat([Buffer.from([0xff,0xd8,0xff]),originalCustomerImage,Buffer.from([0xff,0xd9])]).toString('base64')};
+      const financialBeforeCustomerPhoto=financial();
+      const result=await call('/customers/'+customer.id+'/attachments',photo);
+      assert.equal(result.status,200);
+      const saved=result.data.data;
+      assert.equal(saved.customer_id,customer.id);assert.equal(saved.kind,'delivery');
+      const financialAfterCustomerPhoto=JSON.stringify({products:db.backupData().products,customers:db.backupData().customers.map(({customer_attachments,...row})=>row),suppliers:db.backupData().suppliers,transactions:db.backupData().transactions,ledger:db.backupData().ledger.map(({attachments,...row})=>row)});
+      assert.equal(financialAfterCustomerPhoto,financialBeforeCustomerPhoto,'customer image upload does not change inventory, debt or ledger');
+      const originalResult=await call('/customers/'+customer.id+'/attachments/'+saved.id+'/content');
+      assert.equal(originalResult.data.data.data,photo.data);
+      assert.equal(saved.size,originalCustomerImage.length+5,'the uploaded original bytes are retained without recompression');
+      assert.equal(db.readCustomerAttachment(customer.id,saved.id).data,photo.data);
+      assert.throws(()=>db.readCustomerAttachment(customer.id+100,saved.id),/客户不存在/);
+      const exported=(await call('/backup')).data.data.data;assert.equal(exported.ledger_attachment_files[saved.sha256],photo.data);
+      const restoredPath=path.join(dir,'restored-customer-photos.json');fs.writeFileSync(restoredPath,JSON.stringify(empty));
+      fs.writeFileSync(path.join(dir,'customer-photo-bundle.json'),JSON.stringify(exported));
+      const childCode="const fs=require('fs');const db=require('./db');const s=JSON.parse(fs.readFileSync(process.env.PHOTO_BUNDLE,'utf8'));db.restoreData(s);const a=db.listCustomerAttachments(2)[0];if(db.readCustomerAttachment(2,a.id).data!==s.ledger_attachment_files[a.sha256])throw Error('原图内容在备份恢复后改变');if(a.size!==3145733)throw Error('4K原图被压缩');";
+      execFileSync(process.execPath,['-e',childCode],{cwd:__dirname,env:{...process.env,WAREHOUSE_DATA_FILE:restoredPath,WAREHOUSE_BACKUP_DIR:path.join(dir,'restored-backups'),PHOTO_BUNDLE:path.join(dir,'customer-photo-bundle.json')},encoding:'utf8'});
+      const corrupted=structuredClone(exported);corrupted.customers.find(row=>row.id===customer.id).customer_attachments[0].customer_id+=1;
+      assert.throws(()=>require('./ledger-attachments').createStore(path.join(dir,'validate-backup.json')).restore(corrupted),/客户单据照片索引无效/);
     });
 
     await t.test('idempotency replay, new sessions and repeated file selection do not duplicate evidence', async () => {
@@ -86,9 +111,9 @@ test('ledger evidence persists original photos, retries safely, and travels with
       assert.equal((await call(`/ledger/${entry.id}/attachments`, { ...upload, data: 'data:image/jpeg;base64,YWJjZA==' })).status, 400);
       assert.equal((await call(`/ledger/${entry.id}/attachments`, { ...upload, kind: 'other' })).status, 400);
       assert.equal((await call(`/ledger/${entry.id}/attachments`, upload, { headers: { 'If-Match': '-1' } })).status, 409);
-      const bytes = Buffer.alloc(12 * 1024 * 1024 + 1); original.copy(bytes);
+      const bytes = Buffer.alloc(24 * 1024 * 1024 + 1); original.copy(bytes);
       assert.equal((await call(`/ledger/${entry.id}/attachments`, { ...upload, data: `data:image/png;base64,${bytes.toString('base64')}` })).status, 400);
-      assert.equal((await call(`/ledger/${entry.id}/attachments`, { ...upload, data: 'x'.repeat(17 * 1024 * 1024) })).status, 413);
+      assert.equal((await call(`/ledger/${entry.id}/attachments`, { ...upload, data: 'x'.repeat(33 * 1024 * 1024) })).status, 413);
       assert.equal(db.getLedgerAttachments(entry.id).length, 1);
     });
 
@@ -162,3 +187,6 @@ test('ledger evidence persists original photos, retries safely, and travels with
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+
+

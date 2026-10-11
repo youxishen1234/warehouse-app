@@ -77,6 +77,7 @@ const BODY_LIMITS = Object.freeze({ general: 1024 * 1024, imageJson: 2.5 * 1024 
 // retain the separate 2 MiB business limit in the route handler.
 app.use('/api/products/:id/image', express.json({ limit: `${BODY_LIMITS.imageJson}b` }));
 app.use('/api/ledger/:id/attachments', express.json({ limit: require('./ledger-attachments').JSON_LIMIT }));
+app.use('/api/customers/:id/attachments', express.json({ limit: '33mb' }));
 app.use('/api/backup', express.json({ limit: `${BODY_LIMITS.backup}b` }));
 app.use('/api/ai/command', express.json({ limit: '9mb' }));
 app.use('/api/ai/photo', express.json({ limit: '9mb' }));
@@ -299,3 +300,5 @@ function startServer() {
 
 module.exports = app;
 module.exports.startServer = startServer;
+
+
