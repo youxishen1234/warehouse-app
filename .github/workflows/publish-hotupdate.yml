@@ -75,16 +75,28 @@ jobs:
         run: |
           python3 scripts/package-hotupdate.py "$TARO_OUTPUT_DIR" "$HOTUPDATE_LOCAL_ZIP" "$HOTUPDATE_LOCAL_MANIFEST"
           node scripts/verify-release-artifacts.cjs --dist "$TARO_OUTPUT_DIR" --zip "$HOTUPDATE_LOCAL_ZIP"
-      - name: Validate built user workflows
+      - name: Install browser workflow tests
         env:
           LEDGER_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
-        run: |
-          npx playwright install --with-deps chromium
-          node tests/ledger-photos-browser.cjs
-          CUSTOMER_PHOTO_WEB_DIR="$TARO_OUTPUT_DIR" node tests/customer-original-4k-browser.cjs
-          node tests/mine-connection-browser.cjs
-          NAV_WEB_DIR="$TARO_OUTPUT_DIR" node tests/desktop-navigation-browser.cjs
-          BUSINESS_WEB_DIR="$TARO_OUTPUT_DIR" node tests/business-center-browser.cjs
+        run: npx playwright install --with-deps chromium
+      - name: Validate ledger photo workflows
+        env:
+          LEDGER_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/ledger-photos-browser.cjs
+      - name: Validate customer center and 4K originals
+        env:
+          CUSTOMER_PHOTO_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/customer-original-4k-browser.cjs
+      - name: Validate connection settings
+        run: node tests/mine-connection-browser.cjs
+      - name: Validate desktop navigation
+        env:
+          NAV_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/desktop-navigation-browser.cjs
+      - name: Validate business center workflows
+        env:
+          BUSINESS_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/business-center-browser.cjs
       - name: Run complete backend test suite
         run: node --test backend/*.test.cjs
       - name: Publish through shared server lock and stale-source gate
