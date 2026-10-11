@@ -171,6 +171,19 @@ async function main() {
     assert.equal(remoteClaim.note.items[0].name,'');
     remoteStore.acknowledge(pair.agent,remoteClaim.id,{lease:remoteClaim.lease,status:'queued'});
     await expect(page.getByRole('dialog', { name: '送货单预览' }).getByRole('status')).toContainText('已送入630K打印队列');
+    await button('再打印一份').click();
+    await expect(page.getByRole('group',{name:'确认重新打印'})).toBeVisible();
+    assert.equal(JSON.parse(fs.readFileSync(process.env.WAREHOUSE_REMOTE_PRINT_FILE)).jobs.length,1,'reprint requires explicit confirmation');
+    await button('确认再打印一份').click();
+    await expect(page.getByRole('dialog', { name: '送货单预览' }).getByRole('status')).toContainText('等待打印电脑接收');
+    const reprint=remoteStore.claim(pair.agent,true).job;
+    assert.notEqual(reprint.id,remoteClaim.id,'confirmed reprint gets a new job');
+    remoteStore.acknowledge(pair.agent,reprint.id,{lease:reprint.lease,status:'queued'});
+    await expect(page.getByRole('dialog', { name: '送货单预览' }).getByRole('status')).toContainText('已送入630K打印队列');
+    await button('返回单据').click();await button('预览打印').click();
+    await page.getByText(/远程打印到店里/).click();
+    await expect(button('再打印一份')).toBeEnabled();
+    assert.equal(JSON.parse(fs.readFileSync(process.env.WAREHOUSE_REMOTE_PRINT_FILE)).jobs.length,2,'reopening preview only queries the last job');
     await page.getByText(/远程打印到店里/).click();
     await page.screenshot({ path: path.join(artifacts, 'mobile-preview.png'), fullPage: true });
     for (const paper of ['241-93', '241-140', 'a4']) {

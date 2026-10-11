@@ -42,7 +42,7 @@ async function main(){
       const poll=await call('agent/poll',{ready:!!printer});
       if(poll.job){if(poll.job.printer!==config.printer)throw new Error('打印机配置不符');const row=await journal.submit(poll.job,service);await call('agent/jobs/'+row.id,{lease:row.lease,...row.result});journal.ack(row.id);console.log(new Date().toISOString(),row.id,row.result.status);}
     }catch(e){console.error(new Date().toISOString(),e.message);}
-    await new Promise(r=>setTimeout(r,5000));
+    await new Promise(r=>setTimeout(r,1000));
   }
 }
 if(require.main===module)main().catch(e=>{console.error(e.message);process.exitCode=1;});
