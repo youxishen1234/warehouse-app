@@ -14,6 +14,14 @@ const { normalizePrintSettings, DEFAULT_PRINT_SETTINGS, documentFromTransactions
 
 const line = (id, changes = {}) => ({ id, product_id: 3, type: 'out', outbound_no: 'CK-008', customer_id: 4, customer_name: '历史客户名称', created_at: 1790985600000, quantity: 2, unit: '个', unit_price: 1.25, amount: 2.5, operator: '经手人', remark: '', ...changes });
 
+test('delivery printing preserves an empty product name and still renders specifications and amounts', () => {
+  const doc = documentFromTransactions([line(1, { product_name: '', specification: '400x300*200' })]);
+  const html = buildDotMatrixHtml(doc, normalizePrintSettings({ template: 'delivery-note' }));
+  assert.ok(html.includes('<td>1</td><td></td>'));
+  assert.match(html, /400×300×200/);
+  assert.ok(html.includes('2.50'));
+});
+
 test('new delivery form matches supplied headings, supports all three papers, and preserves price precision', () => {
   for (const [paper, width, height, rows] of [['241-93', 241, 93, 5], ['241-140', 241, 140, 10], ['a4', 210, 297, 20]]) {
     const settings = normalizePrintSettings({ template: 'delivery-note', paper });

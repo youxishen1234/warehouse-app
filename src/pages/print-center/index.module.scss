@@ -5,19 +5,19 @@
 .page h1 { font-size: 22PX; font-weight: 700; }
 .page h2, .backdrop h2 { font-size: 17PX; font-weight: 650; }
 .page h3 { font-size: 21PX; margin: 14PX 0 4PX; overflow-wrap: anywhere; }
-.page button, .backdrop button { font: inherit; border: 0; cursor: pointer; min-height: 44PX; border-radius: 10PX; margin: 0; padding: 10PX 14PX; line-height: 1.4; }
-.page button:disabled, .backdrop button:disabled { opacity: .45; cursor: default; }
-.page input, .page select, .backdrop input, .backdrop select { display: block; width: 100%; min-width: 0; height: 46PX; font: inherit; font-size: 16PX; border: 1PX solid #dce2e7; border-radius: 9PX; background: #fff; color: #172b3a; padding: 10PX 12PX; outline: none; }
-.page input:focus, .page select:focus, .backdrop input:focus { border-color: #1f6175; box-shadow: 0 0 0 3PX #1f617512; }
-.page input::placeholder, .backdrop input::placeholder { color: #99a4ae; font-size: 14PX; }
+.page [type=button], .backdrop [type=button] { font: inherit; border: 0; cursor: pointer; min-height: 44PX; border-radius: 10PX; margin: 0; padding: 10PX 14PX; line-height: 1.4; }
+.page [type=button]:disabled, .backdrop [type=button]:disabled { opacity: .45; cursor: default; }
+.page [aria-label]:is([maxlength], [type=search]), .page select, .backdrop [aria-label]:is([maxlength], [type=search]), .backdrop select { display: block; width: 100%; min-width: 0; height: 46PX; font: inherit; font-size: 16PX; border: 1PX solid #dce2e7; border-radius: 9PX; background: #fff; color: #172b3a; padding: 10PX 12PX; outline: none; }
+.page [aria-label]:is([maxlength], [type=search]):focus, .page select:focus, .backdrop [aria-label]:is([maxlength], [type=search]):focus { border-color: #1f6175; box-shadow: 0 0 0 3PX #1f617512; }
+.page [aria-label]:is([maxlength], [type=search])::placeholder, .backdrop [aria-label]:is([maxlength], [type=search])::placeholder { color: #99a4ae; font-size: 14PX; }
 .page :focus-visible, .backdrop :focus-visible { outline: 2PX solid #2a8194; outline-offset: 3PX; }
 .toolbar { display: flex; align-items: center; gap: 12PX; margin-bottom: 22PX; }
 .toolbar p { margin: 2PX 0 0; color: #80909b; font-size: 12PX; }
 .page .back { background: white; color: #344958; font-size: 28PX; width: 44PX; padding: 0; border: 1PX solid #e4e8ec; }
 .page .newButton { margin-left: auto; background: #e7eef1; color: #225b6c; font-weight: 600; }
 .tabs { display: flex; gap: 4PX; background: #e9edf0; border-radius: 12PX; padding: 4PX; margin-bottom: 20PX; }
-.tabs button { flex: 1; background: transparent; color: #778692; }
-.tabs button[aria-pressed=true] { background: white; color: #203c4b; box-shadow: 0 2PX 5PX #102a3d08; font-weight: 600; }
+.tabs [type=button] { flex: 1; background: transparent; color: #778692; }
+.tabs [type=button][aria-pressed=true] { background: white; color: #203c4b; box-shadow: 0 2PX 5PX #102a3d08; font-weight: 600; }
 .documentStatus { display: flex; justify-content: space-between; color: #89949d; font-size: 12PX; margin: 0 3PX 12PX; gap: 8PX; }
 .form { border: 0; padding: 0; margin: 0; min-width: 0; }
 .card { background: #fff; border: 1PX solid #e4e9ed; padding: 22PX; border-radius: 16PX; margin-bottom: 16PX; min-width: 0; }
@@ -25,7 +25,7 @@
 .sectionHeading > span { font-size: 12PX; color: #84939e; white-space: nowrap; }
 .page .textButton, .backdrop .textButton { background: transparent; color: #236778; padding: 8PX 0 8PX 8PX; }
 .field { display: block; color: #6c7e8a; font-size: 12PX; min-width: 0; margin-bottom: 14PX; }
-.field input, .field select { margin-top: 6PX; }
+.field [aria-label]:is([maxlength], [type=search]), .field select { margin-top: 6PX; }
 .grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 14PX; }
 .item { border-top: 1PX solid #e9edf0; padding: 16PX 0 8PX; min-width: 0; }
 .item:first-child { border-top: 0; padding-top: 0; }
@@ -44,16 +44,16 @@
 .settings summary span { float: right; color: #97a5ad; }
 .settingsBody { padding: 2PX 20PX 6PX; }
 .actions { position: sticky; bottom: 12PX; z-index: 3; display: flex; gap: 12PX; background: #f4f6f8f5; padding: 14PX 0 0; margin-top: 8PX; }
-.actions button { flex: 1; height: 49PX; font-weight: 600; font-size: 15PX; }
+.actions [type=button] { flex: 1; height: 49PX; font-weight: 600; font-size: 15PX; }
 .page .primary, .backdrop .primary { background: #245f72; color: #fff; }
 .page .secondary, .backdrop .secondary { background: white; border: 1PX solid #d2dee4; color: #315769; }
 .error { background: #fff1ed; color: #a74028; border-radius: 10PX; padding: 12PX 14PX; margin-bottom: 14PX; font-size: 13PX; overflow-wrap: anywhere; }
-.error button { color: inherit; background: transparent; }
+.error [type=button] { color: inherit; background: transparent; }
 .notice { background: #e8f4ef; color: #36735e; padding: 10PX 14PX; font-size: 13PX; border-radius: 10PX; margin-bottom: 14PX; }
 .muted { color: #80919c; font-size: 13PX; margin: 10PX 0; overflow-wrap: anywhere; }
 .historySearch { display: flex; gap: 8PX; margin-bottom: 16PX; }
-.historySearch input { flex: 1; }
-.historySearch button { color: #416779; background: #e7eef1; flex-shrink: 0; }
+.historySearch [aria-label]:is([maxlength], [type=search]) { flex: 1; }
+.historySearch [type=button] { color: #416779; background: #e7eef1; flex-shrink: 0; }
 .page .historyCard { display: flex; justify-content: space-between; gap: 16PX; width: 100%; text-align: left; padding: 20PX; margin-bottom: 12PX; border: 1PX solid #e4e9ed; background: white; color: #223c4a; border-radius: 14PX; }
 .historyCard > span:first-child { min-width: 0; }
 .historyCard strong { font-size: 16PX; overflow-wrap: anywhere; }
@@ -62,7 +62,7 @@
 .historyAmount { flex-shrink: 0; font-weight: 600; text-align: right; }
 .historyAmount small { font-weight: 400; color: #3c788a; margin-top: 18PX; }
 .empty { text-align: center; padding: 65PX 12PX; color: #516a79; }
-.empty strong { font-size: 18PX; }.empty p { color: #8597a2; }.empty button { color: #245f72; background: white; margin-top: 12PX; }
+.empty strong { font-size: 18PX; }.empty p { color: #8597a2; }.empty [type=button] { color: #245f72; background: white; margin-top: 12PX; }
 .sectionHeading .saved { color: #388365; background: #edf6f0; border-radius: 20PX; padding: 4PX 10PX; }
 .details { display: grid; grid-template-columns: auto 1fr; gap: 12PX 20PX; margin: 22PX 0 0; font-size: 13PX; }
 .details dt { color: #8597a2; }.details dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
@@ -75,11 +75,11 @@
 .backdrop .customer { display: block; text-align: left; width: 100%; background: transparent; border-radius: 0; border-bottom: 1PX solid #edf0f2; padding: 14PX 2PX; color: #294757; }
 .customer strong, .customer span, .customer small { display: block; overflow-wrap: anywhere; }
 .customer span, .customer small { margin-top: 4PX; color: #7a8e9b; font-size: 12PX; }
-.confirmActions { display: flex; gap: 12PX; margin-top: 24PX; }.confirmActions button { flex: 1; }
+.confirmActions { display: flex; gap: 12PX; margin-top: 24PX; }.confirmActions [type=button] { flex: 1; }
 .previewDialog { max-width: 1060PX; width: 100%; background: #f4f6f8; border-radius: 18PX; padding: 20PX; max-height: calc(100dvh - 40PX); overflow: auto; }
 .previewHeader { display: flex; align-items: center; justify-content: space-between; gap: 12PX; margin-bottom: 14PX; }
 .previewControls { display: flex; align-items: center; flex-wrap: wrap; gap: 10PX; margin-bottom: 14PX; }
-.previewControls select { width: auto; max-width: 100%; flex: 1; }.previewControls button { background: white; color: #385f72; border: 1PX solid #dce2e7; }
+.previewControls select { width: auto; max-width: 100%; flex: 1; }.previewControls [type=button] { background: white; color: #385f72; border: 1PX solid #dce2e7; }
 .previewStage { width: 100%; overflow: auto; background: #e8ebef; border-radius: 10PX; }.frameShell { position: relative; margin: 0 auto; }
 .frameShell iframe { position: absolute; top: 0; left: 0; border: 0; transform-origin: top left; display: block; }
 .previewActions { display: flex; gap: 12PX; justify-content: flex-end; margin-top: 16PX; }
@@ -87,5 +87,5 @@
   .page { padding-left: 14PX; padding-right: 14PX; padding-top: calc(env(safe-area-inset-top, 0PX) + 14PX); }
   .toolbar { margin-bottom: 18PX; }.card { padding: 18PX 16PX; }.grid { gap: 0 10PX; }.sectionHeading { margin-bottom: 12PX; }
   .backdrop { padding: 12PX; align-items: center; }.dialog { padding: 20PX 16PX; }.previewDialog { padding: 16PX 12PX; border-radius: 14PX; }.historyCard { padding: 16PX !important; }
-  .actions { bottom: calc(env(safe-area-inset-bottom, 0PX) + 8PX); gap: 10PX; }.previewActions button { flex: 1; }.previewControls select { flex-basis: 100%; }
+  .actions { bottom: calc(env(safe-area-inset-bottom, 0PX) + 8PX); gap: 10PX; }.previewActions [type=button] { flex: 1; }.previewControls select { flex-basis: 100%; }
 }

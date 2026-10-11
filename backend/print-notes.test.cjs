@@ -15,6 +15,8 @@ test('delivery note validation normalizes dimensions and unit, calculates cents,
   assert.equal(note.items[0].price, 1.005);
   assert.equal(note.items[0].amount, 3.02);
   assert.equal(note.total, 3.02);
+  const unnamed = validateNote({ ...fixture(), items: [{ ...fixture().items[0], name: '' }] });
+  assert.equal(unnamed.items[0].name, '');
   for (const field of ['quantity', 'price']) for (const value of ['', null, -1, Infinity, 'abc', '1.0000001']) {
     const raw = fixture(); raw.items[0][field] = value; assert.throws(() => validateNote(raw), /无效|数字|非负|正数|小数/);
   }
@@ -78,6 +80,31 @@ test('saved notes persist, update in place, search all lines, reject stale edits
     const oldBackup = structuredClone(after); delete oldBackup.print_notes; db.restoreData(oldBackup);
     assert.equal(db.listPrintNotes()[0].receiver, '新收货人'); assert.equal(db.listPrintNotes()[0].version, 4);
     db.restoreData(after); assert.equal(db.listPrintNotes()[0].version, 5);
+    const unnamedRaw = fixture(); unnamedRaw.items[0].name = '';
+    const unnamed = await call('/print-notes', 'POST', unnamedRaw);
+    assert.equal(unnamed.status, 200);
+    assert.equal((await call('/print-notes/' + unnamed.data.id)).data.items[0].name, '');
+    const beforeRejectedShip = db.backupData();
+    const unmatched = await call('/print-notes/' + unnamed.data.id + '/ship', 'POST', {});
+    assert.equal(unmatched.status, 400);
+    assert.match(unmatched.message, /唯一匹配库存/);
+    assert.deepEqual(db.backupData().products, beforeRejectedShip.products);
+    assert.deepEqual(db.backupData().transactions, beforeRejectedShip.transactions);
+    assert.equal(db.listPrintNotes().find(note => note.id === unnamed.data.id).outbound_at, undefined);
+    const linked = await call('/print-notes/' + unnamed.data.id, 'PUT', { ...unnamed.data, items: [{ ...unnamed.data.items[0], product_id: product.id }] });
+    assert.equal(linked.status, 200);
+    const linkedShip = await call('/print-notes/' + unnamed.data.id + '/ship', 'POST', {});
+    assert.equal(linkedShip.status, 200);
+    assert.ok(linkedShip.data.outbound_at);
+    assert.equal(linkedShip.data.items[0].name, '');
+    db.addProduct({ name: product.name, specification: product.specification, unit: '个', stock: 10, price: 1 });
+    const ambiguous = await call('/print-notes', 'POST', fixture());
+    const beforeAmbiguousShip = db.backupData();
+    const ambiguousShip = await call('/print-notes/' + ambiguous.data.id + '/ship', 'POST', {});
+    assert.equal(ambiguousShip.status, 400);
+    assert.match(ambiguousShip.message, /唯一匹配库存/);
+    assert.deepEqual(db.backupData().products, beforeAmbiguousShip.products);
+    assert.deepEqual(db.backupData().transactions, beforeAmbiguousShip.transactions);
   } finally {
     server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
     // dir is created by mkdtemp for this test alone.

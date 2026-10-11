@@ -29,7 +29,7 @@ function validateNote(raw) {
     } catch (error) { throw fail(error.message); }
     const productId = item.product_id == null || item.product_id === '' ? null : item.product_id;
     if (productId !== null && (!Number.isSafeInteger(productId) || productId < 1)) throw fail(`第 ${index + 1} 行库存商品编号无效`);
-    return { product_id: productId, name: text(item.name, `第 ${index + 1} 行产品名称`, 100, true),
+    return { product_id: productId, name: text(item.name, `第 ${index + 1} 行产品名称`, 100),
       specification: normalizeSpecification(text(item.specification, '规格', 100)),
       unit: '个', quantity, price, amount, remark: text(item.remark, '备注', 250) };
   });

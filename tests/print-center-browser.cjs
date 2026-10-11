@@ -13,6 +13,7 @@ async function main() {
   const db = require('../backend/db');
   const app = process.env.PRINT_SOURCE_PREVIEW === '1' ? require('./helpers/print-center-source.cjs')(db) : require('../backend/server');
   const customer = db.addCustomer({ name: '华兴包装（演示）', contact: '王先生', phone: '13800000000', address: '河北省沧州市东光县工业园', specs: [{ id: 'spec-demo', goods: '五层瓦楞纸箱', specification: '400x300*200mm', material: '五层', unit: '箱', price: 3.5 }] });
+  db.updateCustomer(customer.id, { specs: [{ id: 'spec-demo', goods: '五层瓦楞纸箱', specification: '400x300*200mm', unit: '个', price: 3.5 }] });
   db.addCustomer({ name: '宏远纸业（演示）', contact: '李女士', phone: '13900000000', address: '东光县开发区' });
   const server = app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
@@ -47,7 +48,7 @@ async function main() {
     const active = () => page.locator('.taro_page:visible').last();
     const button = name => page.getByRole('button', { name, exact: true });
     const noOverflow = async () => {
-      assert.equal(await active().evaluate(element => element.scrollWidth <= element.clientWidth + 1), true, 'mobile page must not overflow horizontally');
+      await expect.poll(() => active().evaluate(element => element.scrollWidth <= element.clientWidth + 1), { message: 'mobile page must not overflow horizontally' }).toBe(true);
       assert.equal(await active().locator('input:visible,select:visible').evaluateAll(elements => elements.filter(element => element.getBoundingClientRect().right > innerWidth + 1 || element.getBoundingClientRect().left < -1).length), 0, 'fields fit viewport');
     };
     await page.goto(origin + '/#/pages/print-center/index');
@@ -60,6 +61,10 @@ async function main() {
     await expect(page.getByLabel('收货人', { exact: true })).toHaveValue(customer.contact);
     await page.getByLabel('选择客户常用规格').selectOption('spec-demo');
     await expect(page.getByLabel('第1项规格尺寸')).toHaveValue('400×300×200');
+    await page.getByLabel('第1项规格尺寸').fill('400x300*200');
+    await expect(page.getByLabel('第1项规格尺寸')).toHaveValue('400×300×200');
+    await expect(page.getByLabel('第1项规格尺寸')).toBeFocused();
+    await page.getByLabel('第1项产品名称').fill('');
     await page.getByLabel('第1项数量').fill('100');
     await page.getByLabel('送货人', { exact: true }).fill('张师傅');
     await page.getByLabel('第1项备注').fill('请轻拿轻放');
@@ -69,6 +74,7 @@ async function main() {
     await expect.poll(() => db.listPrintNotes().length).toBe(1);
     await expect(button('已保存')).toBeDisabled();
     let saved = db.listPrintNotes()[0]; assert.equal(saved.total, 350);
+    assert.equal(saved.items[0].name, '');
     await button('历史单据').click();
     await page.getByLabel('搜索历史单据').fill('华兴');
     await page.getByRole('button', { name: /查看详情/ }).click();
@@ -106,6 +112,7 @@ async function main() {
     const frame = () => page.frameLocator('iframe[title="送货单纸张预览"]');
     await expect(frame().getByRole('heading', { name: '送 货 单' })).toBeVisible();
     await expect(frame().getByText('400×300×200')).toBeVisible();
+    await expect(frame().locator('tr[data-line] td:nth-child(2)')).toHaveText('');
     await page.screenshot({ path: path.join(artifacts, 'mobile-preview.png'), fullPage: true });
     for (const paper of ['241-93', '241-140', 'a4']) {
       await page.getByLabel('预览纸张').selectOption(paper); await expect(button('打印送货单')).toBeEnabled();
@@ -129,6 +136,7 @@ async function main() {
     failHistory = true; await button('历史单据').click();
     await expect(page.getByRole('alert')).toContainText('测试历史加载失败');
     await button('重试').click(); await page.getByRole('button', { name: /多页送货客户/ }).click();
+    await button('编辑单据').click();
     await button('预览打印').click(); await expect(button('打印送货单')).toBeEnabled();
     await expect(frame().locator('tr[data-line]')).toHaveCount(12);
     await expect(frame().locator('.sheet')).toHaveCount(3);
@@ -139,7 +147,7 @@ async function main() {
       assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 3);
     }
     await page.evaluate(() => window.dispatchEvent(new Event('afterprint'))); await button('返回单据').click();
-    await button('编辑单据').click(); await page.getByLabel('第1项备注').fill('我的待保存修改');
+    await page.getByLabel('第1项备注').fill('我的待保存修改');
     db.savePrintNote({ ...multi, sender: '另一个设备' }, multi.id);
     await button('保存单据').click(); await expect(page.getByRole('alert')).toBeVisible();
     await expect(page.getByLabel('第1项备注')).toHaveValue('我的待保存修改');
