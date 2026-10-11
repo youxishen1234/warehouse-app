@@ -32,6 +32,9 @@
 .page .dateControl [type=date] { position: absolute; inset: 0; display: block; width: 100%; max-width: 100%; min-width: 0; height: 100%; margin: 0; padding: 0; border: 0; opacity: 0; font-size: 16PX; cursor: pointer; }
 .dateControl:focus-within { border-color: #1f6175; box-shadow: 0 0 0 3PX #1f617512; }
 .grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 14PX; }
+.specMode { display: flex; align-items: center; gap: 8PX; margin-bottom: 14PX; color: #6c7e8a; font-size: 12PX; }
+.page .specMode [type=button] { background: #f0f4f6; color: #647c89; padding: 6PX 12PX; }
+.page .specMode [aria-pressed=true] { background: #e2eff2; color: #245f72; font-weight: 600; }
 .item { border-top: 1PX solid #e9edf0; padding: 16PX 0 8PX; min-width: 0; }
 .item:first-child { border-top: 0; padding-top: 0; }
 .itemHeading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10PX; }

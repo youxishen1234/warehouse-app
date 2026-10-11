@@ -78,6 +78,15 @@ async function main() {
     await page.getByLabel('第1项规格尺寸').press('Backspace');
     await expect(page.getByLabel('第1项规格尺寸')).toHaveValue('400×300×20');
     await page.getByLabel('第1项规格尺寸').pressSequentially('0');
+    await button('两位数').click();
+    await page.getByLabel('第1项规格尺寸').fill('');
+    await page.getByLabel('第1项规格尺寸').pressSequentially('40');
+    await expect(page.getByLabel('第1项规格尺寸')).toHaveValue('40×');
+    await page.getByLabel('第1项规格尺寸').pressSequentially('3020');
+    await expect(page.getByLabel('第1项规格尺寸')).toHaveValue('40×30×20');
+    await button('三位数').click();
+    await expect(page.getByLabel('第1项规格尺寸')).toHaveValue('40×30×20');
+    await page.getByLabel('第1项规格尺寸').fill('400×300×200');
     await page.getByLabel('第1项产品名称').fill('');
     await page.getByLabel('第1项数量').fill('100');
     await page.getByLabel('送货人', { exact: true }).fill('张师傅');

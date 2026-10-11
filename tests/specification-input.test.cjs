@@ -21,3 +21,15 @@ test('three-digit dimensions insert separators during numeric typing and accept 
  assert.equal(format('40','400'),'40');
  assert.equal(format(''),'');
 });
+test('two-digit mode inserts separators, preserves completed dimensions and allows deletion',()=>{
+ let value='';for(const digit of '403020')value=format(value+digit,value,2);
+ assert.equal(value,'40×30×20');
+ assert.equal(format('40','',2),'40×');
+ assert.equal(format('4030','',2),'40×30×');
+ assert.equal(format('403020','',2),'40×30×20');
+ assert.equal(format('40','40×',2),'40');
+ assert.equal(format('40×30×2','40×30×20',2),'40×30×2');
+ assert.equal(format('400×300×200','',2),'400×300×200');
+ assert.equal(format('40x30*20','',2),'40×30×20');
+ assert.equal(format('40×300','40×30',3),'40×300×');
+});
