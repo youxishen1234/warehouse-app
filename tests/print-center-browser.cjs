@@ -161,12 +161,13 @@ async function main() {
     await expect(frame().getByRole('heading', { name: '送 货 单' })).toBeVisible();
     await expect(frame().getByText('400×300×200')).toBeVisible();
     await expect(frame().locator('tr[data-line] td:nth-child(2)')).toHaveText('');
+    const remoteStore=require('../backend/remote-print').createStore(process.env.WAREHOUSE_REMOTE_PRINT_FILE);
+    remoteStore.claim(pair.agent,true);
     await page.getByText(/远程打印到店里/).click();
     await page.getByLabel('打印电脑配对码').fill(pair.client);
     await button('连接打印电脑').click();
     await button('发送到630K').click();
     await expect(page.getByRole('dialog', { name: '送货单预览' }).getByRole('status')).toContainText('等待打印电脑接收');
-    const remoteStore=require('../backend/remote-print').createStore(process.env.WAREHOUSE_REMOTE_PRINT_FILE);
     const remoteClaim=remoteStore.claim(pair.agent,true).job;
     assert.equal(remoteClaim.note.items[0].name,'');
     remoteStore.acknowledge(pair.agent,remoteClaim.id,{lease:remoteClaim.lease,status:'queued'});

@@ -14,6 +14,27 @@ $supervisorLog = Join-Path $receiverRoot 'supervisor.log'
 $outputLog = Join-Path $receiverRoot 'receiver.log'
 $errorLog = Join-Path $receiverRoot 'receiver-error.log'
 try {
+  # A stopped scheduler launcher can leave a detached Node process behind.
+  # Supervise that exact receiver until it exits instead of starting another
+  # instance or trying to rotate files it still holds open. PID alone is not
+  # sufficient: Windows may reuse the number for an unrelated process.
+  $lockFile = Join-Path $receiverRoot 'agent.lock'
+  if (Test-Path -LiteralPath $lockFile) {
+    $receiverId = 0
+    if ([int]::TryParse((Get-Content -LiteralPath $lockFile -Raw).Trim(), [ref]$receiverId) -and $receiverId -gt 0) {
+      $running = Get-Process -Id $receiverId -ErrorAction SilentlyContinue
+      if ($running) {
+        $details = Get-CimInstance Win32_Process -Filter ("ProcessId = " + $receiverId)
+        $command = ([string]$details.CommandLine).Replace('\', '/')
+        $agentMatch = '(?:^|["\s])' + [regex]::Escape($agentScript.Replace('\', '/')) + '(?:["\s]|$)'
+        $configMatch = '(?:^|["\s])' + [regex]::Escape($configPath.Replace('\', '/')) + '(?:["\s]|$)'
+        if ($details.ExecutablePath -and [IO.Path]::GetFullPath($details.ExecutablePath) -eq $nodePath -and $command -imatch $agentMatch -and $command -imatch $configMatch) {
+          Add-Content -LiteralPath $supervisorLog -Value ((Get-Date).ToString('o') + ' supervising existing receiver: ' + $receiverId) -Encoding UTF8
+          $running.WaitForExit()
+        }
+      }
+    }
+  }
   # Keep the previous run's diagnostics. Never touch pairing or the job journal.
   $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss-fff')
   foreach ($log in @($outputLog, $errorLog)) {
