@@ -37,6 +37,13 @@ if ($PSCmdlet.ShouldProcess($TaskName, 'Install hidden remote print receiver wit
   if ([IO.Path]::GetFullPath($launcherSource) -ne [IO.Path]::GetFullPath($launcherPath)) {
     Copy-Item -LiteralPath $launcherSource -Destination $launcherPath
   }
+  # The launcher delegates hang detection to this helper; without it the
+  # receiver still runs, but a hung process would never be restarted.
+  $watchdogSource = Join-Path $PSScriptRoot 'remote-print-watchdog.cjs'
+  $watchdogPath = Join-Path $receiverRoot 'scripts/remote-print-watchdog.cjs'
+  if ((Test-Path -LiteralPath $watchdogSource -PathType Leaf) -and [IO.Path]::GetFullPath($watchdogSource) -ne [IO.Path]::GetFullPath($watchdogPath)) {
+    Copy-Item -LiteralPath $watchdogSource -Destination $watchdogPath
+  }
   if ($existing) {
     # Preserve the existing Windows identity and do not interrupt in-flight work.
     Set-ScheduledTask -TaskName $TaskName -Action $action -Trigger @($logon, $watchdog) -Settings $settings | Out-Null

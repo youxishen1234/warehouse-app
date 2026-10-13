@@ -36,3 +36,43 @@ test('remote routes require pairing and print immutable saved snapshots without 
   note.items[0].specification='changed';assert.equal(store.claim(pair.agent,true).job.note.items[0].specification,'400×300×200');
  }finally{server.closeAllConnections();await new Promise(r=>server.close(r));fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+test('only a person at the printer can clear an uncertain job and unblock the queue',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'remote-print-resolve-'));let now=100000;const file=path.join(dir,'queue.json');
+ try{
+  const store=createStore(file,()=>now),pair=store.register('店里电脑','EPSON LQ-630K ESC/P2');
+  const note={id:7,version:1,number:'SH-007',items:[]};
+  const first=store.enqueue(pair.client,{id:'remote-print-task-101',paper:'241-93'},note);
+  const claim=store.claim(pair.agent,true).job;
+  // The receiver dies mid-print: the job becomes uncertain and blocks the device.
+  now+=180001;assert.equal(store.status(pair.client,first.id).status,'uncertain');
+  store.enqueue(pair.client,{id:'remote-print-task-102',paper:'a4'},note);
+  assert.equal(store.claim(pair.agent,true).job,null,'an uncertain job must block new work');
+
+  // A client cannot resolve a job that is not uncertain, or invent an outcome.
+  assert.throws(()=>store.resolve(pair.client,'remote-print-task-102',{outcome:'printed'}),/未确认/);
+  assert.throws(()=>store.resolve(pair.client,first.id,{outcome:'maybe'}),/出纸/);
+  assert.throws(()=>store.resolve(pair.client,'no-such-job',{outcome:'printed'}),/不存在/);
+  assert.throws(()=>store.resolve(pair.agent,first.id,{outcome:'printed'}),/配对/);
+
+  // Confirming real output makes it terminal and releases the queue.
+  const resolved=store.resolve(pair.client,first.id,{outcome:'printed'});
+  assert.equal(resolved.status,'queued');assert.match(resolved.message,/人工核对/);
+  assert.equal(store.claim(pair.agent,true).job.id,'remote-print-task-102','the queue must move again');
+  assert.throws(()=>store.resolve(pair.client,first.id,{outcome:'missing'}),/未确认/,'a resolved job cannot be re-resolved');
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('confirming no paper fails the job and still releases the queue',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'remote-print-missing-'));let now=100000;const file=path.join(dir,'queue.json');
+ try{
+  const store=createStore(file,()=>now),pair=store.register('店里电脑','630K');
+  const note={id:9,version:1,number:'SH-009',items:[]};
+  const job=store.enqueue(pair.client,{id:'remote-print-task-201',paper:'a4'},note);
+  store.claim(pair.agent,true);
+  now+=180001;assert.equal(store.status(pair.client,job.id).status,'uncertain');
+  const resolved=store.resolve(pair.client,job.id,{outcome:'missing'});
+  assert.equal(resolved.status,'failed');assert.match(resolved.message,/重新发送/);
+  assert.equal(store.history(pair.client).length,0,'a job that never printed is not print history');
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});

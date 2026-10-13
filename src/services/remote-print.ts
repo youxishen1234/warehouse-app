@@ -54,3 +54,7 @@ export const getRemoteDevice = (token = readPrintPair()) => remoteRequest<Remote
 export const getRemotePrintHistory = () => remoteRequest<{ note_id: number; printed_at: number }[]>('history', readPrintPair());
 export const submitRemotePrint = (data: { id: string; note_id: number; version: number; paper: string }, token = readPrintPair()) => remoteRequest<RemoteJob>('jobs', token, data);
 export const getRemotePrintJob = (id: string, token = readPrintPair()) => remoteRequest<RemoteJob>('jobs/' + encodeURIComponent(id), token);
+// Only a person at the printer knows whether paper came out, so this is the one
+// place the app asks instead of guessing. It clears the device queue block.
+export const resolveRemotePrintJob = (id: string, outcome: 'printed' | 'missing', token = readPrintPair()) =>
+  remoteRequest<RemoteJob>('jobs/' + encodeURIComponent(id) + '/resolve', token, { outcome });

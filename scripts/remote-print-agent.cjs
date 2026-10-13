@@ -73,13 +73,22 @@ async function main(){
   const report=error=>console.error(new Date().toISOString(),error.message);
   const receiver=createReceiver({service,journal,call,printerName:config.printer,report});
   const releaseLock = await acquireAgentLock(configFile);
+  // A hung receiver still looks "running" to Windows, so the launcher's watchdog
+  // reads this file instead: `at` proves the event loop turns, `progress`
+  // proves the main loop completes rounds. Written only after the lock so a
+  // rejected second instance never overwrites the live receiver's beat.
+  const heartbeatFile=path.join(path.dirname(configFile),'receiver-heartbeat.json');
+  let progress=Date.now();
+  const beat=()=>{try{fs.writeFileSync(heartbeatFile+'.tmp',JSON.stringify({pid:process.pid,at:Date.now(),progress}),{mode:0o600});fs.renameSync(heartbeatFile+'.tmp',heartbeatFile);}catch{ /* a missing beat only makes the watchdog more cautious */ }};
+  const beatTimer=setInterval(beat,2000);beat();
   try {
     while(!stopping){
       try { const row=await receiver.tick(); if(row)console.log(new Date().toISOString(),row.id,row.result.status); }
       catch(error){report(error);}
+      progress=Date.now();
       if(!stopping)await new Promise(r=>setTimeout(r,1000));
     }
-  } finally { releaseLock(); }
+  } finally { clearInterval(beatTimer); try{fs.unlinkSync(heartbeatFile);}catch{ /* already gone */ } releaseLock(); }
 }
 if(require.main===module)main().catch(e=>{console.error(e.message);process.exitCode=1;});
 module.exports={printPayload,createJournal,createReceiver,runNative};

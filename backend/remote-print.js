@@ -70,6 +70,21 @@ function createStore(file, clock = Date.now) {
       if (job.status !== 'uncertain') delete job.note;
       write(state); return publicJob(job);
     },
+    // An uncertain job blocks the whole device queue by design (never reprint a
+    // job that may already have left the printer). Only a person standing at the
+    // printer can say what happened, so this resolves it into a terminal state.
+    resolve(token, id, input) {
+      const state = read(), device = authenticate(state, token, 'client');
+      const job = state.jobs.find(row => row.id === id && row.device_id === device.id);
+      if (!job) throw fail('打印任务不存在', 404);
+      if (job.status !== 'uncertain') throw fail('只有结果未确认的任务需要人工核对', 409);
+      const printed = input.outcome === 'printed';
+      if (!printed && input.outcome !== 'missing') throw fail('请说明实际是否出纸');
+      job.status = printed ? 'queued' : 'failed';
+      job.message = printed ? '经人工核对，出纸正常' : '经人工核对未出纸，请重新发送打印';
+      job.updated_at = clock(); delete job.note;
+      write(state); return publicJob(job);
+    },
   };
 }
 function install(router, db, options = {}) {
@@ -87,6 +102,7 @@ function install(router, db, options = {}) {
     return store.enqueue(client(req),req.body,note);
   });
   route('get','/remote-print/jobs/:id',req => store.status(client(req),req.params.id));
+  route('post','/remote-print/jobs/:id/resolve',req => store.resolve(client(req),req.params.id,req.body || {}));
   route('post','/remote-print/agent/poll',req => store.claim(agent(req),req.body?.ready));
   route('post','/remote-print/agent/jobs/:id',req => store.acknowledge(agent(req),req.params.id,req.body || {}));
 }

@@ -1,6 +1,6 @@
 /* eslint-disable react/forbid-elements */
 import { useEffect, useRef, useState } from 'react';
-import { getRemoteDevice, getRemotePrintJob, newRemotePrintId, readPrintAttempt, readPrintPair, savePrintAttempt, savePrintPair, submitRemotePrint } from '@/services/remote-print';
+import { getRemoteDevice, getRemotePrintJob, newRemotePrintId, readPrintAttempt, readPrintPair, resolveRemotePrintJob, savePrintAttempt, savePrintPair, submitRemotePrint } from '@/services/remote-print';
 import type { RemoteDevice, RemoteJob } from '@/services/remote-print';
 import type { SavedPrintNote } from '@/services/print-notes';
 import styles from './index.module.scss';
@@ -19,6 +19,7 @@ export default function RemotePrint({ saved, paper }: { saved?: SavedPrintNote; 
   const [checking, setChecking] = useState(false);
   const [confirmCopy, setConfirmCopy] = useState(false);
   const [attemptId, setAttemptId] = useState('');
+  const [resolving, setResolving] = useState('');
   const [refresh, setRefresh] = useState(0);
   const [now, setNow] = useState(Date.now);
   const sending = useRef(false);
@@ -103,6 +104,17 @@ export default function RemotePrint({ saved, paper }: { saved?: SavedPrintNote; 
     finally { sending.current = false; setBusy(false); }
   };
 
+  const resolve = async (outcome: 'printed' | 'missing') => {
+    if (!job || sending.current || resolving) return;
+    const scope = currentScope.current;
+    sending.current = true; setResolving(outcome); setMessage(''); setJobError('');
+    try {
+      const result = await resolveRemotePrintJob(job.id, outcome, token);
+      if (currentScope.current === scope) { setJob(result); setNow(Date.now()); }
+    } catch (issue) { if (currentScope.current === scope) setMessage(messageOf(issue)); }
+    finally { sending.current = false; setResolving(''); }
+  };
+
   const terminal = job && ['queued', 'failed', 'expired'].includes(job.status);
   const pending = job && ['waiting', 'processing', 'uncertain'].includes(job.status);
   const deviceStatus = !token ? '未连接打印电脑' : deviceError ? '连接状态未确认' : !device ? '正在连接电脑' : !device.online ? '电脑离线' : job?.status === 'processing' ? '电脑正在打印' : !device.ready ? '打印机不可用' : '电脑在线';
@@ -131,6 +143,11 @@ export default function RemotePrint({ saved, paper }: { saved?: SavedPrintNote; 
           <button type='button' className={styles.secondary} disabled={busy} onClick={() => setRefresh(value => value + 1)}>刷新打印状态</button>
         </div>
         {confirmCopy && <div role='group' aria-label='确认重新打印'><p className={styles.muted}>请先检查电脑队列和实际出纸，确认后会新建任务再打印一份。</p><button type='button' className={styles.secondary} onClick={() => setConfirmCopy(false)}>取消</button><button type='button' className={styles.primary} disabled={busy} onClick={() => void send(true)}>确认再打印一份</button></div>}
+        {job?.status === 'uncertain' && <div role='group' aria-label='核对实际出纸'>
+          <p className={styles.muted}>请到打印机前确认这张单子是否已经出来。在核对之前，这台电脑不会接收新的打印任务。</p>
+          <button type='button' className={styles.primary} disabled={!!resolving} onClick={() => void resolve('printed')}>{resolving === 'printed' ? '正在确认…' : '已经出纸了'}</button>
+          <button type='button' className={styles.secondary} disabled={!!resolving} onClick={() => void resolve('missing')}>{resolving === 'missing' ? '正在确认…' : '没有出纸'}</button>
+        </div>}
         <button type='button' className={styles.textButton} disabled={busy} onClick={() => { savePrintPair(''); setToken(''); setDevice(undefined); setDeviceError(''); }}>更换打印电脑</button>
       </>}
       {job && <p role='status' aria-live='polite' className={styles.notice}>{progress}</p>}
