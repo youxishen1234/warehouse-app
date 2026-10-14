@@ -12,12 +12,13 @@ import { session } from '@/services/session';
 import { invalidateProducts } from '@/services/product-store';
 import { formatMoney, formatShortTime } from '@/utils/format';
 import { numberValue } from '@/utils/stock-math';
+import { formatDimensionInput } from '@/utils/dimension-input';
 import { OutboundDocument } from '@/pages/outbound/document';
 import { boardMatches, customerMatches, groupBoards, groupShipments, matchingProducts, matchesQuery, mergeCustomers, remainingOrder, specMatches } from './model';
 import type { BusinessCustomer } from './model';
 import styles from './index.module.scss';
 
-type Field = { key: string; label: string; value: string; options?: string[]; numeric?: boolean; required?: boolean };
+type Field = { key: string; label: string; value: string; options?: string[]; numeric?: boolean; required?: boolean; dimension?: boolean };
 type Editor = { title: string; fields: Field[]; submit: (values: Record<string, string>) => Promise<void>; hint?: string };
 type Filter = 'all' | 'boards' | 'customers' | 'orders';
 const freshId = () => 'dimension-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
@@ -59,7 +60,10 @@ export default function BusinessDashboard() {
   const toggle = (key: string) => setCollapsed(state => ({ ...state, [key]: !state[key] }));
   const toggleRow = (key: string) => setExpanded(state => ({ ...state, [key]: !state[key] }));
   const hasSection = (key: Filter) => filter === 'all' || filter === key;
-  const startEditor = (next: Editor) => { setValues(Object.fromEntries(next.fields.map(f => [f.key, f.value]))); setFormError(''); setEditor(next); };
+  const startEditor = (next: Editor) => {
+    setValues(Object.fromEntries(next.fields.map(f => [f.key, f.value])));
+    setFormError(''); setEditor(next);
+  };
   const editCompany = (customer?: BusinessCustomer) => {
     const original = data.dimensions;
     const newId = freshId();
@@ -77,7 +81,7 @@ export default function BusinessDashboard() {
     const companyId = freshId(), specId = freshId();
     startEditor({ title: spec ? '修改规格' : '添加常用规格', fields: [
       { key: 'goods', label: '货物名称（选填）', value: spec?.goods || '' },
-      { key: 'size', label: '规格尺寸', value: spec?.size || '', required: true },
+      { key: 'size', label: '规格尺寸', value: spec?.size || '', required: true, dimension: true },
       { key: 'sizeUnit', label: '尺寸单位', value: spec?.sizeUnit || 'cm', options: ['cm', 'mm'] },
       { key: 'kind', label: '类别', value: spec?.kind || '成品', options: ['成品', '纸板'] },
       { key: 'material', label: '材质（选填）', value: spec?.material || '' },
@@ -124,6 +128,18 @@ export default function BusinessDashboard() {
     finally { lock.current = false; setSaving(false); }
   };
   const outbound = (order: CustomerOrder) => { Taro.setStorageSync('sg_outbound_order', order.id); void Taro.switchTab({ url: '/pages/outbound/index' }); };
+  // 尺寸单位 sets the starting side length and 类别 caps the number of sides; both re-run the
+  // grouping on a value already typed, so switching them is not a one-way trip.
+  const dimensionOptions = () => ({ sizeUnit: values.sizeUnit, kind: values.kind });
+  const changeOption = (field: Field, value: string) => {
+    const next = { ...values, [field.key]: value };
+    if (field.key === 'kind' || field.key === 'sizeUnit') {
+      const options = { sizeUnit: next.sizeUnit, kind: next.kind };
+      if (next.size) next.size = formatDimensionInput(next.size, '', options);
+    }
+    setValues(next);
+  };
+  const changeSize = (value: string) => setValues({ ...values, size: formatDimensionInput(value, values.size || '', dimensionOptions()) });
   const button = (label: string, action: () => void, primary = false, disabled = false) => <Button className={primary ? styles.primary : styles.button} disabled={disabled || saving || undefined} onClick={action}>{label}</Button>;
   const fold = (key: string, label: string) => <Button className={styles.fold} aria-label={(collapsed[key] ? '展开' : '收起') + label} onClick={() => toggle(key)}>{collapsed[key] ? '展开 ›' : '收起⌃'}</Button>;
   const empty = (label: string) => <View className={styles.empty}>{label}</View>;
@@ -179,6 +195,6 @@ export default function BusinessDashboard() {
     <View className={styles.ledger} data-testid='ledger-entry'><View><Text className={styles.sectionTitle}>账单流水</Text><Text className={styles.hint}>收支与往来账款 · 送货单、签收单、收款凭证</Text></View>{button('查看账单流水', () => open('/pages/ledger/index'), true)}</View>
     {!!preview.length && <OutboundDocument transactions={preview} onClose={() => setPreview([])} />}
     <View className={styles.tools}><button className={styles.button} aria-label='进入标签打印' onClick={() => open('/pages/qr-test/index')}>标签打印</button><button className={styles.button} aria-label='进入打印中心' onClick={() => open('/pages/print-center/index')}>打印中心</button><button className={styles.button} aria-label='进入客户尺寸本' onClick={() => open('/pages/customer-desk/index')}>客户尺寸本</button></View>
-    {editor && <View className={styles.overlay}><View className={styles.dialog} role='dialog' aria-modal='true' aria-label={editor.title}><Text className={styles.sectionTitle}>{editor.title}</Text>{editor.hint && <Text className={styles.hint}>{editor.hint}</Text>}{editor.fields.map(field => <View className={styles.field} key={field.key}><Text>{field.label}</Text>{field.options ? <Picker disabled={saving || undefined} range={field.options} value={field.options.indexOf(values[field.key])} onChange={e => setValues(state => ({ ...state, [field.key]: field.options![Number(e.detail.value)] }))}><View className={styles.select}>{values[field.key]} ▾</View></Picker> : <Input disabled={saving || undefined} aria-label={field.label} type={field.numeric ? 'digit' : 'text'} value={values[field.key]} maxlength={100} onInput={e => setValues(state => ({ ...state, [field.key]: e.detail.value }))} />}</View>)}{formError && <View className={styles.error} role='alert'>{formError}</View>}<View className={styles.actions}>{button('取消', () => setEditor(null))}{button(saving ? '保存中…' : '确认', () => void submitEditor(), true)}</View></View></View>}
+    {editor && <View className={styles.overlay}><View className={styles.dialog} role='dialog' aria-modal='true' aria-label={editor.title}><Text className={styles.sectionTitle}>{editor.title}</Text>{editor.hint && <Text className={styles.hint}>{editor.hint}</Text>}{editor.fields.map(field => <View className={styles.field} key={field.key}><Text>{field.label}</Text>{field.options ? <Picker disabled={saving || undefined} range={field.options} value={field.options.indexOf(values[field.key])} onChange={e => changeOption(field, field.options![Number(e.detail.value)])}><View className={styles.select}>{values[field.key]} ▾</View></Picker> : <Input disabled={saving || undefined} aria-label={field.label} type={field.dimension ? 'text' : field.numeric ? 'digit' : 'text'} value={values[field.key]} maxlength={100} onInput={e => field.dimension ? changeSize(e.detail.value) : setValues(state => ({ ...state, [field.key]: e.detail.value }))} />}</View>)}{formError && <View className={styles.error} role='alert'>{formError}</View>}<View className={styles.actions}>{button('取消', () => setEditor(null))}{button(saving ? '保存中…' : '确认', () => void submitEditor(), true)}</View></View></View>}
   </View>;
 }
