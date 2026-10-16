@@ -16,7 +16,7 @@ check(items.contains { $0[0] == "v" && $0[1] == "1" }, "version")
 check(items.contains { $0[0] == "kind" && $0[1] == "finished-product" }, "kind")
 check(items.contains { $0[0] == "id" && $0[1] == "7" }, "id")
 
-let media = ["widthMm": 50.0, "heightMm": 30.0, "density": 3.0, "printerName": "K3-TEST"]
+let media: [String: Any] = ["widthMm": 50.0, "heightMm": 30.0, "density": 3.0, "printerName": "K3-TEST"]
 let signature = media.keys.sorted().map { "\($0)=\(media[$0]!)" }.joined(separator: "|")
 check(signature.contains("widthMm=50.0") && signature.contains("heightMm=30.0"), "media fingerprint inputs")
 print("official label Foundation harness passed")
