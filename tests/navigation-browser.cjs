@@ -218,7 +218,7 @@ async function verify(browser, name) {
   assert.equal(await page.evaluate(() => window.__nativeMessages.length), acknowledgments.length, 'unrelated DOM changes do not resend the selection');
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('sg-native-tab', { detail: '/pages/home/index' })));
   await page.waitForURL(/home/);
-  for (const label of ['库存查询', '商品管理', '客户管理', '供应商管理', '出入库记录', '新增商品', '流水', '客户尺寸本', '纸箱计算器', '标签打印']) {
+  for (const label of ['库存查询', '商品管理', '客户管理', '供应商管理', '出入库记录', '新增商品', '流水', '纸箱计算器', '标签打印']) {
     assert.ok(pageText.includes(label), `homepage shortcut missing: ${label}`);
   }
   await page.getByText('纸箱计算器', { exact: true }).click();

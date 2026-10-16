@@ -40,18 +40,16 @@ async function main() {
     for (const name of ['board-stock', 'customers', 'orders', 'ledger', 'print-center']) {
       await page.locator(`button[data-nav="/pages/${name}/index"]`).click();
       if (name === 'customers') {
-        await page.waitForURL(/customer-desk\.html/);
-        await page.getByRole('button', { name: '资料 / 账款' }).click();
         await current('customers');
         await page.getByText('+ 新增', { exact: true }).waitFor();
       } else await current(name);
       await page.goto(origin);
       await current('home');
     }
-    await page.goto(origin + '/customer-desk.html');
+    await page.goto(origin + '/spec-test.html');
     await page.locator('button[data-nav="/pages/ledger/index"]').click();
     await current('ledger');
-    await page.goto(origin + '/customer-desk.html');
+    await page.goto(origin + '/spec-test.html');
     await tab(0).click();
     await current('home');
     // Resizing restores the mobile lens and preserves its drag-to-select behavior.

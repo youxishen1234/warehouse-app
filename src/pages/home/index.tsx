@@ -139,11 +139,6 @@ export default function HomePage() {
         <View><Text className={styles.customerDeskTitle}>业务中心</Text><Text className={styles.businessSubtitle}>纸板库存 · 客户管理 · 订单出库</Text></View>
         <Text className={styles.customerDeskArrow}>›</Text>
       </View>
-      <View className={styles.customerDesk} role='button' aria-label='进入客户尺寸本' onClick={() => goTo('/pages/customer-desk/index')}>
-        <View className={styles.customerDeskIcon}><Icon name='mine' color='#fff' /></View>
-        <View><Text className={styles.customerDeskTitle}>客户尺寸本</Text><Text className={styles.customerDeskSubtitle}>选公司 · 选规格 · 填数量 · 打印或发货</Text></View>
-        <Text className={styles.customerDeskArrow}>›</Text>
-      </View>
 
       <View className={styles.sectionHead}><Text className={styles.sectionTitle}>今日任务</Text><Text className={styles.cardCaption}>{loading ? '加载中…' : '实时数据'}</Text></View>
       <View className={styles.taskCard}>

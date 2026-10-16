@@ -24,7 +24,7 @@ async function main() {
   const browser = await (engine === 'webkit' ? webkit : chromium).launch();
   let releaseOld;
   try {
-    for (const url of ['/customer-desk.html', '/workspace/customer-desk.html', '/spec-test.html', '/workspace/spec-test.html']) assert.equal((await fetch(origin + url)).status, 200, url);
+    for (const url of ['/spec-test.html', '/workspace/spec-test.html']) assert.equal((await fetch(origin + url)).status, 200, url);
     const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
     let holdTransactions = false, heldFinishedResolve;
     await context.route('**/*', async route => {
@@ -99,14 +99,13 @@ async function main() {
     assert.equal(db.getCustomer(customer.id).debt, 4);
     const outbound = db.listTx({ type: 'out' }).find(row => row.order_id === order.id);
     assert.equal(outbound.quantity, 2); assert.equal(outbound.remark, '保留这份出库草稿');
-    await page.goto(origin + '/pages/home/index');
-    await active().getByText('客户尺寸本', { exact: true }).click();
-    await page.waitForURL('**/customer-desk.html');
-    await expect(page.locator('.number')).toHaveText('0家公司');
-    await page.getByRole('button', { name: '＋ 公司' }).click();
-    await page.locator('[name=name]').fill('网页尺寸本回归');
-    await page.getByRole('button', { name: '确认', exact: true }).click();
-    await expect(page.locator('.company-head strong')).toHaveText('网页尺寸本回归');
+    await page.goto(origin + '/pages/business-center/index');
+    await expect(page.getByTestId('business-dashboard')).toBeVisible();
+    await active().getByText('＋ 新增客户', { exact: true }).click();
+    const companyDialog = page.getByRole('dialog');
+    await companyDialog.locator('[class*="__field___"]').filter({ hasText: '公司名称' }).locator('input').fill('网页尺寸本回归');
+    await companyDialog.getByText('确认', { exact: true }).click();
+    await expect(page.getByTestId('customer-row')).toContainText('网页尺寸本回归');
     const backup = await (await fetch(origin + '/api/backup')).json();
     assert.equal(backup.data.data.customer_dimensions.customers[0].name, '网页尺寸本回归');
     assert.deepEqual(errors, []);
