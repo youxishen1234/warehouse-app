@@ -18,8 +18,15 @@
 .secondary { background: #e8f3ef; color: #17634c; }
 .primary { width: 100%; margin: 20px 0 12px; padding: 22px; color: #fff; background: #14634e; font-weight: 600; }
 .page .primary, .page .record, .page .selectedRecord { width: 100%; }
-.primary[disabled], .secondary[disabled], .smallButton[disabled] { opacity: .5; color: #52636a; background: #e5eaec; }
+.page :global(taro-button-core[disabled="false"]) { opacity: 1; }
+.page .smallButton:global([disabled="false"]) { color: #274354; background: #edf2f5; }
+.page .secondary:global([disabled="false"]) { color: #17634c; background: #e8f3ef; }
+.page .primary:global([disabled="false"]) { color: #fff; background: #14634e; }
+.page .tab:global([disabled="false"]) { color: #61737d; background: transparent; }
+.page .activeTab:global([disabled="false"]) { color: #125c48; background: white; }
+.primary[disabled]:not([disabled="false"]), .secondary[disabled]:not([disabled="false"]), .smallButton[disabled]:not([disabled="false"]) { opacity: .5; color: #52636a; background: #e5eaec; }
 .printerRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 0; border-bottom: 1px solid #edf1f3; }
+.printerRow > :first-child { min-width: 0; overflow-wrap: anywhere; }
 .profileButton, .selectedProfile { display: inline-block; margin: 8px 10px 8px 0; border: 1px solid #dbe4e6; background: white; }
 .selectedProfile { border-color: #20775c; color: #17634c; background: #edf8f2; }
 .mediaGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 20px 0; }
