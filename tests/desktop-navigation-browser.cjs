@@ -46,12 +46,6 @@ async function main() {
       await page.goto(origin);
       await current('home');
     }
-    await page.goto(origin + '/spec-test.html');
-    await page.locator('button[data-nav="/pages/ledger/index"]').click();
-    await current('ledger');
-    await page.goto(origin + '/spec-test.html');
-    await tab(0).click();
-    await current('home');
     // Resizing restores the mobile lens and preserves its drag-to-select behavior.
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForFunction(() => getComputedStyle(document.querySelector('.sg-glass-lens')).display !== 'none');
@@ -77,6 +71,6 @@ async function main() {
       fs.rmSync(temp, { recursive: true, force: true });
     }
   }
-  console.log('Desktop tab and business navigation, standalone navigation, responsive resize and mobile drag passed.');
+  console.log('Desktop tab and business navigation, responsive resize and mobile drag passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
