@@ -23,6 +23,13 @@ const PAGE_SIZE = 12;
 const errorText = (error: unknown) => error instanceof Error ? error.message : String((error as { message?: string })?.message || '操作失败，请重试');
 const jobId = () => `label-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 const idOf = (record: RecordChoice) => String(record.data.id);
+const openIOSDownload = () => {
+  if (typeof window !== 'undefined') {
+    window.open('https://youxishen.online/download/', '_blank', 'noopener');
+    return;
+  }
+  void Taro.switchTab({ url: '/pages/mine/index' });
+};
 function snapshotOf(record: RecordChoice, finished: FinishedLabelOptions, board: BoardLabelOptions, at: string): LabelSnapshot {
   return record.kind === 'finished-product' ? buildFinishedLabelSnapshot(record.data, finished, at) : buildBoardLabelSnapshot(record.data, board);
 }
@@ -51,7 +58,7 @@ export default function LabelPrintPage() {
   const [frozenAt, setFrozenAt] = useState(() => new Date().toISOString());
   const [printer, setPrinter] = useState(initialState);
   const [printers, setPrinters] = useState<LabelPrinter[]>([]);
-  const [settings, setSettings] = useState(true);
+  const [settings, setSettings] = useState(false);
   const [profileId, setProfileId] = useState('');
   const [media, setMedia] = useState(emptyMedia);
   const [copies, setCopies] = useState('1');
@@ -254,11 +261,11 @@ export default function LabelPrintPage() {
   return <View className={styles.page}>
     <View className={styles.hero}><Text className={styles.eyebrow}>仓库 · 标签</Text><Text className={styles.title}>标签工作台</Text><Text className={styles.subtitle}>选记录、核对字段，再用精臣 K3 打印。标签不会改变库存。</Text></View>
     <View className={styles.deviceBar}>
-      <View><Text className={styles.deviceName}>{printer.connected ? `已连接 · ${printer.printerName}` : '尚未连接精臣 K3'}</Text><Text className={styles.meta}>{profile ? `${profile.widthMm} × ${profile.heightMm} mm · 间隙纸 · ${profile.calibrated ? '已确认校准' : '待校准'}` : '尚未配置实际纸张'}</Text></View>
-      <Button className={styles.smallButton} disabled={busy} onClick={() => setSettings(!settings)}>{settings ? '收起设置' : '打印机设置'}</Button>
+      <View className={styles.deviceStatus}><Text className={styles.deviceName}>{printer.connected ? `已连接 · ${printer.printerName}` : '尚未连接精臣 K3'}</Text><Text className={styles.meta}>{profile ? `${profile.widthMm} × ${profile.heightMm} mm · 间隙纸 · ${profile.calibrated ? '已确认校准' : '待校准'}` : '尚未配置实际纸张'}</Text></View>
+      <Button className={styles.smallButton} disabled={busy} onClick={() => printer.supported ? setSettings(!settings) : openIOSDownload()}>{printer.supported && settings ? '收起设置' : printer.supported ? '打印机设置' : '打开安装页'}</Button>
     </View>
-    {!printer.productionEnabled && <View className={styles.notice}>{printer.reason || 'K3 真机与正式扫码路线尚未验收，正式打印暂未开放。可先配置耗材并检查 SDK 预览。'}</View>}
-    {settings && <View className={styles.card}>
+    {!printer.productionEnabled && <View className={styles.notice}><Text>{printer.reason || 'K3 真机与正式扫码路线尚未验收，正式打印暂未开放。可先配置耗材并检查 SDK 预览。'}</Text>{!printer.supported && <Button className={styles.secondary} onClick={openIOSDownload}>去安装新版 iOS App</Button>}</View>}
+    {settings && printer.supported && <View className={styles.card}>
       <Text className={styles.sectionTitle}>连接与纸张设置</Text><Text className={styles.meta}>请核对铭牌为 K3，测量当前纸卷；首版仅提供间隙纸。当前模板支持宽 20–120 mm、高 20–200 mm、四边边距各 0.5–30 mm，不代表已验收全部耗材。配置与任务只保存在本机。</Text>
       <View className={styles.actions}><Button className={styles.secondary} disabled={!printer.supported || busy} onClick={() => void run('搜索附近打印机…', async () => { const result = await labelPrinter.scanPrinters(); if (alive.current) { setPrinters(result.printers); if (!result.printers.length) setNotice('未找到设备。请靠近打印机，确认蓝牙已开启并退出其他打印 App 后重试。'); } })}>搜索附近打印机</Button><Button className={styles.smallButton} disabled={busy} onClick={() => void refreshPrinter()}>刷新状态</Button>{printer.connected && <Button className={styles.smallButton} disabled={busy} onClick={() => void run('断开连接…', async () => { await labelPrinter.disconnectPrinter(); })}>断开</Button>}</View>
       {printers.map(device => <View key={device.printerName} className={styles.printerRow}><Text>{device.printerName}{device.ambiguous ? ' · 同名设备，无法区分' : ''}</Text><Button className={styles.smallButton} disabled={busy || device.ambiguous} onClick={() => connect(device)}>选择并核对型号</Button></View>)}
