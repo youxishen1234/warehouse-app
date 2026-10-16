@@ -1,0 +1,57 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const assert = require('node:assert/strict');
+
+// Static configuration checks; Xcode and K3 physical acceptance remain separate gates.
+const root = path.resolve(__dirname, '..');
+const read = name => fs.readFileSync(path.join(root, name), 'utf8');
+const count = (text, token) => text.split(token).length - 1;
+const project = read('ios/App/App.xcodeproj/project.pbxproj');
+const sources = project.split('/* Begin PBXSourcesBuildPhase section */')[1]?.split('/* End PBXSourcesBuildPhase section */')[0];
+assert.ok(sources, 'Xcode Sources phase exists');
+const required = ['OfficialLabelPrinterPlugin.swift', 'NIIMBOTSDKAdapter.m', 'LabelTemplateRenderer.swift'];
+for (const name of required) {
+  assert.ok(fs.existsSync(path.join(root, 'ios/App/App', name)), name + ' exists');
+  assert.equal(count(sources, name + ' in Sources'), 1, name + ' compiled exactly once');
+  assert.ok(project.includes('path = ' + name + ';'), name + ' file reference');
+}
+for (const name of ['SGNiimbotSDK.mm', 'NiimbotOfficialPrinterPlugin.swift']) {
+  assert.ok(!project.includes(name), 'legacy bridge excluded: ' + name);
+}
+const registration = read('ios/App/App/NativeGlassTabBar.swift');
+assert.equal(count(registration, 'registerPluginInstance(OfficialLabelPrinterPlugin())'), 1, 'new bridge registered once');
+assert.ok(!/registerPluginInstance[(]Niimbot(?:Official)?PrinterPlugin[(]/.test(registration), 'legacy printers are not registered');
+assert.ok(read('ios/App/App/App-Bridging-Header.h').includes('#import "NIIMBOTSDKAdapter.h"'));
+assert.equal(count(project, 'SWIFT_OBJC_BRIDGING_HEADER = "App/App-Bridging-Header.h"'), 2, 'Debug and Release bridging header');
+
+const deviceFlags = project.split('"OTHER_LDFLAGS[sdk=iphoneos*]" = (').slice(1).map(section => section.split(');')[0]);
+assert.equal(deviceFlags.length, 2, 'device-only SDK flags in Debug and Release');
+for (const flags of deviceFlags) {
+  for (const token of ['JCAPI.a', 'libSkiaRenderLibrary.a', '-ObjC', '-lc++', '-lbz2', '-liconv', '-lz', 'AVFoundation', 'CoreMedia', 'ExternalAccessory']) {
+    assert.ok(flags.includes(token), 'device linker input: ' + token);
+  }
+}
+assert.equal(count(project, 'Vendor/NIIMBOT/JCAPI.a'), 2, 'vendor SDK not linked unconditionally');
+assert.equal(count(project, 'Vendor/NIIMBOT/libSkiaRenderLibrary.a'), 2, 'Skia not linked unconditionally');
+const adapter = read('ios/App/App/NIIMBOTSDKAdapter.m');
+assert.match(adapter, /#if !TARGET_OS_SIMULATOR[^#]+#import "Vendor[/]NIIMBOT[/]JCAPI.h"[^#]+#endif/, 'device header guarded from simulator');
+assert.match(adapter, /#if TARGET_OS_SIMULATOR[^#]+return NO;/, 'simulator explicitly unsupported');
+assert.ok(adapter.includes('setPrintWithCache:NO'), 'cache disabled per job');
+assert.ok(adapter.includes('setTotalQuantityOfPrints:copies'), 'total set from frozen copies');
+assert.ok(adapter.includes('withOnePageNumbers:(int)copies'), 'commit uses frozen copies');
+const activeNames = [...sources.matchAll(/[/][*] ([^*]+) in Sources [*][/]/g)].map(match => match[1]);
+for (const name of activeNames) {
+  if (name === 'NIIMBOTSDKAdapter.m') continue;
+  const source = read('ios/App/App/' + name);
+  assert.ok(!/(?:#import|#include).*JCAPI|[[]JCAPI |JCAPI[.]/.test(source), name + ' must not own JCAPI');
+}
+const plugin = read('ios/App/App/OfficialLabelPrinterPlugin.swift');
+assert.match(plugin, /jsName *= *"OfficialLabelPrinter"/, 'Capacitor contract');
+assert.match(plugin, /productionEnabled *= *false/, 'production gate stays closed until K3 acceptance');
+assert.ok(plugin.includes('PRODUCTION_NOT_ACCEPTED'), 'stable closed-gate error');
+const info = read('ios/App/App/Info.plist');
+for (const key of ['NSBluetoothAlwaysUsageDescription', 'NSBluetoothPeripheralUsageDescription']) {
+  assert.ok(info.includes('<key>' + key + '</key>'), 'Bluetooth explanation: ' + key);
+  assert.match(info.split('<key>' + key + '</key>')[1], /^[^<]*<string>[^<]+<[/]string>/);
+}
+console.log('New label iOS source integration verified. This does not compile/link native code or prove physical printing; production remains gated.');

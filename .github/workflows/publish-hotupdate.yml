@@ -89,6 +89,11 @@ jobs:
         run: node tests/customer-original-4k-browser.cjs
       - name: Validate connection settings
         run: node tests/mine-connection-browser.cjs
+      - name: Validate label resolver live reads
+        env:
+          NAV_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          LABEL_RESOLVER_CHECK_DIR: release/label-resolver-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/label-resolver-browser.cjs
       - name: Validate remote print failure recovery
         env:
           REMOTE_PRINT_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}

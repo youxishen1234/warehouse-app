@@ -22,8 +22,8 @@ export const getProducts = (keyword?: string) =>
   request<Product[]>({ url: `/api/products${keyword ? `?keyword=${encodeURIComponent(keyword)}` : ''}` });
 export const getProductsPage = (params: PageQuery & SortQuery<'products'> & { keyword?: string }) => getPage<Product>('/api/products', params);
 
-export const getProduct = (id: number) =>
-  request<Product>({ url: `/api/products/${id}` });
+export const getProduct = (id: number, options?: { forceNetwork?: boolean }) =>
+  request<Product>({ url: `/api/products/${id}`, forceNetwork: options?.forceNetwork });
 
 export const addProduct = (data: ProductForm) =>
   request<Product>({ url: '/api/products', method: 'POST', data });

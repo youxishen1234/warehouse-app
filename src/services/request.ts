@@ -202,6 +202,8 @@ interface RequestOptions {
   readOnly?: boolean;
   expectedRevision?: number;
   timeout?: number;
+  // Print-time record validation must not join an older in-flight read.
+  forceNetwork?: boolean;
   retryAcrossOrigins?: boolean;
   // Large uploads use an immutable client ID so retry metadata never stores
   // the photo itself (or a multi-megabyte serialized body) on the device.
@@ -306,6 +308,7 @@ async function recoverPending<T>(identity: string, current: { token: string }, a
 watchSession(() => { knownRevision = undefined; editRevisions.clear(); inFlight.clear(); /* 未确认的写入保留：访客重建后仍可用原提交编号查询回执，避免重复执行 */ });
 export function request<T = any>(options: RequestOptions): Promise<T> {
   const identity = `${deviceId()}:${options.method || 'GET'}:${options.url}:${options.requestIdentity || JSON.stringify(options.data || {})}${options.expectedRevision === undefined ? '' : `:revision:${options.expectedRevision}`}`;
+  if (options.forceNetwork && (!options.method || options.method === 'GET')) return performRequest<T>(options, identity);
   if (inFlight.has(identity)) return inFlight.get(identity)!;
   const work = performRequest<T>(options, identity).finally(() => inFlight.delete(identity));
   inFlight.set(identity, work); return work;

@@ -4,6 +4,8 @@ export default defineAppConfig({
     'pages/ai-assistant/index',
     'pages/board-stock/index',
     'pages/business-center/index',
+    'pages/label-print/index',
+    'pages/label-resolver/index',
     'pages/board-calculator/index',
     'pages/board-receive/index',
     'pages/board-detail/index',

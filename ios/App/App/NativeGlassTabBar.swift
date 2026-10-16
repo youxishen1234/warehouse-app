@@ -500,6 +500,7 @@ private final class WarehouseBridgeController: CAPBridgeViewController {
     var onBridgeLoaded: ((WKWebView) -> Void)?
     override func capacitorDidLoad() {
         super.capacitorDidLoad()
+        bridge?.registerPluginInstance(OfficialLabelPrinterPlugin())
         if let webView = webView { onBridgeLoaded?(webView) }
     }
     override func instanceDescriptor() -> InstanceDescriptor {

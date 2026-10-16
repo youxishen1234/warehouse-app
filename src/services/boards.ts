@@ -4,7 +4,7 @@ export interface BoardBatch {
   id: string; specKey: string; supplier: string; boardLength: number; boardWidth: number; fluteType: string; layers: number; faceGsm: number; linerGsm: number; flutingGsm: number; cartonLength: number; cartonWidth: number; cartonHeight: number; orderedQty: number; receivedQty: number; remainingQty: number; giftQty: number; shortageQty: number; billedArea: number; unitPrice: number; amount: number; date: string; deliveryNo: string; location: string; remark: string; warningQty: number; createdAt: number; movements: BoardMovement[];
 }
 export const getBoards = () => request<BoardBatch[]>({ url: '/api/boards' });
-export const getBoard = (id: string) => request<BoardBatch>({ url: `/api/boards/${encodeURIComponent(id)}` });
+export const getBoard = (id: string, options?: { forceNetwork?: boolean }) => request<BoardBatch>({ url: `/api/boards/${encodeURIComponent(id)}`, forceNetwork: options?.forceNetwork });
 export const receiveBoard = (data: Record<string, string | number>) => request<BoardBatch>({ url: '/api/boards', method: 'POST', data });
 export const updateBoard = (id: string, data: Record<string, string | number>) => request<BoardBatch>({ url: '/api/boards/' + encodeURIComponent(id), method: 'PUT', data });
 export const deleteBoard = (id: string) => request<{ id: string }>({ url: '/api/boards/' + encodeURIComponent(id), method: 'DELETE' });

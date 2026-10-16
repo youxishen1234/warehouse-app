@@ -1,0 +1,21 @@
+{
+  "package": "IOS_4.1.1_20260729(1).zip",
+  "packageSha256": "d5958d5d1cd8fe4c2f4c3bd224b6225a0c4ec32f83e93c888983f0a8dddf50ff",
+  "source": "IOS_4.1.1_20260729/SDKDemoOC/SDKDemoOC",
+  "headerVersionComment": "4.0.3 20251226",
+  "platform": "iOS device arm64 only",
+  "files": {
+    "JCAPI.h": {
+      "sha256": "d6209c2380e2a9555be70e7310d23ab0ca66e2514919fea97ce0fdaf7dfb4b2e",
+      "size": 30246
+    },
+    "JCAPI.a": {
+      "sha256": "55140daca2a88258a82e2d5f272fc15059395a88ee024aab41882a812d89e9f3",
+      "size": 10244600
+    },
+    "libSkiaRenderLibrary.a": {
+      "sha256": "0e981176a9f505455610db938d27cbb5bc72fe08e5eaa7504e4613f695ceceb4",
+      "size": 69470616
+    }
+  }
+}

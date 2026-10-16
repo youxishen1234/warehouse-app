@@ -27,12 +27,22 @@ jobs:
         run: npm install --legacy-peer-deps
       - name: Resolve visible iOS version
         run: node scripts/ios-version.cjs >> "$GITHUB_ENV"
+      - name: Verify NIIMBOT SDK inputs
+        run: node scripts/verify-niimbot-sdk.cjs
+      - name: Verify new label native integration
+        run: node scripts/verify-label-print-ios.cjs
+      - name: Test official label native validation
+        run: python3 scripts/test-official-label-native.py
+      - name: Test label data and fresh reads
+        run: node --test tests/label-domain.test.cjs tests/label-fresh-read.test.cjs
       - name: Build current web assets
+        env:
+          TARO_OUTPUT_DIR: release/ios-${{ github.run_id }}-${{ github.run_attempt }}/web
+          WAREHOUSE_BUILD_STAGE: release/ios-${{ github.run_id }}-${{ github.run_attempt }}/stage
         run: |
-          rm -rf dist
           mkdir -p www
           TARO_PUBLIC_PATH=./ npm run build:h5
-          cp -R dist/. www/
+          cp -R "$TARO_OUTPUT_DIR"/. www/
       - name: Copy Capacitor assets
         run: npx cap copy ios
       - name: Install Pods
@@ -62,6 +72,8 @@ jobs:
           if [ ! -d release/ios-simulator/Build/Products/Debug-iphonesimulator/App.app ]; then
             echo "::warning::Native simulator verification was unavailable; continuing to build the IPA"
           fi
+      - name: Require simulator compilation for the new label bridge
+        run: test -d release/ios-simulator/Build/Products/Debug-iphonesimulator/App.app
       - name: Build unsigned IPA
         run: |
           set -o pipefail
