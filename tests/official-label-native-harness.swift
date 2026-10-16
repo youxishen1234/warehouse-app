@@ -1,7 +1,7 @@
 import Foundation
 
 func check(_ condition: @autoclosure () -> Bool, _ message: String) {
-    if !condition() { fputs("FAIL: \(message)\n", stderr); exit(1) }
+    precondition(condition(), message)
 }
 
 let valid = URL(string: "https://youxishen.online/#/pages/label-resolver/index?v=1&kind=finished-product&id=7")!
