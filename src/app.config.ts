@@ -26,7 +26,6 @@ export default defineAppConfig({
     ,'pages/backup/index'
     ,'pages/print-center/index'
     ,'pages/customer-photos/index'
-    ,'pages/qr-test/index'
   ],
   window: {
     backgroundTextStyle: 'dark',

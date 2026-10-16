@@ -17,7 +17,6 @@
     "build:tt": "taro build --type tt",
     "build:h5": "taro build --type h5",
     "release:request": "node scripts/request-hotupdate.cjs",
-    "postbuild:h5": "node scripts/build-native-customer-desk.cjs",
     "build:rn": "taro build --type rn",
     "build:qq": "taro build --type qq",
     "build:jd": "taro build --type jd",

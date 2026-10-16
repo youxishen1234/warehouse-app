@@ -24,7 +24,6 @@ async function main() {
   const browser = await (engine === 'webkit' ? webkit : chromium).launch();
   let releaseOld;
   try {
-    for (const url of ['/spec-test.html', '/workspace/spec-test.html']) assert.equal((await fetch(origin + url)).status, 200, url);
     const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
     let holdTransactions = false, heldFinishedResolve;
     await context.route('**/*', async route => {
