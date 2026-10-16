@@ -12,11 +12,10 @@ export const moveBoard = (id: string, data: { type: 'out' | 'count'; quantity: n
 export const boardSpec = (b: BoardBatch) => `${b.boardLength} × ${b.boardWidth}`;
 export const cartonSpec = (b: BoardBatch) => `${b.cartonLength} × ${b.cartonWidth} × ${b.cartonHeight}`;
 export const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
-export const boardLink = (id: string) => `https://youxishen.online/pages/board-detail/index?id=${encodeURIComponent(id)}`;
 export function parseBoardCode(raw: string) {
   let id = raw.trim();
   if (id.startsWith('https://youxishen.online/')) { const url = new URL(id); id = (url.hash ? new URLSearchParams(url.hash.split('?')[1] || '') : url.searchParams).get('id') || ''; }
-  if (!/^BOARD-[0-9]{8}-[A-F0-9]{12}$/.test(id)) throw new Error('这不是纸板批次标签，请扫描入库后生成的二维码');
+  if (!/^BOARD-[0-9]{8}-[A-F0-9]{12}$/.test(id)) throw new Error('未识别到纸板批次号，请扫描批次二维码');
   return id;
 }
 

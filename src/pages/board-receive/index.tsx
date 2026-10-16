@@ -35,6 +35,6 @@ export default function BoardReceive() {
     <View className='board-section'><Text className='board-section-title'>03 · 数量与货款</Text><View className='board-grid'>{field('orderedQty', '订购数', true, '张')}{field('receivedQty', '实收数', true, '张')}</View>{form.orderedQty && form.receivedQty && <Text className='board-note'>{gift ? '多送 ' + gift + ' 张，全部计入库存；货款按下方计费平米计算。' : shortage ? '少送 ' + shortage + ' 张，按实际收到的数量入库。' : '实收与订购数量一致。'}</Text>}<View className='board-grid'>{field('billedArea', '计费平米', true, 'm²')}{field('unitPrice', '每平米单价', true, '元')}</View><Text className='board-muted'>计费平米照送货单填写，不用实收数量代替计费数量。</Text><View className='board-detail-row'><Text>本批货款</Text><strong>¥ {Number.isFinite(amount) ? amount.toFixed(2) : '—'}</strong></View>{field('warningQty', '规格预警线', true, '张')}<Text className='board-muted'>同规格各批次库存合计不高于此值时提醒；0 表示不启用。</Text></View>
     <View className='board-section'>{field('remark', '备注', false, undefined, true)}</View>
     {error && <BoardError message={error} />}
-    <BoardButton disabled={busy} onClick={save}>{busy ? '正在保存…' : editingId ? '保存修改' : '确认入库 · 生成批次标签'}</BoardButton>
+    <BoardButton disabled={busy} onClick={save}>{busy ? '正在保存…' : editingId ? '保存修改' : '确认入库 · 生成批次号'}</BoardButton>
   </BoardPage>;
 }

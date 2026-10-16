@@ -146,7 +146,7 @@ register('board_move', '纸板领料/盘点', obj({ id: batchId, type: choice('�
 register('board_update', '修改纸板入库单', obj({ id: batchId, ...boardFields }, ['id', ...requiredBoard]), 'write', (db, p) => db.updateBoard(p.id, p));
 register('board_delete', '删除未领用纸板批次', obj({ id: batchId }, ['id']), 'write', (db, p) => db.deleteBoard(p.id), { destructive: true });
 const pages = { home: '首页', inventory: '库存查询', products: '商品管理', customers: '客户管理', suppliers: '供应商管理', orders: '客户订单/尺寸本', records: '出入库记录', ledger: '账本', 'board-stock': '纸板库存', 'board-receive': '纸板入库', 'board-calculator': '纸箱计算器/拍照测量', backup: '备份恢复', mine: '我的/服务器设置', 'custom-copy': '自定义文案', 'print-center': '打印中心' };
-Object.assign(pages, { 'board-scan': '扫描纸板二维码', 'qr-test': '二维码测试', 'customer-edit': '客户资料编辑', 'product-edit': '商品资料编辑', team: '团队和访问权限' });
+Object.assign(pages, { 'board-scan': '扫描纸板二维码', 'customer-edit': '客户资料编辑', 'product-edit': '商品资料编辑', team: '团队和访问权限' });
 register('open_page', '打开其他功能页面', obj({ page: choice('功能页面', Object.keys(pages)) }, ['page']), 'navigate', (db, p) => ({ url: `/pages/${p.page}/index`, title: pages[p.page] }));
 const htmlText = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 register('print_record', '打印送货入库单/订单/纸板批次', obj({ resource: choice('单据类型', ['delivery_notes', 'orders', 'boards']), id: str('单据编号', 80) }, ['resource', 'id']), 'print', (db, p) => {

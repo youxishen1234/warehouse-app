@@ -14,7 +14,7 @@ const bizNav = [
   { title: '客户管理', path: '/pages/customers/index' },
   { title: '订单出库', path: '/pages/orders/index' },
   { title: '账单流水', path: '/pages/ledger/index' },
-  { title: '标签打印', path: '/pages/print-center/index' }
+  { title: '单据打印', path: '/pages/print-center/index' }
 ];
 
 export function createGlassTabBar(host: HTMLElement, onSelect: (index: number) => void, onNavigate: (url: string) => void) {
