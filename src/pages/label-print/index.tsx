@@ -74,6 +74,11 @@ export default function LabelPrintPage() {
   const [operation, setOperation] = useState('');
   const [notice, setNotice] = useState('');
   const [actionError, setActionError] = useState('');
+  const [stateReadError, setStateReadError] = useState('');
+  const [jobReadError, setJobReadError] = useState('');
+  const [historyReadError, setHistoryReadError] = useState('');
+  const [connectingName, setConnectingName] = useState('');
+  const [connectionWarning, setConnectionWarning] = useState('');
   const [refreshRequired, setRefreshRequired] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [job, setJob] = useState<PrintProgress | null>(null);
@@ -89,7 +94,7 @@ export default function LabelPrintPage() {
   const eventRevision = useRef(0);
   const currentJob = useRef<PrintProgress | null>(null);
   const stateGeneration = useRef(0);
-  const busy = Boolean(operation) || isActivePrintJob(job);
+  const busy = Boolean(operation) || printer.hardwareBusy === true || isActivePrintJob(job);
   const profile = printer.mediaProfiles.find(item => item.profileId === profileId && item.printerName === printer.printerName);
   const maxCopies = Math.max(1, Math.floor(printer.maxCopies || 1));
   const copyCount = Number(copies);
@@ -102,28 +107,30 @@ export default function LabelPrintPage() {
   const refreshPrinter = useCallback(async () => {
     const generation = ++stateGeneration.current;
     const revision = eventRevision.current;
-    const settle = <T,>(promise: Promise<T>) => promise.then(value => ({ status: 'fulfilled' as const, value }), reason => ({ status: 'rejected' as const, reason }));
-    const [stateResult, activeResult, historyResult] = await Promise.all([settle(labelPrinter.getState()), settle(labelPrinter.getActiveJob()), settle(labelPrinter.getRecentJobs())]);
-    if (!alive.current || generation !== stateGeneration.current) return;
-    const errors: string[] = [];
-    if (stateResult.status === 'fulfilled') {
-      const state = stateResult.value;
-      setPrinter(state);
-      setProfileId(previous => state.mediaProfiles.some(item => item.profileId === previous && item.printerName === state.printerName) ? previous : state.mediaProfiles.find(item => item.printerName === state.printerName)?.profileId || '');
-    } else {
-      errors.push(`读取打印机状态失败：${errorText(stateResult.reason)}`);
-    }
-    if (historyResult.status === 'fulfilled') setRecent(historyResult.value.jobs.slice(0, 10));
-    if (revision === eventRevision.current) {
-      const historyJob = historyResult.status === 'fulfilled'
-        ? historyResult.value.jobs.find(item => item.jobId === currentJob.current?.jobId) || currentJob.current || historyResult.value.jobs[0] || null
-        : currentJob.current;
-      const nextJob = activeResult.status === 'fulfilled' ? activeResult.value.job || historyJob : historyJob;
-      if (nextJob || (activeResult.status === 'fulfilled' && historyResult.status === 'fulfilled')) applyJob(nextJob);
-    }
-    if (activeResult.status === 'rejected') errors.push(`读取当前打印任务失败：${errorText(activeResult.reason)}`);
-    if (historyResult.status === 'rejected') errors.push(`读取打印记录失败：${errorText(historyResult.reason)}`);
-    setActionError(errors.join('；'));
+    const current = () => alive.current && generation === stateGeneration.current;
+    let activeRead: PrintProgress | null = null;
+    let historyRead: PrintProgress[] = [];
+    const applyReadJobs = () => {
+      if (revision === eventRevision.current) applyJob(activeRead || historyRead.find(item => item.jobId === currentJob.current?.jobId) || currentJob.current || historyRead[0] || null);
+    };
+    // Task records are auxiliary: a rejected or stalled query must not hide getState.
+    void labelPrinter.getActiveJob().then(active => {
+      if (!current()) return;
+      setJobReadError(''); activeRead = active.job; applyReadJobs();
+    }).catch(error => { if (current()) setJobReadError(`活动任务读取失败：${errorText(error)}`); });
+    void labelPrinter.getRecentJobs().then(history => {
+      if (!current()) return;
+      setHistoryReadError(''); historyRead = history.jobs; setRecent(history.jobs.slice(0, 10)); applyReadJobs();
+    }).catch(error => { if (current()) setHistoryReadError(`任务记录读取失败：${errorText(error)}`); });
+    try {
+      const state = await labelPrinter.getState();
+      if (current()) {
+        setStateReadError(''); setPrinter(state);
+        setProfileId(previous => state.mediaProfiles.some(item => item.profileId === previous && item.printerName === state.printerName) ? previous : state.mediaProfiles.find(item => item.printerName === state.printerName)?.profileId || '');
+        return state;
+      }
+      return undefined;
+    } catch (error) { if (current()) setStateReadError(`打印机状态读取失败：${errorText(error)}`); return undefined; }
   }, [applyJob]);
   useDidShow(() => { void refreshPrinter(); });
   useEffect(() => {
@@ -197,16 +204,35 @@ export default function LabelPrintPage() {
   }, [previewKey, printer.supported, busy]);
 
   const run = async (title: string, work: () => Promise<void>, allowResolution = false) => {
-    if (actionLock.current || (isActivePrintJob(currentJob.current) && !(allowResolution && currentJob.current?.requiresResolution))) return;
+    if (actionLock.current || ((printer.hardwareBusy || isActivePrintJob(currentJob.current)) && !(allowResolution && currentJob.current?.requiresResolution))) return;
     actionLock.current = true; setOperation(title); setActionError(''); setNotice('');
     try { await work(); } catch (error) { if (alive.current) setActionError(errorText(error)); }
     finally { actionLock.current = false; if (alive.current) { setOperation(''); void refreshPrinter(); } }
   };
-  const connect = (device: LabelPrinter) => void run('正在连接打印机…', async () => {
+  const connect = (device: LabelPrinter) => void run('等待确认打印机型号…', async () => {
     if (device.ambiguous) throw new Error('发现同名打印机，暂时无法区分。请只打开一台打印机后重新搜索。');
-    const confirmed = await Taro.showModal({ title: '核对打印机铭牌', content: `请确认「${device.printerName}」的铭牌型号为 K3，且为您当前操作的设备。K3_W 不适用。`, confirmText: '确认是 K3' });
-    if (!confirmed.confirm || !alive.current) return;
-    await labelPrinter.connectPrinter(device.printerName); setMedia(emptyMedia);
+    const confirmed = await Taro.showModal({ title: '核对打印机铭牌', content: `请确认「${device.printerName}」的铭牌型号为 K3，且为您当前操作的设备。K3_W 不适用。`, confirmText: '确认 K3' });
+    if (confirmed.confirm !== true || !alive.current) return;
+    setConnectingName(device.printerName); setConnectionWarning(''); setOperation(`正在连接 · ${device.printerName}…`);
+    // Feedback only: JS timeout is not native cancellation and never releases the lock.
+    const watchdog = setTimeout(() => {
+      if (alive.current) setConnectionWarning('连接结果未确认，连接或状态核对尚未完成。可点击“刷新状态”查看真实状态；当前连接不会自动重试，扫描与打印仍保持暂停。');
+    }, 35000);
+    try {
+      await labelPrinter.connectPrinter(device.printerName);
+      if (!alive.current) return;
+      setOperation(`正在核对连接状态 · ${device.printerName}…`);
+      const verification = refreshPrinter();
+      const verificationGeneration = stateGeneration.current;
+      const state = await verification;
+      if (!alive.current || verificationGeneration !== stateGeneration.current) return;
+      if (!state) throw new Error('连接请求已返回，但未能读取真实连接状态，请点击“刷新状态”核对。');
+      if (!state.connected || state.printerName !== device.printerName) throw new Error('SDK 未确认目标 K3 已连接，请检查蓝牙、设备距离及是否被其他 App 占用。');
+      setMedia(emptyMedia); setNotice(`已连接 ${state.printerName}。请配置实际纸张并打印单张校准样张。`);
+    } finally {
+      clearTimeout(watchdog);
+      if (alive.current) { setConnectingName(''); setConnectionWarning(''); }
+    }
   });
   const saveMedia = () => void run('保存纸张配置…', async () => {
     if (!printer.connected || !printer.printerName) throw new Error('请先连接并确认 K3 打印机');
@@ -214,7 +240,7 @@ export default function LabelPrintPage() {
     if (!Object.values(values).every(value => Number.isFinite(value))) throw new Error('请填写实测宽高、浓度和四边边距；边距为 0.5–30 mm');
     if (values.widthMm < 20 || values.widthMm > 120 || values.heightMm < 20 || values.heightMm > 200 || !Number.isInteger(values.density) || values.density < 1 || values.density > 5 || ['top', 'right', 'bottom', 'left'].some(key => values[key] < 0.5 || values[key] > 30)) throw new Error('当前模板支持宽 20–120 mm、高 20–200 mm，浓度 1–5，四边边距各 0.5–30 mm');
     if (values.left + values.right >= values.widthMm || values.top + values.bottom >= values.heightMm) throw new Error('边距合计必须小于实际纸张宽高');
-    const confirmation = await Taro.showModal({ title: '确认实际耗材', content: `已实测标签 ${values.widthMm} × ${values.heightMm} mm，并确认当前安装的是间隙纸？保存后需重新打印校准样张。`, confirmText: '确认并保存' });
+    const confirmation = await Taro.showModal({ title: '确认实际耗材', content: `已实测标签 ${values.widthMm} × ${values.heightMm} mm，并确认当前安装的是间隙纸？保存后需重新打印校准样张。`, confirmText: '确认保存' });
     if (!confirmation.confirm || !alive.current) return;
     const nextId = profile?.profileId || `media-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     await labelPrinter.saveMediaProfile({ profileId: nextId, printerName: printer.printerName, widthMm: values.widthMm, heightMm: values.heightMm, paperStyle: 'gap', density: values.density, marginMm: { top: values.top, right: values.right, bottom: values.bottom, left: values.left }, calibrated: false });
@@ -229,7 +255,7 @@ export default function LabelPrintPage() {
   const calibrationJob = [job, ...recent].find(item => item && item.kind === 'calibration' && item.profileId === profile?.profileId);
   const confirmCalibration = () => void run('保存校准确认…', async () => {
     if (!profile || !calibrationJob) throw new Error('请先为当前配置打印校准样张');
-    const confirmation = await Taro.showModal({ title: '核对校准实物', content: '请确认样张确实出纸，四边标记完整、方向与尺寸正确、走纸无偏移且浓度清晰。此确认只记录纸张校准，正式打印仍需完成 K3 与扫码路线验收。', confirmText: '实物已核对' });
+    const confirmation = await Taro.showModal({ title: '核对校准实物', content: '请确认样张确实出纸，四边标记完整、方向与尺寸正确、走纸无偏移且浓度清晰。此确认只记录纸张校准，正式打印仍需完成 K3 与扫码路线验收。', confirmText: '已核对' });
     if (confirmation.confirm && alive.current) await labelPrinter.confirmCalibration(profile.profileId, calibrationJob.jobId);
   }, true);
   const recheckRecord = () => void run('重新在线校验资料…', async () => {
@@ -282,18 +308,29 @@ export default function LabelPrintPage() {
   const optionState = kind === 'finished-product' ? finishedOptions : boardFields;
   const printDisabled = busy || refreshRequired || !printer.productionEnabled || !printer.connected || !profile?.calibrated || !built.data || !copiesValid || !preview || preview.key !== previewKey || preview.warnings.length > 0;
 
+  const printerFeedback = <View className='label-printer-feedback' aria-live='polite'>
+    {(operation || printer.hardwareBusy) && <View className={styles.operationStatus}>{operation || '打印机仍在处理上次操作，请刷新状态核对。'}</View>}
+    {connectionWarning && <View className={styles.notice}>{connectionWarning}</View>}
+    {notice && <View className={styles.notice}>{notice}</View>}
+    {actionError && <View className={styles.errorBox}>{actionError}</View>}
+    {stateReadError && <View className={styles.errorBox}>{stateReadError}</View>}
+    {(jobReadError || historyReadError) && <View className={styles.notice}>{[jobReadError, historyReadError].filter(Boolean).join('；')}。连接状态单独读取，不受任务记录查询影响。</View>}
+  </View>;
+
   return <View className={styles.page}>
     <View className={styles.hero}><Text className={styles.eyebrow}>仓库 · 标签</Text><Text className={styles.title}>标签工作台</Text><Text className={styles.subtitle}>选记录、核对字段，再用精臣 K3 打印。标签不会改变库存。</Text></View>
     <View className={styles.deviceBar}>
-      <View className={styles.deviceStatus}><Text className={styles.deviceName}>{printer.connected ? `已连接 · ${printer.printerName}` : '尚未连接精臣 K3'}</Text><Text className={styles.meta}>{profile ? `${profile.widthMm} × ${profile.heightMm} mm · 间隙纸 · ${profile.calibrated ? '已确认校准' : '待校准'}` : '尚未配置实际纸张'}</Text></View>
+      <View className={styles.deviceStatus}><Text className={`label-printer-status ${styles.deviceName}`}>{connectingName ? operation : printer.connected ? `已连接 · ${printer.printerName}` : '尚未连接精臣 K3'}</Text><Text className={styles.meta}>{profile ? `${profile.widthMm} × ${profile.heightMm} mm · 间隙纸 · ${profile.calibrated ? '已确认校准' : '待校准'}` : '尚未配置实际纸张'}</Text></View>
       <Button className={styles.smallButton} disabled={disabledIf(busy)} onClick={() => printer.supported ? setSettings(!settings) : openIOSDownload()}>{printer.supported && settings ? '收起设置' : printer.supported ? '打印机设置' : '打开安装页'}</Button>
     </View>
+    {(!settings || !printer.supported) && printerFeedback}
     {!printer.productionEnabled && <View className={styles.notice}><Text>{printer.reason || 'K3 真机与正式扫码路线尚未验收，正式打印暂未开放。可先配置耗材并检查 SDK 预览。'}</Text>{!printer.supported && <Button className={styles.secondary} onClick={openIOSDownload}>去安装新版 iOS App</Button>}</View>}
     {settings && printer.supported && <View className={styles.card}>
       <Text className={styles.sectionTitle}>连接与纸张设置</Text><Text className={styles.meta}>请核对铭牌为 K3，测量当前纸卷；首版仅提供间隙纸。当前模板支持宽 20–120 mm、高 20–200 mm、四边边距各 0.5–30 mm，不代表已验收全部耗材。配置与任务只保存在本机。</Text>
-      <View className={styles.actions}><Button className={styles.secondary} disabled={disabledIf(!printer.supported || busy)} onClick={() => void run('搜索附近打印机…', async () => { const result = await labelPrinter.scanPrinters(); if (alive.current) { setPrinters(result.printers); if (!result.printers.length) setNotice('未找到设备。请靠近打印机，确认蓝牙已开启并退出其他打印 App 后重试。'); } })}>搜索附近打印机</Button><Button className={styles.smallButton} disabled={disabledIf(busy)} onClick={() => void refreshPrinter()}>刷新状态</Button>{printer.connected && <Button className={styles.smallButton} disabled={disabledIf(busy)} onClick={() => void run('断开连接…', async () => { await labelPrinter.disconnectPrinter(); })}>断开</Button>}</View>
+      <View className={styles.actions}><Button className={styles.secondary} loading={operation === '搜索附近打印机…'} disabled={disabledIf(!printer.supported || busy)} onClick={() => void run('搜索附近打印机…', async () => { const result = await labelPrinter.scanPrinters(); if (alive.current) { setPrinters(result.printers); if (!result.printers.length) setNotice('未找到设备。请靠近打印机，确认蓝牙已开启并退出其他打印 App 后重试。'); } })}>搜索附近打印机</Button><Button className={styles.smallButton} onClick={() => void refreshPrinter()}>刷新状态</Button>{printer.connected && <Button className={styles.smallButton} disabled={disabledIf(busy)} onClick={() => void run('断开连接…', async () => { await labelPrinter.disconnectPrinter(); })}>断开</Button>}</View>
+      {printerFeedback}
       {!printer.connected && <Text className={styles.meta}>请先搜索并连接精臣 K3；连接后才能保存纸张配置和打印校准样张。</Text>}
-      {printers.map(device => <View key={device.printerName} className={styles.printerRow}><Text>{device.printerName}{device.ambiguous ? ' · 同名设备，无法区分' : ''}</Text><Button className={styles.smallButton} disabled={disabledIf(busy || Boolean(device.ambiguous))} onClick={() => connect(device)}>选择并核对型号</Button></View>)}
+      {printers.map(device => <View key={device.printerName} className={`label-printer-device ${styles.printerRow}`}><Text>{device.printerName}{device.ambiguous ? ' · 同名设备，无法区分' : ''}</Text><Button className={styles.smallButton} loading={connectingName === device.printerName} disabled={disabledIf(busy || Boolean(device.ambiguous))} onClick={() => connect(device)}>{connectingName === device.printerName ? '正在连接…' : '选择并核对型号'}</Button></View>)}
       {printer.mediaProfiles.filter(item => item.printerName === printer.printerName).map(item => <Button key={item.profileId} disabled={disabledIf(busy)} className={item.profileId === profileId ? styles.selectedProfile : styles.profileButton} onClick={() => chooseProfile(item)}>{item.widthMm} × {item.heightMm} mm · {item.calibrated ? '已校准' : '待校准'}</Button>)}
       <View className={styles.mediaGrid}>{([{ key: 'widthMm', title: '实测宽度（mm）' }, { key: 'heightMm', title: '实测高度（mm）' }, { key: 'density', title: '浓度（1–5）' }, { key: 'top', title: '上边距（mm）' }, { key: 'right', title: '右边距（mm）' }, { key: 'bottom', title: '下边距（mm）' }, { key: 'left', title: '左边距（mm）' }] as const).map(field => <View className={styles.inputField} key={field.key}><Text>{field.title}</Text><Input ariaLabel={field.title} type='digit' value={media[field.key]} placeholder='请输入' disabled={disabledIf(!printer.supported || busy)} onInput={event => setMedia(value => ({ ...value, [field.key]: event.detail.value }))} /></View>)}</View>
       <View className={styles.actions}><Button className={styles.secondary} disabled={disabledIf(!printer.connected || busy)} onClick={saveMedia}>保存纸张配置</Button><Button className={styles.secondary} disabled={disabledIf(!profile || !printer.connected || busy)} onClick={calibrate}>打印校准样张</Button><Button className={styles.smallButton} disabled={disabledIf(!calibrationJob || !profile || Boolean(operation) || cancelling)} onClick={confirmCalibration}>已核对校准实物</Button></View>
@@ -315,7 +352,6 @@ export default function LabelPrintPage() {
       <Button className={styles.primary} disabled={disabledIf(Boolean(printDisabled))} onClick={submit}>{operation || '核对最新资料并打印'}</Button>
       {printer.supported && !profile?.calibrated && <Text className={styles.meta}>请先完成纸张配置和校准实物确认。</Text>}
     </View></View>
-    {notice && <View className={styles.notice}>{notice}</View>}{actionError && <View className={styles.errorBox}>{actionError}</View>}
     {job && <View className={styles.card}><Text className={styles.sectionTitle}>当前任务 · {phases[job.phase] || job.phase}</Text><Text className={styles.jobId}>{job.jobId}</Text>{job.message && <Text className={styles.meta}>{job.message}</Text>}{job.errorCode && <Text className={styles.error}>错误码：{job.errorCode}</Text>}{job.outcomeConfidence === 'count-verified' && Number.isFinite(job.printed) && <Text>已确认进度 {job.printed}/{job.total}</Text>}{job.phase === 'uncertain' && <Text className={styles.error}>可能已经出纸。请先查看实体标签，不会自动重试；需要重印时请重新选择记录并核对预览。</Text>}{isActivePrintJob(job) && <Button className={styles.secondary} disabled={disabledIf(cancelling)} onClick={() => void cancel()}>{cancelling ? '正在取消…' : '取消当前任务'}</Button>}</View>}
     {recent.length > 0 && <View className={styles.card}><Text className={styles.sectionTitle}>最近本机任务</Text><Text className={styles.meta}>仅保留最近 10 条轻量记录，不保存标签图像；清除 App 数据会丢失记录。</Text>{recent.map(item => <View className={styles.historyRow} key={item.jobId}><Text>{phases[item.phase] || item.phase} · {item.total} 份</Text><Text className={styles.jobId}>{item.jobId}</Text></View>)}</View>}
   </View>;

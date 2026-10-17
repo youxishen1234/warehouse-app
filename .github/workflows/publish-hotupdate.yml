@@ -94,6 +94,11 @@ jobs:
           NAV_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
           LABEL_RESOLVER_CHECK_DIR: release/label-resolver-${{ github.run_id }}-${{ github.run_attempt }}
         run: node tests/label-resolver-browser.cjs
+      - name: Validate label printer connection and mobile layout
+        env:
+          NAV_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          LABEL_CONNECTION_CHECK_DIR: release/label-connection-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/label-connection-browser.cjs
       - name: Validate label print empty states
         env:
           LABEL_PRINT_WEB_ROOT: dist-${{ github.run_id }}-${{ github.run_attempt }}

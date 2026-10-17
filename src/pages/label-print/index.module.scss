@@ -6,12 +6,13 @@
 .page :global(button), .page :global(taro-button-core) { box-sizing: border-box; min-width: 0; width: auto; margin: 0; font: inherit; line-height: 1.5; }
 .deviceBar { max-width: 1400px; margin: 0 auto 20px; background: #162e3b; color: white; padding: 25px; border-radius: 20px; display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 16px 20px; .meta { color: #c6d5dc; } }
 .deviceStatus { flex: 1 1 240px; min-width: 0; }
-.deviceName { display: block; font-weight: 600; line-height: 1.5; }
+.deviceName { display: block; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
 .card { max-width: 1400px; margin: 0 auto 22px; padding: 25px; border: 1px solid #dfe5e9; border-radius: 20px; background: white; box-sizing: border-box; min-width: 0; }
 .sectionTitle { display: block; font-size: 29px; font-weight: 650; margin-bottom: 18px; margin-top: 8px; }
 .meta { display: block; color: #6b7a86; font-size: 23px; line-height: 1.55; white-space: normal; overflow-wrap: anywhere; }
 .notice, .errorBox { max-width: 1400px; box-sizing: border-box; padding: 20px 24px; margin: 0 auto 20px; line-height: 1.65; border-radius: 14px; background: #fff5df; color: #755215; white-space: pre-wrap; }
 .errorBox { background: #fff0ed; color: #a43122; }
+.operationStatus { padding: 18px 22px; margin-bottom: 16px; border-radius: 12px; background: #eaf3fc; color: #24567d; line-height: 1.6; overflow-wrap: anywhere; }
 .actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 18px 0; }
 .smallButton, .secondary, .primary, .tab, .activeTab, .profileButton, .selectedProfile, .option, .optionOn { margin: 0; line-height: 1.5; border-radius: 12px; font-size: 24px; padding: 13px 18px; box-sizing: border-box; white-space: normal; &::after { border: none; } }
 .smallButton { background: #edf2f5; color: #274354; font-size: 22px; flex: 0 0 auto; max-width: 100%; white-space: nowrap; }
@@ -26,7 +27,7 @@
 .page .activeTab:global([disabled="false"]) { color: #125c48; background: white; }
 .primary[disabled]:not([disabled="false"]), .secondary[disabled]:not([disabled="false"]), .smallButton[disabled]:not([disabled="false"]) { opacity: .5; color: #52636a; background: #e5eaec; }
 .printerRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 0; border-bottom: 1px solid #edf1f3; }
-.printerRow > :first-child { min-width: 0; overflow-wrap: anywhere; }
+.printerRow > :first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .profileButton, .selectedProfile { display: inline-block; margin: 8px 10px 8px 0; border: 1px solid #dbe4e6; background: white; }
 .selectedProfile { border-color: #20775c; color: #17634c; background: #edf8f2; }
 .mediaGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 20px 0; }
