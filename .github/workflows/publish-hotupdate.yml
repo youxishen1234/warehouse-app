@@ -94,6 +94,10 @@ jobs:
           NAV_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
           LABEL_RESOLVER_CHECK_DIR: release/label-resolver-${{ github.run_id }}-${{ github.run_attempt }}
         run: node tests/label-resolver-browser.cjs
+      - name: Validate label print empty states
+        env:
+          LABEL_PRINT_WEB_ROOT: dist-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/label-print-empty-browser.cjs
       - name: Validate remote print failure recovery
         env:
           REMOTE_PRINT_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}

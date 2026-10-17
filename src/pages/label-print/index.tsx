@@ -20,7 +20,15 @@ const phases: Record<string, string> = { scanning: '搜索设备中', connecting
 const initialState: LabelPrinterState = { supported: false, connected: false, mediaProfiles: [], productionEnabled: false, maxCopies: 1, reason: '正在检查打印机能力…' };
 const emptyMedia = { widthMm: '', heightMm: '', density: '3', top: '', right: '', bottom: '', left: '' };
 const PAGE_SIZE = 12;
-const errorText = (error: unknown) => error instanceof Error ? error.message : String((error as { message?: string })?.message || '操作失败，请重试');
+const errorText = (error: unknown) => {
+  if (typeof error === 'string' && error.trim()) return error;
+  const value = error as { message?: unknown; errMsg?: unknown; localizedDescription?: unknown; errorDescription?: unknown; code?: unknown; error?: unknown } | null;
+  const detail = [value?.message, value?.errMsg, value?.localizedDescription, value?.errorDescription, value?.error]
+    .find(item => typeof item === 'string' && item.trim()) as string | undefined;
+  if (detail) return `${detail}${typeof value?.code === 'string' && value.code ? ` (${value.code})` : ''}`;
+  if (error instanceof Error && error.message) return error.message;
+  return '操作失败，请重试';
+};
 const jobId = () => `label-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 const disabledIf = (condition: boolean) => condition ? true : undefined;
 const idOf = (record: RecordChoice) => String(record.data.id);
@@ -94,13 +102,28 @@ export default function LabelPrintPage() {
   const refreshPrinter = useCallback(async () => {
     const generation = ++stateGeneration.current;
     const revision = eventRevision.current;
-    try {
-      const [state, active, history] = await Promise.all([labelPrinter.getState(), labelPrinter.getActiveJob(), labelPrinter.getRecentJobs()]);
-      if (!alive.current || generation !== stateGeneration.current) return;
-      setPrinter(state); setRecent(history.jobs.slice(0, 10));
+    const settle = <T,>(promise: Promise<T>) => promise.then(value => ({ status: 'fulfilled' as const, value }), reason => ({ status: 'rejected' as const, reason }));
+    const [stateResult, activeResult, historyResult] = await Promise.all([settle(labelPrinter.getState()), settle(labelPrinter.getActiveJob()), settle(labelPrinter.getRecentJobs())]);
+    if (!alive.current || generation !== stateGeneration.current) return;
+    const errors: string[] = [];
+    if (stateResult.status === 'fulfilled') {
+      const state = stateResult.value;
+      setPrinter(state);
       setProfileId(previous => state.mediaProfiles.some(item => item.profileId === previous && item.printerName === state.printerName) ? previous : state.mediaProfiles.find(item => item.printerName === state.printerName)?.profileId || '');
-      if (revision === eventRevision.current) applyJob(active.job || history.jobs.find(item => item.jobId === currentJob.current?.jobId) || currentJob.current || history.jobs[0] || null);
-    } catch (error) { if (alive.current && generation === stateGeneration.current) setActionError(errorText(error)); }
+    } else {
+      errors.push(`读取打印机状态失败：${errorText(stateResult.reason)}`);
+    }
+    if (historyResult.status === 'fulfilled') setRecent(historyResult.value.jobs.slice(0, 10));
+    if (revision === eventRevision.current) {
+      const historyJob = historyResult.status === 'fulfilled'
+        ? historyResult.value.jobs.find(item => item.jobId === currentJob.current?.jobId) || currentJob.current || historyResult.value.jobs[0] || null
+        : currentJob.current;
+      const nextJob = activeResult.status === 'fulfilled' ? activeResult.value.job || historyJob : historyJob;
+      if (nextJob || (activeResult.status === 'fulfilled' && historyResult.status === 'fulfilled')) applyJob(nextJob);
+    }
+    if (activeResult.status === 'rejected') errors.push(`读取当前打印任务失败：${errorText(activeResult.reason)}`);
+    if (historyResult.status === 'rejected') errors.push(`读取打印记录失败：${errorText(historyResult.reason)}`);
+    setActionError(errors.join('；'));
   }, [applyJob]);
   useDidShow(() => { void refreshPrinter(); });
   useEffect(() => {
@@ -110,7 +133,7 @@ export default function LabelPrintPage() {
       if (isActivePrintJob(currentJob.current) && currentJob.current?.jobId !== next.jobId) return;
       eventRevision.current += 1; applyJob(next);
       if (!isActivePrintJob(next)) void refreshPrinter();
-    }).then(handle => { if (alive.current) listener = handle; else void handle.remove(); }).catch(error => { if (alive.current) setActionError(errorText(error)); });
+    }).then(handle => { if (alive.current) listener = handle; else void handle.remove(); }).catch(error => { if (alive.current) setActionError(`连接打印机进度通知失败：${errorText(error)}`); });
     void refreshPrinter();
     return () => { alive.current = false; choiceGeneration.current += 1; listGeneration.current += 1; void listener?.remove(); };
   }, [applyJob, refreshPrinter]);
@@ -269,6 +292,7 @@ export default function LabelPrintPage() {
     {settings && printer.supported && <View className={styles.card}>
       <Text className={styles.sectionTitle}>连接与纸张设置</Text><Text className={styles.meta}>请核对铭牌为 K3，测量当前纸卷；首版仅提供间隙纸。当前模板支持宽 20–120 mm、高 20–200 mm、四边边距各 0.5–30 mm，不代表已验收全部耗材。配置与任务只保存在本机。</Text>
       <View className={styles.actions}><Button className={styles.secondary} disabled={disabledIf(!printer.supported || busy)} onClick={() => void run('搜索附近打印机…', async () => { const result = await labelPrinter.scanPrinters(); if (alive.current) { setPrinters(result.printers); if (!result.printers.length) setNotice('未找到设备。请靠近打印机，确认蓝牙已开启并退出其他打印 App 后重试。'); } })}>搜索附近打印机</Button><Button className={styles.smallButton} disabled={disabledIf(busy)} onClick={() => void refreshPrinter()}>刷新状态</Button>{printer.connected && <Button className={styles.smallButton} disabled={disabledIf(busy)} onClick={() => void run('断开连接…', async () => { await labelPrinter.disconnectPrinter(); })}>断开</Button>}</View>
+      {!printer.connected && <Text className={styles.meta}>请先搜索并连接精臣 K3；连接后才能保存纸张配置和打印校准样张。</Text>}
       {printers.map(device => <View key={device.printerName} className={styles.printerRow}><Text>{device.printerName}{device.ambiguous ? ' · 同名设备，无法区分' : ''}</Text><Button className={styles.smallButton} disabled={disabledIf(busy || Boolean(device.ambiguous))} onClick={() => connect(device)}>选择并核对型号</Button></View>)}
       {printer.mediaProfiles.filter(item => item.printerName === printer.printerName).map(item => <Button key={item.profileId} disabled={disabledIf(busy)} className={item.profileId === profileId ? styles.selectedProfile : styles.profileButton} onClick={() => chooseProfile(item)}>{item.widthMm} × {item.heightMm} mm · {item.calibrated ? '已校准' : '待校准'}</Button>)}
       <View className={styles.mediaGrid}>{([{ key: 'widthMm', title: '实测宽度（mm）' }, { key: 'heightMm', title: '实测高度（mm）' }, { key: 'density', title: '浓度（1–5）' }, { key: 'top', title: '上边距（mm）' }, { key: 'right', title: '右边距（mm）' }, { key: 'bottom', title: '下边距（mm）' }, { key: 'left', title: '左边距（mm）' }] as const).map(field => <View className={styles.inputField} key={field.key}><Text>{field.title}</Text><Input ariaLabel={field.title} type='digit' value={media[field.key]} placeholder='请输入' disabled={disabledIf(!printer.supported || busy)} onInput={event => setMedia(value => ({ ...value, [field.key]: event.detail.value }))} /></View>)}</View>
@@ -278,7 +302,7 @@ export default function LabelPrintPage() {
     <View className={styles.columns}><View className={styles.card}>
       <Text className={styles.sectionTitle}>1 · 选择{kind === 'finished-product' ? '商品' : '纸板批次'}</Text>
       <Input ariaLabel='搜索记录' className={styles.search} value={query} disabled={disabledIf(busy)} placeholder={kind === 'finished-product' ? '搜索商品名称或规格' : '搜索批次号、板厂或纸板规格'} onInput={event => { setQuery(event.detail.value); setPage(1); }} />
-      {loading ? <Text className={styles.empty}>正在查询…</Text> : listError ? <View className={styles.empty}><Text>{listError}</Text><Button className={styles.smallButton} onClick={() => setReload(value => value + 1)}>重新查询</Button></View> : !results.length ? <Text className={styles.empty}>没有找到匹配记录，请换一个关键词。</Text> : results.map(item => <Button key={idOf(item)} className={selected && idOf(selected) === idOf(item) && selected.kind === item.kind ? styles.selectedRecord : styles.record} disabled={disabledIf(busy)} onClick={() => void selectRecord(item.kind, idOf(item))}>{item.kind === 'finished-product' ? <><Text className={styles.recordTitle}>{item.data.name}</Text><Text className={styles.meta}>{item.data.specification || `${item.data.length || '—'} × ${item.data.width || '—'} mm`} · ID {item.data.id}</Text><Text className={styles.meta}>当前库存 {item.data.stock} {item.data.unit || '（单位未填写）'}</Text></> : <><Text className={styles.recordTitle}>{item.data.boardLength} × {item.data.boardWidth} cm · {item.data.fluteType}</Text><Text className={styles.meta}>{item.data.id}</Text><Text className={styles.meta}>{item.data.supplier} · {item.data.location || '未填库位'} · 当前余量 {item.data.remainingQty} 张</Text></>}</Button>)}
+      {loading ? <Text className={styles.empty}>正在查询…</Text> : listError ? <View className={styles.empty}><Text>{listError}</Text><Button className={styles.smallButton} onClick={() => setReload(value => value + 1)}>重新查询</Button></View> : !results.length ? <View className={styles.empty}><Text>{total === 0 && !query.trim() ? `当前共享仓库还没有${kind === 'finished-product' ? '商品' : '纸板批次'}记录。` : '没有找到匹配记录，请换一个关键词。'}</Text>{total === 0 && !query.trim() && <Button className={styles.secondary} onClick={() => void Taro.navigateTo({ url: kind === 'finished-product' ? '/pages/products/index' : '/pages/board-receive/index' })}>{kind === 'finished-product' ? '前往商品管理' : '新增纸板批次'}</Button>}</View> : results.map(item => <Button key={idOf(item)} className={selected && idOf(selected) === idOf(item) && selected.kind === item.kind ? styles.selectedRecord : styles.record} disabled={disabledIf(busy)} onClick={() => void selectRecord(item.kind, idOf(item))}>{item.kind === 'finished-product' ? <><Text className={styles.recordTitle}>{item.data.name}</Text><Text className={styles.meta}>{item.data.specification || `${item.data.length || '—'} × ${item.data.width || '—'} mm`} · ID {item.data.id}</Text><Text className={styles.meta}>当前库存 {item.data.stock} {item.data.unit || '（单位未填写）'}</Text></> : <><Text className={styles.recordTitle}>{item.data.boardLength} × {item.data.boardWidth} cm · {item.data.fluteType}</Text><Text className={styles.meta}>{item.data.id}</Text><Text className={styles.meta}>{item.data.supplier} · {item.data.location || '未填库位'} · 当前余量 {item.data.remainingQty} 张</Text></>}</Button>)}
       <View className={styles.pagination}><Button className={styles.smallButton} disabled={disabledIf(busy || loading || page <= 1)} onClick={() => setPage(value => value - 1)}>上一页</Button><Text>{page} / {Math.max(1, Math.ceil(total / PAGE_SIZE))} · 共 {total} 条</Text><Button className={styles.smallButton} disabled={disabledIf(busy || loading || page * PAGE_SIZE >= total)} onClick={() => setPage(value => value + 1)}>下一页</Button></View>
     </View><View className={styles.card}>
       <Text className={styles.sectionTitle}>2 · 核对打印字段</Text>
