@@ -99,7 +99,7 @@ test('large daily downloads are streamed in an isolated process', async () => {
   process.env.WAREHOUSE_PRODUCT_IMAGE_DIR = path.join(dir, 'images');
   process.env.WAREHOUSE_DAILY_BACKUP_ENABLED = 'true';
   fs.writeFileSync(process.env.WAREHOUSE_DATA_FILE, JSON.stringify({ products: [], customers: [], suppliers: [], transactions: [], ledger: [] }));
-  const script = "const express=require('express');const items=Array.from({length:24000},(_,i)=>({id:i+1,name:'stream-fixture-'+i,stock:0,price:0,safety_stock:0,unit:'件',specification:'x'.repeat(220),material:'m'.repeat(220),remark:'y'.repeat(220)}));const data={_meta:{schemaVersion:1,nextProductId:items.length+1},products:items,customers:[],suppliers:[],transactions:[],ledger:[],orders:[],order_events:[],stocktakes:[],delivery_notes:[],board_batches:[],production_records:[],print_notes:[]};const db={revision:()=>0,backupData:()=>data,validateBackup:value=>{if(value.products.length!==24000)throw Error('invalid fixture')}};const backup=require(process.env.DAILY_MODULE).createDailyBackup(db,{directory:process.env.WAREHOUSE_DAILY_BACKUP_DIR,env:{},maxBytes:64*1024*1024,now:()=>Date.parse('2026-10-19T03:00:00+08:00')});const app=express();app.use('/api',require('./team')(db,{dailyBackup:backup}));const server=app.listen(0,'127.0.0.1',()=>process.stdout.write('ready:'+server.address().port+'\\n'));process.stdin.setEncoding('utf8');process.stdin.once('data',async message=>{try{const token=(await (await fetch('http://127.0.0.1:'+server.address().port+'/api/auth/guest',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json()).data.token;await backup.runDue();const response=await fetch('http://127.0.0.1:'+server.address().port+message.trim(),{headers:{Authorization:'Bearer '+token}});if(response.status!==200)throw Error('status '+response.status);let bytes=0,head=Buffer.alloc(0),tail=Buffer.alloc(0);for await(const chunk of response.body){bytes+=chunk.length;if(head.length<256)head=Buffer.concat([head,chunk]).subarray(0,256);tail=Buffer.concat([tail.subarray(-224),chunk]).subarray(-256);}process.stdout.write(JSON.stringify({bytes,head:head.toString('utf8').slice(0,64),tail:tail.at(-1)}));}catch(error){console.error(error);process.exitCode=1;}finally{server.closeAllConnections();server.close();}});";
+  const script = "const express=require('express');const items=Array.from({length:24000},(_,i)=>({id:i+1,name:'中文备份-'+i,stock:0,price:0,safety_stock:0,unit:'件',specification:'纸板规格'.repeat(40),material:'材料'.repeat(110),remark:(i===0?'跨块中文':'备注')+'数据'.repeat(20)}));const data={_meta:{schemaVersion:1,nextProductId:items.length+1},products:items,customers:[],suppliers:[],transactions:[],ledger:[],orders:[],order_events:[],stocktakes:[],delivery_notes:[],board_batches:[],production_records:[],print_notes:[]};const db={revision:()=>0,backupData:()=>data,validateBackup:value=>{if(value.products.length!==24000)throw Error('invalid fixture')}};const backup=require(process.env.DAILY_MODULE).createDailyBackup(db,{directory:process.env.WAREHOUSE_DAILY_BACKUP_DIR,env:{},maxBytes:64*1024*1024,now:()=>Date.parse('2026-10-19T03:00:00+08:00')});const app=express();app.use('/api',require('./team')(db,{dailyBackup:backup}));const server=app.listen(0,'127.0.0.1',()=>process.stdout.write('ready:'+server.address().port+'\\n'));process.stdin.setEncoding('utf8');process.stdin.once('data',async message=>{try{const token=(await (await fetch('http://127.0.0.1:'+server.address().port+'/api/auth/guest',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json()).data.token;await backup.runDue();const response=await fetch('http://127.0.0.1:'+server.address().port+message.trim(),{headers:{Authorization:'Bearer '+token}});if(response.status!==200)throw Error('status '+response.status);const value=await response.json();const body=value.data;process.stdout.write(JSON.stringify({bytes:Buffer.byteLength(JSON.stringify(value)),count:body.data.products.length,first:body.data.products[0].name,last:body.data.products.at(-1).name,firstRemark:body.data.products[0].remark}));}catch(error){console.error(error);process.exitCode=1;}finally{server.closeAllConnections();server.close();}});";
   const express = require('express'); const app = express();
   app.use('/api', require('./team')({ revision: () => 0, backupData: () => ({ products: [], ledger: [] }), validateBackup: () => true }, { dailyBackup: { getStatus: async () => ({ active: false }), streamLatest: async () => {} } }));
   const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
@@ -128,12 +128,42 @@ test('large daily downloads are streamed in an isolated process', async () => {
     const finalLine = output.trim().split('\n').at(-1);
     const result = JSON.parse(finalLine);
     assert(result.bytes > 4 * 1024 * 1024, 'fixture must exercise a multi-megabyte download');
-    assert(result.head.includes('"data":'));
-    assert.equal(result.tail, 125);
+    assert(result.bytes > 4 * 1024 * 1024, 'fixture must exercise a multi-megabyte parsed download');
+    assert.equal(result.count, 24000);
+    assert.equal(result.first, '中文备份-0');
+    assert.equal(result.last, '中文备份-23999');
+    assert.equal(result.firstRemark, '跨块中文' + '数据'.repeat(20));
   } finally {
     server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
     if (child && !child.killed) child.kill();
     fs.rmSync(dir, { recursive: true, force: true });
     for (const key of keys) if (previous[key] === undefined) delete process.env[key]; else process.env[key] = previous[key];
   }
+});
+
+test('stream failures after headers never append a second JSON error body', async () => {
+  const express = require('express');
+  const app = express();
+  const failingBackup = {
+    getStatus: async () => ({ active: false }),
+    streamLatest: async res => {
+      res.status(200).type('application/json');
+      res.write('{"partial":');
+      throw new Error('stream failed');
+    }
+  };
+  app.use('/api', require('./team')({
+    revision: () => 0,
+    backupData: () => ({ products: [], ledger: [] }),
+    validateBackup: () => true
+  }, { dailyBackup: failingBackup }));
+  const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
+  const origin = 'http://127.0.0.1:' + server.address().port;
+  try {
+    const guest = await fetch(origin + '/api/auth/guest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    assert.equal(guest.status, 200);
+    const token = (await guest.json()).data.token;
+    const response = await fetch(origin + '/api/backup/daily/latest', { headers: { Authorization: 'Bearer ' + token } }).catch(() => null);
+    assert.equal(response, null, 'partial response must be terminated rather than extended');
+  } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 });

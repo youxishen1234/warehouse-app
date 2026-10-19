@@ -527,6 +527,10 @@ function install(db, options = {}) {
     }
     const payload = { success: false, message: isPublicClientError ? (e.message || '请求失败') : '服务器暂时无法处理请求' };
     if (status === 409) payload.data = { revision: db.revision() };
+    if (res.headersSent) {
+      res.destroy(e);
+      return;
+    }
     res.status(status).json(payload);
   });
   return router;

@@ -2,7 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { gzip, gunzip, createGzip, createGunzip } = require('node:zlib');
+const { gzip, gunzip, createGzip } = require('node:zlib');
 const { Readable, Transform } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
 const { promisify } = require('node:util');
@@ -69,6 +69,15 @@ function backupJson(data, payload) {
     yield '}';
   })());
 }
+function backupDownload(payload) {
+  return Readable.from((async function* () {
+    yield '{"success":true,"data":{"exportedAt":';
+    yield JSON.stringify(payload.exportedAt);
+    yield ',"data":';
+    yield JSON.stringify(payload.data);
+    yield '}}';
+  })());
+}
 function scheduledDay(now, hour = 2) { return new Date(now + OFFSET - hour * 3600000).toISOString().slice(0, 10); }
 function nextScheduledAt(now, hour = 2) {
   return new Date(Date.parse(scheduledDay(now, hour) + 'T00:00:00Z') - OFFSET + hour * 3600000 + DAY).toISOString();
@@ -85,6 +94,7 @@ async function atomicWrite(file, bytes, publishOnce = false) {
 async function readSnapshot(file, maxBytes) {
   const meta = await fs.promises.lstat(file);
   if (!meta.isFile() || meta.isSymbolicLink() || meta.size > maxBytes + 65536) throw new Error('每日备份文件无效');
+  if (meta.nlink !== 1) throw new Error('每日备份文件被意外修改');
   const zipped = await fs.promises.readFile(file), raw = await decompress(zipped, { maxOutputLength: maxBytes });
   const payload = JSON.parse(raw.toString('utf8'));
   if (payload.format !== 'warehouse-daily-v1' || !/^\d{4}-\d{2}-\d{2}$/.test(payload.scheduledDay)
@@ -225,43 +235,20 @@ function createDailyBackup(db, options = {}) {
     const selected = lastSuccess.name;
     const saved = await verify(selected, true); return { exportedAt: saved.payload.exportedAt, data: saved.payload.data };
   }
-  async function streamLatest(res) {
+  async function downloadPayload() {
     await refreshLatest();
     if (!lastSuccess) throw Object.assign(new Error('服务器还没有可用的每日备份'), { status: 404 });
-    const file = path.join(directory, lastSuccess.name);
-    const raw = fs.createReadStream(file);
-    const gzipStream = createGunzip({ maxOutputLength: maxBytes });
-    res.type('application/json');
-    try {
-      // The gzip member has exactly one `{...}` object. Convert its outer
-      // object into the existing `{ success, data }` response incrementally.
-      let started = false;
-      await pipeline(raw, gzipStream, async function* (sourceStream) {
-        const decoder = new TextDecoder('utf-8', { fatal: true });
-        for await (const chunk of sourceStream) {
-          const text = decoder.decode(chunk, { stream: true });
-          if (!started) {
-            const brace = text.indexOf('{');
-            if (brace < 0) continue;
-            started = true;
-            // Do not interpolate a chunk directly into a JavaScript string:
-            // a multi-byte UTF-8 character can be split across chunks.
-            yield Buffer.from('{"success":true,"data":', 'utf8');
-            yield text.slice(brace);
-          } else yield chunk;
-        }
-        const tail = decoder.decode();
-        if (tail) yield tail;
-        if (!started) throw new Error('每日备份内容无效');
-        yield Buffer.from('}', 'utf8');
-      }, res);
-    } catch (error) {
-      raw.destroy();
-      throw error;
-    }
+    const saved = await verify(lastSuccess.name, true);
+    return saved.payload;
+  }
+  async function streamLatest(res) {
+    const payload = await downloadPayload();
+    const body = backupDownload(payload);
+    res.set({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+    await pipeline(body, res);
   }
   function start() { if (active || !enabled || configurationError) return; active = true; void runDue(); timer = setInterval(() => { void runDue(); }, 60000); timer.unref(); }
   function stop() { clearInterval(timer); timer = null; active = false; return running || Promise.resolve(); }
-  return { start, stop, status, getStatus, latest, streamLatest, runDue };
+  return { start, stop, status, getStatus, latest, downloadPayload, streamLatest, runDue };
 }
 module.exports = { createDailyBackup, scheduledDay, nextScheduledAt, readSnapshot };
