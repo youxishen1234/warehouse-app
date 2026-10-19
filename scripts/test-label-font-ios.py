@@ -57,6 +57,7 @@ def validate_calibration_evidence(evidence, element, text, profile):
     assert evidence["excludedBorderPx"] == math.ceil(300 / 25.4) + 2
     assert evidence["referencePNG"].startswith("reference-calibration-layout-")
     assert evidence["referencePNG"].endswith(".png")
+    assert evidence["actualPNG"] == "render-calibration-" + evidence["fitId"] + ".png"
     expected, actual = evidence["expectedInkPixels"], evidence["actualInteriorInkPixels"]
     assert isinstance(expected, int) and expected > 0, "Independent calibration reference is blank"
     assert isinstance(actual, int) and actual > 0, "Calibration contains only its border, not text"
@@ -72,6 +73,9 @@ def validate_calibration_evidence(evidence, element, text, profile):
     assert all(isinstance(value, int) for value in expected_box + actual_box)
     assert expected_box[2] > 0 and expected_box[3] > 0
     inset = evidence["excludedBorderPx"]
+    assert actual_box[0] >= inset and actual_box[1] >= inset
+    assert actual_box[0] + actual_box[2] <= width_px - inset
+    assert actual_box[1] + actual_box[3] <= height_px - inset
     assert expected_box[0] >= inset and expected_box[1] >= inset
     assert expected_box[0] + expected_box[2] <= width_px - inset
     assert expected_box[1] + expected_box[3] <= height_px - inset
@@ -81,7 +85,12 @@ def validate_calibration_evidence(evidence, element, text, profile):
     assert sum(line["expectedInkPixels"] for line in lines) == expected
     for index, line in enumerate(lines):
         assert line["index"] == index and line["text"]
-        assert line["expectedInkPixels"] > 0 and len(line["expectedBoundsPx"]) == 4
+        line_box = line["expectedBoundsPx"]
+        assert line["expectedInkPixels"] > 0 and len(line_box) == 4
+        assert line_box[2] > 0 and line_box[3] > 0
+        assert line_box[0] >= inset and line_box[1] >= inset
+        assert line_box[0] + line_box[2] <= width_px - inset
+        assert line_box[1] + line_box[3] <= height_px - inset
         assert 0 <= line["missingInkPixels"] <= max(2, math.ceil(line["expectedInkPixels"] * 0.02)), "A calibration text line is missing or clipped"
 
 
@@ -291,6 +300,7 @@ def main():
             calibration_attempts = [report["productionAttempts"][0]] + report["calibrationRegressions"]
             for attempt in calibration_attempts:
                 assert (output / attempt["calibrationEvidence"]["referencePNG"]).is_file()
+                assert (output / attempt["calibrationEvidence"]["actualPNG"]).is_file()
                 for element in attempt["elements"]:
                     assert (output / element["bitmap"]["png"]).is_file()
             (output / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")

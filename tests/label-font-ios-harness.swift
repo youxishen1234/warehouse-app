@@ -252,6 +252,13 @@ enum FontDiagnostic {
         }
         let referenceFile = "reference-calibration-layout-" + name + ".png"
         try png.write(to: directory.appendingPathComponent(referenceFile), options: .atomic)
+        // Keep the unmodified production bitmap beside its reference so the
+        // artifact is independently inspectable rather than inferred from stats.
+        let actualFile = "render-calibration-" + name + ".png"
+        guard let actualData = element["imageBase64"] as? String, let decoded = Data(base64Encoded: actualData) else {
+            throw LabelFailure("TEST_CALIBRATION_IMAGE", "Calibration PNG evidence unavailable")
+        }
+        try decoded.write(to: directory.appendingPathComponent(actualFile), options: .atomic)
         let expected = try pixels(referenceImage)
         let expectedInk = expected.indices.filter { expected[$0] < 127 }
         let actualInk = actual.indices.filter { index in
@@ -261,7 +268,8 @@ enum FontDiagnostic {
         }
         return ["schemaVersion": 1, "expectedText": text, "fontMm": fontMm, "dpi": dpi,
             "widthPx": width, "heightPx": height, "excludedBorderPx": excludedBorder,
-            "referencePNG": referenceFile, "expectedInkPixels": expectedInk.count,
+            "referencePNG": referenceFile, "actualPNG": actualFile, "fitId": name,
+            "expectedInkPixels": expectedInk.count,
             "actualInteriorInkPixels": actualInk.count, "expectedBoundsPx": bounds(expectedInk),
             "actualBoundsPx": bounds(actualInk),
             "missingInkPixels": expectedInk.filter { actual[$0] >= 127 }.count,

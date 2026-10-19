@@ -26,6 +26,7 @@ class CalibrationValidatorTests(unittest.TestCase):
             "widthPx": math.ceil(64 * 300 / 25.4), "heightPx": math.ceil(90 * 300 / 25.4),
             "excludedBorderPx": math.ceil(300 / 25.4) + 2,
             "referencePNG": "reference-calibration-layout-calibration-original.png",
+            "actualPNG": "render-calibration-calibration-original.png", "fitId": "calibration-original",
             "expectedInkPixels": 1200, "actualInteriorInkPixels": 1200,
             "missingInkPixels": 0, "extraInteriorInkPixels": 0,
             "expectedBoundsPx": [40, 60, 500, 44], "actualBoundsPx": [40, 60, 500, 44],
@@ -87,6 +88,16 @@ class CalibrationValidatorTests(unittest.TestCase):
     def test_rejects_wrong_bbox_even_if_ink_counters_match(self):
         self.evidence["actualBoundsPx"][1] += 40
         with self.assertRaisesRegex(AssertionError, "bounds differ"):
+            self.validate()
+
+    def test_rejects_actual_text_touching_inner_bitmap_edge(self):
+        self.evidence["actualBoundsPx"] = [0, 60, 500, 44]
+        with self.assertRaises(AssertionError):
+            self.validate()
+
+    def test_rejects_expected_line_touching_inner_bitmap_edge(self):
+        self.evidence["lines"][0]["expectedBoundsPx"] = [0, 60, 500, 44]
+        with self.assertRaises(AssertionError):
             self.validate()
 
     def test_keeps_short_wrapped_line_subject_to_line_tolerance(self):
