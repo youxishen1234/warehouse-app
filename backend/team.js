@@ -13,7 +13,7 @@ const productImagePath = imageUrl => {
   if (typeof imageUrl !== 'string') return null;
   const match = /^\/uploads\/products\/([A-Za-z0-9._-]+)$/.exec(imageUrl);
   if (!match) return null;
-  const root = path.resolve(__dirname, 'public', 'uploads', 'products');
+  const root = require('./product-image-backup').imageDirectory();
   const target = path.resolve(root, match[1]);
   return target.startsWith(root + path.sep) ? target : null;
 };
@@ -81,8 +81,9 @@ async function streamJson(res, value) {
 const error = (message, status = 400) => Object.assign(new Error(message), { status });
 const IDENTITY_KEY_PATTERN = /^[\w-]{16,100}$/;
 const requiresIdempotencyKey = pathName => { if (pathName.startsWith('/customers/') && pathName.includes('/attachments')) return false; const prefixes = ['/products', '/customers', '/suppliers', '/orders', '/transactions', '/ledger', '/backup', '/stocktake', '/delivery-notes', '/print-notes']; return prefixes.some(prefix => pathName === prefix || pathName.startsWith(prefix + '/')) || ['/stock/in', '/stock/out', '/stock/out/batch'].includes(pathName); };
-function install(db) {
+function install(db, options = {}) {
   const router = require('express').Router();
+  const dailyBackup = options.dailyBackup || require('./daily-backup').createDailyBackup(db);
   const guestSessions = new Map();
   const statsBuckets = new Map();
   const ok = (res, data) => res.json({ success: true, data });
@@ -148,7 +149,7 @@ function install(db) {
   // 客户端可以伪造设备头来切换限流键，因此额外按纯 IP 设置总限额。
   const rateLimitIp = (req, scope, limit, windowMs) => consumeRateLimit(rateBuckets, `${scope}:ip:${req.warehouseClientIp || req.ip || 'unknown'}`, { limit, windowMs });
   router.use((req, res, next) => {
-    const exportRequest = req.method === 'GET' && (/\.csv$/.test(req.path) || req.path === '/backup');
+    const exportRequest = req.method === 'GET' && (/\.csv$/.test(req.path) || req.path === '/backup' || req.path === '/backup/daily/latest');
     const writeRequest = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
     if ((writeRequest && (!rateLimit(req, 'write', Math.max(20, Number(process.env.WAREHOUSE_WRITE_RATE_LIMIT) || 300), 60000) || !rateLimitIp(req, 'write-ip', Math.max(600, Number(process.env.WAREHOUSE_WRITE_IP_RATE_LIMIT) || 1200), 60000))) ||
       (exportRequest && (!rateLimit(req, 'export', Math.max(2, Number(process.env.WAREHOUSE_EXPORT_RATE_LIMIT) || 20), 60000) || !rateLimitIp(req, 'export-ip', Math.max(30, Number(process.env.WAREHOUSE_EXPORT_IP_RATE_LIMIT) || 60), 60000)))) {
@@ -241,6 +242,14 @@ function install(db) {
     rows.push(['货款合计', '', '', '', '', '', '', note.total_amount], ['总平米', note.total_square_meters], ['备注', note.remark]);
     res.attachment(`delivery-note-${note.id}.csv`).type('text/csv').send('\ufeff' + rows.map(row => row.map(csvCell).join(',')).join('\r\n'));
   });
+  route('get', '/backup/daily/status', async (req, res) => {
+    requirePhotoSession(req);
+    ok(res, await dailyBackup.getStatus());
+  });
+  route('get', '/backup/daily/latest', async (req, res) => {
+    requirePhotoSession(req);
+    await streamJson(res, { success: true, data: await dailyBackup.latest() });
+  });
   route('get', '/backup', (req, res) => {
     const snapshot = db.backupData();
     if ((snapshot.ledger || []).some(entry => entry.attachments?.length)) requirePhotoSession(req);
@@ -280,6 +289,16 @@ function install(db) {
     res.set('X-Warehouse-Revision', String(result.revision)); ok(res, result.data);
   });
   route('get', '/boards', (req, res) => ok(res, db.listBoards()));
+  route('get', '/business-specifications', (req, res) => ok(res, db.listBusinessSpecifications()));
+  route('get', '/production', (req, res) => ok(res, db.listProduction()));
+  route('post', '/production', (req, res) => {
+    if (req.user.role === 'viewer') throw error('只读账号不能提交生产', 403);
+    if (!IDENTITY_KEY_PATTERN.test(String(req.get('Idempotency-Key') || ''))) throw error('缺少有效的提交编号');
+    if (!req.is('application/json') || !req.body || Array.isArray(req.body)) throw error('请提交有效的生产数据');
+    const operation = 'POST /production';
+    const result = db.transact(req.user, req.get('Idempotency-Key'), digest(operation + JSON.stringify(req.body)), req.get('If-Match'), operation, () => db.completeProduction(req.body, req.user.username));
+    res.set('X-Warehouse-Revision', String(result.revision)); ok(res, result.data);
+  });
   route('get', '/boards/:id', (req, res) => {
     const batch = db.listBoards().find(b => b.id === req.params.id);
     if (!batch) throw error('找不到这批纸板，请检查标签', 404);
@@ -311,7 +330,7 @@ function install(db) {
     if (!bytes.length || bytes.length > 2 * 1024 * 1024) throw error('图片解码后大小不能超过 2 MiB');
     if (!validImageBytes(match[1], bytes)) throw error('图片内容与文件类型不一致，请重新上传');
     const product = db.getProduct(Number(req.params.id)); if (!product) throw error('商品不存在',404);
-    const uploadDir = path.join(__dirname, 'public', 'uploads', 'products'); fs.mkdirSync(uploadDir, { recursive: true });
+    const uploadDir = require('./product-image-backup').imageDirectory(); fs.mkdirSync(uploadDir, { recursive: true });
     const ext = match[1].split('/')[1].replace('jpeg','jpg');
     // Content-addressed names make retries reuse the same file and avoid orphan uploads.
     const contentHash = crypto.createHash('sha256').update(bytes).digest('hex').slice(0, 24);

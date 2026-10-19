@@ -5,6 +5,7 @@ const os = require('os');
 const crypto = require('crypto');
 const proxyaddr = require('proxy-addr');
 const db = require('./db');
+const dailyBackup = require('./daily-backup').createDailyBackup(db);
 const updates = require('./updates');
 const installGracefulShutdown = require('./graceful-shutdown');
 const { consumeRateLimit } = require('./rate-limit');
@@ -83,7 +84,7 @@ app.use('/api/ai/command', express.json({ limit: '9mb' }));
 app.use('/api/ai/photo', express.json({ limit: '9mb' }));
 app.use('/api/ai/voice', express.json({ limit: '17mb' }));
 app.use('/api', express.json({ limit: `${BODY_LIMITS.general}b` }));
-app.use('/api', require('./team')(db));
+app.use('/api', require('./team')(db, { dailyBackup }));
 
 // 热更新静态文件访问日志（旧版 App 直接拉 manifest.json / www.zip）
 app.use('/appupdate', (req, res, next) => {
@@ -138,6 +139,7 @@ app.get('/download/shuguang.ipa', (req, res) => {
 });
 
 const WEB_ROOT = process.env.WAREHOUSE_WEB_ROOT ? path.resolve(process.env.WAREHOUSE_WEB_ROOT) : path.join(__dirname, 'public');
+app.use('/uploads/products', express.static(require('./product-image-backup').imageDirectory(), { dotfiles: 'deny', index: false }));
 app.use(express.static(WEB_ROOT));
 // Keep previously printed /workspace labels and older app links usable.
 app.use('/workspace', express.static(WEB_ROOT));
@@ -284,6 +286,7 @@ if (require.main === module) {
 
 function startServer() {
   const server = app.listen(PORT, '0.0.0.0', () => {
+    dailyBackup.start();
     const lanIP = getLanIP();
     const actualPort = server.address()?.port || PORT;
     console.log(`\n  ============================================`);
@@ -295,10 +298,10 @@ function startServer() {
     console.log(`[server] listening on ${actualPort}`);
   });
   installGracefulShutdown(server);
+  server.once('close', () => { void dailyBackup.stop(); });
   return server;
 }
 
 module.exports = app;
 module.exports.startServer = startServer;
-
-
+module.exports.dailyBackup = dailyBackup;

@@ -163,7 +163,7 @@ function createStore(databasePath) {
     for (const item of items) if (!files[item.sha256]) files[item.sha256] = read(item);
     return { ...snapshot, ledger_attachment_files: files };
   }
-  function restore(snapshot) {
+  function validate(snapshot) {
     const items = metadata(snapshot);
     const files = snapshot.ledger_attachment_files;
     const expected = new Set(items.map(item => item.sha256));
@@ -175,12 +175,16 @@ function createStore(databasePath) {
       if (value.sha256 !== item.sha256 || value.mime !== item.mime || value.bytes.length !== item.size) throw invalid('备份凭证校验失败');
       decoded.set(item.sha256, value);
     }
+    return decoded;
+  }
+  function restore(snapshot) {
+    const decoded = validate(snapshot);
     // Validate the complete bundle before writing any files. A later database
     // failure may leave an unreferenced immutable file, never a partial index.
     try { for (const [sha256, value] of decoded) write(value.bytes, sha256); }
     catch (error) { throw Object.assign(error, { status: 500 }); }
   }
-  return { prepare, prepareCustomer, add, addCustomer, read, portable, restore };
+  return { prepare, prepareCustomer, add, addCustomer, read, portable, restore, validate };
 }
 
 module.exports = { createStore, MAX_IMAGE_BYTES, CUSTOMER_IMAGE_BYTES, MAX_ATTACHMENTS, JSON_LIMIT, structurallyValid };

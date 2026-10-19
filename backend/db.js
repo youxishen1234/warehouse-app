@@ -8,10 +8,12 @@ const customerDimensions = require('./customer-dimensions');
 
 const DB_PATH = process.env.WAREHOUSE_DATA_FILE || path.join(__dirname, 'data.json');
 const ledgerAttachments = require('./ledger-attachments').createStore(DB_PATH);
+const productImages = require('./product-image-backup').createStore();
 const SCHEMA_VERSION = 1;
 const BACKUP_DIR = process.env.WAREHOUSE_BACKUP_DIR || path.join(path.dirname(DB_PATH), 'backups');
 const AUTO_BACKUP_KEEP = Math.max(1, Math.min(100, Number(process.env.WAREHOUSE_BACKUP_KEEP) || 7));
 const AUTO_BACKUP_MAX_DAYS = Math.max(1, Math.min(3650, Number(process.env.WAREHOUSE_BACKUP_MAX_DAYS) || 30));
+const { BACKUP_MAX_BYTES } = require('./backup-limits');
 let loadWarnings = [];
 let migratedDimensions = false;
 
@@ -102,9 +104,33 @@ function createAutoBackup(reason) {
     const raw = fs.readFileSync(DB_PATH, 'utf8');
     let snapshot;
     try { snapshot = JSON.parse(raw); } catch { /* Preserve corrupt databases for manual recovery. */ }
-    fs.writeFileSync(target, snapshot ? JSON.stringify(ledgerAttachments.portable(snapshot)) : raw, { flag: 'wx', mode: 0o600 });
+    let body = raw;
+    let portableError = null;
+    if (snapshot) {
+      try {
+        snapshot.products = (snapshot.products || []).map(product => ({ ...product, image_url: portableImageUrl(product.image_url) }));
+        body = JSON.stringify(productImages.portable(ledgerAttachments.portable(snapshot, BACKUP_MAX_BYTES), BACKUP_MAX_BYTES));
+      } catch (error) {
+        // Still preserve a readable-but-invalid source as diagnostic evidence.
+        // This copy is explicitly not a complete portable backup.
+        portableError = error;
+      }
+    }
+    const temp = `${target}.tmp-${process.pid}-${Date.now()}`;
+    try {
+      const fd = fs.openSync(temp, 'wx', 0o600);
+      try { fs.writeFileSync(fd, body); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+      fs.linkSync(temp, target);
+    } finally {
+      try { fs.unlinkSync(temp); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    }
     try { fs.chmodSync(target, 0o600); } catch (error) { /* best effort */ }
+    syncDirectory(BACKUP_DIR);
     rotateAutoBackups();
+    if (portableError) {
+      console.warn('[db] incomplete source evidence saved:', portableError.message);
+      return null;
+    }
     return target;
   } catch (error) {
     console.warn('[db] automatic backup skipped:', error.message);
@@ -199,6 +225,7 @@ function deleteLedger(id) {
   if (!entry || entry.voided_at) throw new Error('账本记录不存在或已作废');
   if (entry.transaction_id) throw new Error('出入库生成的账务请通过原单作废');
   if (entry.delivery_note_id) throw new Error('送货单生成的账务请通过原单作废');
+  if (entry.board_batch_id) throw new Error('纸板入库生成的账务请通过纸板原单处理');
   return atomicMutation(() => {
     // 作废与往来对象关联的账本流水时，同步恢复往来余额，保证余额与有效账本一致。
     if (entry.party_id != null) {
@@ -953,6 +980,7 @@ function deleteTransaction(id) {
   const tx = cache.transactions.find(t => t.id === Number(id));
   if (!tx) throw new Error('交易记录不存在');
   if (tx.delivery_note_id) throw new Error('送货单明细请从入库页面整单作废，不能单独删除');
+  if (tx.production_id) throw new Error('生产完工同时关联纸板领料，不能单独作废纸箱入库');
   return atomicMutation(() => { const result = reverseTransaction(tx); const order = cache.orders.find(item => item.id === tx.order_id); if (order && (order.status === '已发货' || order.status === '已完成')) { const remaining = orderShippedQuantity(order.id); const next = remaining >= roundDecimal(Number(order.quantity || 0), 6) ? '已发货' : '生产中'; if (order.status !== next) { const before = order.status; order.status = next; cache.order_events.push({ id: cache._meta.nextOrderEventId++, order_id: order.id, from: before, to: order.status, created_at: Date.now() }); } } persist(); return result; });
 }
 function voidDeliveryNote(id) {
@@ -1051,7 +1079,7 @@ function portableImageUrl(value) {
 function backupData(options = {}) {
   const snapshot = JSON.parse(JSON.stringify(cache));
   snapshot.products = (snapshot.products || []).map(product => ({ ...product, image_url: portableImageUrl(product.image_url) }));
-  return options.includeAttachments ? ledgerAttachments.portable(snapshot, options.maxBytes) : snapshot;
+  return options.includeAttachments ? productImages.portable(ledgerAttachments.portable(snapshot, options.maxBytes), options.maxBytes) : snapshot;
 }
 function health() {
   let readable = false; let writable = false;
@@ -1063,6 +1091,7 @@ function validateBackupData(data) {
   require('./print-notes').validateBackup(data || {});
   if (data?.customer_dimensions !== undefined) customerDimensions.validateDocument(data.customer_dimensions);
   require('./boards').validate(data || {});
+  require('./business-workflow').validate(data || {});
   const collections = ['products', 'customers', 'suppliers', 'transactions', 'ledger', 'orders', 'order_events', 'stocktakes', 'delivery_notes'];
   if (!data || Number(data?._meta?.schemaVersion) > SCHEMA_VERSION) throw new Error('backup requires a newer schema version');
   if (!data || collections.some(name => !Array.isArray(data[name]))) throw new Error('备份文件缺少必要数据表');
@@ -1218,6 +1247,11 @@ function validateBackupData(data) {
     timestamp(note.created_at, `delivery note ${note.id}`); timestamp(note.voided_at, `delivery note ${note.id}`);
   }
 }
+function validateBackup(data) {
+  validateBackupData(data);
+  ledgerAttachments.validate(data);
+  productImages.validate(data);
+}
 function settleParty(partyType, id, amount, remark = '') {
   const isCustomer = partyType === 'customer';
   const party = isCustomer ? getCustomer(id) : getSupplier(id);
@@ -1237,20 +1271,13 @@ function settleParty(partyType, id, amount, remark = '') {
 }
 function restoreSafetySnapshot() {
   if (!fs.existsSync(DB_PATH)) return null;
-  createAutoBackup('restore');
-  try {
-    fs.mkdirSync(BACKUP_DIR, { recursive: true, mode: 0o700 });
-    const target = path.join(BACKUP_DIR, `warehouse-data-restore-guard-${Date.now()}.json`);
-    fs.copyFileSync(DB_PATH, target);
-    try { fs.chmodSync(target, 0o600); } catch (error) { /* best effort */ }
-    return target;
-  } catch (error) {
-    throw Object.assign(new Error(`恢复前无法备份当前数据，已中止恢复：${error.message}`), { status: 500 });
-  }
+  const target = createAutoBackup('restore-guard');
+  if (!target) throw Object.assign(new Error('恢复前无法备份当前数据，已中止恢复'), { status: 500 });
+  return target;
 }
 function restoreData(value) {
   restoreSafetySnapshot();
-  validateBackupData(value);
+  validateBackup(value);
   const next = JSON.parse(JSON.stringify(value));
   // Older backups must not erase documents created in the new print center.
   if (next.print_notes === undefined) next.print_notes = JSON.parse(JSON.stringify(cache.print_notes || []));
@@ -1261,7 +1288,8 @@ function restoreData(value) {
   // Old backups predate the dimensions collection and must not erase it.
   const restoredDimensions = next.customer_dimensions === undefined ? getCustomerDimensions() : customerDimensions.validateDocument(next.customer_dimensions);
   next.customer_dimensions = { ...restoredDimensions, revision: Math.max(restoredDimensions.revision, getCustomerDimensions().revision) + 1 };
-  const collaboration = cache._collaboration || { revision: 0, audit: [], receipts: {}, generation: 0 };
+  // Work on a copy so a failed image publication cannot invalidate live receipts.
+  const collaboration = JSON.parse(JSON.stringify(cache._collaboration || { revision: 0, audit: [], receipts: {}, generation: 0 }));
   // 恢复后的数据集与恢复前的回执不再对应：递增数据代次，旧回执重放会得到明确的 409 提示，而不是静默重新执行。
   collaboration.generation = (Number(collaboration.generation) || 0) + 1;
   next.orders = Array.isArray(next.orders) ? next.orders : []; next.order_events = Array.isArray(next.order_events) ? next.order_events : []; next.stocktakes = Array.isArray(next.stocktakes) ? next.stocktakes : []; next.delivery_notes = Array.isArray(next.delivery_notes) ? next.delivery_notes : [];
@@ -1271,7 +1299,9 @@ function restoreData(value) {
   for (const [collection, counter] of [['products','nextProductId'],['customers','nextCustomerId'],['suppliers','nextSupplierId'],['transactions','nextTransactionId'],['ledger','nextLedgerId'],['orders','nextOrderId'],['delivery_notes','nextDeliveryNoteId'],['order_events','nextOrderEventId'],['stocktakes','nextStocktakeId']]) { next[collection] = Array.isArray(next[collection]) ? next[collection] : []; next._meta[counter] = next[collection].reduce((n, row) => Math.max(n, Number(row.id) + 1), Number(next._meta[counter]) || 1); }
   normalizeGhostStock(next, 'restore');
   ledgerAttachments.restore(next);
+  productImages.restore(next);
   delete next.ledger_attachment_files;
+  delete next.product_image_files;
   next._collaboration = collaboration;
   cache = next; persist(); return stats();
 }
@@ -1316,12 +1346,38 @@ function shipPrintNote(id) {
   });
 }
 function listBoards() { return require('./boards').list(cache); }
-function receiveBoard(raw) { return atomicMutation(() => { const batch = require('./boards').receive(cache, raw); persist(); return batch; }); }
+function linkBoardPayable(batch, raw) {
+  let supplier = activeParty(raw.supplier_id, 'supplier');
+  if (!supplier) {
+    const matches = listSuppliers().filter(s => s.name === batch.supplier);
+    if (matches.length > 1) throw new Error('有多个同名供货商，请指定供货商');
+    supplier = matches[0] || addSupplier({ name: batch.supplier });
+  }
+  batch.supplier_id = supplier.id; batch.supplier = supplier.name;
+  supplier.payable = roundDecimal(Number(supplier.payable || 0) + batch.amount, 2);
+  supplier.balance_updated_at = Date.now();
+  const entry = systemLedger('payable', batch.amount, supplier.id, supplier.name, null, '纸板入库 · ' + (batch.deliveryNo || batch.id), 'supplier');
+  if (entry) { entry.board_batch_id = batch.id; batch.ledger_id = entry.id; }
+}
+function reverseBoardPayable(batch) {
+  if (!batch?.ledger_id) return;
+  const entry = cache.ledger.find(e => e.id === batch.ledger_id && !e.voided_at);
+  const supplier = getSupplier(batch.supplier_id);
+  if (!entry || !supplier) throw new Error('纸板关联账单缺失，请核对');
+  if (Number(supplier.payable || 0) < entry.amount) throw new Error('纸板货款已结算，请先撤销相应结算再修改原单');
+  supplier.payable = roundDecimal(supplier.payable - entry.amount, 2);
+  supplier.balance_updated_at = Date.now(); entry.voided_at = Date.now();
+  delete batch.ledger_id;
+}
+function receiveBoard(raw) { return atomicMutation(() => { const batch = require('./boards').receive(cache, raw); linkBoardPayable(batch, raw); persist(); return batch; }); }
 function moveBoard(id, raw) { return atomicMutation(() => { const batch = require('./boards').move(cache, id, raw); persist(); return batch; }); }
-function updateBoard(id, raw) { return atomicMutation(() => { const result = require('./boards').update(cache, id, raw); persist(); return result; }); }
-function deleteBoard(id) { return atomicMutation(() => { const result = require('./boards').remove(cache, id); persist(); return result; }); }
-module.exports = { listPrintNotes, savePrintNote, shipPrintNote, getCustomerDimensions, updateCustomerDimensions, listBoards, receiveBoard, moveBoard, updateBoard, deleteBoard, listProducts, getProduct, addProduct, updateProduct, deleteProduct,
-  getLedgerAttachments, addLedgerAttachment, readLedgerAttachment, listCustomerAttachments, addCustomerAttachment, readCustomerAttachment, prepareLedgerAttachment: ledgerAttachments.prepare, prepareCustomerAttachment,
+function updateBoard(id, raw) { return atomicMutation(() => { const batch = cache.board_batches?.find(b => b.id === id); reverseBoardPayable(batch); require('./boards').update(cache, id, raw); linkBoardPayable(batch, raw); persist(); return listBoards().find(b => b.id === id); }); }
+function deleteBoard(id) { return atomicMutation(() => { const batch = cache.board_batches?.find(b => b.id === id); reverseBoardPayable(batch); const result = require('./boards').remove(cache, id); persist(); return result; }); }
+function listBusinessSpecifications() { return require('./business-workflow').specifications(cache); }
+function listProduction() { return (cache.production_records || []).slice().reverse(); }
+function completeProduction(raw, operator) { return atomicMutation(() => { const record = require('./business-workflow').complete(cache, raw, operator, stockIn, addProduct); persist(); return record; }); }
+module.exports = { listBusinessSpecifications, listProduction, completeProduction, listPrintNotes, savePrintNote, shipPrintNote, getCustomerDimensions, updateCustomerDimensions, listBoards, receiveBoard, moveBoard, updateBoard, deleteBoard, listProducts, getProduct, addProduct, updateProduct, deleteProduct,
+  getLedgerAttachments, addLedgerAttachment, readLedgerAttachment, listCustomerAttachments, addCustomerAttachment, readCustomerAttachment, prepareLedgerAttachment: ledgerAttachments.prepare, prepareCustomerAttachment, validateBackup,
   listCustomers, getCustomer, addCustomer, updateCustomer, deleteCustomer,
   listSuppliers, getSupplier, addSupplier, updateSupplier, deleteSupplier,
   stockIn, stockOut, stockOutBatch, orderToOutbound, listTx, streamTx, deleteTransaction, listLedger, streamLedger, addLedger, deleteLedger, listOrders, listOrderEvents, addOrder, updateOrder, addStocktake, listStocktakes, listDeliveryNotes, getDeliveryNote, addDeliveryNote, voidDeliveryNote, backupData, restoreData, health, stats, transact, revision, audit, receipt, settleParty };
