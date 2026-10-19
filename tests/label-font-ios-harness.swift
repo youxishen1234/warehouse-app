@@ -186,7 +186,11 @@ enum FontDiagnostic {
             if Double(candidate.bounds.width) + 2 * padding > (widthMm - 6) * pointsPerMm {
                 guard !current.isEmpty else { throw LabelFailure("TEST_CALIBRATION_LAYOUT", "Reference character overflows") }
                 lines.append(measured(current))
-                current = String(character)
+                let next = measured(String(character))
+                guard Double(next.bounds.width) + 2 * padding <= (widthMm - 6) * pointsPerMm else {
+                    throw LabelFailure("TEST_CALIBRATION_LAYOUT", "Reference character overflows")
+                }
+                current = next.text
             } else { current = candidate.text }
         }
         if !current.isEmpty { lines.append(measured(current)) }
@@ -228,6 +232,7 @@ enum FontDiagnostic {
             let minX = xs.min()!, minY = ys.min()!
             return [minX, minY, xs.max()! - minX + 1, ys.max()! - minY + 1]
         }
+        // Detecting a color-space loss separately from the required ink geometry.
         let actual = try pixels(actualImage), reference = try context()
         var lineEvidence: [[String: Any]] = []
         for index in lines.indices {
