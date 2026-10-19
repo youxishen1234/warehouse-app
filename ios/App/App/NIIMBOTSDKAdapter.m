@@ -135,18 +135,17 @@
         [JCAPI initImageProcessing:@"" error:&error];
         if (error) return @{@"errorCode": @"FONT_INITIALIZATION_FAILED", @"message": @"官方绘图库字体初始化失败"};
         [JCAPI initDrawingBoard:(float)width withHeight:(float)height withHorizontalShift:0
-             withVerticalShift:0 rotate:0 fontArray:@[@"PingFangSC-Regular"]];
+             withVerticalShift:0 rotate:0 fontArray:@[]];
         for (NSDictionary *element in elements) {
             float x = [element[@"x"] floatValue], y = [element[@"y"] floatValue];
             float w = [element[@"w"] floatValue], h = [element[@"h"] floatValue];
             BOOL drawn = NO;
             NSString *type = element[@"type"];
-            if ([type isEqualToString:@"text"]) {
-                // Each measured line is a distinct box; do not use shrink or ellipsis modes.
-                drawn = [JCAPI drawLableText:x withY:y withWidth:w withHeight:h withString:element[@"text"]
-                    withFontFamily:@"PingFangSC-Regular" withFontSize:[element[@"fontMm"] floatValue]
-                    withRotate:0 withTextAlignHorizonral:0 withTextAlignVertical:0 withLineMode:2
-                    withLetterSpacing:0 withLineSpacing:0 withFontStyle:@[@0, @0, @0, @0]];
+            if ([type isEqualToString:@"image"]) {
+                // CoreText already shaped and measured this opaque black-on-white PNG.
+                drawn = [JCAPI DrawLableImage:x withY:y withWidth:w withHeight:h
+                    withImageData:element[@"imageBase64"] withRotate:0
+                    withImageProcessingType:1 withImageProcessingValue:127];
             } else if ([type isEqualToString:@"qr"]) {
                 drawn = [JCAPI drawLableQrCode:x withY:y withWidth:w withHeight:h
                     withString:element[@"text"] withRotate:0 withCodeType:31];

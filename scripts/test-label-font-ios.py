@@ -1,4 +1,4 @@
-"""Reproduce the checked-in renderer on iOS, without linking or submitting to JCAPI."""
+"""Exercise the checked-in renderer on iOS, without submitting to JCAPI or business APIs."""
 
 import argparse
 import hashlib
@@ -62,19 +62,55 @@ def validate_report(report, fixtures):
     assert all(x["outcome"] != "unexpected-error" for x in attempts.values())
     original = results["calibration-original"]
     calibration = attempts["calibration-original"]
-    if not original["baseFontDirectMapping"]:
-        assert calibration["errorCode"] == "FONT_GLYPH_MISSING" and calibration["sdkStubCalls"] == 0
-    else:
-        assert calibration.get("errorCode") != "FONT_GLYPH_MISSING"
+    def validate_bitmap(bitmap, width, height, invisible=False):
+        import math
+        assert bitmap["widthPx"] == math.ceil(width * 300 / 25.4)
+        assert bitmap["heightPx"] == math.ceil(height * 300 / 25.4)
+        assert bitmap["grayscale"] and bitmap["alphaInfo"] == 0 and bitmap["bitsPerPixel"] == 8
+        assert bitmap["edgeInkPixelsBelow127"] == 0, "Clipped text: " + bitmap["png"]
+        assert (bitmap["inkPixelsBelow127"] == 0) if invisible else (bitmap["inkPixelsBelow127"] > 0)
+
     snapshots = {x["id"]: x for x in report["parsedSnapshots"]}
+    for attempt in attempts.values():
+        assert attempt["outcome"] == "passed-font-and-layout-to-sdk-stub", attempt
+        assert attempt["sdkStubCalls"] == 1
+        assert all(x["type"] in ("image", "line", "qr") for x in attempt["elements"])
+        for element in attempt["elements"]:
+            assert element["x"] >= 3 and element["y"] >= 5
+            assert element["x"] + element["w"] <= 67.000001 and element["y"] + element["h"] <= 95.000001
+            if element["type"] == "image":
+                validate_bitmap(element["bitmap"], element["w"], element["h"])
+    assert "".join(x["sourceText"] for x in calibration["elements"] if x["type"] == "image") == fixtures["calibrationOriginalText"]
+    assert sum(x["type"] == "line" for x in calibration["elements"]) == 4
     for case in fixtures["templateCases"]:
         text = "\n".join(x["text"] for x in snapshots[case["id"]]["fields"])
         assert all(token in text for token in case["expectedTextTokens"]), "Parsed snapshot dropped fixture data"
+        elements = attempts[case["id"]]["elements"]
+        for field in snapshots[case["id"]]["fields"]:
+            assert "".join(x["sourceText"] for x in elements if x.get("sourceField") == field["field"]) == field["text"]
+        qr = [x for x in elements if x["type"] == "qr"]
+        assert len(qr) == 1 and qr[0]["text"] == case["data"].get("productUrl", case["data"].get("batchUrl"))
+    regressions = {x["id"]: x for x in report["rendererRegressions"]}
+    assert len(regressions) == len(fixtures["textCases"]) + 3
+    expected_errors = {"color-emoji": "FONT_COLOR_UNSUPPORTED", "unassigned-negative": "FONT_GLYPH_MISSING",
+                       "noncharacter-negative": "FONT_GLYPH_MISSING", "overflow-negative": "LAYOUT_OVERFLOW"}
+    for id, result in regressions.items():
+        if id in expected_errors:
+            assert result["outcome"] == "rejected" and result["errorCode"] == expected_errors[id], result
+        else:
+            assert result["outcome"] == "rasterized", result
+            assert "".join(x["sourceText"] for x in result["bitmaps"]) == result["text"]
+            for bitmap in result["bitmaps"]:
+                validate_bitmap(bitmap, bitmap["w"], bitmap["h"], invisible=id == "space-only")
+    assert len(regressions["long-wrapping"]["bitmaps"]) > 1
+    assert report["clippingNegative"]["errorCode"] == "LAYOUT_OVERFLOW" and report["clippingNegative"]["sdkStubCalls"] == 0
     return {
-        "status": "diagnostics-completed-not-a-production-fix",
+        "status": "renderer-regressions-passed-sdk-and-paper-not-tested",
         "nativeTextCases": len(results),
         "productionRendererAttempts": len(attempts),
-        "calibrationResult": calibration,
+        "rendererRegressions": len(regressions),
+        "calibrationResult": {key: calibration[key] for key in ("id", "outcome", "sdkStubCalls")},
+        "templateResults": [{key: x[key] for key in ("id", "outcome", "sdkStubCalls")} for x in attempts.values()],
         "calibrationBaseUnmappedGraphemes": [
             {"character": x["character"], "unicodeScalars": x["unicodeScalars"]}
             for x in original["graphemes"] if not x["baseFontDirectMapping"]
@@ -104,6 +140,7 @@ def main():
     metadata = {
         "commit": os.environ.get("GITHUB_SHA"),
         "rendererSHA256": hashlib.sha256(RENDERER.read_bytes()).hexdigest(),
+        "adapterSHA256": hashlib.sha256((ROOT / "ios/App/App/NIIMBOTSDKAdapter.m").read_bytes()).hexdigest(),
         "harnessSHA256": hashlib.sha256(HARNESS.read_bytes()).hexdigest(),
         "fixturesSHA256": hashlib.sha256(FIXTURES.read_bytes()).hexdigest(),
         "hostArch": platform.machine(), "sdkTestDouble": True, "physicalPrintingTested": False,
@@ -186,19 +223,26 @@ def main():
             summary = validate_report(report, fixtures)
             for case in fixtures["textCases"]:
                 assert (output / (case["id"] + ".png")).is_file(), "Missing PNG evidence"
+            for attempt in report["productionAttempts"]:
+                for element in attempt["elements"]:
+                    if element["type"] == "image":
+                        assert (output / element["bitmap"]["png"]).is_file()
+            for result in report["rendererRegressions"]:
+                for bitmap in result.get("bitmaps", []):
+                    assert (output / bitmap["png"]).is_file()
             (output / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
             metadata["status"] = summary["status"]
             print(json.dumps(summary, ensure_ascii=False, indent=2))
             summary_file = pathlib.Path(os.environ.get("GITHUB_STEP_SUMMARY", output / "summary.md"))
             with summary_file.open("a", encoding="utf-8") as handle:
-                handle.write("## K3 Font Diagnostics\n\n12 native text cases and 3 production renderer attempts completed.\n\n")
+                handle.write("## K3 Font Regression\n\n12 native diagnostic cases, 15 rasterizer regressions and 3 production renderer attempts passed.\n\n")
                 for attempt in report["productionAttempts"]:
                     handle.write("- " + attempt["id"] + ": " + attempt.get("errorCode", attempt["outcome"])
                                  + "; SDK stub calls: " + str(attempt["sdkStubCalls"]) + "\n")
                 handle.write("\nBase-font unmapped calibration characters: "
                              + json.dumps(summary["calibrationBaseUnmappedGraphemes"], ensure_ascii=False)
-                             + "\n\nDownload the artifact for fixtures, report.json and 12 CoreText reference PNGs. "
-                             + "No business writes or physical printing were performed. This is not a production fix.\n")
+                             + "\n\nDownload the artifact for fixtures, report.json, reference PNGs and actual production rasterizer PNGs. "
+                             + "SDK uses a test double. No business writes, device SDK execution or physical printing were performed. Native IPA rebuild and physical acceptance remain required.\n")
     except Exception as error:
         metadata["status"] = "diagnostic-runner-failed"
         metadata["error"] = str(error)

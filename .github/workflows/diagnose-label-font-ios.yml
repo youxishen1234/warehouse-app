@@ -8,6 +8,9 @@ on:
       - scripts/test-label-font-ios.py
       - tests/label-font-fixtures.json
       - tests/label-font-ios-harness.swift
+      - ios/App/App/LabelTemplateRenderer.swift
+      - ios/App/App/NIIMBOTSDKAdapter.m
+      - scripts/verify-label-print-ios.cjs
   workflow_dispatch:
 
 permissions:
@@ -34,6 +37,15 @@ jobs:
           xcodebuild -version
       - name: Validate test data
         run: python3 scripts/test-label-font-ios.py --validate-fixtures
+      - name: Verify official SDK and native integration
+        run: |
+          node scripts/verify-niimbot-sdk.cjs
+          node scripts/verify-label-print-ios.cjs
+      - name: Compile device adapter against the original SDK header
+        run: |
+          xcrun --sdk iphoneos clang -target arm64-apple-ios18.0 \
+            -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" \
+            -fobjc-arc -fsyntax-only ios/App/App/NIIMBOTSDKAdapter.m
       - name: Compile production renderer and diagnose real iOS fonts
         run: python3 scripts/test-label-font-ios.py
       - name: Upload test data and native diagnostics

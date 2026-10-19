@@ -174,30 +174,117 @@ import CoreImage
 
 struct RenderedOfficialLabel { let sdkJSON: String; let imageBase64: String; let warnings: [String] }
 
-/// Produces only app-owned drawing elements from typed data, using the adapter's same named font.
-enum LabelTemplateRenderer {
-    private static let pointsPerMm = 72.0 / 25.4
-    private static func wrapped(_ text: String, width: Double, fontMm: Double, maxLines: Int, field: String) throws -> [String] {
-        guard let font = UIFont(name: "PingFangSC-Regular", size: fontMm * pointsPerMm) else { throw LabelFailure("FONT_UNAVAILABLE", "系统中文字体不可用；不能生成标签") }
-        let ctFont = CTFontCreateWithName("PingFangSC-Regular" as CFString, font.pointSize, nil)
-        let chars = Array(text.utf16)
-        var glyphs = [CGGlyph](repeating: 0, count: chars.count)
-        guard CTFontGetGlyphsForCharacters(ctFont, chars, &glyphs, chars.count) else { throw LabelFailure("FONT_GLYPH_MISSING", "\(field)包含当前字体无法显示的字符") }
-        // Keep measurement conservative; actual SDK font and CJK output still require device acceptance.
-        let maxWidth = width * pointsPerMm / 1.15
-        var lines: [String] = [], line = ""
-        for character in text {
-            let candidate = line + String(character)
-            let measured = (candidate as NSString).size(withAttributes: [.font: font]).width
-            if measured > maxWidth {
-                guard !line.isEmpty else { throw LabelFailure("LAYOUT_OVERFLOW", "\(field)无法放入当前纸宽") }
-                lines.append(line); line = String(character)
-            } else { line = candidate }
+/// Shape, measure and draw the same fallback-enabled line; the SDK never resolves text fonts.
+enum LabelTextRasterizer {
+    static let pointsPerMm = 72.0 / 25.4
+    static let dpi = 300.0 // Intermediate sampling, not an assertion about the printer's native DPI.
+    static let paddingPoints = 2.0 * 72.0 / dpi
+
+    struct Line {
+        let text: String
+        let shaped: CTLine
+        let bounds: CGRect
+        var widthPoints: Double { Double(bounds.width) + 2 * paddingPoints }
+        var heightMm: Double { (Double(bounds.height) + 2 * paddingPoints) / pointsPerMm }
+    }
+
+    static func shape(_ text: String, fontMm: Double, field: String) throws -> Line {
+        guard fontMm.isFinite, fontMm > 0, fontMm <= 20,
+              let font = UIFont(name: "PingFangSC-Regular", size: fontMm * pointsPerMm)
+        else { throw LabelFailure("FONT_UNAVAILABLE", "系统中文字体不可用；不能生成标签") }
+        let ctFont = CTFontCreateWithName(font.fontName as CFString, font.pointSize, nil)
+        let shaped = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: [
+            NSAttributedString.Key(kCTFontAttributeName as String): ctFont,
+            NSAttributedString.Key(kCTForegroundColorAttributeName as String): UIColor.black.cgColor
+        ]))
+        // Source indices are UTF-16 offsets, not Swift Character indices or one glyph per code unit.
+        var ignorableOffsets = Set<Int>(), offset = 0
+        for scalar in text.unicodeScalars {
+            if scalar.properties.isDefaultIgnorableCodePoint || CharacterSet.whitespacesAndNewlines.contains(scalar) {
+                for index in offset..<(offset + scalar.utf16.count) { ignorableOffsets.insert(index) }
+            }
+            offset += scalar.utf16.count
         }
-        if !line.isEmpty { lines.append(line) }
+        for run in CTLineGetGlyphRuns(shaped) as! [CTRun] {
+            let attributes = CTRunGetAttributes(run) as NSDictionary
+            let resolved = attributes[kCTFontAttributeName] as! CTFont
+            let name = CTFontCopyPostScriptName(resolved) as String
+            guard !name.lowercased().contains("lastresort") else {
+                throw LabelFailure("FONT_GLYPH_MISSING", "\(field)包含系统字体无法显示的字符")
+            }
+            guard (CTFontGetSymbolicTraits(resolved).rawValue & (1 << 13)) == 0 else {
+                throw LabelFailure("FONT_COLOR_UNSUPPORTED", "\(field)包含彩色表情；请使用文字以保证黑白标签清晰")
+            }
+            let count = CTRunGetGlyphCount(run)
+            var glyphs = [CGGlyph](repeating: 0, count: count)
+            var indices = [CFIndex](repeating: 0, count: count)
+            if count > 0 {
+                CTRunGetGlyphs(run, CFRange(location: 0, length: count), &glyphs)
+                CTRunGetStringIndices(run, CFRange(location: 0, length: count), &indices)
+            }
+            guard !glyphs.enumerated().contains(where: { $0.element == 0 && !ignorableOffsets.contains(indices[$0.offset]) }) else {
+                throw LabelFailure("FONT_GLYPH_MISSING", "\(field)包含系统字体无法显示的字符")
+            }
+        }
+        var ascent: CGFloat = 0, descent: CGFloat = 0, leading: CGFloat = 0
+        let advance = CTLineGetTypographicBounds(shaped, &ascent, &descent, &leading)
+        let ink = CTLineGetBoundsWithOptions(shaped, [.useGlyphPathBounds])
+        let minX = ink.isNull ? 0 : min(0, ink.minX)
+        let maxX = ink.isNull ? CGFloat(advance) : max(CGFloat(advance), ink.maxX)
+        let minY = ink.isNull ? -descent : min(-descent, ink.minY)
+        let maxY = ink.isNull ? ascent : max(ascent, ink.maxY)
+        return Line(text: text, shaped: shaped, bounds: CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY))
+    }
+
+    static func wrapped(_ text: String, widthMm: Double, fontMm: Double, maxLines: Int, field: String) throws -> [Line] {
+        _ = try shape(text, fontMm: fontMm, field: field)
+        let maxWidth = widthMm * pointsPerMm
+        var lines: [Line] = [], current: Line?
+        for character in text {
+            let candidate = try shape((current?.text ?? "") + String(character), fontMm: fontMm, field: field)
+            if candidate.widthPoints <= maxWidth {
+                current = candidate
+            } else {
+                guard let previous = current else { throw LabelFailure("LAYOUT_OVERFLOW", "\(field)无法放入当前纸宽") }
+                lines.append(previous)
+                let next = try shape(String(character), fontMm: fontMm, field: field)
+                guard next.widthPoints <= maxWidth else { throw LabelFailure("LAYOUT_OVERFLOW", "\(field)无法放入当前纸宽") }
+                current = next
+            }
+        }
+        if let current = current { lines.append(current) }
         guard lines.count <= maxLines else { throw LabelFailure("LAYOUT_OVERFLOW", "\(field)超过 \(maxLines) 行；请选择更大标签或关闭可选字段") }
         return lines
     }
+
+    static func element(_ line: Line, x: Double, y: Double, widthMm: Double, heightMm: Double, field: String) throws -> [String: Any] {
+        let boxWidth = widthMm * pointsPerMm, boxHeight = heightMm * pointsPerMm
+        guard widthMm.isFinite, heightMm.isFinite, widthMm > 0, widthMm <= 120, heightMm > 0, heightMm <= 200,
+              line.widthPoints <= boxWidth + 0.000001, line.heightMm <= heightMm + 0.000001 else {
+            throw LabelFailure("LAYOUT_OVERFLOW", "\(field)无法完整放入文字区域")
+        }
+        let width = Int(ceil(widthMm * dpi / 25.4)), height = Int(ceil(heightMm * dpi / 25.4))
+        guard width * height <= 4_000_000,
+              let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
+                bytesPerRow: width, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)
+        else { throw LabelFailure("TEXT_RASTER_FAILED", "\(field)文字图像创建失败") }
+        context.setFillColor(gray: 1, alpha: 1)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.scaleBy(x: CGFloat(width) / boxWidth, y: CGFloat(height) / boxHeight)
+        context.textMatrix = .identity
+        context.textPosition = CGPoint(x: paddingPoints - Double(line.bounds.minX),
+            y: (boxHeight - Double(line.bounds.height)) / 2 - Double(line.bounds.minY))
+        CTLineDraw(line.shaped, context)
+        guard let image = context.makeImage(), let png = UIImage(cgImage: image, scale: 1, orientation: .up).pngData() else {
+            throw LabelFailure("TEXT_RASTER_FAILED", "\(field)文字图像编码失败")
+        }
+        return ["type": "image", "x": x, "y": y, "w": widthMm, "h": heightMm,
+            "imageBase64": png.base64EncodedString(), "sourceText": line.text, "sourceField": field]
+    }
+}
+
+/// Produces only app-owned drawing elements from typed data.
+enum LabelTemplateRenderer {
     private static func render(_ profile: LabelMediaProfile, elements: [[String: Any]], warnings: [String]) throws -> RenderedOfficialLabel {
         let output = NIIMBOTSDKAdapter.shared().render(width: profile.widthMm, height: profile.heightMm, elements: elements)
         if let code = output["errorCode"] as? String { throw LabelFailure(code, output["message"] as? String ?? "官方 SDK 绘制失败") }
@@ -209,10 +296,11 @@ enum LabelTemplateRenderer {
         let bottom = profile.heightMm - profile.marginMm.bottom
         var y = profile.marginMm.top, elements: [[String: Any]] = []
         for field in snapshot.fields {
-            let lines = try wrapped(field.text, width: width, fontMm: field.fontMm, maxLines: field.maxLines, field: field.label)
-            let lineHeight = field.fontMm * 1.45
+            let lines = try LabelTextRasterizer.wrapped(field.text, widthMm: width, fontMm: field.fontMm, maxLines: field.maxLines, field: field.label)
             for line in lines {
-                elements.append(["type": "text", "x": x, "y": y, "w": width, "h": lineHeight, "fontMm": field.fontMm, "text": line])
+                let lineHeight = max(field.fontMm * 1.45, line.heightMm)
+                guard y + lineHeight <= bottom else { throw LabelFailure("LAYOUT_OVERFLOW", "\(field.label)超出当前纸高") }
+                elements.append(try LabelTextRasterizer.element(line, x: x, y: y, widthMm: width, heightMm: lineHeight, field: field.label))
                 y += lineHeight
             }
             y += 0.8
@@ -226,7 +314,7 @@ enum LabelTemplateRenderer {
         let outerSize = codeSize + 2 * quiet
         guard width >= outerSize, y + outerSize <= bottom else { throw LabelFailure("LAYOUT_OVERFLOW", "内容和二维码无法完整放入当前标签；请选择更大纸卷或关闭可选字段") }
         elements.append(["type": "qr", "x": x + quiet, "y": y + quiet, "w": codeSize, "h": codeSize, "text": snapshot.url])
-        return try render(profile, elements: elements, warnings: ["默认中文字体、对位及二维码必须经 K3 实物验证；正式打印尚未开放"])
+        return try render(profile, elements: elements, warnings: ["系统文字图像、对位及二维码必须经 K3 实物验证；正式打印尚未开放"])
     }
     static func calibration(_ profile: LabelMediaProfile) throws -> RenderedOfficialLabel {
         let x = profile.marginMm.left, y = profile.marginMm.top
@@ -238,9 +326,14 @@ enum LabelTemplateRenderer {
             ["type": "line", "x": x + w - 0.25, "y": y, "w": 0.25, "h": h]
         ]
         let text = "校准 中文 成品 纸板 × g/m²"
-        let lines = try wrapped(text, width: w - 2, fontMm: 3, maxLines: 4, field: "校准文字")
-        guard Double(lines.count) * 4.4 + 4 <= h else { throw LabelFailure("LAYOUT_OVERFLOW", "当前标签无法放下校准文字，请检查纸卷尺寸") }
-        for (index, line) in lines.enumerated() { elements.append(["type": "text", "x": x + 1, "y": y + 2 + Double(index) * 4.4, "w": w - 2, "h": 4.4, "fontMm": 3, "text": line]) }
+        let lines = try LabelTextRasterizer.wrapped(text, widthMm: w - 2, fontMm: 3, maxLines: 4, field: "校准文字")
+        let heights = lines.map { max(4.4, $0.heightMm) }
+        guard heights.reduce(0, +) + 4 <= h else { throw LabelFailure("LAYOUT_OVERFLOW", "当前标签无法放下校准文字，请检查纸卷尺寸") }
+        var textY = y + 2
+        for (line, height) in zip(lines, heights) {
+            elements.append(try LabelTextRasterizer.element(line, x: x + 1, y: textY, widthMm: w - 2, heightMm: height, field: "校准文字"))
+            textY += height
+        }
         return try render(profile, elements: elements, warnings: ["仅提交单张校准样张；请目视确认边界、中文、浓度和走纸，SDK 回调不代表实物完成"])
     }
 }

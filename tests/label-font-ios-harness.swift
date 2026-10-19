@@ -126,20 +126,77 @@ enum FontDiagnostic {
         return result
     }
 
-    static func attempt(_ name: String, action: () throws -> Void) -> [String: Any] {
+    static func bitmapEvidence(_ element: [String: Any], file: URL) throws -> [String: Any] {
+        guard let base64 = element["imageBase64"] as? String,
+              let data = Data(base64Encoded: base64), let image = UIImage(data: data)?.cgImage,
+              let context = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8,
+                bytesPerRow: image.width, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)
+        else { throw LabelFailure("TEST_INVALID_PNG", "Renderer did not return a decodable PNG") }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        guard let bytes = context.data?.assumingMemoryBound(to: UInt8.self) else {
+            throw LabelFailure("TEST_INVALID_PNG", "Cannot inspect raster pixels")
+        }
+        var ink = 0, edge = 0
+        for y in 0..<image.height {
+            for x in 0..<image.width where bytes[y * context.bytesPerRow + x] < 127 {
+                ink += 1
+                if x == 0 || y == 0 || x == image.width - 1 || y == image.height - 1 { edge += 1 }
+            }
+        }
+        try data.write(to: file, options: .atomic)
+        return ["png": file.lastPathComponent, "widthPx": image.width, "heightPx": image.height,
+                "bitsPerPixel": image.bitsPerPixel, "alphaInfo": image.alphaInfo.rawValue,
+                "grayscale": image.colorSpace?.model == .monochrome,
+                "inkPixelsBelow127": ink, "edgeInkPixelsBelow127": edge]
+    }
+
+    static func attempt(_ name: String, directory: URL, action: () throws -> Void) -> [String: Any] {
         let adapter = NIIMBOTSDKAdapter.shared()
         let before = adapter.calls
         adapter.elements = []
         do {
             try action()
+            let evidence = try adapter.elements.enumerated().map { index, element -> [String: Any] in
+                var result = element
+                if element["type"] as? String == "image" {
+                    result["imageBase64"] = nil
+                    result["bitmap"] = try bitmapEvidence(element, file: directory.appendingPathComponent("render-\(name)-\(index).png"))
+                }
+                return result
+            }
             return ["id": name, "outcome": "passed-font-and-layout-to-sdk-stub",
-                    "sdkStubCalls": adapter.calls - before, "elements": adapter.elements, "sdkVerified": false]
+                    "sdkStubCalls": adapter.calls - before, "elements": evidence, "sdkVerified": false]
         } catch let error as LabelFailure {
             return ["id": name, "outcome": "production-renderer-error", "errorCode": error.code,
                     "message": error.message, "sdkStubCalls": adapter.calls - before]
         } catch {
             return ["id": name, "outcome": "unexpected-error", "message": String(describing: error),
                     "sdkStubCalls": adapter.calls - before]
+        }
+    }
+
+    static func regression(_ item: [String: Any], directory: URL) -> [String: Any] {
+        let id = item["id"] as! String, text = item["text"] as! String
+        do {
+            let width = (item["widthMm"] as! NSNumber).doubleValue
+            let height = (item["heightMm"] as! NSNumber).doubleValue
+            let lines = try LabelTextRasterizer.wrapped(text, widthMm: width,
+                fontMm: (item["fontMm"] as! NSNumber).doubleValue, maxLines: 4, field: id)
+            var images: [[String: Any]] = []
+            for (index, line) in lines.enumerated() {
+                let element = try LabelTextRasterizer.element(line, x: 0, y: 0, widthMm: width,
+                    heightMm: max(height, line.heightMm), field: id)
+                var info = try bitmapEvidence(element, file: directory.appendingPathComponent("fixed-\(id)-\(index).png"))
+                info["sourceText"] = line.text
+                info["w"] = width
+                info["h"] = max(height, line.heightMm)
+                images.append(info)
+            }
+            return ["id": id, "text": text, "outcome": "rasterized", "bitmaps": images]
+        } catch let error as LabelFailure {
+            return ["id": id, "text": text, "outcome": "rejected", "errorCode": error.code, "message": error.message]
+        } catch {
+            return ["id": id, "outcome": "unexpected-error", "message": String(describing: error)]
         }
     }
 
@@ -152,7 +209,7 @@ enum FontDiagnostic {
             try fixtureData.write(to: directory.appendingPathComponent("fixtures.json"), options: .atomic)
             let texts = fixtures["textCases"] as! [[String: Any]]
             let profile = try LabelMediaProfile.parse(fixtures["screenshotProfile"] as! [String: Any])
-            var production = [attempt("calibration-original") { _ = try LabelTemplateRenderer.calibration(profile) }]
+            var production = [attempt("calibration-original", directory: directory) { _ = try LabelTemplateRenderer.calibration(profile) }]
             var snapshots: [[String: Any]] = []
             for item in fixtures["templateCases"] as! [[String: Any]] {
                 let snapshot = try LabelSnapshot.parse(kind: item["kind"] as! String,
@@ -160,16 +217,27 @@ enum FontDiagnostic {
                 snapshots.append(["id": item["id"]!, "fields": snapshot.fields.map {
                     ["field": $0.label, "text": $0.text, "fontMm": $0.fontMm, "maxLines": $0.maxLines] as [String: Any]
                 }])
-                production.append(attempt(item["id"] as! String) {
+                production.append(attempt(item["id"] as! String, directory: directory) {
                     _ = try LabelTemplateRenderer.label(snapshot, profile: profile)
                 })
+            }
+            var regressionCases = texts
+            regressionCases.append(["id": "long-wrapping", "text": String(repeating: "成品×²", count: 4),
+                "fontMm": 3, "widthMm": 20, "heightMm": 10])
+            regressionCases.append(["id": "default-ignorable", "text": "A\u{200D}B\u{FE0F} C", "fontMm": 3, "widthMm": 64, "heightMm": 10])
+            regressionCases.append(["id": "overflow-negative", "text": String(repeating: "纸板", count: 30),
+                "fontMm": 3, "widthMm": 10, "heightMm": 10])
+            let clipping = attempt("clipping-negative", directory: directory) {
+                let line = try LabelTextRasterizer.shape("校准×²", fontMm: 3, field: "clipping")
+                _ = try LabelTextRasterizer.element(line, x: 0, y: 0, widthMm: 64, heightMm: 0.5, field: "clipping")
             }
             let report: [String: Any] = [
                 "status": "completed", "runtimeVersion": UIDevice.current.systemVersion,
                 "scope": fixtures["evidenceScope"]!, "fixtures": fixtures,
                 "textResults": try texts.map { try diagnose($0, directory: directory) },
                 "productionAttempts": production, "parsedSnapshots": snapshots,
-                "interpretation": "Base font mapping false does not prove system fallback failure. Inspect full-line runs. Completed means diagnostics ran, not production printing passed."
+                "rendererRegressions": regressionCases.map { regression($0, directory: directory) }, "clippingNegative": clipping,
+                "interpretation": "CoreText regression uses the production rasterizer. SDK calls are a test double, not SDK preview or physical printing proof."
             ]
             try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
                 .write(to: directory.appendingPathComponent("report.json"), options: .atomic)

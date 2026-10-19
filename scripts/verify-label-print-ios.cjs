@@ -39,6 +39,12 @@ assert.match(adapter, /#if TARGET_OS_SIMULATOR[^#]+return NO;/, 'simulator expli
 assert.ok(adapter.includes('setPrintWithCache:NO'), 'cache disabled per job');
 assert.ok(adapter.includes('setTotalQuantityOfPrints:copies'), 'total set from frozen copies');
 assert.ok(adapter.includes('withOnePageNumbers:(int)copies'), 'commit uses frozen copies');
+assert.ok(adapter.includes('DrawLableImage:x') && adapter.includes('withImageProcessingType:1 withImageProcessingValue:127'), 'official SDK consumes text PNGs');
+assert.ok(adapter.includes('fontArray:@[]'), 'no SDK font lookup when text is rasterized');
+assert.ok(!adapter.includes('drawLableText:') && !adapter.includes('withFontFamily:'), 'no second font engine for shaped text');
+const renderer = read('ios/App/App/LabelTemplateRenderer.swift');
+assert.ok(renderer.includes('CTLineCreateWithAttributedString') && renderer.includes('CTLineDraw(line.shaped, context)'), 'same CoreText line shaped and drawn');
+assert.ok(!renderer.includes('CTFontGetGlyphsForCharacters'), 'single-font UTF-16 guard removed');
 const activeNames = [...sources.matchAll(/[/][*] ([^*]+) in Sources [*][/]/g)].map(match => match[1]);
 for (const name of activeNames) {
   if (name === 'NIIMBOTSDKAdapter.m') continue;
