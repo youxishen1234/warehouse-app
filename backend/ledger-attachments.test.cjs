@@ -76,6 +76,7 @@ test('ledger evidence persists original photos, retries safely, and travels with
       assert.equal(saved.size,originalCustomerImage.length+5,'the uploaded original bytes are retained without recompression');
       assert.equal(db.readCustomerAttachment(customer.id,saved.id).data,photo.data);
       assert.throws(()=>db.readCustomerAttachment(customer.id+100,saved.id),/客户不存在/);
+      assert.equal((await call('/backup', undefined, { headers: { Authorization: '' } })).status, 401, 'customer-only evidence requires the existing session');
       const exported=(await call('/backup')).data.data.data;assert.equal(exported.ledger_attachment_files[saved.sha256],photo.data);
       const restoredPath=path.join(dir,'restored-customer-photos.json');fs.writeFileSync(restoredPath,JSON.stringify(empty));
       fs.writeFileSync(path.join(dir,'customer-photo-bundle.json'),JSON.stringify(exported));

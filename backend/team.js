@@ -252,7 +252,8 @@ function install(db, options = {}) {
   });
   route('get', '/backup', (req, res) => {
     const snapshot = db.backupData();
-    if ((snapshot.ledger || []).some(entry => entry.attachments?.length)) requirePhotoSession(req);
+    if ((snapshot.ledger || []).some(entry => entry.attachments?.length)
+      || (snapshot.customers || []).some(customer => customer.customer_attachments?.length)) requirePhotoSession(req);
     streamJson(res, { success: true, data: { exportedAt: new Date().toISOString(), data: db.backupData({ includeAttachments: true, maxBytes: require('./backup-limits').BACKUP_MAX_BYTES }) } });
   });
   route('post', '/backup', (req, res) => { const key=req.get('Idempotency-Key'); const payload=req.body?.data || req.body; const result=db.transact(req.user,key,digest(JSON.stringify(payload)),req.get('If-Match'),'POST /backup',()=>db.restoreData(payload), { skipAccountingDelta: true }); res.set('X-Warehouse-Revision',String(result.revision)); ok(res,result.data); });
