@@ -8,6 +8,7 @@ on:
       - scripts/test-label-font-ios.py
       - tests/label-font-fixtures.json
       - tests/label-font-ios-harness.swift
+      - tests/test_label_calibration_validator.py
       - ios/App/App/LabelTemplateRenderer.swift
       - ios/App/App/NIIMBOTSDKAdapter.m
       - scripts/verify-label-print-ios.cjs
@@ -36,7 +37,9 @@ jobs:
           sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer
           xcodebuild -version
       - name: Validate test data
-        run: python3 scripts/test-label-font-ios.py --validate-fixtures
+        run: |
+          python3 scripts/test-label-font-ios.py --validate-fixtures
+          python3 -m unittest discover -s tests -p 'test_label_calibration_validator.py' -v
       - name: Verify official SDK and native integration
         run: |
           node scripts/verify-niimbot-sdk.cjs

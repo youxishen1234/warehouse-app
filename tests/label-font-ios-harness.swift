@@ -150,7 +150,135 @@ enum FontDiagnostic {
                 "inkPixelsBelow127": ink, "edgeInkPixelsBelow127": edge]
     }
 
-    static func attempt(_ name: String, directory: URL, action: () throws -> Void) -> [String: Any] {
+    // This reference deliberately never calls LabelTextRasterizer. It measures and
+    // draws the fixture with CoreText directly, then compares actual pixel masks.
+    // A calibration border alone must never count as proof that its text survived.
+    static func calibrationEvidence(_ element: [String: Any], name: String, text: String,
+                                    profile: LabelMediaProfile, directory: URL) throws -> [String: Any] {
+        let widthMm = profile.widthMm - profile.marginMm.left - profile.marginMm.right
+        let heightMm = profile.heightMm - profile.marginMm.top - profile.marginMm.bottom
+        let width = Int(ceil(widthMm * dpi / 25.4)), height = Int(ceil(heightMm * dpi / 25.4))
+        let boxWidth = widthMm * pointsPerMm, boxHeight = heightMm * pointsPerMm
+        let fontMm = min(4.0, max(2.2, heightMm / 12))
+        let padding = 2.0 * 72.0 / dpi
+        let excludedBorder = Int(ceil(dpi / 25.4)) + 2
+        guard let font = UIFont(name: "PingFangSC-Regular", size: fontMm * pointsPerMm),
+              let base64 = element["imageBase64"] as? String, let data = Data(base64Encoded: base64),
+              let actualImage = UIImage(data: data)?.cgImage,
+              actualImage.width == width, actualImage.height == height else {
+            throw LabelFailure("TEST_CALIBRATION_IMAGE", "Calibration must contain the full-size PNG")
+        }
+        func measured(_ value: String) -> (text: String, shaped: CTLine, bounds: CGRect) {
+            let shaped = line(value, font: font)
+            var ascent: CGFloat = 0, descent: CGFloat = 0, leading: CGFloat = 0
+            let advance = CTLineGetTypographicBounds(shaped, &ascent, &descent, &leading)
+            let ink = CTLineGetBoundsWithOptions(shaped, [.useGlyphPathBounds])
+            let minX = ink.isNull ? 0 : min(0, ink.minX)
+            let maxX = ink.isNull ? CGFloat(advance) : max(CGFloat(advance), ink.maxX)
+            let minY = ink.isNull ? -descent : min(-descent, ink.minY)
+            let maxY = ink.isNull ? ascent : max(ascent, ink.maxY)
+            return (value, shaped, CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY))
+        }
+        var lines: [(text: String, shaped: CTLine, bounds: CGRect)] = []
+        var current = ""
+        for character in text {
+            let candidate = measured(current + String(character))
+            if Double(candidate.bounds.width) + 2 * padding > (widthMm - 6) * pointsPerMm {
+                guard !current.isEmpty else { throw LabelFailure("TEST_CALIBRATION_LAYOUT", "Reference character overflows") }
+                lines.append(measured(current))
+                let next = measured(String(character))
+                guard Double(next.bounds.width) + 2 * padding <= (widthMm - 6) * pointsPerMm else {
+                    throw LabelFailure("TEST_CALIBRATION_LAYOUT", "Reference character overflows")
+                }
+                current = next.text
+            } else { current = candidate.text }
+        }
+        if !current.isEmpty { lines.append(measured(current)) }
+        let lineHeightMm = max(fontMm * 1.8, lines.map { (Double($0.bounds.height) + 2 * padding) / pointsPerMm }.max() ?? fontMm)
+        guard !lines.isEmpty, lines.count <= 4, lineHeightMm * Double(lines.count) + 8 <= heightMm else {
+            throw LabelFailure("TEST_CALIBRATION_LAYOUT", "Reference calibration text does not fit")
+        }
+        func context() throws -> CGContext {
+            guard let result = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
+                bytesPerRow: width, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue) else {
+                throw LabelFailure("TEST_CALIBRATION_IMAGE", "Reference bitmap allocation failed")
+            }
+            result.setFillColor(gray: 1, alpha: 1)
+            result.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            return result
+        }
+        func pixels(_ image: CGImage) throws -> [UInt8] {
+            let normalized = try context()
+            normalized.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            guard let bytes = normalized.data?.assumingMemoryBound(to: UInt8.self) else {
+                throw LabelFailure("TEST_CALIBRATION_IMAGE", "Reference bitmap bytes unavailable")
+            }
+            return (0..<(width * height)).map { bytes[($0 / width) * normalized.bytesPerRow + ($0 % width)] }
+        }
+        func draw(_ index: Int, into target: CGContext) {
+            let item = lines[index], lineHeight = lineHeightMm * pointsPerMm
+            target.saveGState()
+            target.scaleBy(x: CGFloat(width) / boxWidth, y: CGFloat(height) / boxHeight)
+            target.textMatrix = .identity
+            let bottom = boxHeight - 4 * pointsPerMm - Double(index + 1) * lineHeight
+            target.textPosition = CGPoint(x: 3 * pointsPerMm + padding - Double(item.bounds.minX),
+                y: bottom + (lineHeight - Double(item.bounds.height)) / 2 - Double(item.bounds.minY))
+            CTLineDraw(item.shaped, target)
+            target.restoreGState()
+        }
+        func bounds(_ indices: [Int]) -> [Int] {
+            guard !indices.isEmpty else { return [] }
+            let xs = indices.map { $0 % width }, ys = indices.map { $0 / width }
+            let minX = xs.min()!, minY = ys.min()!
+            return [minX, minY, xs.max()! - minX + 1, ys.max()! - minY + 1]
+        }
+        // Detecting a color-space loss separately from the required ink geometry.
+        let actual = try pixels(actualImage), reference = try context()
+        var lineEvidence: [[String: Any]] = []
+        for index in lines.indices {
+            draw(index, into: reference)
+            let singleLine = try context()
+            draw(index, into: singleLine)
+            guard let image = singleLine.makeImage() else {
+                throw LabelFailure("TEST_CALIBRATION_IMAGE", "Reference line image unavailable")
+            }
+            let values = try pixels(image)
+            let ink = values.indices.filter { values[$0] < 127 }
+            lineEvidence.append(["index": index, "text": lines[index].text, "expectedInkPixels": ink.count,
+                "expectedBoundsPx": bounds(ink), "missingInkPixels": ink.filter { actual[$0] >= 127 }.count])
+        }
+        guard let referenceImage = reference.makeImage(), let png = UIImage(cgImage: referenceImage).pngData() else {
+            throw LabelFailure("TEST_CALIBRATION_IMAGE", "Reference image encoding failed")
+        }
+        let referenceFile = "reference-calibration-layout-" + name + ".png"
+        try png.write(to: directory.appendingPathComponent(referenceFile), options: .atomic)
+        // Keep the unmodified production bitmap beside its reference so the
+        // artifact is independently inspectable rather than inferred from stats.
+        let actualFile = "render-calibration-" + name + ".png"
+        guard let actualData = element["imageBase64"] as? String, let decoded = Data(base64Encoded: actualData) else {
+            throw LabelFailure("TEST_CALIBRATION_IMAGE", "Calibration PNG evidence unavailable")
+        }
+        try decoded.write(to: directory.appendingPathComponent(actualFile), options: .atomic)
+        let expected = try pixels(referenceImage)
+        let expectedInk = expected.indices.filter { expected[$0] < 127 }
+        let actualInk = actual.indices.filter { index in
+            let x = index % width, y = index / width
+            return x >= excludedBorder && y >= excludedBorder && x < width - excludedBorder
+                && y < height - excludedBorder && actual[index] < 127
+        }
+        return ["schemaVersion": 1, "expectedText": text, "fontMm": fontMm, "dpi": dpi,
+            "widthPx": width, "heightPx": height, "excludedBorderPx": excludedBorder,
+            "referencePNG": referenceFile, "actualPNG": actualFile, "fitId": name,
+            "expectedInkPixels": expectedInk.count,
+            "actualInteriorInkPixels": actualInk.count, "expectedBoundsPx": bounds(expectedInk),
+            "actualBoundsPx": bounds(actualInk),
+            "missingInkPixels": expectedInk.filter { actual[$0] >= 127 }.count,
+            "extraInteriorInkPixels": actualInk.filter { expected[$0] >= 127 }.count, "lines": lineEvidence]
+    }
+
+    static func attempt(_ name: String, directory: URL,
+                        calibration: (profile: LabelMediaProfile, text: String)? = nil,
+                        action: () throws -> Void) -> [String: Any] {
         let adapter = NIIMBOTSDKAdapter.shared()
         let before = adapter.calls
         adapter.elements = []
@@ -164,8 +292,16 @@ enum FontDiagnostic {
                 }
                 return result
             }
-            return ["id": name, "outcome": "passed-font-and-layout-to-sdk-stub",
+            var result: [String: Any] = ["id": name, "outcome": "passed-font-and-layout-to-sdk-stub",
                     "sdkStubCalls": adapter.calls - before, "elements": evidence, "sdkVerified": false]
+            if let calibration = calibration {
+                guard adapter.elements.count == 1 else {
+                    throw LabelFailure("TEST_CALIBRATION_IMAGE", "Calibration must submit exactly one bitmap")
+                }
+                result["calibrationEvidence"] = try calibrationEvidence(adapter.elements[0], name: name, text: calibration.text,
+                    profile: calibration.profile, directory: directory)
+            }
+            return result
         } catch let error as LabelFailure {
             return ["id": name, "outcome": "production-renderer-error", "errorCode": error.code,
                     "message": error.message, "sdkStubCalls": adapter.calls - before]
@@ -209,7 +345,19 @@ enum FontDiagnostic {
             try fixtureData.write(to: directory.appendingPathComponent("fixtures.json"), options: .atomic)
             let texts = fixtures["textCases"] as! [[String: Any]]
             let profile = try LabelMediaProfile.parse(fixtures["screenshotProfile"] as! [String: Any])
-            var production = [attempt("calibration-original", directory: directory) { _ = try LabelTemplateRenderer.calibration(profile) }]
+            var production = [attempt("calibration-original", directory: directory,
+                calibration: (profile: profile, text: fixtures["calibrationOriginalText"] as! String)) {
+                _ = try LabelTemplateRenderer.calibration(profile)
+            }]
+            var wrappedProfileData = fixtures["screenshotProfile"] as! [String: Any]
+            wrappedProfileData["profileId"] = "FONT-DIAGNOSTIC-WRAPPED-40X100"
+            wrappedProfileData["widthMm"] = 40
+            let wrappedProfile = try LabelMediaProfile.parse(wrappedProfileData)
+            var wrappedCalibration = attempt("calibration-wrapped", directory: directory,
+                calibration: (profile: wrappedProfile, text: fixtures["calibrationOriginalText"] as! String)) {
+                _ = try LabelTemplateRenderer.calibration(wrappedProfile)
+            }
+            wrappedCalibration["profile"] = wrappedProfile.json
             var snapshots: [[String: Any]] = []
             for item in fixtures["templateCases"] as! [[String: Any]] {
                 let snapshot = try LabelSnapshot.parse(kind: item["kind"] as! String,
@@ -236,6 +384,7 @@ enum FontDiagnostic {
                 "scope": fixtures["evidenceScope"]!, "fixtures": fixtures,
                 "textResults": try texts.map { try diagnose($0, directory: directory) },
                 "productionAttempts": production, "parsedSnapshots": snapshots,
+                "calibrationRegressions": [wrappedCalibration],
                 "rendererRegressions": regressionCases.map { regression($0, directory: directory) }, "clippingNegative": clipping,
                 "interpretation": "CoreText regression uses the production rasterizer. SDK calls are a test double, not SDK preview or physical printing proof."
             ]

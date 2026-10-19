@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import math
 import os
 import pathlib
 import platform
@@ -41,6 +42,58 @@ def validate_fixtures(fixtures):
     return fixtures
 
 
+def validate_calibration_evidence(evidence, element, text, profile):
+    """Require visible full-size text independently of the calibration border."""
+    assert evidence["schemaVersion"] == 1
+    assert element["sourceText"] == text == evidence["expectedText"], "Calibration text was changed or omitted"
+    width = profile["widthMm"] - profile["marginMm"]["left"] - profile["marginMm"]["right"]
+    height = profile["heightMm"] - profile["marginMm"]["top"] - profile["marginMm"]["bottom"]
+    width_px, height_px = math.ceil(width * 300 / 25.4), math.ceil(height * 300 / 25.4)
+    assert element["type"] == "image" and element["sourceField"] == "校准样张"
+    assert element["x"] == profile["marginMm"]["left"] and element["y"] == profile["marginMm"]["top"]
+    assert element["w"] == width and element["h"] == height
+    assert evidence["widthPx"] == width_px and evidence["heightPx"] == height_px
+    assert evidence["dpi"] == 300 and evidence["fontMm"] == min(4.0, max(2.2, height / 12))
+    assert evidence["excludedBorderPx"] == math.ceil(300 / 25.4) + 2
+    assert evidence["referencePNG"].startswith("reference-calibration-layout-")
+    assert evidence["referencePNG"].endswith(".png")
+    assert evidence["actualPNG"] == "render-calibration-" + evidence["fitId"] + ".png"
+    expected, actual = evidence["expectedInkPixels"], evidence["actualInteriorInkPixels"]
+    assert isinstance(expected, int) and expected > 0, "Independent calibration reference is blank"
+    assert isinstance(actual, int) and actual > 0, "Calibration contains only its border, not text"
+    # Two per cent allows threshold-level antialiasing variation, not scaled,
+    # displaced, clipped or missing text. Each actual pixel is compared against
+    # an independently drawn CoreText reference in the native harness.
+    tolerance = max(2, math.ceil(expected * 0.02))
+    assert abs(actual - expected) <= tolerance, "Calibration text ink area changed (size or clipping)"
+    assert 0 <= evidence["missingInkPixels"] <= tolerance, "Calibration text is missing, clipped, or misplaced"
+    assert 0 <= evidence["extraInteriorInkPixels"] <= tolerance, "Calibration text is scaled or misplaced"
+    expected_box, actual_box = evidence["expectedBoundsPx"], evidence["actualBoundsPx"]
+    assert len(expected_box) == len(actual_box) == 4
+    assert all(isinstance(value, int) for value in expected_box + actual_box)
+    assert expected_box[2] > 0 and expected_box[3] > 0
+    inset = evidence["excludedBorderPx"]
+    assert actual_box[0] >= inset and actual_box[1] >= inset
+    assert actual_box[0] + actual_box[2] <= width_px - inset
+    assert actual_box[1] + actual_box[3] <= height_px - inset
+    assert expected_box[0] >= inset and expected_box[1] >= inset
+    assert expected_box[0] + expected_box[2] <= width_px - inset
+    assert expected_box[1] + expected_box[3] <= height_px - inset
+    assert all(abs(a - b) <= 2 for a, b in zip(actual_box, expected_box)), "Calibration text bounds differ from physical layout"
+    lines = evidence["lines"]
+    assert 1 <= len(lines) <= 4 and "".join(line["text"] for line in lines) == text
+    assert sum(line["expectedInkPixels"] for line in lines) == expected
+    for index, line in enumerate(lines):
+        assert line["index"] == index and line["text"]
+        line_box = line["expectedBoundsPx"]
+        assert line["expectedInkPixels"] > 0 and len(line_box) == 4
+        assert line_box[2] > 0 and line_box[3] > 0
+        assert line_box[0] >= inset and line_box[1] >= inset
+        assert line_box[0] + line_box[2] <= width_px - inset
+        assert line_box[1] + line_box[3] <= height_px - inset
+        assert 0 <= line["missingInkPixels"] <= max(2, math.ceil(line["expectedInkPixels"] * 0.02)), "A calibration text line is missing or clipped"
+
+
 def validate_report(report, fixtures):
     assert report["status"] == "completed", report
     results = {x["id"]: x for x in report["textResults"]}
@@ -63,7 +116,6 @@ def validate_report(report, fixtures):
     original = results["calibration-original"]
     calibration = attempts["calibration-original"]
     def validate_bitmap(bitmap, width, height, invisible=False, allow_border=False):
-        import math
         assert bitmap["widthPx"] == math.ceil(width * 300 / 25.4)
         assert bitmap["heightPx"] == math.ceil(height * 300 / 25.4)
         assert bitmap["grayscale"] and bitmap["alphaInfo"] == 0 and bitmap["bitsPerPixel"] == 8
@@ -84,6 +136,18 @@ def validate_report(report, fixtures):
                                 allow_border=attempt["id"] == "calibration-original")
     assert len(calibration["elements"]) == 1 and calibration["elements"][0]["type"] == "image"
     assert calibration["elements"][0]["sourceField"] == "校准样张"
+    validate_calibration_evidence(calibration["calibrationEvidence"], calibration["elements"][0],
+                                  fixtures["calibrationOriginalText"], fixtures["screenshotProfile"])
+    calibration_regressions = {item["id"]: item for item in report["calibrationRegressions"]}
+    assert set(calibration_regressions) == {"calibration-wrapped"}
+    for item in calibration_regressions.values():
+        assert item["outcome"] == "passed-font-and-layout-to-sdk-stub" and item["sdkStubCalls"] == 1, item
+        assert len(item["elements"]) == 1
+        element = item["elements"][0]
+        validate_bitmap(element["bitmap"], element["w"], element["h"], allow_border=True)
+        validate_calibration_evidence(item["calibrationEvidence"], element,
+                                      fixtures["calibrationOriginalText"], item["profile"])
+        assert len(item["calibrationEvidence"]["lines"]) > 1, "Narrow calibration must exercise wrapping"
     for case in fixtures["templateCases"]:
         text = "\n".join(x["text"] for x in snapshots[case["id"]]["fields"])
         assert all(token in text for token in case["expectedTextTokens"]), "Parsed snapshot dropped fixture data"
@@ -110,6 +174,7 @@ def validate_report(report, fixtures):
         "status": "renderer-regressions-passed-sdk-and-paper-not-tested",
         "nativeTextCases": len(results),
         "productionRendererAttempts": len(attempts),
+        "calibrationLayoutRegressions": 1 + len(calibration_regressions),
         "rendererRegressions": len(regressions),
         "calibrationResult": {key: calibration[key] for key in ("id", "outcome", "sdkStubCalls")},
         "templateResults": [{key: x[key] for key in ("id", "outcome", "sdkStubCalls")} for x in attempts.values()],
@@ -232,12 +297,18 @@ def main():
             for result in report["rendererRegressions"]:
                 for bitmap in result.get("bitmaps", []):
                     assert (output / bitmap["png"]).is_file()
+            calibration_attempts = [report["productionAttempts"][0]] + report["calibrationRegressions"]
+            for attempt in calibration_attempts:
+                assert (output / attempt["calibrationEvidence"]["referencePNG"]).is_file()
+                assert (output / attempt["calibrationEvidence"]["actualPNG"]).is_file()
+                for element in attempt["elements"]:
+                    assert (output / element["bitmap"]["png"]).is_file()
             (output / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
             metadata["status"] = summary["status"]
             print(json.dumps(summary, ensure_ascii=False, indent=2))
             summary_file = pathlib.Path(os.environ.get("GITHUB_STEP_SUMMARY", output / "summary.md"))
             with summary_file.open("a", encoding="utf-8") as handle:
-                handle.write("## K3 Font Regression\n\n12 native diagnostic cases, 15 rasterizer regressions and 3 production renderer attempts passed.\n\n")
+                handle.write("## K3 Font Regression\n\n12 native diagnostic cases, 15 rasterizer regressions, 3 production renderer attempts and 2 independent calibration layout checks passed.\n\n")
                 for attempt in report["productionAttempts"]:
                     handle.write("- " + attempt["id"] + ": " + attempt.get("errorCode", attempt["outcome"])
                                  + "; SDK stub calls: " + str(attempt["sdkStubCalls"]) + "\n")

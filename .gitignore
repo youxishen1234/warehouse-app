@@ -10,6 +10,7 @@ android/local.properties
 .DS_Store
 /release/
 /dist/
+__pycache__/
 /.swc/
 /test-results/
 /backend/data.json
