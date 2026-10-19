@@ -6,9 +6,9 @@ const sass = require('sass');
 
 module.exports = function sourcePreview(db) {
   const app = require('express')();
-  const cssPath = path.resolve('src/pages/print-center/index.module.scss');
-  const css = sass.compile(cssPath).css;
-  const classes = Object.fromEntries([...css.matchAll(/\.([A-Za-z][\w-]*)/g)].map(match => [match[1], match[1]]));
+  let css = '';
+  const classes = {};
+  const compiledStyles = new Set();
   const modules = new Map();
   const externals = new Set(['react', 'react-dom', 'react/jsx-runtime', '@tarojs/taro']);
   function visit(file) {
@@ -20,7 +20,20 @@ module.exports = function sourcePreview(db) {
       const name = match[1];
       if (externals.has(name)) { deps[name] = name; continue; }
       const raw = name.startsWith('@/') ? path.resolve('src', name.slice(2)) : path.resolve(path.dirname(file), name);
-      if (raw.endsWith('.scss')) { deps[name] = 'style'; continue; }
+      if (raw.endsWith('.scss')) {
+        if (!compiledStyles.has(raw)) {
+          compiledStyles.add(raw);
+          const moduleCss = sass.compile(raw).css;
+          const prefix = `preview${compiledStyles.size}_`;
+          const scopedClasses = {};
+          css += moduleCss.replace(/\.([A-Za-z][\w-]*)/g, (_, className) => {
+            scopedClasses[className] = prefix + className;
+            return '.' + prefix + className;
+          });
+          modules.set(raw, { source: 'module.exports = ' + JSON.stringify(scopedClasses), deps: {} });
+        }
+        deps[name] = raw; continue;
+      }
       const dependency = [raw, raw + '.ts', raw + '.tsx', raw + '.js', path.join(raw, 'index.ts')].find(candidate => fs.existsSync(candidate) && fs.statSync(candidate).isFile());
       if (!dependency) throw new Error('Unknown preview import: ' + name);
       deps[name] = dependency; visit(dependency);

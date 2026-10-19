@@ -13,6 +13,9 @@ import { blankItem, draftFromTransactions, draftTotal, newNote, normalizeSpecifi
 import type { ItemDraft, NoteDraft } from './model';
 import { formatSpecificationInput } from './specification-input';
 import PrintPreview from './preview';
+import SpecificationPicker from './specification-picker';
+import { addSpecificationOptions, buildSpecificationOptions } from './specification-library';
+import type { SpecificationOption } from './specification-library';
 import { getRemotePrintHistory, readPrintPair } from '@/services/remote-print';
 import styles from './index.module.scss';
 
@@ -37,6 +40,7 @@ export default function PrintCenterPage() {
   const [shipBusy, setShipBusy] = useState(false);
   const errorBox = useRef<HTMLDivElement>(null);
   const [customerOpen, setCustomerOpen] = useState(false);
+  const [specificationOpen, setSpecificationOpen] = useState(false);
   const [customerQuery, setCustomerQuery] = useState('');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customerLoading, setCustomerLoading] = useState(false);
@@ -54,7 +58,15 @@ export default function PrintCenterPage() {
   const pendingNavigation = useRef<(() => void) | null>(null);
 
   const change = (patch: Partial<NoteDraft>) => { setDraft(previous => ({ ...previous, ...patch })); setDirty(true); setError(''); setNotice(''); };
-  const changeItem = (key: string, patch: Partial<ItemDraft>) => { setDraft(previous => ({ ...previous, items: previous.items.map(item => item.key === key ? { ...item, ...patch } : item) })); setDirty(true); setError(''); setNotice(''); };
+  const changeItem = (key: string, patch: Partial<ItemDraft>) => {
+    setDraft(previous => ({ ...previous, items: previous.items.map(item => {
+      if (item.key !== key) return item;
+      const identityChanged = (patch.name !== undefined && patch.name !== item.name)
+        || (patch.specification !== undefined && normalizeSpecification(patch.specification) !== normalizeSpecification(item.specification));
+      return { ...item, ...patch, product_id: identityChanged ? null : item.product_id };
+    }) }));
+    setDirty(true); setError(''); setNotice('');
+  };
   const guard = (action: () => void) => {
     if (busyRef.current) return;
     if (!dirty) { action(); return; }
@@ -159,6 +171,15 @@ export default function PrintCenterPage() {
     setDraft(previous => selectCustomer(previous, customer)); setChosenCustomer(customer); setCustomerOpen(false); setDirty(true); setError(''); setNotice('');
   };
   const addItem = (item = blankItem()) => { if (draft.items.length < 200) change({ items: [...draft.items, item] }); };
+  const addSpecifications = (options: SpecificationOption[]) => {
+    if (busyRef.current) return;
+    try {
+      const result = addSpecificationOptions(draft.items, options, blankItem);
+      if (!result.added) { setNotice('所选规格已在单据中，无需重复添加'); return; }
+      change({ items: result.items });
+      setNotice(`已添加 ${result.added} 项规格，请填写数量并核对单价`);
+    } catch (issue) { setError(messageOf(issue)); }
+  };
   const amount = draftTotal(draft);
   const input = (key: keyof Omit<NoteDraft, 'items' | 'customer_id' | 'paper'>, label: string, limit: number, type = 'text') => <label className={styles.field}>{label}{type === 'date' ? <span className={styles.dateControl}><span aria-hidden='true'>{draft[key].replace(/-/g, '/')}</span><input aria-label={label} type='date' value={draft[key]} onChange={event => change({ [key]: event.target.value })} /></span> : <input aria-label={label} type={type} value={draft[key]} maxLength={limit} onChange={event => change({ [key]: event.target.value })} />}</label>;
 
@@ -189,7 +210,8 @@ export default function PrintCenterPage() {
           </section>
           <section className={styles.card}><div className={styles.sectionHeading}><h2>货物明细</h2><span>单位：个</span></div>
             <div className={styles.specMode} role='group' aria-label='规格自动乘号'><span>自动 ×</span>{([2, 3] as const).map(digits => <button key={digits} type='button' aria-pressed={specDigits === digits} onClick={() => { setSpecDigits(digits); Taro.setStorageSync('print_spec_digits', digits); }}>{digits === 2 ? '两位数' : '三位数'}</button>)}</div>
-            {!!chosenCustomer?.specs?.length && <label className={styles.field}>客户常用规格<select aria-label='选择客户常用规格' value='' onChange={event => { const spec = chosenCustomer.specs?.find(row => row.id === event.target.value); if (!spec) return; const item = { ...blankItem(), name: spec.goods, specification: normalizeSpecification(spec.specification), price: String(spec.price) }; if (draft.items.length === 1 && !draft.items[0].name && !draft.items[0].quantity && !draft.items[0].specification) change({ items: [item] }); else addItem(item); }}><option value=''>选择规格，自动填入商品和单价</option>{chosenCustomer.specs.map(spec => <option key={spec.id} value={spec.id}>{spec.goods} · {normalizeSpecification(spec.specification)}</option>)}</select></label>}
+            <button type='button' className={styles.addButton} onClick={() => setSpecificationOpen(true)}>搜索 / 添加规格</button>
+            {!!chosenCustomer?.specs?.length && <label className={styles.field}>客户常用规格<select aria-label='选择客户常用规格' value='' onChange={event => { const spec = chosenCustomer.specs?.find(row => row.id === event.target.value); if (!spec) return; addSpecifications(buildSpecificationOptions([{ ...chosenCustomer, specs: [spec] }], [])); }}><option value=''>选择规格，自动填入商品和单价</option>{chosenCustomer.specs.filter(spec => (spec.unit || '个') === '个').map(spec => <option key={spec.id} value={spec.id}>{spec.goods} · {normalizeSpecification(spec.specification)}</option>)}</select></label>}
             <div className={styles.items}>{draft.items.map((item, index) => <article className={styles.item} key={item.key}>
               <div className={styles.itemHeading}><span>货物 {String(index + 1).padStart(2, '0')}</span><button type='button' className={styles.removeButton} aria-label={`删除第${index + 1}项`} disabled={draft.items.length === 1} onClick={() => change({ items: draft.items.filter(row => row.key !== item.key) })}>删除</button></div>
               <div className={styles.grid}><label className={styles.field}>产品名称（选填）<input aria-label={`第${index + 1}项产品名称`} placeholder='可留空' value={item.name} maxLength={100} onChange={event => changeItem(item.key, { name: event.target.value })} /></label><label className={styles.field}>规格尺寸<input aria-label={`第${index + 1}项规格尺寸`} placeholder={specDigits === 2 ? '40×30×20' : '400×300×200'} value={item.specification} maxLength={100} onChange={event => changeItem(item.key, { specification: formatSpecificationInput(event.target.value, item.specification, specDigits) })} /></label><label className={styles.field}>数量（个）<input aria-label={`第${index + 1}项数量`} inputMode='decimal' placeholder='填写数量' value={item.quantity} maxLength={18} onChange={event => changeItem(item.key, { quantity: event.target.value })} /></label><label className={styles.field}>单价（元）<input aria-label={`第${index + 1}项单价`} inputMode='decimal' placeholder='0.00' value={item.price} maxLength={18} onChange={event => changeItem(item.key, { price: event.target.value })} /></label></div>
@@ -202,6 +224,7 @@ export default function PrintCenterPage() {
         <footer className={styles.actions}><button type='button' className={styles.secondary} disabled={busy || (!!saved && !dirty)} onClick={() => void save()}>{busy ? '保存中…' : saved && !dirty ? '已保存' : '保存单据'}</button><button type='button' className={styles.primary} disabled={busy} onClick={showPreview}>预览打印</button></footer>
       </>}
     </div>
+    {specificationOpen && <SpecificationPicker customerId={draft.customer_id} customerName={draft.customer_name} items={draft.items} onAdd={addSpecifications} onClose={() => setSpecificationOpen(false)} />}
     {customerOpen && <div className={styles.backdrop} onClick={() => setCustomerOpen(false)}><section role='dialog' aria-modal='true' aria-label='搜索客户' className={styles.dialog} onClick={event => event.stopPropagation()}><div className={styles.sectionHeading}><h2>选择客户</h2><button type='button' className={styles.textButton} onClick={() => setCustomerOpen(false)}>关闭</button></div><input autoFocus type='search' aria-label='搜索客户名称或电话' placeholder='客户名称 / 联系人 / 电话' value={customerQuery} onChange={event => setCustomerQuery(event.target.value)} /><div className={styles.customerResults}>{customerLoading ? <p className={styles.muted}>正在查找…</p> : customerError ? <div className={styles.error} role='alert'>{customerError}<button type='button' onClick={() => setCustomerRetry(value => value + 1)}>重试</button></div> : customers.length ? customers.map(customer => <button type='button' className={styles.customer} key={customer.id} onClick={() => chooseCustomer(customer)}><strong>{customer.name}</strong><span>{[customer.contact, customer.phone].filter(Boolean).join(' · ') || '暂无联系人'}</span>{customer.address && <small>{customer.address}</small>}</button>) : <p className={styles.muted}>没有找到客户，可关闭后直接填写收货单位</p>}</div></section></div>}
     {confirmDiscard && <div className={styles.backdrop}><section role='dialog' aria-modal='true' aria-label='保留未保存内容' className={styles.dialog}><h2>当前内容还没有保存</h2><p>离开后，本次修改将不会保留。</p><div className={styles.confirmActions}><button type='button' className={styles.secondary} onClick={() => { setConfirmDiscard(false); pendingNavigation.current = null; }}>继续编辑</button><button type='button' className={styles.primary} onClick={() => { const action = pendingNavigation.current; pendingNavigation.current = null; setConfirmDiscard(false); action?.(); }}>放弃并继续</button></div></section></div>}
     {preview && <PrintPreview note={preview} saved={saved} onClose={() => setPreview(undefined)} />}
