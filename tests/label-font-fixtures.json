@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "fixtureSet": "k3-font-diagnostic-20261019",
+  "testOnly": true,
+  "evidenceScope": "Production Swift renderer with an SDK test double; UIKit/CoreText reference images, not Bluetooth or physical printing.",
+  "screenshotProfile": {
+    "profileId": "FONT-DIAGNOSTIC-70X100",
+    "printerName": "K3-I911020404",
+    "widthMm": 70,
+    "heightMm": 100,
+    "paperStyle": "gap",
+    "density": 3,
+    "marginMm": { "top": 5, "right": 3, "bottom": 5, "left": 3 },
+    "calibrated": false
+  },
+  "calibrationOriginalText": "校准 中文 成品 纸板 × g/m²",
+  "textCases": [
+    { "id": "calibration-original", "text": "校准 中文 成品 纸板 × g/m²", "fontMm": 3, "widthMm": 62, "heightMm": 4.4 },
+    { "id": "ascii", "text": "K3 TEST 0123456789", "fontMm": 3, "widthMm": 64, "heightMm": 10 },
+    { "id": "space-only", "text": " ", "fontMm": 3, "widthMm": 20, "heightMm": 10, "invisible": true },
+    { "id": "chinese", "text": "成品标签 纸板批次 校准测试", "fontMm": 3, "widthMm": 64, "heightMm": 10 },
+    { "id": "multiplication-sign", "text": "70 × 100 mm", "fontMm": 3, "widthMm": 64, "heightMm": 10 },
+    { "id": "superscript-two", "text": "面纸 250 g/m²", "fontMm": 3, "widthMm": 64, "heightMm": 10 },
+    { "id": "fullwidth-punctuation", "text": "规格：70×100；批次（测试）", "fontMm": 3, "widthMm": 64, "heightMm": 10 },
+    { "id": "combining-marks", "text": "Cafe\u0301 / A\u030a", "fontMm": 3, "widthMm": 64, "heightMm": 10 },
+    { "id": "supplementary-cjk", "text": "\ud842\udfb7", "fontMm": 3, "widthMm": 20, "heightMm": 10 },
+    { "id": "color-emoji", "text": "\ud83d\udce6", "fontMm": 3, "widthMm": 20, "heightMm": 10 },
+    { "id": "unassigned-negative", "text": "\u0378", "fontMm": 3, "widthMm": 20, "heightMm": 10, "negative": true },
+    { "id": "noncharacter-negative", "text": "\udbff\udfff", "fontMm": 3, "widthMm": 20, "heightMm": 10, "negative": true }
+  ],
+  "templateCases": [
+    {
+      "id": "finished-product-test-990001",
+      "kind": "finished-product",
+      "templateVersion": 1,
+      "data": {
+        "productId": 990001,
+        "name": "测试成品纸箱",
+        "specification": "40 × 30 × 20 cm",
+        "unit": "个",
+        "weight": 250,
+        "stockSnapshot": 10,
+        "productUrl": "https://youxishen.online/#/pages/label-resolver/index?v=1&kind=finished-product&id=990001"
+      },
+      "expectedTextTokens": ["测试成品纸箱", "40 × 30 × 20 cm", "250 g/m²", "10 个"]
+    },
+    {
+      "id": "paperboard-test-20261019",
+      "kind": "paperboard-batch",
+      "templateVersion": 1,
+      "data": {
+        "batchId": "BOARD-20261019-A1B2C3D4E5F6",
+        "boardLength": 120,
+        "boardWidth": 80,
+        "fluteType": "B楞",
+        "supplier": "测试板厂",
+        "faceGsm": 250,
+        "batchUrl": "https://youxishen.online/#/pages/label-resolver/index?v=1&kind=paperboard-batch&id=BOARD-20261019-A1B2C3D4E5F6"
+      },
+      "expectedTextTokens": ["120 × 80 cm", "B楞", "测试板厂", "250 g/m²"]
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+name: Diagnose K3 Native Label Fonts
+
+on:
+  push:
+    branches: [diag/k3-font-20261019]
+    paths:
+      - .github/workflows/diagnose-label-font-ios.yml
+      - scripts/test-label-font-ios.py
+      - tests/label-font-fixtures.json
+      - tests/label-font-ios-harness.swift
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: label-font-diagnostics-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  diagnostic:
+    runs-on: macos-15
+    timeout-minutes: 40
+    env:
+      LABEL_FONT_OUTPUT_DIR: ${{ github.workspace }}/release/label-font-ios
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Select Xcode 26.2
+        run: |
+          test -d /Applications/Xcode_26.2.app
+          sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer
+          xcodebuild -version
+      - name: Validate test data
+        run: python3 scripts/test-label-font-ios.py --validate-fixtures
+      - name: Compile production renderer and diagnose real iOS fonts
+        run: python3 scripts/test-label-font-ios.py
+      - name: Upload test data and native diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k3-font-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release/label-font-ios/
+          if-no-files-found: error
+          retention-days: 14
