@@ -121,6 +121,11 @@ jobs:
         env:
           BUSINESS_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
         run: node tests/business-center-browser.cjs
+      - name: Validate daily backup page against the built H5 bundle
+        env:
+          DAILY_BACKUP_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          DAILY_BACKUP_BROWSER_OUTPUT: release/daily-backup-ui-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/daily-backup-built-browser.cjs
       - name: Run complete backend test suite
         run: node --test backend/*.test.cjs
       - name: Publish through shared server lock and stale-source gate
