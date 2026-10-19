@@ -51,8 +51,7 @@ async function streamCsv(res, headings, rows, toCells) {
 async function streamJson(res, value) {
   res.type('application/json');
   const write = async chunk => {
-    if (res.write(chunk)) return;
-    await new Promise(resolve => res.once('drain', resolve));
+    if (!res.write(chunk)) await new Promise(resolve => res.once('drain', resolve));
   };
   const emit = async input => {
     if (input === null || typeof input !== 'object') return write(JSON.stringify(input));
@@ -248,7 +247,7 @@ function install(db, options = {}) {
   });
   route('get', '/backup/daily/latest', async (req, res) => {
     requirePhotoSession(req);
-    await streamJson(res, { success: true, data: await dailyBackup.latest() });
+    await dailyBackup.streamLatest(res);
   });
   route('get', '/backup', (req, res) => {
     const snapshot = db.backupData();
