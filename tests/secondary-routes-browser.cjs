@@ -7,7 +7,7 @@ const { chromium, webkit } = require('@playwright/test');
 const root = path.resolve(process.env.SECONDARY_WEB_DIR || 'dist');
 const routes = [
   'home', 'inventory', 'products', 'records', 'ledger', 'orders',
-  'carton-calculator', 'team', 'suppliers', 'product-edit', 'customers',
+  'carton-calculator', 'team', 'suppliers', 'customers',
   'customer-edit', 'custom-copy', 'backup', 'print-center'
 ];
 
@@ -42,7 +42,7 @@ async function main() {
       });
       await page.route('**/*', async route => {
         const url = new URL(route.request().url());
-        if (url.origin.startsWith('http://127.0.0.1') || ['data:', 'blob:'].includes(url.protocol)) return route.continue();
+        if (url.origin === `http://127.0.0.1:${server.address().port}` || ['data:', 'blob:'].includes(url.protocol)) return route.continue();
         if (url.pathname.startsWith('/api/')) {
           const data = url.pathname.endsWith('/auth/guest')
             ? { token: 'secondary-route-test', user: { id: 'guest', role: 'operator' } }
@@ -52,7 +52,7 @@ async function main() {
         return route.abort();
       });
       await page.goto(`http://127.0.0.1:${server.address().port}/#/pages/${routeName}/index`);
-      await page.waitForSelector('.taro_page', { timeout: 10000 });
+      await page.locator('.taro_page').first().waitFor({ state: 'attached', timeout: 10000 });
       await page.waitForTimeout(400);
       report[routeName] = [...new Set(scripts)];
       assert.deepEqual(pageErrors, [], `${routeName} page errors: ${pageErrors.join('; ')}`);

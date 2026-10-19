@@ -42,9 +42,15 @@ assert.ok(adapter.includes('withOnePageNumbers:(int)copies'), 'commit uses froze
 assert.ok(adapter.includes('DrawLableImage:x') && adapter.includes('withImageProcessingType:1 withImageProcessingValue:127'), 'official SDK consumes text PNGs');
 assert.ok(adapter.includes('fontArray:@[]'), 'no SDK font lookup when text is rasterized');
 assert.ok(!adapter.includes('drawLableText:') && !adapter.includes('withFontFamily:'), 'no second font engine for shaped text');
+for (const code of ['DRAWING_ELEMENT_INVALID', 'DRAWING_IMAGE_DATA_MISSING', 'DRAWING_IMAGE_REJECTED', 'DRAWING_QR_DATA_MISSING', 'DRAWING_QR_REJECTED', 'DRAWING_LINE_REJECTED', 'SDK_JSON_EMPTY']) {
+  assert.ok(adapter.includes(code), 'specific drawing error remains observable: ' + code);
+}
+assert.ok(!adapter.includes('@"DRAWING_FAILED"'), 'generic drawing failures are removed');
 const renderer = read('ios/App/App/LabelTemplateRenderer.swift');
 assert.ok(renderer.includes('CTLineCreateWithAttributedString') && renderer.includes('CTLineDraw(line.shaped, context)'), 'same CoreText line shaped and drawn');
 assert.ok(!renderer.includes('CTFontGetGlyphsForCharacters'), 'single-font UTF-16 guard removed');
+assert.ok(renderer.includes('context.stroke(CGRect('), 'calibration border is rasterized into one bitmap');
+assert.ok(!renderer.includes('"type": "line"'), 'calibration no longer draws SDK line primitives');
 const activeNames = [...sources.matchAll(/[/][*] ([^*]+) in Sources [*][/]/g)].map(match => match[1]);
 for (const name of activeNames) {
   if (name === 'NIIMBOTSDKAdapter.m') continue;
@@ -55,6 +61,9 @@ const plugin = read('ios/App/App/OfficialLabelPrinterPlugin.swift');
 assert.match(plugin, /jsName *= *"OfficialLabelPrinter"/, 'Capacitor contract');
 assert.match(plugin, /productionEnabled *= *false/, 'production gate stays closed until K3 acceptance');
 assert.ok(plugin.includes('PRODUCTION_NOT_ACCEPTED'), 'stable closed-gate error');
+for (const legacy of ['NiimbotOfficialPrinterPlugin.swift', 'SGNiimbotSDK.h', 'SGNiimbotSDK.mm']) {
+  assert.ok(!fs.existsSync(path.join(root, 'ios/App/App', legacy)), 'legacy printer source is removed: ' + legacy);
+}
 const info = read('ios/App/App/Info.plist');
 for (const key of ['NSBluetoothAlwaysUsageDescription', 'NSBluetoothPeripheralUsageDescription']) {
   assert.ok(info.includes('<key>' + key + '</key>'), 'Bluetooth explanation: ' + key);

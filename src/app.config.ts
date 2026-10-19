@@ -21,7 +21,6 @@ export default defineAppConfig({
     'pages/orders/index',
     'pages/team/index',
     'pages/suppliers/index',
-    'pages/product-edit/index',
     'pages/customers/index',
     'pages/customer-edit/index'
     ,'pages/custom-copy/index'

@@ -136,33 +136,53 @@
         if (error) return @{@"errorCode": @"FONT_INITIALIZATION_FAILED", @"message": @"官方绘图库字体初始化失败"};
         [JCAPI initDrawingBoard:(float)width withHeight:(float)height withHorizontalShift:0
              withVerticalShift:0 rotate:0 fontArray:@[]];
+        NSUInteger index = 0;
         for (NSDictionary *element in elements) {
             float x = [element[@"x"] floatValue], y = [element[@"y"] floatValue];
             float w = [element[@"w"] floatValue], h = [element[@"h"] floatValue];
-            BOOL drawn = NO;
             NSString *type = element[@"type"];
+            NSString *field = [element[@"sourceField"] isKindOfClass:NSString.class] ? element[@"sourceField"] : type;
+            if (![type isKindOfClass:NSString.class] || !(x >= 0 && y >= 0 && w > 0 && h > 0 && x + w <= width + 0.01 && y + h <= height + 0.01)) {
+                return @{@"errorCode": @"DRAWING_ELEMENT_INVALID",
+                         @"message": [NSString stringWithFormat:@"官方 SDK 元素 %lu（%@）坐标或尺寸无效", (unsigned long)index + 1, field ?: @"未知"]};
+            }
+            BOOL drawn = NO;
             if ([type isEqualToString:@"image"]) {
                 // CoreText already shaped and measured this opaque black-on-white PNG.
-                drawn = [JCAPI DrawLableImage:x withY:y withWidth:w withHeight:h
-                    withImageData:element[@"imageBase64"] withRotate:0
+                NSString *data = [element[@"imageBase64"] isKindOfClass:NSString.class] ? element[@"imageBase64"] : @"";
+                if (data.length == 0) return @{@"errorCode": @"DRAWING_IMAGE_DATA_MISSING",
+                    @"message": [NSString stringWithFormat:@"官方 SDK 图片元素 %lu（%@）缺少 PNG 数据", (unsigned long)index + 1, field ?: @"图片"]};
+                drawn = [JCAPI DrawLableImage:x withY:y withWidth:w withHeight:h withImageData:data withRotate:0
                     withImageProcessingType:1 withImageProcessingValue:127];
+                if (!drawn) return @{@"errorCode": @"DRAWING_IMAGE_REJECTED",
+                    @"message": [NSString stringWithFormat:@"官方 SDK 拒绝图片元素 %lu（%@，%.2f × %.2f mm）", (unsigned long)index + 1, field ?: @"图片", w, h]};
             } else if ([type isEqualToString:@"qr"]) {
-                drawn = [JCAPI drawLableQrCode:x withY:y withWidth:w withHeight:h
-                    withString:element[@"text"] withRotate:0 withCodeType:31];
+                NSString *text = [element[@"text"] isKindOfClass:NSString.class] ? element[@"text"] : @"";
+                if (text.length == 0) return @{@"errorCode": @"DRAWING_QR_DATA_MISSING",
+                    @"message": [NSString stringWithFormat:@"官方 SDK 二维码元素 %lu 缺少内容", (unsigned long)index + 1]};
+                drawn = [JCAPI drawLableQrCode:x withY:y withWidth:w withHeight:h withString:text withRotate:0 withCodeType:31];
+                if (!drawn) return @{@"errorCode": @"DRAWING_QR_REJECTED",
+                    @"message": [NSString stringWithFormat:@"官方 SDK 拒绝二维码元素 %lu（%.2f × %.2f mm）", (unsigned long)index + 1, w, h]};
             } else if ([type isEqualToString:@"line"]) {
-                drawn = [JCAPI DrawLableLine:x withY:y withWidth:w withHeight:h
-                    withRotate:0 withLineType:1 withDashWidth:@[@1, @1]];
+                drawn = [JCAPI DrawLableLine:x withY:y withWidth:w withHeight:h withRotate:0 withLineType:1 withDashWidth:@[@1, @1]];
+                if (!drawn) return @{@"errorCode": @"DRAWING_LINE_REJECTED",
+                    @"message": [NSString stringWithFormat:@"官方 SDK 拒绝线条元素 %lu（%.2f × %.2f mm）", (unsigned long)index + 1, w, h]};
+            } else {
+                return @{@"errorCode": @"DRAWING_ELEMENT_UNSUPPORTED",
+                    @"message": [NSString stringWithFormat:@"官方 SDK 不支持的绘制元素 %@", type]};
             }
-            if (!drawn) return @{@"errorCode": @"DRAWING_FAILED", @"message": @"官方 SDK 无法绘制标签字段；请检查字体与版面"};
+            index += 1;
         }
         NSString *json = [JCAPI GenerateLableJson];
-        if (json.length == 0) return @{@"errorCode": @"DRAWING_FAILED", @"message": @"官方 SDK 未生成标签数据"};
+        if (json.length == 0) return @{@"errorCode": @"SDK_JSON_EMPTY", @"message": @"官方 SDK 未生成标签数据"};
         UIImage *preview = [JCAPI generateImagePreviewImage:3 error:&error];
         NSData *png = preview ? UIImagePNGRepresentation(preview) : nil;
         if (error || !png || png.length == 0) return @{@"errorCode": @"PREVIEW_FAILED", @"message": @"官方 SDK 未生成有效预览"};
         return @{@"sdkJson": json, @"imageBase64": [png base64EncodedStringWithOptions:0]};
     } @catch (NSException *exception) {
-        return @{@"errorCode": @"SDK_RENDER_EXCEPTION", @"message": @"官方绘图库发生异常；不能提交打印"};
+        NSString *reason = exception.reason ?: @"未知异常";
+        if (reason.length > 120) reason = [reason substringToIndex:120];
+        return @{@"errorCode": @"SDK_RENDER_EXCEPTION", @"message": [NSString stringWithFormat:@"官方绘图库异常：%@", reason]};
     }
 #endif
 }

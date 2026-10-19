@@ -319,22 +319,45 @@ enum LabelTemplateRenderer {
     static func calibration(_ profile: LabelMediaProfile) throws -> RenderedOfficialLabel {
         let x = profile.marginMm.left, y = profile.marginMm.top
         let w = profile.widthMm - x - profile.marginMm.right, h = profile.heightMm - y - profile.marginMm.bottom
-        var elements: [[String: Any]] = [
-            ["type": "line", "x": x, "y": y, "w": w, "h": 0.25],
-            ["type": "line", "x": x, "y": y + h - 0.25, "w": w, "h": 0.25],
-            ["type": "line", "x": x, "y": y, "w": 0.25, "h": h],
-            ["type": "line", "x": x + w - 0.25, "y": y, "w": 0.25, "h": h]
-        ]
+        guard w >= 15, h >= 15 else { throw LabelFailure("LAYOUT_OVERFLOW", "当前纸张过小，无法生成校准样张") }
+
+        // One app-owned bitmap removes thin-line and per-element failures from the
+        // calibration path while leaving the normal labels on their validated path.
+        let width = Int(ceil(w * LabelTextRasterizer.dpi / 25.4))
+        let height = Int(ceil(h * LabelTextRasterizer.dpi / 25.4))
+        guard width > 0, height > 0, width * height <= 8_000_000,
+              let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
+                bytesPerRow: width, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)
+        else { throw LabelFailure("TEXT_RASTER_FAILED", "校准样张图像创建失败，请检查纸张尺寸") }
+        context.setFillColor(gray: 1, alpha: 1)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        let scale = LabelTextRasterizer.pointsPerMm
+        let border = max(2.0, 1.0 * LabelTextRasterizer.dpi / 25.4)
+        context.setStrokeColor(gray: 0, alpha: 1)
+        context.setLineWidth(border)
+        context.stroke(CGRect(x: border / 2, y: border / 2, width: CGFloat(width) - border, height: CGFloat(height) - border))
+
         let text = "校准 中文 成品 纸板 × g/m²"
-        let lines = try LabelTextRasterizer.wrapped(text, widthMm: w - 2, fontMm: 3, maxLines: 4, field: "校准文字")
-        let heights = lines.map { max(4.4, $0.heightMm) }
-        guard heights.reduce(0, +) + 4 <= h else { throw LabelFailure("LAYOUT_OVERFLOW", "当前标签无法放下校准文字，请检查纸卷尺寸") }
-        var textY = y + 2
-        for (line, height) in zip(lines, heights) {
-            elements.append(try LabelTextRasterizer.element(line, x: x + 1, y: textY, widthMm: w - 2, heightMm: height, field: "校准文字"))
-            textY += height
+        let fontMm = min(4.0, max(2.2, h / 12))
+        let maxTextWidth = w - 6
+        let lines = try LabelTextRasterizer.wrapped(text, widthMm: maxTextWidth, fontMm: fontMm, maxLines: 4, field: "校准文字")
+        let lineHeight = max(fontMm * 1.8, lines.map(\.heightMm).max() ?? fontMm)
+        let blockHeight = lineHeight * Double(lines.count)
+        guard blockHeight + 8 <= h else { throw LabelFailure("LAYOUT_OVERFLOW", "当前标签无法放下校准文字，请检查纸卷尺寸") }
+        var baseline = Double(height) - 4 * scale
+        for line in lines {
+            context.textMatrix = .identity
+            context.textPosition = CGPoint(x: 3 * scale, y: baseline - Double(line.bounds.minY))
+            CTLineDraw(line.shaped, context)
+            baseline -= lineHeight * scale
         }
-        return try render(profile, elements: elements, warnings: ["仅提交单张校准样张；请目视确认边界、中文、浓度和走纸，SDK 回调不代表实物完成"])
+
+        guard let image = context.makeImage(), let png = UIImage(cgImage: image, scale: 1, orientation: .up).pngData() else {
+            throw LabelFailure("TEXT_RASTER_FAILED", "校准样张图像编码失败")
+        }
+        let element: [String: Any] = ["type": "image", "x": x, "y": y, "w": w, "h": h,
+            "imageBase64": png.base64EncodedString(), "sourceField": "校准样张"]
+        return try render(profile, elements: [element], warnings: ["仅提交单张校准样张；请目视确认边界、中文、浓度和走纸，SDK 回调不代表实物完成"])
     }
 }
 #endif
