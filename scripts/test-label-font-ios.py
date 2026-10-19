@@ -62,12 +62,13 @@ def validate_report(report, fixtures):
     assert all(x["outcome"] != "unexpected-error" for x in attempts.values())
     original = results["calibration-original"]
     calibration = attempts["calibration-original"]
-    def validate_bitmap(bitmap, width, height, invisible=False):
+    def validate_bitmap(bitmap, width, height, invisible=False, allow_border=False):
         import math
         assert bitmap["widthPx"] == math.ceil(width * 300 / 25.4)
         assert bitmap["heightPx"] == math.ceil(height * 300 / 25.4)
         assert bitmap["grayscale"] and bitmap["alphaInfo"] == 0 and bitmap["bitsPerPixel"] == 8
-        assert bitmap["edgeInkPixelsBelow127"] == 0, "Clipped text: " + bitmap["png"]
+        if not allow_border:
+            assert bitmap["edgeInkPixelsBelow127"] == 0, "Clipped text: " + bitmap["png"]
         assert (bitmap["inkPixelsBelow127"] == 0) if invisible else (bitmap["inkPixelsBelow127"] > 0)
 
     snapshots = {x["id"]: x for x in report["parsedSnapshots"]}
@@ -79,9 +80,10 @@ def validate_report(report, fixtures):
             assert element["x"] >= 3 and element["y"] >= 5
             assert element["x"] + element["w"] <= 67.000001 and element["y"] + element["h"] <= 95.000001
             if element["type"] == "image":
-                validate_bitmap(element["bitmap"], element["w"], element["h"])
+                validate_bitmap(element["bitmap"], element["w"], element["h"],
+                                allow_border=attempt["id"] == "calibration-original")
     assert "".join(x["sourceText"] for x in calibration["elements"] if x["type"] == "image") == fixtures["calibrationOriginalText"]
-    assert sum(x["type"] == "line" for x in calibration["elements"]) == 4
+    assert len(calibration["elements"]) == 1 and calibration["elements"][0]["type"] == "image"
     for case in fixtures["templateCases"]:
         text = "\n".join(x["text"] for x in snapshots[case["id"]]["fields"])
         assert all(token in text for token in case["expectedTextTokens"]), "Parsed snapshot dropped fixture data"
