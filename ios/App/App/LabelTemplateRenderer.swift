@@ -331,7 +331,6 @@ enum LabelTemplateRenderer {
         else { throw LabelFailure("TEXT_RASTER_FAILED", "校准样张图像创建失败，请检查纸张尺寸") }
         context.setFillColor(gray: 1, alpha: 1)
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
-        let scale = LabelTextRasterizer.pointsPerMm
         let border = max(2.0, 1.0 * LabelTextRasterizer.dpi / 25.4)
         context.setStrokeColor(gray: 0, alpha: 1)
         context.setLineWidth(border)
@@ -344,19 +343,25 @@ enum LabelTemplateRenderer {
         let lineHeight = max(fontMm * 1.8, lines.map(\.heightMm).max() ?? fontMm)
         let blockHeight = lineHeight * Double(lines.count)
         guard blockHeight + 8 <= h else { throw LabelFailure("LAYOUT_OVERFLOW", "当前标签无法放下校准文字，请检查纸卷尺寸") }
-        var baseline = Double(height) - 4 * scale
+        // The border uses bitmap pixels; CoreText uses typographic points. Match
+        // element() so the requested millimetres survive the 300-DPI sampling.
+        let pointsPerMm = LabelTextRasterizer.pointsPerMm
+        let boxWidth = w * pointsPerMm, boxHeight = h * pointsPerMm
+        context.scaleBy(x: CGFloat(width) / boxWidth, y: CGFloat(height) / boxHeight)
+        var top = boxHeight - 4 * pointsPerMm
         for line in lines {
             context.textMatrix = .identity
-            context.textPosition = CGPoint(x: 3 * scale, y: baseline - Double(line.bounds.minY))
+            context.textPosition = CGPoint(x: 3 * pointsPerMm + LabelTextRasterizer.paddingPoints - Double(line.bounds.minX),
+                y: top - (lineHeight * pointsPerMm + Double(line.bounds.height)) / 2 - Double(line.bounds.minY))
             CTLineDraw(line.shaped, context)
-            baseline -= lineHeight * scale
+            top -= lineHeight * pointsPerMm
         }
 
         guard let image = context.makeImage(), let png = UIImage(cgImage: image, scale: 1, orientation: .up).pngData() else {
             throw LabelFailure("TEXT_RASTER_FAILED", "校准样张图像编码失败")
         }
         let element: [String: Any] = ["type": "image", "x": x, "y": y, "w": w, "h": h,
-            "imageBase64": png.base64EncodedString(), "sourceField": "校准样张"]
+            "imageBase64": png.base64EncodedString(), "sourceField": "校准样张", "sourceText": text]
         return try render(profile, elements: [element], warnings: ["仅提交单张校准样张；请目视确认边界、中文、浓度和走纸，SDK 回调不代表实物完成"])
     }
 }
