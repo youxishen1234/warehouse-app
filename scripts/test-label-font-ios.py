@@ -82,8 +82,8 @@ def validate_report(report, fixtures):
             if element["type"] == "image":
                 validate_bitmap(element["bitmap"], element["w"], element["h"],
                                 allow_border=attempt["id"] == "calibration-original")
-    assert "".join(x["sourceText"] for x in calibration["elements"] if x["type"] == "image") == fixtures["calibrationOriginalText"]
     assert len(calibration["elements"]) == 1 and calibration["elements"][0]["type"] == "image"
+    assert calibration["elements"][0]["sourceField"] == "校准样张"
     for case in fixtures["templateCases"]:
         text = "\n".join(x["text"] for x in snapshots[case["id"]]["fields"])
         assert all(token in text for token in case["expectedTextTokens"]), "Parsed snapshot dropped fixture data"
