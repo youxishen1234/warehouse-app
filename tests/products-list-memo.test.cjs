@@ -11,4 +11,7 @@ test('products page memoizes list rows and keeps action callbacks stable', () =>
   assert.match(source, /const handleImage = useCallback\(/);
   assert.match(source, /list\.map\(product => <ProductListRow/);
   assert.match(source, /onActiveChange=\{handleActiveChange\}/);
+  assert.doesNotMatch(source, /pages\/product-edit\/index/);
+  assert.match(source, /const saveProduct = async/);
+  assert.match(source, /className=\{styles\.editorSheet\}/);
 });

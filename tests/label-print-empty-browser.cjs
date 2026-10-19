@@ -4,7 +4,7 @@ const http = require('node:http');
 const path = require('node:path');
 const { chromium, expect } = require('@playwright/test');
 
-const webRoot = path.resolve(process.env.LABEL_PRINT_WEB_ROOT || 'release/label-empty-state-check/web');
+const webRoot = path.resolve(process.env.LABEL_PRINT_WEB_ROOT || 'dist');
 const server = http.createServer((request, response) => {
   const pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
   const filename = path.resolve(webRoot, '.' + (pathname === '/' ? '/index.html' : pathname));
