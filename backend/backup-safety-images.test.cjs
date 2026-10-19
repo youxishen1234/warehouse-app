@@ -75,7 +75,7 @@ test('missing originals block automatic backup and restore before business data 
   const script = "const assert=require('node:assert/strict'),db=require('./db');const before=JSON.stringify(db.backupData());assert.throws(()=>db.restoreData(JSON.parse(before)),/备份当前数据/);assert.equal(JSON.stringify(db.backupData()),before);process.stdout.write('blocked');";
   assert.equal(run(root, 'source', script), 'blocked');
   assert.equal(fs.readFileSync(path.join(root, 'source.json'), 'utf8'), before);
-  const evidence = fs.readdirSync(path.join(root, 'source-backups')).filter(name => name.endsWith('-restore-guard.json'));
+  const evidence = fs.readdirSync(path.join(root, 'source-backups')).filter(name => name.endsWith('-restore-guard-incomplete.json'));
   assert.equal(evidence.length, 1);
   assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'source-backups', evidence[0]), 'utf8')).product_image_files, undefined);
 });
@@ -97,7 +97,7 @@ test('corrupt databases remain preserved as raw startup evidence', t => {
   const raw = '{broken database';
   fs.writeFileSync(path.join(root, 'source.json'), raw);
   assert.throws(() => run(root, 'source', "require('./db')"));
-  const evidence = fs.readdirSync(path.join(root, 'source-backups')).filter(name => name.endsWith('-startup.json'));
+  const evidence = fs.readdirSync(path.join(root, 'source-backups')).filter(name => name.endsWith('-startup-incomplete.json'));
   assert.equal(evidence.length, 1);
   assert.equal(fs.readFileSync(path.join(root, 'source-backups', evidence[0]), 'utf8'), raw);
 });

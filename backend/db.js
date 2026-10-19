@@ -100,12 +100,13 @@ function createAutoBackup(reason) {
     fs.mkdirSync(BACKUP_DIR, { recursive: true, mode: 0o700 });
     try { fs.chmodSync(BACKUP_DIR, 0o700); } catch (error) { /* Windows ACLs are managed by the host */ }
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const target = path.join(BACKUP_DIR, `warehouse-data-${stamp}-${reason}.json`);
     const raw = fs.readFileSync(DB_PATH, 'utf8');
     let snapshot;
-    try { snapshot = JSON.parse(raw); } catch { /* Preserve corrupt databases for manual recovery. */ }
-    let body = raw;
     let portableError = null;
+    try { snapshot = JSON.parse(raw); } catch {
+      portableError = new Error('数据库 JSON 无法解析');
+    }
+    let body = raw;
     if (snapshot) {
       try {
         snapshot.products = (snapshot.products || []).map(product => ({ ...product, image_url: portableImageUrl(product.image_url) }));
@@ -116,6 +117,8 @@ function createAutoBackup(reason) {
         portableError = error;
       }
     }
+    const suffix = portableError ? '-incomplete' : '';
+    const target = path.join(BACKUP_DIR, `warehouse-data-${stamp}-${reason}${suffix}.json`);
     const temp = `${target}.tmp-${process.pid}-${Date.now()}`;
     try {
       const fd = fs.openSync(temp, 'wx', 0o600);

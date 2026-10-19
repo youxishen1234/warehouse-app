@@ -41,7 +41,7 @@
 - 快照先完整写入临时文件并同步，再以不覆盖已有文件的方式发布；同一天已有有效快照时不会重新导出业务数据或改写该文件。
 - 下载和检查使用 gzip、SHA-256、日期、数据版本、业务关联及原图校验。`status.json` 只是尝试与重试记录，不能单独证明成功。
 - 保留份数只计算有效、已到期的快照。损坏或未来日期文件保留供排查，不占有效副本名额，所以目录中的总文件数可能超过配置份数。
-- 服务启动时的自动保护副本和恢复前保护副本也包含两类原图。恢复前保护失败时中止恢复。无法解析的原数据库仅保留原文作为排查证据，不宣称可直接恢复。
+- 服务启动时的自动保护副本和恢复前保护副本也包含两类原图。恢复前保护失败时中止恢复。无法完整打包的原数据仅保留为文件名带 `-incomplete` 的排查证据，不宣称可直接恢复，也不会被当作成功的恢复前保护。
 
 ## 下载与恢复
 
@@ -58,5 +58,45 @@
 本地验证不会表示服务器已经启用。当前源码须完成测试、提交并集成到 `main`，按 `.github/workflows/publish-hotupdate.yml` 发布前端；禁止上传修改过的旧包、直接覆盖线上 `www.zip` / `manifest.json` 或使用临时部署脚本。
 
 该工作流同时运行后端测试和构建后的备份页面浏览器验收，但它不复制 `backend/` 源码，也不重启服务进程。后端必须按实际部署流程同步源码并重启，重新加载 `server.js`、`team.js`、`db.js`、`daily-backup.js` 等依赖；仅发布前端时，每日接口可能仍是旧版本或 `404`，页面会退回现有手动导出。
+
+后端使用独立发布包，不能把本地 `data.json`、票据照片、商品图片、`.env` 或开发依赖一起上传。先在已提交的源码上生成并校验，再在临时目录实际启动：
+
+```powershell
+$env:RELEASE_COMMIT = (git rev-parse HEAD)
+npm.cmd run release:backend:bundle --silent | Set-Content -Encoding utf8 release/backend-bundle.json
+npm.cmd run release:backend:verify -- release/backend-bundle.json $env:RELEASE_COMMIT
+npm.cmd run release:backend:preflight
+```
+
+`release/backend-bundle.json` 只包含后端源码、锁文件和生产依赖内容，不包含业务数据。发布包里的每个文件都有 SHA-256；脚本会核验提交、依赖闭包和内容完整性，并在隔离目录真实启动服务后才允许上传。
+
+## 后端发布与回滚
+
+先上传发布包、发布器和校验脚本到服务器私有临时目录。以下三条命令须在同一目录执行；发布器会再次校验包内容并在隔离目录启动。
+
+```bash
+ssh 用户名@152.136.100.200 'mkdir -p /tmp/shuguang-backend-release'
+scp release/backend-bundle.json scripts/publish-backend.py scripts/verify-backend-release.js 用户名@152.136.100.200:/tmp/shuguang-backend-release/
+```
+
+以能使用 `systemctl` 的发布账号执行：
+
+```bash
+cd /tmp/shuguang-backend-release
+sudo python3 /tmp/shuguang-backend-release/publish-backend.py /tmp/shuguang-backend-release/backend-bundle.json \
+  /opt/shuguang/backups/backend-release /tmp/backend-release-acceptance.json --restart
+```
+
+脚本会读取实际的 `shuguang.service` 工作目录和账号，拒绝根账号服务、未知目录和不安全路径；发布前保存被替换文件，发布后重启并实际请求 `/api/backup/daily/status`。服务未启动、接口失败或返回契约不符时，自动恢复旧文件并再次重启。验收失败时不得手动宣称已上线。
+
+如果发布账号与服务账号不同，应让服务账号对工作目录及其依赖目录可读写，并给发布账号单独的 `sudo -n systemctl restart shuguang.service` 权限。不要把密码、令牌或数据库内容写入脚本和日志。发布完成后核对：
+
+```bash
+systemctl show shuguang.service --property=User --property=WorkingDirectory --no-pager
+systemctl is-active shuguang.service
+curl -fsS https://youxishen.online/api/backup/daily/status
+```
+
+最后一个请求在未登录时返回 `401` 也表示路由已加载；随后通过正常访客会话查看状态。接口 `404` 表示后端仍是旧版本。`--restart` 仅在需要重新加载后端文件时使用；文件完全一致时脚本只做只读接口验收，不重启服务。
 
 上线验收须同时核对发布 manifest 的实际提交、后端实际运行版本、备份页面的真实服务器状态、服务器实际生成的快照，以及下载 JSON 在隔离数据库中的恢复结果。前端 manifest 正确只证明前端来源，仅前端热更新不能证明新版后端调度已经运行。

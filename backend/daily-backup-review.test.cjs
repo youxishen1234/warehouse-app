@@ -80,7 +80,7 @@ test('restore-guard publication failure leaves database bytes and business cache
 test('structurally corrupt but JSON-parsable database is preserved as raw startup evidence', t => {
   const root = directory(t), raw = JSON.stringify({ ...empty(), products: { unexpected: true } });
   assert.throws(() => run(root, raw, `require('./db')`, {}));
-  const names = fs.readdirSync(path.join(root, 'backups')).filter(name => name.endsWith('-startup.json'));
+  const names = fs.readdirSync(path.join(root, 'backups')).filter(name => name.endsWith('-startup-incomplete.json'));
   assert.equal(names.length, 1);
   assert.equal(fs.readFileSync(path.join(root, 'backups', names[0]), 'utf8'), raw);
   assert.equal(fs.readFileSync(path.join(root, 'data.json'), 'utf8'), raw);
