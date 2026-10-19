@@ -37,6 +37,8 @@ test('startup and restore guard save complete portable originals', t => {
   }));
   const seed = `const db=require('./db');const customer=db.addCustomer({name:'原图客户'});db.stockOut(1,1,'test','',customer.id);const entry=db.listLedger().find(row=>row.party_type==='customer');db.addLedgerAttachment(entry.id,db.prepareLedgerAttachment({kind:'signed',client_id:'safety-original-photo-001',name:'签收原图.png',data:'data:image/png;base64,${image.toString('base64')}'}));process.stdout.write('seeded');`;
   assert.equal(run(root, 'source', seed), 'seeded');
+  const customerSeed = `const db=require('./db');const customer=db.addCustomer({name:'客户送货单照片'});db.addCustomerAttachment(customer.id,db.prepareCustomerAttachment({kind:'delivery',client_id:'safety-customer-photo-001',name:'客户送货单.png',data:'data:image/png;base64,${image.toString('base64')}'}));process.stdout.write('seeded');`;
+  assert.equal(run(root, 'source', customerSeed), 'seeded');
   const script = "const db=require('./db');db.restoreData(db.backupData({includeAttachments:true}));process.stdout.write('ok');";
   assert.equal(run(root, 'source', script), 'ok');
   const names = fs.readdirSync(backupDir).filter(name => name.endsWith('.json'));
@@ -51,9 +53,15 @@ test('startup and restore guard save complete portable originals', t => {
       assert.equal(bundle.ledger_attachment_files[sha], `data:image/png;base64,${image.toString('base64')}`, name);
       withEvidence.push(name);
     }
+    if (bundle.customers.some(row => row.customer_attachments?.length)) {
+      assert.equal(bundle.ledger_attachment_files[sha], `data:image/png;base64,${image.toString('base64')}`, name);
+      withEvidence.push(name);
+    }
   }
   assert.ok(withEvidence.some(name => name.endsWith('-startup.json')));
   assert.ok(withEvidence.some(name => name.endsWith('-restore-guard.json')));
+  const verify = "const db=require('./db');const snapshot=db.backupData({includeAttachments:true});const customer=snapshot.customers.find(row=>row.customer_attachments?.length);const photo=customer.customer_attachments[0];if(db.readCustomerAttachment(customer.id,photo.id).data!==snapshot.ledger_attachment_files[photo.sha256])throw Error('客户照片原图不一致');process.stdout.write('verified');";
+  assert.equal(run(root, 'source', verify), 'verified');
 });
 test('missing originals block automatic backup and restore before business data changes', t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'warehouse-safety-missing-'));
