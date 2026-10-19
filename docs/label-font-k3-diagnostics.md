@@ -72,3 +72,30 @@ explicit unsupported cases and both templates reaching the SDK test double.
 They do not prove real SDK image execution, Bluetooth, QR scan success or
 physical output. Production printing remains disabled until those checks
 have a source-controlled acceptance record.
+
+## Installed-package follow-up on 2026-10-19
+
+Server IPA 1.1.74 (207) was downloaded and its size and SHA-256 matched the
+published IPA metadata. Its Info.plist version and native binary contained
+the new rasterizer and original SDK image adapter. Read-only web assets
+extracted from that exact IPA passed the connection browser scenarios,
+read-only resolver scenarios and label empty-state checks. Those browser
+tests use local API fixtures and a mocked iOS bridge, not a connected K3.
+
+For repeatable whole-label layout QA, run:
+
+```powershell
+node scripts/verify-label-font-layout.cjs release/build-207-watch/native-regression release/k3-layout-new-check
+```
+
+The input must be an unmodified native-test artifact matching the checked-out
+renderer, adapter and fixture hashes. Choose a new output folder under
+`release/` for each run. The verifier never overwrites earlier evidence.
+
+The verifier composes the actual native text PNGs using the recorded element
+coordinates and independently generated reference QR codes. At both 203 and
+300 reference dpi, all three samples passed margin and overlap checks; both
+business reference QR codes decoded to the exact fixture record URLs after
+thresholding to black and white. Generated images remain layout evidence,
+not official SDK previews or printer-DPI/physical-scan claims. No sample
+records were added to production inventory and no production gate changed.
