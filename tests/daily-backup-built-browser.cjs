@@ -7,6 +7,13 @@ const { chromium, expect } = require('@playwright/test');
 
 const configuredBuild = process.env.DAILY_BACKUP_WEB_DIR || process.env.TARO_OUTPUT_DIR;
 if (!configuredBuild) throw new Error('DAILY_BACKUP_WEB_DIR or TARO_OUTPUT_DIR must name an isolated build');
+if (path.isAbsolute(configuredBuild)) {
+  const status = require('node:child_process').spawnSync('git', ['-C', path.dirname(path.resolve(__filename)), 'rev-parse', '--show-toplevel'], { encoding: 'utf8' });
+  const root = status.status === 0 ? path.resolve(status.stdout.trim()) : '';
+  if (root && path.resolve(configuredBuild).startsWith(root + path.sep)) {
+    process.chdir(root);
+  }
+}
 const dist = path.resolve(configuredBuild);
 const releaseSegments = path.relative(path.parse(dist).root, dist).split(path.sep);
 assert(releaseSegments.includes('release') && !['www', 'dist'].includes(path.basename(dist)), 'Do not use or modify the shared www/dist directories');
