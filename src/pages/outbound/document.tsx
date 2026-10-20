@@ -10,7 +10,8 @@ export function OutboundDocument({ transactions, onClose }: { transactions: Tran
   const first = transactions[0], total = transactions.reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
   const date = new Date(first.created_at);
   const print = () => {
-    Taro.navigateTo({ url: `/pages/print-center/index?transaction_id=${first.id}` });
+    Taro.setStorageSync('sg_print_transaction_id', String(first.id));
+    void Taro.switchTab({ url: '/pages/print-center/index' });
   };
   return <View className={styles.documentCard}>
     <View className={styles.documentActions}><Text className={styles.cardTitle}>送货单预览</Text><Text className={styles.link} onClick={onClose}>收起</Text></View>

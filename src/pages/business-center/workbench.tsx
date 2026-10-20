@@ -25,7 +25,7 @@ const load = async () => {
   return { boards, products, customers, suppliers, transactions, ledger, production, orders };
 };
 const empty = { boards: [], products: [], customers: [], suppliers: [], transactions: [], ledger: [], production: [], orders: [] } as Awaited<ReturnType<typeof load>>;
-const open = (url: string) => void Taro.navigateTo({ url });
+const open = (url: string) => void (url === '/pages/print-center/index' ? Taro.switchTab({ url }) : Taro.navigateTo({ url }));
 const cartonProduct = (p: Product) => p.category !== '纸板' && (p.category === '纸箱' || /\d\s*[×xX*]\s*\d.*[×xX*]/.test(p.specification || ''));
 const initialPanel = (section?: string, detail?: string, route = ''): Panel =>
   section === 'customers' ? 'customer'

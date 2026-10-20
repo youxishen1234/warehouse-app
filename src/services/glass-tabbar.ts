@@ -3,12 +3,12 @@ const paths = [
   '<path d="M3 10.5 12 3l9 7.5M5 9v12h5v-6h4v6h5V9"/>',
   '<path d="m12 2 1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8L12 2Z"/><path d="m19 16 .8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8L19 16Z"/>',
   '<path d="m3 8 9-5 9 5-9 5-9-5Z"/><path d="m3 12 9 5 9-5M3 16l9 5 9-5"/>',
-  '<path d="M2.5 16.5v-11h12v11m0-7.5h4l3 4v3.5H20m-5.5-3.5h7M9 16.5h6m-12.5 0H4"/><circle cx="6.5" cy="17" r="2.5"/><circle cx="17.5" cy="17" r="2.5"/>',
+  '<path d="M7 8V3h10v5M5 8h14a2 2 0 0 1 2 2v6h-4v4H7v-4H3v-6a2 2 0 0 1 2-2Z"/><path d="M7 14h10v6H7z"/><circle cx="17" cy="11" r=".7" fill="currentColor" stroke="none"/>',
   '<circle cx="12" cy="6.5" r="3.5"/><path d="M5 21v-2c0-3.5 3-6 7-6s7 2.5 7 6v2"/>'
 ];
 // One 24-unit grid and stroke weight for every tab, including selected copies.
 const icon = (index: number) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + paths[index] + '</svg>';
-const titles = ['总台', 'AI助手', '库存', '出库', '我的'];
+const titles = ['总台', 'AI助手', '库存', '打印', '我的'];
 const MAX_TAB = titles.length - 1;
 // 桌面侧边栏的“业务中心”快捷入口（仅 ≥1024px 显示，手机端 CSS 隐藏）
 const bizNav = [

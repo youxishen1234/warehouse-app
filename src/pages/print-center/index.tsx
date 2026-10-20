@@ -16,11 +16,22 @@ import PrintPreview from './preview';
 import SpecificationPicker from './specification-picker';
 import { addSpecificationOptions, buildSpecificationOptions } from './specification-library';
 import type { SpecificationOption } from './specification-library';
-import { getRemotePrintHistory, readPrintPair } from '@/services/remote-print';
+import { getRemoteDevice, getRemotePrintHistory, readPrintPair } from '@/services/remote-print';
 import styles from './index.module.scss';
 
 const currency = (value: number) => Number.isFinite(value) ? value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
 const messageOf = (error: unknown) => error instanceof Error ? error.message : '暂时无法完成，请重试';
+type PrintTab = 'home' | 'edit' | 'history' | 'detail';
+
+function PrintIcon({ kind }: { kind: 'printer' | 'plus' | 'search' | 'arrow' }) {
+  const paths = {
+    printer: <><path d='M7 8V3h10v5M5 8h14a2 2 0 0 1 2 2v6h-4v4H7v-4H3v-6a2 2 0 0 1 2-2Z' /><path d='M7 14h10v6H7z' /><circle cx='17' cy='11' r='.7' fill='currentColor' stroke='none' /></>,
+    plus: <path d='M12 5v14M5 12h14' />,
+    search: <><circle cx='10.5' cy='10.5' r='6.5' /><path d='m16 16 4.5 4.5' /></>,
+    arrow: <path d='m9 5 7 7-7 7' />
+  };
+  return <svg viewBox='0 0 24 24' aria-hidden='true' fill='none' stroke='currentColor' strokeWidth='1.8' strokeLinecap='round' strokeLinejoin='round'>{paths[kind]}</svg>;
+}
 
 export default function PrintCenterPage() {
   const { params } = useRouter();
@@ -28,11 +39,27 @@ export default function PrintCenterPage() {
   const [specDigits, setSpecDigits] = useState<2 | 3>(() => { try { return Taro.getStorageSync('print_spec_digits') === 2 ? 2 : 3; } catch { return 3; } });
   const [saved, setSaved] = useState<SavedPrintNote>();
   const [dirty, setDirty] = useState(false);
-  const [tab, setTab] = useState<'edit' | 'history' | 'detail'>('edit');
+  const [tab, setTab] = useState<PrintTab>(() => params.transaction_id || params.mode === 'edit' ? 'edit' : 'home');
+  const [printerStatus, setPrinterStatus] = useState<{ label: string; ready: boolean }>(() => ({ label: readPrintPair() ? '正在检查打印电脑' : '电脑打印未连接', ready: false }));
   const [preview, setPreview] = useState<PrintNoteInput>();
   const [printTimes,setPrintTimes]=useState<Record<number,number>>({});
   const [printTimeError,setPrintTimeError]=useState('');
   useEffect(()=>{if(tab!=='history'||!readPrintPair())return;let active=true;setPrintTimeError('');getRemotePrintHistory().then(rows=>{if(active)setPrintTimes(Object.fromEntries(rows.map(row=>[row.note_id,row.printed_at])));}).catch(()=>{if(active)setPrintTimeError('打印时间暂时无法获取，请稍后刷新');});return()=>{active=false;};},[tab]);
+  useEffect(() => {
+    if (tab !== 'home') return;
+    if (!readPrintPair()) {
+      setPrinterStatus({ label: '电脑打印未连接', ready: false });
+      return;
+    }
+    let active = true;
+    setPrinterStatus({ label: '正在检查打印电脑', ready: false });
+    getRemoteDevice().then(device => {
+      if (active) setPrinterStatus({ label: device.online ? device.ready ? `${device.name} · 已就绪` : `${device.name} · 待就绪` : `${device.name} · 未在线`, ready: device.online && device.ready });
+    }).catch(() => {
+      if (active) setPrinterStatus({ label: '打印电脑连接异常', ready: false });
+    });
+    return () => { active = false; };
+  }, [tab]);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const [error, setError] = useState('');
@@ -73,7 +100,7 @@ export default function PrintCenterPage() {
     pendingNavigation.current = action; setConfirmDiscard(true);
   };
   const startNew = () => guard(() => { setDraft(newNote()); setSaved(undefined); setChosenCustomer(undefined); setDirty(false); setTab('edit'); setError(''); setNotice(''); });
-  const back = () => guard(() => { if (Taro.getCurrentPages().length > 1) void Taro.navigateBack(); else void Taro.switchTab({ url: '/pages/home/index' }); });
+  const openHistory = () => guard(() => setTab('history'));
 
   useEffect(() => {
     if (error) errorBox.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -108,19 +135,27 @@ export default function PrintCenterPage() {
     finally { if (current === historySequence.current) setHistoryLoading(false); }
   }, [query]);
   useEffect(() => {
-    if (tab !== 'history') return;
+    if (tab !== 'history' && tab !== 'home') return;
     setHistory([]); setTotalRecords(0); setHistoryLoading(true);
     const timer = setTimeout(() => void loadHistory(), 220);
     const requestSequence = historySequence;
     return () => { clearTimeout(timer); requestSequence.current++; };
   }, [tab, loadHistory]);
-  const refresh = useCallback(() => { if (tab === 'history') void loadHistory(); }, [tab, loadHistory]);
+  const refresh = useCallback(() => { if (tab === 'history' || tab === 'home') void loadHistory(); }, [tab, loadHistory]);
   useSharedRefresh(refresh);
 
   // Preserve links from outbound/records, loading every line of the selected document.
   useEffect(() => {
-    const id = params.transaction_id;
-    if (!id || !/^d+$/.test(id)) return;
+    let id = params.transaction_id;
+    if (!id) {
+      try {
+        const pending = Taro.getStorageSync('sg_print_transaction_id');
+        if (pending) Taro.removeStorageSync('sg_print_transaction_id');
+        id = pending ? String(pending) : undefined;
+      } catch { /* storage is optional in previews */ }
+    }
+    if (!id || !/^\d+$/.test(id)) return;
+    setTab('edit');
     let active = true, started = false; busyRef.current = true; setBusy(true); setError('');
     const load = async () => {
       if (started || !session()) return;
@@ -183,13 +218,38 @@ export default function PrintCenterPage() {
   const amount = draftTotal(draft);
   const input = (key: keyof Omit<NoteDraft, 'items' | 'customer_id' | 'paper'>, label: string, limit: number, type = 'text') => <label className={styles.field}>{label}{type === 'date' ? <span className={styles.dateControl}><span aria-hidden='true'>{draft[key].replace(/-/g, '/')}</span><input aria-label={label} type='date' value={draft[key]} onChange={event => change({ [key]: event.target.value })} /></span> : <input aria-label={label} type={type} value={draft[key]} maxLength={limit} onChange={event => change({ [key]: event.target.value })} />}</label>;
 
-  return <main className={styles.page}>
+  return <main className={styles.page} data-print-view={tab}>
     <div className={styles.shell}>
-      <header className={styles.toolbar}><button type='button' className={styles.back} aria-label='返回' onClick={back}>‹</button><div><h1>打印中心</h1><p>送货单</p></div><button type='button' className={styles.newButton} onClick={startNew} disabled={busy}>＋ 新建</button></header>
-      <nav className={styles.tabs} aria-label='打印中心页面'><button type='button' aria-pressed={tab !== 'history'} onClick={() => setTab(saved && !dirty ? 'detail' : 'edit')}>当前单据</button><button type='button' aria-pressed={tab === 'history'} onClick={() => setTab('history')}>历史单据</button></nav>
+      {tab !== 'home' && <><header className={styles.toolbar}><button type='button' className={styles.back} aria-label='返回' onClick={() => guard(() => setTab('home'))}>‹</button><div><h1>打印中心</h1><p>送货单</p></div><button type='button' className={styles.newButton} onClick={startNew} disabled={busy}>＋ 新建</button></header>
+      <nav className={styles.tabs} aria-label='打印中心页面'><button type='button' aria-pressed={tab !== 'history'} onClick={() => setTab(saved && !dirty ? 'detail' : 'edit')}>当前单据</button><button type='button' aria-pressed={tab === 'history'} onClick={() => setTab('history')}>历史单据</button></nav></>}
       {error && <div ref={errorBox} className={styles.error} role='alert'>{error}</div>}
       {notice && <div className={styles.notice} role='status'>{notice}</div>}
-      {tab === 'history' ? <section className={styles.history}>
+      {tab === 'home' ? <section className={styles.workspace} data-print-workbench='half'>
+        <header className={styles.workspaceHeader}>
+          <div><span className={styles.eyebrow}>业务打印</span><h1>打印工作台</h1></div>
+          <span className={`${styles.printerState} ${printerStatus.ready ? styles.printerReady : ''}`} role='status'><i aria-hidden='true' />{printerStatus.label}</span>
+        </header>
+        <section className={styles.printBrief}>
+          <div className={styles.briefTop}><span>送货单</span><strong>{new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' })}</strong></div>
+          <div className={styles.briefBody}><div><span>最近单据</span><strong>{historyLoading ? '…' : history.length}</strong></div><div><span>待出库</span><strong>{history.filter(note => !note.outbound_at).length}</strong></div></div>
+          <div className={styles.paperLines} aria-hidden='true'><i /><i /><i /></div>
+        </section>
+        <nav className={styles.quickActions} aria-label='打印快捷操作'>
+          <button type='button' className={styles.primaryAction} aria-label='新建送货单' onClick={startNew}><PrintIcon kind='plus' /><span><strong>新建送货单</strong><small>填写客户、货物并打印</small></span></button>
+          <button type='button' className={styles.secondaryAction} aria-label='查找单据' onClick={openHistory}><PrintIcon kind='search' /><span><strong>查找单据</strong><small>按客户、单号或规格</small></span></button>
+        </nav>
+        <section className={styles.recent}>
+          <div className={styles.recentHeading}><div><h2>最近单据</h2><p>{totalRecords ? `共 ${totalRecords} 张` : '送货单记录'}</p></div><button type='button' onClick={openHistory}>全部单据 <PrintIcon kind='arrow' /></button></div>
+          {historyError && <div role='alert' className={styles.error}>{historyError}<button type='button' onClick={() => void loadHistory()}>重试</button></div>}
+          {!history.length && !historyLoading && !historyError && <div className={styles.recentEmpty}><span>暂无送货单</span><button type='button' onClick={startNew}>新建第一张</button></div>}
+          {history.slice(0, 5).map(note => <button type='button' className={styles.recentNote} key={note.id} disabled={busy} onClick={() => openNote(note.id)}>
+            <span className={styles.recentIcon}><PrintIcon kind='printer' /></span>
+            <span className={styles.recentContent}><strong>{note.customer_name}</strong><small>{note.date} · {note.items.length} 项 · {note.number}</small></span>
+            <span className={styles.recentValue}><strong>¥ {currency(note.total)}</strong><small>{note.outbound_at ? '已出库' : '待出库'}</small></span>
+          </button>)}
+          {historyLoading && <p className={styles.muted} role='status'>正在加载最近单据…</p>}
+        </section>
+      </section> : tab === 'history' ? <section className={styles.history}>
         <div className={styles.historySearch}><input type='search' aria-label='搜索历史单据' placeholder='搜索客户、单号、商品或规格' value={query} onChange={event => setQuery(event.target.value)} /><button type='button' onClick={() => void loadHistory()} disabled={historyLoading}>刷新</button></div>
         {historyError && <div role='alert' className={styles.error}>{historyError}<button type='button' onClick={() => void loadHistory()}>重试</button></div>}
         {!history.length && !historyLoading && !historyError && <div className={styles.empty}><strong>{query ? '没有找到单据' : '还没有送货单'}</strong><p>{query ? '换个客户名称、单号或规格试试' : '新建第一张，之后随时查看和修改'}</p>{!query && <button type='button' onClick={startNew}>新建送货单</button>}</div>}

@@ -57,7 +57,7 @@ async function main() {
     const button = name => page.getByRole('button', { name, exact: true });
     const dialog = () => page.getByRole('dialog', { name: '送货单预览' });
     const jobs = () => JSON.parse(fs.readFileSync(process.env.WAREHOUSE_REMOTE_PRINT_FILE)).jobs;
-    await page.goto(origin + '/#/pages/print-center/index');
+    await page.goto(origin + '/#/pages/print-center/index?mode=edit');
     await page.locator('.team-boot').waitFor({ state: 'hidden' });
     await button('历史单据').click(); await button('重新打印').click();
     await page.getByText(/远程打印到店里/).click();

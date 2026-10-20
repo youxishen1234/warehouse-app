@@ -105,7 +105,7 @@ async function main() {
     };
     const noOverflow = async () => {
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), { message: 'page fits viewport horizontally' }).toBe(true);
-      const active = page.locator('.taro_page:visible').last();
+      const active = page.locator('[data-print-view="edit"]');
       await expect.poll(() => active.evaluate(element => element.scrollWidth <= element.clientWidth + 1), { message: 'print center fits viewport horizontally' }).toBe(true);
       if (await dialog().count()) {
         const bounds = await dialog().boundingBox();
@@ -121,6 +121,7 @@ async function main() {
 
     await page.goto(webOrigin + '/#/pages/print-center/index');
     await page.locator('.team-boot').waitFor({ state: 'hidden' });
+    await page.getByRole('button', { name: '新建送货单', exact: true }).click();
     await dismissGettingStarted();
     await expect(button('搜索 / 添加规格')).toBeVisible();
     assert.deepEqual(requests, { products: 0, dimensions: 0 }, 'catalog loads only when opened');
@@ -179,6 +180,7 @@ async function main() {
     inventoryUnchanged();
     await page.reload();
     await page.locator('.team-boot').waitFor({ state: 'hidden' });
+    await page.getByRole('button', { name: '新建送货单', exact: true }).click();
     await dismissGettingStarted();
     await button('历史单据').click();
     await page.getByRole('button', { name: /查看详情/ }).click();

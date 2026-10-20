@@ -54,7 +54,7 @@ async function verify(browser, name) {
   assert.ok(before.y > 700 && before.y + before.height <= 845, JSON.stringify(before));
   assert.equal(await page.locator('.sg-glass-tab[data-tab]').count(), 5);
   assert.equal(await page.locator('.sg-glass-search').count(), 0, 'no search button');
-  assert.deepEqual(await page.locator('.sg-glass-tab[data-tab] span').allTextContents(), ['总台', 'AI助手', '库存', '出库', '我的']);
+  assert.deepEqual(await page.locator('.sg-glass-tab[data-tab] span').allTextContents(), ['总台', 'AI助手', '库存', '打印', '我的']);
   assert.ok(Math.abs((await page.locator('.sg-glass-rail').boundingBox()).width - (await page.locator('.sg-glass-dock').boundingBox()).width) < 1, 'five tabs fill the dock with no search gap');
   assert.equal(await page.locator('.weui-tabbar').isVisible(), false, 'old rectangular dock is replaced');
   const colors = await page.evaluate(() => ({
@@ -105,7 +105,7 @@ async function verify(browser, name) {
     assert.ok(Number(await page.locator('.sg-glass-dock').getAttribute('data-position')) > 3.2, 'real touch follows the dock, not the page swipe handler');
     assert.match(page.url(), /home/);
     await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-    await page.waitForURL(/outbound/);
+    await page.waitForURL(/print-center/);
     await page.locator('.sg-glass-tab[data-tab="0"]').click();
     await page.waitForURL(/home/);
     await touch.detach();
@@ -155,7 +155,7 @@ async function verify(browser, name) {
   await page.screenshot({ path: 'release/board-dock-' + name + '-320.png' });
   await page.setViewportSize({ width: 390, height: 844 });
   await swipe(page, -110);
-  await page.waitForURL(/outbound/);
+  await page.waitForURL(/print-center/);
   await page.waitForTimeout(500);
   await swipe(page, -110);
   await page.waitForURL(/mine/);
@@ -186,8 +186,8 @@ async function verify(browser, name) {
     await page.waitForFunction(expected => document.documentElement.style.getPropertyValue('--sg-native-bottom-space') === expected, bottomSpace === null ? '84px' : '0px');
   }
   await swipe(page, 110);
-  await page.waitForURL(/outbound/);
-  for (const route of ['/pages/inventory/index', '/pages/ai-assistant/index', '/pages/outbound/index', '/pages/mine/index', '/pages/home/index']) {
+  await page.waitForURL(/print-center/);
+  for (const route of ['/pages/inventory/index', '/pages/ai-assistant/index', '/pages/print-center/index', '/pages/mine/index', '/pages/home/index']) {
     await page.evaluate(route => window.dispatchEvent(new CustomEvent('sg-native-tab', { detail: route })), route);
     await page.waitForURL(new RegExp(route));
     await page.waitForTimeout(500);
@@ -198,7 +198,7 @@ async function verify(browser, name) {
   // The last finger destination must win, with no old-route acknowledgment.
   await page.evaluate(() => {
     window.__nativeMessages = [];
-    ['/pages/inventory/index', '/pages/ai-assistant/index', '/pages/outbound/index', '/pages/mine/index'].forEach((route, index) => {
+    ['/pages/inventory/index', '/pages/ai-assistant/index', '/pages/print-center/index', '/pages/mine/index'].forEach((route, index) => {
       const event = new CustomEvent('sg-native-tab', { detail: route });
       event.requestId = 201 + index;
       window.dispatchEvent(event);

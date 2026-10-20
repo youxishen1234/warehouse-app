@@ -6,8 +6,8 @@ import Capacitor
 // A single live Capacitor bridge moves between lightweight tab hosts; data and
 // the JavaScript router survive every selection. Older systems use the web dock.
 final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHandler, UITabBarControllerDelegate {
-    private let routes = ["/pages/home/index", "/pages/ai-assistant/index", "/pages/inventory/index", "/pages/outbound/index", "/pages/mine/index"]
-    private let titles = ["总台", "AI助手", "库存", "出库", "我的"]
+    private let routes = ["/pages/home/index", "/pages/ai-assistant/index", "/pages/inventory/index", "/pages/print-center/index", "/pages/mine/index"]
+    private let titles = ["总台", "AI助手", "库存", "打印", "我的"]
     private lazy var tabImages = (0..<5).map { Self.tabIcon($0) }
     private let bridgeController = WarehouseBridgeController()
     private let tabsController = UITabBarController()
@@ -209,13 +209,12 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
                 line([(3, 12), (12, 17), (21, 12)])
                 line([(3, 16), (12, 21), (21, 16)])
             case 3:
-                line([(2.5, 16.5), (2.5, 5.5), (14.5, 5.5), (14.5, 16.5)])
-                line([(14.5, 9), (18.5, 9), (21.5, 13), (21.5, 16.5), (20, 16.5)])
-                line([(14.5, 13), (21.5, 13)])
-                line([(9, 16.5), (15, 16.5)])
-                line([(2.5, 16.5), (4, 16.5)])
-                context.strokeEllipse(in: CGRect(x: 4, y: 14.5, width: 5, height: 5))
-                context.strokeEllipse(in: CGRect(x: 15, y: 14.5, width: 5, height: 5))
+                line([(7, 8), (7, 3), (17, 3), (17, 8)])
+                context.stroke(CGRect(x: 5, y: 8, width: 14, height: 6))
+                line([(21, 10), (21, 16), (17, 16)])
+                line([(7, 16), (3, 16), (3, 10)])
+                context.stroke(CGRect(x: 7, y: 14, width: 10, height: 6))
+                context.fillEllipse(in: CGRect(x: 16.3, y: 10.3, width: 1.4, height: 1.4))
             default:
                 context.strokeEllipse(in: CGRect(x: 8.5, y: 3, width: 7, height: 7))
                 context.move(to: CGPoint(x: 5, y: 21))

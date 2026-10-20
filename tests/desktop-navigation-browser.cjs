@@ -32,7 +32,7 @@ async function main() {
   }, '/pages/' + route + '/index');
   try {
     await page.goto(origin);
-    for (const [index, route] of [[4, 'mine'], [0, 'home'], [2, 'inventory'], [0, 'home'], [1, 'ai-assistant'], [0, 'home'], [3, 'outbound'], [0, 'home']]) {
+    for (const [index, route] of [[4, 'mine'], [0, 'home'], [2, 'inventory'], [0, 'home'], [1, 'ai-assistant'], [0, 'home'], [3, 'print-center'], [0, 'home']]) {
       await tab(index).click();
       await current(route);
     }

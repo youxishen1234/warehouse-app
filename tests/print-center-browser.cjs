@@ -57,6 +57,7 @@ async function main() {
     };
     await page.goto(origin + '/#/pages/print-center/index');
     await page.locator('.team-boot').waitFor({ state: 'hidden' });
+    await page.getByRole('button', { name: '新建送货单', exact: true }).click();
     await button('搜索客户').click();
     await page.getByLabel('搜索客户名称或电话').fill('13800000000');
     await page.getByRole('button', { name: /华兴包装（演示）/ }).click();
@@ -114,7 +115,7 @@ async function main() {
     assert.equal(scrollLayout.top,59,'scroll viewport starts below the status bar');
     assert.equal(scrollLayout.background,'rgb(244, 246, 248)','action bar fully hides content behind it');
     assert.ok(scrollLayout.scrollTop>0);
-    assert.ok(scrollLayout.bottom<=844&&scrollLayout.bottom>=840,'action bar stays at the viewport bottom');
+    assert.ok(scrollLayout.bottom<=756,'action bar stays above the five-tab dock: '+JSON.stringify(scrollLayout));
     await page.screenshot({path:path.join(artifacts,'mobile-scroll-actions.png')});
     await main.evaluate(element=>{element.style.removeProperty('--print-safe-top');element.scrollTop=0;});
     await page.screenshot({ path: path.join(artifacts, 'mobile-editor.png'), fullPage: true });
@@ -134,6 +135,7 @@ async function main() {
     await button('保存单据').click();
     await expect.poll(() => db.listPrintNotes()[0].total).toBe(420);
     assert.equal(db.listPrintNotes().length, 1); assert.equal(db.listPrintNotes()[0].number, saved.number);
+    await page.goto(origin + '/#/pages/print-center/index?mode=edit');
     await page.reload();
     await page.locator('.team-boot').waitFor({ state: 'hidden' });
     await button('历史单据').click(); await page.getByRole('button', { name: /查看详情/ }).click();

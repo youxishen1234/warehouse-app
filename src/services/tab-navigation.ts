@@ -1,7 +1,7 @@
 import { createGlassTabBar } from './glass-tabbar';
 
 // Keep this list aligned with app.config.ts and the custom glass dock.
-export const tabRoutes = ['/pages/home/index', '/pages/ai-assistant/index', '/pages/inventory/index', '/pages/outbound/index', '/pages/mine/index'];
+export const tabRoutes = ['/pages/home/index', '/pages/ai-assistant/index', '/pages/inventory/index', '/pages/print-center/index', '/pages/mine/index'];
 
 export function normalizeRoute(value: string): string {
   return '/' + value.replace(/^#?\/?/, '').split(/[?#]/)[0].replace(/\/$/, '');

@@ -61,10 +61,10 @@ export default defineAppConfig({
         selectedIconPath: 'assets/tabbar/inbound-selected.svg'
       },
       {
-        pagePath: 'pages/outbound/index',
-        text: '出库',
-        iconPath: 'assets/tabbar/outbound.svg',
-        selectedIconPath: 'assets/tabbar/outbound-selected.svg'
+        pagePath: 'pages/print-center/index',
+        text: '打印',
+        iconPath: 'assets/tabbar/printer.svg',
+        selectedIconPath: 'assets/tabbar/printer-selected.svg'
       },
       {
         pagePath: 'pages/mine/index',
