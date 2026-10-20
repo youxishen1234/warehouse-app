@@ -21,6 +21,10 @@ import tempfile
 import time
 
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+DAILY_STATUS_VERIFIER = SCRIPT_DIR / 'verify-backend-daily-status.js'
+
+
 REQUIRED = {
     'server.js', 'db.js', 'team.js', 'daily-backup.js',
     'product-image-backup.js', 'ledger-attachments.js',
@@ -149,10 +153,11 @@ def service_properties():
 
 
 def run_healthcheck(working, token, request_id):
-    script = """const http=require('node:http');const fail=e=>{console.error(e&&e.stack||e);process.exit(1)};process.on('uncaughtException',fail);process.on('unhandledRejection',fail);const request=http.get({host:'127.0.0.1',port:Number(process.env.PORT||4000),path:'/api/backup/daily/status',headers:{Authorization:'Bearer '+process.env.TEST_TOKEN}},response=>{let body='';response.on('data',chunk=>body+=chunk);response.on('end',()=>{try{if(response.statusCode!==200)throw Error('daily status HTTP '+response.statusCode+' '+body.slice(0,200));const json=JSON.parse(body);if(!json.success||!json.data||json.data.timeZone!=='Asia/Shanghai')throw Error('daily status contract mismatch');process.stdout.write(JSON.stringify({status:response.statusCode,verified:json.data.verified,active:json.data.active,requestId:response.headers['x-request-id']||''}));}catch(e){fail(e)}});});request.on('error',fail);request.setTimeout(15000,()=>request.destroy(Error('health check timeout')));"""
-    environment = dict(os.environ, TEST_TOKEN=token)
+    if not DAILY_STATUS_VERIFIER.is_file():
+        error('daily status verifier is missing')
+    environment = dict(os.environ, BACKEND_ACCEPTANCE_TOKEN=token, BACKEND_ACCEPTANCE_REQUEST=request_id)
     return subprocess.check_output(
-        ['node', '-e', script], cwd=working, text=True, timeout=30,
+        ['node', str(DAILY_STATUS_VERIFIER)], cwd=working, text=True, timeout=30,
         env=environment, stderr=subprocess.STDOUT
     ).strip()
 
@@ -186,10 +191,12 @@ def healthcheck(working, service_environment):
     origin = os.environ.get('BACKEND_ACCEPTANCE_ORIGIN', 'http://127.0.0.1:4000')
     if not re.fullmatch(r'http://(?:127\.0\.0\.1|localhost):\d{1,5}', origin):
         error('BACKEND_ACCEPTANCE_ORIGIN must be loopback HTTP')
-    script = """const http=require('node:http');const fail=e=>{console.error(e&&e.stack||e);process.exit(1)};process.on('uncaughtException',fail);process.on('unhandledRejection',fail);const origin=new URL(process.env.BACKEND_ACCEPTANCE_ORIGIN);const options={host:origin.hostname,port:origin.port||80,path:'/api/auth/guest',method:'POST',headers:{'Content-Type':'application/json','Content-Length':'2','X-Request-Id':process.env.REQUEST_ID}};const req=http.request(options,r=>{let data='';r.on('data',c=>data+=c);r.on('end',()=>{try{if(r.statusCode!==200)throw Error('guest session HTTP '+r.statusCode+' '+data.slice(0,200));const body=JSON.parse(data);if(!body.data||!body.data.token)throw Error('guest session contract mismatch');const check=http.get({host:origin.hostname,port:origin.port||80,path:'/api/backup/daily/status',headers:{Authorization:'Bearer '+body.data.token,'X-Request-Id':process.env.REQUEST_ID}},x=>{let y='';x.on('data',c=>y+=c);x.on('end',()=>{try{if(x.statusCode!==200)throw Error('daily status HTTP '+x.statusCode+' '+y.slice(0,200));const result=JSON.parse(y);if(!result.success||!result.data||result.data.timeZone!=='Asia/Shanghai')throw Error('daily status contract mismatch');process.stdout.write(JSON.stringify({status:x.statusCode,verified:result.data.verified,active:result.data.active,requestId:x.headers['x-request-id']||''}));}catch(e){fail(e)}});});check.on('error',fail);check.setTimeout(15000,()=>check.destroy(Error('health check timeout')));}catch(e){fail(e)}});});req.on('error',fail);req.setTimeout(15000,()=>req.destroy(Error('guest health check timeout')));req.end('{}');"""
+    if not DAILY_STATUS_VERIFIER.is_file():
+        error('daily status verifier is missing')
+    port = origin.rsplit(':', 1)[1]
     return subprocess.check_output(
-        ['node', '-e', script], cwd=working, text=True, timeout=30,
-        env=dict(os.environ, BACKEND_ACCEPTANCE_ORIGIN=origin, REQUEST_ID=request_id),
+        ['node', str(DAILY_STATUS_VERIFIER)], cwd=working, text=True, timeout=30,
+        env=dict(os.environ, BACKEND_ACCEPTANCE_PORT=port, BACKEND_ACCEPTANCE_REQUEST=request_id),
         stderr=subprocess.STDOUT
     ).strip()
 
