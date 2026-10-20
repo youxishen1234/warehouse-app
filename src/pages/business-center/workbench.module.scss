@@ -65,6 +65,8 @@
 .label { display: block; margin-top: 12PX; font-weight: 500; }
 .twoFields { display: grid; grid-template-columns: 1fr 1fr; gap: 12PX; }
 .spec { padding: 16PX; margin: 12PX 0; background: #2c3b30; border-left: 3PX solid #a6dcb8; }
+.stocktakeSummary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6PX 16PX; padding: 12PX 0; border-bottom: 1PX solid #414e44; color: #b5c0b9; }
+.stocktakeSummary taro-text-core:last-child { color: #a6dcb8; white-space: nowrap; }
 .note { display: block; color: #b5c0b9; margin: 16PX 0 22PX; line-height: 1.7; }
 .form > :is(button, taro-button-core) { width: 100%; margin-top: 14PX; }
 .error { color: #ffd0cb; background: #4b2929; padding: 14PX; margin: 12PX 0; overflow-wrap: anywhere; }
@@ -91,6 +93,9 @@
   .activity { gap: 10PX !important; grid-template-columns: 18PX minmax(0, 1fr) auto !important; }
   .activityDetail { font-size: 12PX; }
   .activityValue { max-width: 84PX; font-size: 15PX; }
+  .dialog { padding: 18PX; }
+  .dialog .tools { display: grid; grid-template-columns: 1fr 1fr; }
+  .dialog .tools :is(button, taro-button-core) { width: 100%; }
   .status { font-size: 13PX; }
   .row { gap: 10PX; }
 }

@@ -36,6 +36,12 @@ test('API helpers encode optional order filters and sorting without changing def
   assert.equal(ledgerQuery.get('include_voided'), 'true');
   assert.equal(ledgerQuery.get('type'), 'income');
   assert.equal(ledgerQuery.get('keyword'), 'review');
+  await api.getLedger({ id: 42, include_voided: true });
+  assert.equal(requests.at(-1).url, '/api/ledger?id=42&include_voided=true');
+  await api.getLedger({ party_type: 'customer', party_id: 7 });
+  const partyQuery = new URL(requests.at(-1).url, 'http://test.invalid').searchParams;
+  assert.equal(partyQuery.get('party_type'), 'customer');
+  assert.equal(partyQuery.get('party_id'), '7');
 
 });
 

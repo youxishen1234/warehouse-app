@@ -4,7 +4,7 @@ import { View, Text, Input, Picker, ScrollView } from '@tarojs/components';
 import Taro, { useRouter } from '@tarojs/taro';
 import Icon from '@/components/Icon';
 import type { IconName } from '@/components/Icon';
-import { addLedger, deleteLedger, getLedger, LedgerEntry, LedgerType } from '@/services/api';
+import { addLedger, deleteLedger, getCustomer, getLedger, getSupplier, LedgerEntry, LedgerType } from '@/services/api';
 import { formatMoney, formatTime } from '@/utils/format';
 import { downloadCsv } from '@/services/download';
 import { parseMoneyInput, previewMoneyInput, sanitizeNonNegativeMoneyInput } from '@/utils/form-input';
@@ -59,10 +59,16 @@ const LedgerListRow = React.memo(function LedgerListRow({ entry, onOpen }: Ledge
 
 export default function LedgerPage() {
   const { params } = useRouter();
-  const entryId = Number(params.entry);
+  const entryId = params.entry ? Number(params.entry) : 0;
+  const routePartyType = params.party_type === 'customer' || params.party_type === 'supplier' ? params.party_type : '';
+  const routePartyId = Number(params.party_id);
+  const partyId = routePartyType && Number.isSafeInteger(routePartyId) && routePartyId > 0 ? routePartyId : 0;
+  const routePartyName = String(params.party_name || '').trim();
   const [list, setList] = useState<LedgerEntry[]>([]);
   const [type, setType] = useState<LedgerType | ''>('');
   const [keyword, setKeyword] = useState('');
+  const [party, setParty] = useState<{ type: 'customer' | 'supplier'; id: number; name: string } | null>(() =>
+    routePartyType && partyId ? { type: routePartyType, id: partyId, name: routePartyName } : null);
   const [range, setRange] = useState(() => monthRange());
   const [period, setPeriod] = useState('本月');
   const [rangeOpen, setRangeOpen] = useState(false);
@@ -91,19 +97,51 @@ export default function LedgerPage() {
     setLoading(true);
     setLoadError('');
     try {
-      const data = await getLedger(dateBounds(range.from, range.to));
+      const hasEntryLink = Number.isSafeInteger(entryId) && entryId > 0;
+      const data = await getLedger({
+        ...dateBounds(range.from, range.to),
+        ...(party ? { party_type: party.type, party_id: party.id } : {})
+      });
       if (sequence !== loadSequence.current) return;
-      setList(data);
-      setSelected(current => current ? data.find(entry => entry.id === current.id) || current : Number.isSafeInteger(entryId) && entryId > 0 ? data.find(entry => entry.id === entryId) || null : null);
+      const scoped = party
+        ? data.filter(entry => entry.party_id === party.id && (!entry.party_type || entry.party_type === party.type))
+        : data;
+      setList(scoped);
+      const inList = hasEntryLink ? scoped.find(entry => entry.id === entryId) : null;
+      if (inList) {
+        setSelected(current => Number.isSafeInteger(entryId) && entryId > 0 && current?.id !== entryId ? inList : current || inList);
+        return;
+      }
+      if (!hasEntryLink) {
+      setSelected(current => current ? scoped.find(entry => entry.id === current.id) || current : null);
+        return;
+      }
+      const exact = await getLedger({ id: entryId, include_voided: true });
+      const found = exact.find(entry => entry.id === entryId);
+      if (sequence !== loadSequence.current) return;
+      if (found) { setSelected(found); return; }
+      if (party) { setSelected(current => current ? scoped.find(entry => entry.id === current.id) || null : null); return; }
+      const allTime = await getLedger({ include_voided: true });
+      if (sequence !== loadSequence.current) return;
+      setSelected(allTime.find(entry => entry.id === entryId) || null);
     } catch (error) {
       if (sequence === loadSequence.current) setLoadError(error instanceof Error ? error.message : 'LOAD_FAILED');
     } finally {
       if (sequence === loadSequence.current) setLoading(false);
     }
-  }, [entryId, range]);
+  }, [entryId, party, range]);
 
   useSharedRefresh(load);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (!party || party.name) return;
+    let active = true;
+    const request = party.type === 'customer' ? getCustomer(party.id) : getSupplier(party.id);
+    request.then(item => {
+      if (active && item.name) setParty(current => current?.type === party.type && current.id === party.id ? { ...current, name: item.name } : current);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [party]);
   useEffect(() => () => { loadSequence.current += 1; }, []);
   useEffect(() => {
     if (!scrollTarget) return;
@@ -139,6 +177,13 @@ export default function LedgerPage() {
   const dateLabel = range.from && range.to ? `${range.from.replace(/-/g, '.')} — ${range.to.replace(/-/g, '.')}` : '查看全部记账日期';
   const selectCategory = (value: LedgerType) => {
     setType(value); setKeyword(''); setScrollTarget('ledger-detail-list');
+  };
+  const clearParty = () => {
+    setParty(null);
+    setPeriod('本月');
+    setRange(monthRange());
+    setKeyword('');
+    setType('');
   };
 
   const choosePeriod = (value: string) => {
@@ -235,7 +280,7 @@ export default function LedgerPage() {
           <View className={styles.listHeading}><View><Text className={styles.sectionTitle}>流水明细</Text><Text className={styles.recordCount}>{ready ? `${filtered.length} 笔` : '—'}</Text></View><Button className={styles.refresh} disabled={loading} onClick={load}>{loading ? '更新中' : '刷新'}</Button></View>
           <View className={styles.search}><Icon name='search' color='#99a39d' /><Input placeholder='搜索客户、供应商或备注' value={keyword} maxlength={100} onInput={e => setKeyword(e.detail.value)} /><Button className={styles.clearSearch} aria-label='清空搜索' onClick={() => setKeyword('')} style={{ visibility: keyword ? 'visible' : 'hidden' }}>×</Button></View>
           <View className={styles.typeTabs}>{types.map(item => <Button className={`${styles.typeTab} ${type === item.value ? styles.typeActive : ''}`} aria-pressed={type === item.value} key={item.value || 'all'} onClick={() => setType(item.value)}>{item.label}</Button>)}</View>
-          {(type || keyword.trim()) && <View className={styles.filterStatus}><Text>{type ? `${types.find(item => item.value === type)?.label}流水` : '全部类型'}{keyword.trim() ? ` · “${keyword.trim()}”` : ''}</Text><Button onClick={() => { setType(''); setKeyword(''); }}>重置</Button></View>}
+          {(party || type || keyword.trim()) && <View className={styles.filterStatus}><Text>{party ? `${party.type === 'customer' ? '客户' : '供货商'} · ${party.name || `#${party.id}`}` : ''}{party && type ? ' · ' : ''}{type ? `${types.find(item => item.value === type)?.label}流水` : ''}{keyword.trim() ? `${party || type ? ' · ' : ''}“${keyword.trim()}”` : ''}</Text><Button onClick={() => { if (party) { clearParty(); return; } setType(''); setKeyword(''); }}>{party ? '清除对象筛选' : '重置'}</Button></View>}
           </View>
           {loading ? <View className={styles.empty}><View className={styles.loadingDot} /><Text className={styles.emptyTitle}>正在加载账单</Text><Text>稍等一下，正在同步流水…</Text></View>
             : loadError ? <View className={styles.empty}><Icon name='alert' color='#b7763b' /><Text className={styles.emptyTitle}>账单暂时没有加载成功</Text><Text>{loadError === 'LOAD_FAILED' ? '请检查网络后重试' : loadError}</Text><Button className={styles.emptyAction} onClick={load}>重新加载</Button></View>

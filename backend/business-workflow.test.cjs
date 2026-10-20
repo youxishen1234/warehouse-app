@@ -4,6 +4,18 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const express = require('express');
+const { normalizeFlute } = require('./business-workflow');
+test('flute normalization treats legacy suffixes as equivalent without merging real flute types', () => {
+  assert.equal(normalizeFlute(' B楞 '), 'B');
+  assert.equal(normalizeFlute('Ｂ楞'), 'B');
+  assert.equal(normalizeFlute(' b 楞 '), 'B');
+  assert.equal(normalizeFlute('Ｂ Ｃ'), 'BC');
+  assert.equal(normalizeFlute('ＢＣ楞'), 'BC');
+  assert.equal(normalizeFlute('B楞楞'), 'B楞');
+  assert.notEqual(normalizeFlute('B楞'), normalizeFlute('E楞'));
+  assert.notEqual(normalizeFlute('BC楞'), normalizeFlute('B楞'));
+  assert.notEqual(normalizeFlute('A楞'), normalizeFlute('B楞'));
+});
 test('business workbench shares dimensions and completes production atomically', async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'workflow-sync-'));
   process.env.WAREHOUSE_DATA_FILE = path.join(dir, 'data.json');
@@ -59,6 +71,42 @@ test('business workbench shares dimensions and completes production atomically',
       db.updateProduct(record.product_id, { specification: '42×32×22 cm' });
       assert.deepEqual(db.listProduction()[0].specification_snapshot.carton, [40, 30, 20]);
       assert.equal((await call('/production', 'POST', body, undefined, 0)).status, 409);
+    });
+    await t.test('legacy flute suffixes match while real flute types and strict specs still differ', async () => {
+      const makeProduct = (name, corrugation, overrides = {}) => db.addProduct({ name, category: '纸箱', specification: '40 × 30 × 20 cm', stock: 0, price: 0, layers: 3, unit: '个', corrugation, ...overrides });
+      const bLegacy = makeProduct('B楞旧箱', 'B楞');
+      const bFullWidth = makeProduct('全角Ｂ旧箱', 'Ｂ楞');
+      const aLegacy = makeProduct('A楞箱', 'A楞');
+      const wrongLayers = makeProduct('五层箱', 'B楞', { layers: 5 });
+      const wrongSize = makeProduct('错尺寸箱', 'B楞', { specification: '40 × 30 × 21 cm' });
+
+      const selected = db.completeProduction({ batch_id: batch.id, product_id: bLegacy.id, consumed_quantity: 1, quantity: 1 }, 'test');
+      assert.equal(selected.product_id, bLegacy.id);
+      assert.equal(db.getProduct(bLegacy.id).stock, 1);
+      assert.equal((await call('/production', 'POST', { batch_id: batch.id, product_id: bFullWidth.id, consumed_quantity: 1, quantity: 1 })).status, 200);
+      const namedB = await call('/production', 'POST', { batch_id: batch.id, product_name: 'B楞旧箱', consumed_quantity: 1, quantity: 1 });
+      assert.equal(namedB.status, 200, namedB.message);
+      assert.equal(namedB.data.product_id, bLegacy.id);
+      for (const product of [aLegacy, wrongLayers, wrongSize]) {
+        const response = await call('/production', 'POST', { batch_id: batch.id, product_id: product.id, consumed_quantity: 1, quantity: 1 });
+        assert.equal(response.status, 400, product.name + ': ' + response.message);
+      }
+
+      const bcBatch = db.receiveBoard({ ...form, fluteType: 'BC', supplier: 'BC板厂', receivedQty: 20 });
+      const bcLegacy = makeProduct('BC楞旧箱', 'BC楞');
+      const bcFullWidth = makeProduct('全角ＢＣ旧箱', 'ＢＣ楞');
+      assert.equal((await call('/production', 'POST', { batch_id: bcBatch.id, product_id: bcLegacy.id, consumed_quantity: 1, quantity: 1 })).status, 200);
+      assert.equal((await call('/production', 'POST', { batch_id: bcBatch.id, product_id: bcFullWidth.id, consumed_quantity: 1, quantity: 1 })).status, 200);
+      const namedBC = await call('/production', 'POST', { batch_id: bcBatch.id, product_name: 'BC楞旧箱', consumed_quantity: 1, quantity: 1 });
+      assert.equal(namedBC.status, 200, namedBC.message);
+      assert.equal(namedBC.data.product_id, bcLegacy.id);
+      assert.equal((await call('/production', 'POST', { batch_id: bcBatch.id, product_id: bLegacy.id, consumed_quantity: 1, quantity: 1 })).status, 400);
+      assert.equal(db.listProduction().find(r => r.product_id === bLegacy.id).product_id, bLegacy.id);
+
+      const eBatch = db.receiveBoard({ ...form, fluteType: 'E', supplier: 'E板厂', receivedQty: 20 });
+      const eLegacy = makeProduct('E楞旧箱', 'ｅ 楞');
+      assert.equal((await call('/production', 'POST', { batch_id: eBatch.id, product_id: eLegacy.id, consumed_quantity: 1, quantity: 1 })).status, 200);
+      assert.equal((await call('/production', 'POST', { batch_id: eBatch.id, product_id: bLegacy.id, consumed_quantity: 1, quantity: 1 })).status, 400);
     });
     await t.test('backup validation preserves the linked production and rejects damaged quantities', () => {
       const backup = db.backupData(); db.restoreData(backup);

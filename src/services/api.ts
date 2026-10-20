@@ -98,8 +98,18 @@ export const getTransactions = (params?: TransactionFilters) => {
 };
 export const getTransactionsPage = (params: PageQuery & TransactionFilters) => getPage<Transaction>('/api/transactions', params);
 
-type LedgerFilters = SortQuery<'ledger'> & { type?: LedgerType; keyword?: string; from?: number; to?: number; include_voided?: boolean };
-export const getLedger = (params?: LedgerFilters) => {
+type LedgerFilters = SortQuery<'ledger'> & {
+  id?: number;
+  type?: LedgerType;
+  keyword?: string;
+  party_type?: 'customer' | 'supplier';
+  party_id?: number;
+  from?: number;
+  to?: number;
+  include_voided?: boolean;
+};
+export type LedgerFiltersInput = Omit<LedgerFilters, 'party_id'> & { party_id?: number | string };
+export const getLedger = (params?: LedgerFiltersInput) => {
   const qs = params ? queryString(params) : '';
   return request<LedgerEntry[]>({ url: `/api/ledger${qs ? `?${qs}` : ''}` });
 };

@@ -201,6 +201,9 @@ function listLedger(f={}) {
   let l = cache.ledger.filter(x => f.include_voided === 'true' || !x.voided_at);
   if (f.type) l = l.filter(x => x.type === f.type);
   if (f.keyword) { const k=String(f.keyword).toLowerCase(); l=l.filter(x => String(x.remark||'').toLowerCase().includes(k) || String(x.party_name||'').toLowerCase().includes(k)); }
+  if (f.id !== undefined) l = l.filter(x => x.id === Number(f.id));
+  if (f.party_type) l = l.filter(x => ledgerPartyType(x, cache) === f.party_type);
+  if (f.party_id !== undefined) l = l.filter(x => x.party_id === Number(f.party_id));
   const from = f.from === undefined ? undefined : parseDateQuery(String(f.from));
   const to = f.to === undefined ? undefined : parseDateQuery(String(f.to), true);
   if (from !== undefined) l=l.filter(x=>x.created_at>=from); if(to !== undefined) l=l.filter(x=>x.created_at<=to);

@@ -45,7 +45,7 @@ async function main() {
     db.completeProduction({ batch_id: batch.id, product_name: '成品纸箱', consumed_quantity: 20, quantity: 18 }, '验证操作员');
     const customer = db.addCustomer({ name: '示例客户', debt: 0 });
     db.addSupplier({ name: '示例供货商', payable: 211.2 });
-    db.addOrder({ order_no: 'TEST-ORDER-1', customer_id: customer.id, customer_name: customer.name, specification: '40 × 30 × 20 cm', material: 'B楞', quantity: 18, unit: '个', unit_price: 18, amount: 324, delivery_date: '2026-10-25', status: '待生产', remark: '隔离验证订单' });
+    db.addOrder({ order_no: 'TEST-ORDER-1', customer_id: customer.id, customer_name: customer.name, specification: '40 × 30 × 20 cm', material: 'B楞', quantity: 18, unit: '个', unit_price: 18, amount: 324, delivery_date: '2026-10-25', status: '生产中', remark: '隔离验证订单' });
 
     await go('/pages/business-center/index');
     await expect(page.getByText('办理业务', { exact: true })).toBeVisible();
@@ -60,6 +60,26 @@ async function main() {
     await page.getByLabel('搜索库存').locator('input').fill('不存在');
     await expect(page.getByTestId('workbench-board')).toHaveCount(0);
     await page.screenshot({ path: path.join(artifacts, 'workbench-stock.png'), fullPage: true });
+    await page.getByLabel('搜索库存').locator('input').fill('');
+    await click('纸箱');
+    const carton = page.getByTestId('workbench-carton');
+    await expect(carton).toContainText('成品纸箱');
+    await click('盘点 / 调整库存');
+    await expect(page.getByRole('dialog', { name: '库存盘点' })).toBeVisible();
+    await page.getByLabel('实盘库存').locator('input').fill('-1');
+    await click('确认盘点');
+    await expect(page.getByRole('alert')).toContainText('非负数');
+    await page.getByLabel('实盘库存').locator('input').fill('21.5');
+    await page.getByLabel('盘点备注').locator('input').fill('月末实物清点');
+    await click('确认盘点');
+    await expect(page.getByRole('dialog', { name: '库存盘点' })).toHaveCount(0);
+    await expect(carton).toContainText('21.5 个');
+    const countedProduct = db.getProduct(db.listProducts()[0].id);
+    assert.equal(countedProduct.stock, 21.5);
+    const countMove = db.listTx({ product_id: countedProduct.id }).find(tx => tx.type === 'adjustment');
+    assert.equal(countMove.quantity, 3.5);
+    assert.equal(countMove.remark, '月末实物清点');
+    assert.equal(db.listStocktakes({ product_id: countedProduct.id })[0].counted_stock, 21.5);
 
     await page.goto('about:blank');
     await page.goto(origin + '/#/pages/customers/index');
@@ -94,6 +114,11 @@ async function main() {
     await expect(page.getByTestId('workbench-order')).toContainText('示例客户');
     await page.getByLabel('搜索订单').locator('input').fill('不存在订单');
     await expect(page.getByText('没有找到匹配订单', { exact: true })).toBeVisible();
+    await page.getByLabel('搜索订单').locator('input').fill('TEST-ORDER-1');
+    await click('核对出库');
+    await expect(page).toHaveURL(/\/pages\/outbound\/index/);
+    await expect(page.getByText('02 / 核对出库', { exact: true })).toBeVisible();
+    await expect(page.getByText('TEST-ORDER-1', { exact: false }).first()).toBeVisible();
 
     await go('/pages/business-center/index');
     await click('入库');

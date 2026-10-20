@@ -1,6 +1,15 @@
 const crypto = require('node:crypto');
 const fail = message => { throw Object.assign(new Error(message), { status: 400 }); };
 
+function normalizeFlute(value) {
+  return String(value || '').normalize('NFKC').trim().replace(/\s+/g, '').replace(/楞$/u, '').toUpperCase();
+}
+
+function fluteMatches(productValue, batchValue) {
+  if (!String(productValue || '').trim()) return true;
+  return normalizeFlute(productValue) === normalizeFlute(batchValue);
+}
+
 // Compare dimensions in centimetres, without confusing a board's two axes with a box's three.
 function sizeInCm(value, unit = '') {
   const text = String(value || '').trim();
@@ -46,11 +55,11 @@ function complete(data, raw, operator, stockIn, addProduct) {
     const dimensions = product && sizeInCm(product.specification);
     if (!dimensions || dimensions.length !== 3 || dimensions.some((n, i) => n !== size[i])) fail('纸箱规格与纸板对应成箱尺寸不一致，请重新选择');
     if (!['个', '只', '件'].includes(product.unit) || product.category === '纸板') fail('请选择以个、只或件计数的纸箱商品');
-    if ((product.corrugation && product.corrugation !== batch.fluteType) || (product.layers && product.layers !== batch.layers)) fail('纸箱楞型或层数与领用纸板不一致');
+    if (!fluteMatches(product.corrugation, batch.fluteType) || (product.layers && product.layers !== batch.layers)) fail('纸箱楞型或层数与领用纸板不一致');
   } else {
     const name = String(raw.product_name || '').trim();
     if (!name || name.length > 100) fail('请填写纸箱名称（最多100字）');
-    const matches = data.products.filter(p => !p.deleted_at && p.name === name && p.specification === specification && p.corrugation === batch.fluteType && p.layers === batch.layers && p.unit === '个');
+    const matches = data.products.filter(p => !p.deleted_at && p.name === name && p.specification === specification && fluteMatches(p.corrugation, batch.fluteType) && p.layers === batch.layers && p.unit === '个');
     if (matches.length > 1) fail('有多个相同商品，请指定纸箱商品');
     product = matches[0] || addProduct({ name, category: '纸箱', specification, unit: '个', stock: 0, price: 0, corrugation: batch.fluteType, layers: batch.layers });
   }
@@ -84,4 +93,4 @@ function validate(data) {
     ids.add(record.id);
   }
 }
-module.exports = { sizeInCm, specifications, complete, validate };
+module.exports = { normalizeFlute, sizeInCm, specifications, complete, validate };

@@ -110,6 +110,10 @@ test('all list routes and CSV exports validate sorting and order status through 
       const withoutVoided = await call(`/ledger?type=income&keyword=${encodeURIComponent(marker)}&sort=amount&order=asc&page=1&page_size=10`);
       assert.deepEqual(withoutVoided.body.data.items.map(item => item.id), [entries[1].id, entries[0].id]);
       assert.equal(withoutVoided.body.data.total, 2);
+      const exact = await call(`/ledger?id=${entries[0].id}&include_voided=true`);
+      assert.deepEqual(exact.body.data.map(item => item.id), [entries[0].id]);
+      assert.equal((await call('/ledger?id=0')).status, 400);
+      assert.equal((await call('/ledger?party_type=vendor&party_id=1')).status, 400);
       assert.equal((await call(`/ledger?include_voided=yes`)).status, 400);
       assert.equal((await call(`/ledger?include_voided[]=true`)).status, 400);
     });

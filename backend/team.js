@@ -372,7 +372,9 @@ function install(db, options = {}) {
   const validateListQuery = (query, collection) => {
     queryString(query, 'sort'); queryString(query, 'order');
     validateSortQuery(query, collection);
-    for (const name of ['product_id', 'customer_id', 'supplier_id', 'page', 'page_size']) queryPositiveId(query, name);
+    for (const name of ['id', 'product_id', 'customer_id', 'supplier_id', 'party_id', 'page', 'page_size']) queryPositiveId(query, name);
+    const partyType = queryString(query, 'party_type');
+    if (partyType !== undefined && (collection !== 'ledger' || !['customer', 'supplier'].includes(partyType))) throw error('往来对象类型 party_type 只能是 customer 或 supplier');
     const pageSize = queryString(query, 'page_size');
     if (pageSize !== undefined && Number(pageSize) > 500) throw error('每页数量 page_size 不能超过 500');
     const dateBounds = {};
