@@ -34,7 +34,7 @@ async function main() {
     return page;
   };
   const go = async page => { await page.goto('about:blank'); await page.goto(origin + '/#/pages/business-center/index'); await expect(page.getByText('办理业务', { exact: true })).toBeVisible(); await expect(page.getByText('服务器数据已读取 · 多设备自动同步', { exact: true })).toBeVisible(); };
-  const button = (page, text) => page.getByText(text, { exact: true }).locator('xpath=ancestor-or-self::*[self::taro-button-core or self::button][1]');
+  const button = (scope, text) => scope.getByText(text, { exact: true }).last().locator('xpath=ancestor-or-self::*[self::taro-button-core or self::button][1]');
   try {
     // Isolated demonstration data only. No calls reach the live warehouse.
     const batch = db.receiveBoard({ supplier: '示例板厂', date: '2026-10-19', boardLength: 160, boardWidth: 110, cartonLength: 40, cartonWidth: 30, cartonHeight: 20, fluteType: 'B', layers: 3, orderedQty: 120, receivedQty: 120, billedArea: 211.2, unitPrice: 1 });
@@ -63,18 +63,18 @@ async function main() {
     await expect(page.getByText('纸板入库', { exact: true })).toBeVisible();
     await expect(page.getByText('纸箱入库', { exact: true })).toBeVisible();
     await page.screenshot({ path: path.join(artifacts, 'reference-inbound.png'), fullPage: true });
-    await button(page, '总台').click(); await button(page, '记收款').click();
+    await button(page.getByTestId('simple-workbench'), '总台').click(); await button(page.getByTestId('simple-workbench'), '记收款').click();
     await expect(page.getByText('待收款 ¥22.00', { exact: true })).toBeVisible();
-    await button(page, '供货商账单').click();
+    await button(page.getByTestId('simple-workbench'), '供货商账单').click();
     await expect(page.getByText('待付款 ¥211.20', { exact: true })).toBeVisible();
     await page.screenshot({ path: path.join(artifacts, 'reference-bills.png'), fullPage: true });
-    await button(page, '总台').click();
+    await button(page.getByTestId('simple-workbench'), '总台').click();
     await button(page, '示例客户 · 收款记录').click();
     await expect(page.getByRole('dialog', { name: '流水详情' })).toBeVisible();
     assert.equal(await page.locator('body').getAttribute('data-simple-workbench-active'), null, 'legacy shell restored after navigation');
-    await go(page); await button(page, '全部记录').click();
+    await go(page); await button(page.getByTestId('simple-workbench'), '全部记录').click();
     await expect(page.getByText('业务记录与存根', { exact: true })).toBeVisible();
-    await button(page, '总台').click(); await button(page, '成品 B · 生产单').click();
+    await button(page.getByTestId('simple-workbench'), '总台').click(); await button(page.getByTestId('simple-workbench'), '成品 B · 生产单').click();
     await expect(page.getByText('领用 100 张 · 完工 100 个', { exact: true })).toBeVisible();
     assert.deepEqual(errors, []);
     console.log('PASS reference UI: four actions, three real daily records, separate inbound and bills, deep links, shell cleanup, 320/390/736/1280 widths');
