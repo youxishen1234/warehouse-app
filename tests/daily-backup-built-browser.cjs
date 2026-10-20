@@ -16,7 +16,9 @@ if (path.isAbsolute(configuredBuild)) {
 }
 const dist = path.resolve(configuredBuild);
 const releaseSegments = path.relative(path.parse(dist).root, dist).split(path.sep);
-assert(releaseSegments.includes('release') && !['www', 'dist'].includes(path.basename(dist)), 'Do not use or modify the shared www/dist directories');
+const isolatedCiBuild = /^dist-\d+-\d+$/.test(path.basename(dist));
+const isolatedReleaseBuild = releaseSegments.includes('release') && !['www', 'dist'].includes(path.basename(dist));
+assert(isolatedCiBuild || isolatedReleaseBuild, 'Do not use or modify the shared www/dist directories');
 const output = path.resolve(process.env.DAILY_BACKUP_BROWSER_OUTPUT || path.join(path.dirname(dist), 'built-browser'));
 const statusFixture = { enabled: true, active: true, timeZone: 'Asia/Shanghai', hour: 2, keepDays: 30, lastSuccessAt: '2026-10-19T18:00:00.000Z', lastAttemptAt: '2026-10-19T18:00:00.000Z', lastError: null, nextScheduledAt: '2026-10-20T18:00:00.000Z', nextRetryAt: null, running: false, location: 'server', verified: true };
 const exportFixture = { exportedAt: statusFixture.lastSuccessAt, data: { products: [{ id: 13, name: '隔离纸板' }], ledger_attachment_files: { evidence: 'isolated-photo-fixture' } } };
