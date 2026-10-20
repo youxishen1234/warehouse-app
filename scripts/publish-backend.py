@@ -99,11 +99,11 @@ def load_bundle(path, expected_commit=None):
 def materialize_and_preflight(files):
     with tempfile.TemporaryDirectory(prefix='warehouse-backend-preflight-') as directory:
         root = Path(directory)
-        for name, metadata in files.items():
+        for name, content in files.items():
             target = safe_path(root, name)
             target.parent.mkdir(parents=True, exist_ok=True)
             with target.open('xb') as stream:
-                stream.write(base64.b64decode(metadata['data'], validate=True))
+                stream.write(content)
                 stream.flush()
                 os.fsync(stream.fileno())
         script = (
