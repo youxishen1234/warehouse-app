@@ -156,10 +156,13 @@ def run_healthcheck(working, token, request_id):
     if not DAILY_STATUS_VERIFIER.is_file():
         error('daily status verifier is missing')
     environment = dict(os.environ, BACKEND_ACCEPTANCE_TOKEN=token, BACKEND_ACCEPTANCE_REQUEST=request_id)
-    return subprocess.check_output(
-        ['node', str(DAILY_STATUS_VERIFIER)], cwd=working, text=True, timeout=30,
-        env=environment, stderr=subprocess.STDOUT
-    ).strip()
+    try:
+        return subprocess.check_output(
+            ['node', str(DAILY_STATUS_VERIFIER)], cwd=working, text=True, timeout=30,
+            env=environment, stderr=subprocess.STDOUT
+        ).strip()
+    except subprocess.CalledProcessError as exception:
+        error('daily status verification failed: ' + (exception.output or 'no output').strip())
 
 
 def service_environment(properties):
@@ -194,11 +197,14 @@ def healthcheck(working, service_environment):
     if not DAILY_STATUS_VERIFIER.is_file():
         error('daily status verifier is missing')
     port = origin.rsplit(':', 1)[1]
-    return subprocess.check_output(
-        ['node', str(DAILY_STATUS_VERIFIER)], cwd=working, text=True, timeout=30,
-        env=dict(os.environ, BACKEND_ACCEPTANCE_PORT=port, BACKEND_ACCEPTANCE_REQUEST=request_id),
-        stderr=subprocess.STDOUT
-    ).strip()
+    try:
+        return subprocess.check_output(
+            ['node', str(DAILY_STATUS_VERIFIER)], cwd=working, text=True, timeout=30,
+            env=dict(os.environ, BACKEND_ACCEPTANCE_PORT=port, BACKEND_ACCEPTANCE_REQUEST=request_id),
+            stderr=subprocess.STDOUT
+        ).strip()
+    except subprocess.CalledProcessError as exception:
+        error('daily status verification failed: ' + (exception.output or 'no output').strip())
 
 
 @contextmanager
