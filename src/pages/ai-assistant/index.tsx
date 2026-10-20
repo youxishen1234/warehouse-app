@@ -17,7 +17,7 @@ const legacySchema = (intent: AiIntent): AiSchema => ({ type: 'object', required
   ...(intent.action === 'stock_in' ? { supplier_id: { type: 'integer', title: '供应商编号' } } : { customer_id: { type: 'integer', title: '客户编号' } }), remark: { type: 'string', title: '备注' }
 } });
 const textError = (error: unknown) => error instanceof Error ? error.message : '操作失败，请重试';
-const navigate = (url: string) => ['/pages/home/index', '/pages/board-stock/index', '/pages/outbound/index', '/pages/mine/index'].includes(url) ? Taro.switchTab({ url }) : Taro.navigateTo({ url });
+const navigate = (url: string) => ['/pages/home/index', '/pages/ai-assistant/index', '/pages/inventory/index', '/pages/mine/index'].includes(url) ? Taro.switchTab({ url }) : Taro.navigateTo({ url });
 const setPath = (source: any, path: string, value: any) => {
   const parts = path.split('.').filter(Boolean);
   const result = Array.isArray(source) ? [...source] : { ...(source || {}) };

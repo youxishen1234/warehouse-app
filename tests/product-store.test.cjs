@@ -7,5 +7,8 @@ test('product store shares concurrent reads and supports invalidation', () => {
   assert.match(source, /pending: Promise<Product\[\]> \| null/);
   assert.match(source, /if \(!force && pending\) return pending/);
   assert.match(source, /export function invalidateProducts/);
-  assert.match(fs.readFileSync('src/pages/home/index.tsx', 'utf8'), /loadProducts\(force\)/);
+  const home = fs.readFileSync('src/pages/home/index.tsx', 'utf8');
+  const workbench = fs.readFileSync('src/pages/business-center/workbench.tsx', 'utf8');
+  assert.match(home, /<Workbench embedded initial='home' \/>/);
+  assert.match(workbench, /loadProducts\(true\)/);
 });

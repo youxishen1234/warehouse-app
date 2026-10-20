@@ -39,7 +39,7 @@ async function main() {
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     const workbench = () => page.getByTestId('simple-workbench');
     const go = async hash => { await page.goto('about:blank'); await page.goto(origin + '/#' + hash); await expect(workbench()).toBeVisible(); await expect(page.getByText('服务器数据已读取 · 多设备自动同步', { exact: true })).toBeVisible(); };
-    const click = text => page.getByText(text, { exact: true }).locator('xpath=ancestor-or-self::*[self::taro-button-core or self::button or self::div][1]').click();
+    const click = (text, scope = page) => scope.getByText(text, { exact: true }).first().locator('xpath=ancestor-or-self::*[self::taro-button-core or self::button or self::div][1]').click();
 
     const batch = db.receiveBoard({ supplier: '示例板厂', date: '2026-10-19', boardLength: 160, boardWidth: 110, cartonLength: 40, cartonWidth: 30, cartonHeight: 20, fluteType: 'B', layers: 3, orderedQty: 120, receivedQty: 120, billedArea: 211.2, unitPrice: 1, deliveryNo: 'L001', location: 'A01' });
     db.completeProduction({ batch_id: batch.id, product_name: '成品纸箱', consumed_quantity: 20, quantity: 18 }, '验证操作员');
@@ -52,7 +52,7 @@ async function main() {
     assert.equal(await page.getByTestId('workbench-actions').locator('taro-button-core').count(), 4);
     await page.screenshot({ path: path.join(artifacts, 'workbench-home.png'), fullPage: true });
 
-    await click('库存');
+    await click('库存', workbench());
     await expect(page.getByTestId('workbench-board')).toContainText('160 × 110 cm');
     await expect(page.getByTestId('workbench-board')).toContainText('成箱 40 × 30 × 20 cm');
     await page.getByLabel('搜索库存').locator('input').fill('40*30*20');
@@ -104,10 +104,9 @@ async function main() {
     await expect(page.getByText('供货商账单', { exact: true }).first()).toBeVisible();
     await page.goto('about:blank');
     await page.goto(origin + '/#/pages/inventory/index');
-    await expect(page.getByText('办理业务', { exact: true })).toBeVisible();
+    await expect(page.getByText('纸板库存', { exact: false }).first()).toBeVisible();
     await expect(page.getByText('服务器数据已读取 · 多设备自动同步', { exact: true })).toBeVisible();
-    await click('库存');
-    await expect(page.getByText('查看库存', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('workbench-board')).toBeVisible();
 
     await go('/pages/business-center/index?detail=1');
     await expect(page.getByText('规格与订单', { exact: true })).toBeVisible();

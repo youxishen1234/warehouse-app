@@ -44,7 +44,7 @@ export default defineAppConfig({
     list: [
       {
         pagePath: 'pages/home/index',
-        text: '首页',
+        text: '总台',
         iconPath: 'assets/tabbar/home.svg',
         selectedIconPath: 'assets/tabbar/home-selected.svg'
       },
@@ -55,10 +55,10 @@ export default defineAppConfig({
         selectedIconPath: 'assets/tabbar/ai-selected.svg'
       },
       {
-        pagePath: 'pages/outbound/index',
-        text: '出库',
-        iconPath: 'assets/tabbar/outbound.svg',
-        selectedIconPath: 'assets/tabbar/outbound-selected.svg'
+        pagePath: 'pages/inventory/index',
+        text: '库存',
+        iconPath: 'assets/tabbar/inbound.svg',
+        selectedIconPath: 'assets/tabbar/inbound-selected.svg'
       },
       {
         pagePath: 'pages/mine/index',

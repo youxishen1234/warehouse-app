@@ -32,7 +32,7 @@ async function main() {
   }, '/pages/' + route + '/index');
   try {
     await page.goto(origin);
-    for (const [index, route] of [[3, 'mine'], [0, 'home'], [2, 'outbound'], [0, 'home'], [1, 'ai-assistant'], [0, 'home']]) {
+    for (const [index, route] of [[3, 'mine'], [0, 'home'], [2, 'inventory'], [0, 'home'], [1, 'ai-assistant'], [0, 'home']]) {
       await tab(index).click();
       await current(route);
     }
@@ -41,7 +41,7 @@ async function main() {
       await page.locator(`button[data-nav="/pages/${name}/index"]`).click();
       if (name === 'customers') {
         await current('customers');
-        await page.getByText('办理业务', { exact: true }).waitFor();
+        await page.getByTestId('simple-workbench').last().waitFor();
       } else await current(name);
       await page.goto(origin);
       await current('home');
@@ -50,7 +50,7 @@ async function main() {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForFunction(() => getComputedStyle(document.querySelector('.sg-glass-lens')).display !== 'none');
     await tab(2).click();
-    await current('outbound');
+    await current('inventory');
     await tab(0).click();
     await current('home');
     const first = await tab(0).boundingBox(), last = await tab(3).boundingBox();

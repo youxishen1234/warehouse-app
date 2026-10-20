@@ -1,8 +1,8 @@
-.root { margin: 12rpx 0 22rpx; }
-.selected { display: flex; justify-content: space-between; gap: 16rpx; padding: 22rpx 18rpx; border: 1rpx solid #dfe5eb; border-radius: 8rpx; background: #f8fafb; color: #172033; font-size: 26rpx; }
+.root { margin: 12PX 0 22PX; }
+.selected { display: flex; justify-content: space-between; gap: 12PX; min-height: 46PX; box-sizing: border-box; align-items: center; padding: 12PX; border: 1PX solid #ffffff0c; border-radius: 11PX; background: #ffffff04; color: #e8efff; font-size: 14PX; }
 .selected text { margin: 0; }
-.options { border: 1rpx solid #dfe5eb; border-radius: 8rpx; padding: 16rpx; background: #fff; }
-.search { height: 76rpx; padding: 0 16rpx; background: #f3f5f7; border-radius: 8rpx; font-size: 24rpx; }
-.list { max-height: 480rpx; }
-.option { padding: 20rpx 4rpx; border-bottom: 1rpx solid #edf0f3; font-size: 26rpx; color: #172033; }
-.detail { display: block; margin: 8rpx 0; color: #64748b; font-size: 22rpx; line-height: 1.6; }
+.options { margin-top: 8PX; padding: 10PX; border: 1PX solid #ffffff0e; border-radius: 12PX; background: #151a22; }
+.search { height: 42PX; padding: 0 12PX; border: 1PX solid #ffffff0c; border-radius: 9PX; background: #ffffff04; color: #e8efff; font-size: 13PX; }
+.list { max-height: 280PX; }
+.option { padding: 12PX 4PX; border-bottom: 1PX solid #ffffff0a; color: #e8efff; font-size: 13PX; }
+.detail { display: block; margin: 5PX 0; color: #8e9fb9; font-size: 11PX; line-height: 1.6; }

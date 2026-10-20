@@ -55,7 +55,7 @@ function harness() {
 test('rapid native changes keep the final destination and suppress stale route acknowledgments', async () => {
   const h = harness();
   try {
-    h.select('ai-assistant', 1); h.select('outbound', 2); h.select('mine', 3);
+    h.select('ai-assistant', 1); h.select('inventory', 2); h.select('mine', 3);
     h.mutation(); await h.flush();
     assert.equal(h.messages.length, 0, 'old route cannot reset native selection while pending');
     assert.deepEqual(h.calls, ['/pages/ai-assistant/index']);
@@ -79,8 +79,8 @@ test('failed navigation acknowledges the actual route and allows the next select
     assert.equal(h.messages[0].route, '/pages/home/index');
     assert.equal(h.messages[0].requestId, 7);
     assert.equal(h.messages[0].navigationFailed, true);
-    h.select('outbound', 8); h.requests[1].resolve(); await h.flush();
-    assert.equal(h.messages.at(-1).route, '/pages/outbound/index');
+    h.select('inventory', 8); h.requests[1].resolve(); await h.flush();
+    assert.equal(h.messages.at(-1).route, '/pages/inventory/index');
     assert.equal(h.messages.at(-1).navigationFailed, false);
   } finally { h.dispose(); }
 });

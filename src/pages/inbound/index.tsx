@@ -8,6 +8,7 @@ import { useSharedRefresh } from '@/services/shared-refresh';
 import { dimensions, localDate, numberValue, previewAmount, roundDecimal, sanitizeDecimalInput } from '@/utils/stock-math';
 import { formatMoney, formatMoneyPreview } from '@/utils/format';
 import StockProductPicker from '@/components/StockProductPicker';
+import { BoardButton, BoardConfirmBar, BoardPage } from '@/components/BoardUI';
 import type { Customer, Product } from '@/types';
 import styles from './index.module.scss';
 import { useRemoteData } from '@/hooks/useRemoteData';
@@ -131,7 +132,10 @@ export default function InboundPage() {
     try {
       const confirmation = await Taro.showModal({ title: '作废整张入库单', content: '将撤回全部明细的库存和应付款，保留原单历史。已使用的库存或已结算款项可能阻止作废。' });
       if (!confirmation.confirm) return;
-      const result = await voidDeliveryNote(note.id); setPreview(result); await load();
+      const result = await voidDeliveryNote(note.id);
+      setPreview(result);
+      setNotes(current => current.map(item => item.id === result.id ? result : item));
+      await load();
       Taro.showToast({ title: '入库单已作废', icon: 'success' });
     } catch (error) { Taro.showToast({ title: message(error), icon: 'none' }); }
     finally { busy.current = false; setSaving(false); }
@@ -140,11 +144,9 @@ export default function InboundPage() {
     try { await downloadCsv(deliveryNoteCsvUrl(note.id), `delivery-note-${note.id}.csv`); }
     catch (error) { Taro.showToast({ title: message(error), icon: 'none' }); }
   };
-  return <ScrollView scrollY className={styles.page} refresherEnabled={false} onRefresherRefresh={() => load(true)}>
+  return <BoardPage title='入库开单' subtitle='核对商品与实收数量，确认后同步库存和供应商应付。' eyebrow='开单工作台' tone='inbound' steps={['填单据', '核对商品', '确认入库']} action={<BoardButton secondary disabled={saving} onClick={() => load(true)}>刷新</BoardButton>}><ScrollView scrollY className={styles.page} refresherEnabled={false} onRefresherRefresh={() => load(true)}>
     <View className={styles.hero}>
-      <View className={styles.heroHeading}><View><Text className={styles.eyebrow}>收货 / RECEIVE</Text><Text className={styles.title}>入库开单</Text></View><View className={styles.heroMark}>入</View></View>
-      <Text className={styles.subTitle}>核对商品，记录每一笔收货</Text>
-      <View className={styles.heroSummary}><View><Text className={styles.summaryLabel}>本单货款</Text><Text className={styles.summaryValue}>{formatMoneyPreview(totalAmount)}</Text></View><Text className={styles.summaryCount}>{lines.length} 项商品</Text></View>
+      <View className={styles.heroHeading}><View><Text className={styles.eyebrow}>本单货款</Text><Text className={styles.summaryValue}>{formatMoneyPreview(totalAmount)}</Text></View><Text className={styles.summaryCount}>{lines.length} 项商品 · 实收后同步库存</Text></View>
     </View>
     {loadError && <View className={styles.error} onClick={() => load(true)}>{loadError} · 点击重试</View>}
     <View className={styles.card}>
@@ -199,6 +201,5 @@ export default function InboundPage() {
       <Text className={styles.previewTotal}>货款：{formatMoney(preview.total_amount)}　实际面积：{preview.total_square_meters.toFixed(4)} ㎡</Text><Text>运费：{formatMoney(Number(preview.freight || 0))}（单独记录）</Text>
       <View className={styles.export} onClick={() => exportCsv(preview)}>导出 CSV</View>{!preview.voided_at && <View className={styles.voidButton} onClick={() => voidNote(preview)}>作废整张入库单</View>}
     </View>}
-    <View className={`${styles.fixedSave} ${saving || !ready ? styles.disabled : ''}`} onClick={save}>{saving ? '处理中…' : `确认入库 · ${formatMoneyPreview(totalAmount)}`}</View>
-  </ScrollView>;
+  </ScrollView><BoardConfirmBar label={saving ? '正在写入库存' : '待入库金额'} amount={formatMoneyPreview(totalAmount)} action='入库确认' confirmLabel='确认入库' busyLabel='正在入库…' busy={saving} disabled={!ready} onConfirm={save} /></BoardPage>;
 }

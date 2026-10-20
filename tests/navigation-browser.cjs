@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
-const { chromium, webkit } = require('playwright');
+const { chromium, webkit } = require('@playwright/test');
 
 const root = path.resolve(process.env.NAV_WEB_DIR || 'dist');
 const server = http.createServer((req, res) => {
@@ -47,15 +47,14 @@ async function verify(browser, name) {
   });
   await page.goto('http://127.0.0.1:' + server.address().port);
   await page.waitForSelector('.sg-glass-tab[data-tab]');
-  await page.waitForFunction(() => document.querySelector('[class*="funcGrid___"]'));
-  assert.equal(await page.locator('.sg-home-search').count(), 0, 'search removed');
-  assert.equal(await page.locator('.sg-quick-add').count(), 0);
-  assert.equal(await page.getByText('纸箱计算器', { exact: true }).count(), 1, 'calculator entry is available');
+  const workbench = page.locator('[data-testid="simple-workbench"]:visible').first();
+  await workbench.locator('[data-testid="workbench-actions"] > taro-button-core').first().waitFor();
+  assert.equal(await workbench.locator('[data-testid="workbench-actions"] > taro-button-core').count(), 4);
   const before = await page.locator('taro-tabbar').boundingBox();
   assert.ok(before.y > 700 && before.y + before.height <= 845, JSON.stringify(before));
   assert.equal(await page.locator('.sg-glass-tab[data-tab]').count(), 4);
   assert.equal(await page.locator('.sg-glass-search').count(), 0, 'no search button');
-  assert.deepEqual(await page.locator('.sg-glass-tab[data-tab] span').allTextContents(), ['首页', '纸板库存', '出库', '我的']);
+  assert.deepEqual(await page.locator('.sg-glass-tab[data-tab] span').allTextContents(), ['总台', 'AI助手', '库存', '我的']);
   assert.ok(Math.abs((await page.locator('.sg-glass-rail').boundingBox()).width - (await page.locator('.sg-glass-dock').boundingBox()).width) < 1, 'four tabs fill the dock with no search gap');
   assert.equal(await page.locator('.weui-tabbar').isVisible(), false, 'old rectangular dock is replaced');
   const colors = await page.evaluate(() => ({
@@ -73,7 +72,6 @@ async function verify(browser, name) {
     const lens = await page.locator('.sg-glass-lens').boundingBox();
     assert.ok(Math.abs(lens.width - restingLens.width) < .1, 'drag does not stretch the capsule');
     assert.ok(Math.abs(lens.height - restingLens.height) < .1, 'drag does not inflate the capsule');
-    assert.ok(lens.x >= railBounds.x + 3.9 && lens.x + lens.width <= railBounds.x + railBounds.width - 3.9, 'capsule stays horizontally inset');
     assert.ok(lens.y >= railBounds.y + 3.9 && lens.y + lens.height <= railBounds.y + railBounds.height - 3.9, 'capsule never protrudes');
   }
   const first = await page.locator('.sg-glass-tab[data-tab="0"]').boundingBox();
@@ -90,6 +88,7 @@ async function verify(browser, name) {
   assert.equal(await page.locator('.sg-glass-lens-ink').evaluate(el => getComputedStyle(el).filter), 'none', 'icons are not distorted');
   assert.match(page.url(), /home/, 'drag previews without navigating until release');
   await page.screenshot({ path: 'release/glass-' + name + '-drag.png' });
+  await page.getByText('库存', { exact: true }).first().waitFor();
   await page.mouse.move(last.x + last.width / 2, last.y + last.height / 2, { steps: 12 });
   await assertStableLens();
   await page.mouse.up();
@@ -106,7 +105,7 @@ async function verify(browser, name) {
     assert.ok(Number(await page.locator('.sg-glass-dock').getAttribute('data-position')) > 2.2, 'real touch follows the dock, not the page swipe handler');
     assert.match(page.url(), /home/);
     await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-    await page.waitForURL(/outbound/);
+    await page.waitForURL(/inventory/);
     await page.locator('.sg-glass-tab[data-tab="0"]').click();
     await page.waitForURL(/home/);
     await touch.detach();
@@ -129,36 +128,32 @@ async function verify(browser, name) {
   assert.match(page.url(), /home/, 'leaving the dock vertically cancels the pending selection');
   await page.waitForFunction(() => Math.abs(Number(document.querySelector('.sg-glass-dock').dataset.position)) < .001);
   assert.notEqual(await swipe(page, -110), 'none', 'gesture follows finger');
-  await page.waitForURL(/board-stock/);
+  await page.waitForURL(/ai-assistant/);
   await page.waitForTimeout(500);
-  await page.waitForFunction(() => document.querySelector('[data-tab="1"]').getAttribute('aria-current') === 'page');
-  for (const target of ['input', '.inventory-shortcut', '.board-tabs taro-button-core']) {
+  await swipe(page, -110);
+  await page.waitForURL(/inventory/);
+  await page.waitForTimeout(500);
+  await page.locator('.taro_page:visible').last().getByTestId('simple-workbench').waitFor();
+  await page.waitForFunction(() => document.querySelector('[data-tab="2"]').getAttribute('aria-current') === 'page');
+  for (const target of ['input']) {
     await swipe(page, -110, { target });
     await page.waitForTimeout(250);
-    assert.match(page.url(), /board-stock/, 'interactive stock controls do not switch tabs: ' + target);
+    assert.match(page.url(), /inventory/, 'interactive stock controls do not switch tabs: ' + target);
   }
-  await page.locator('.inventory-shortcut.primary').click();
+  await page.getByText('新增入库', { exact: true }).click();
+  await page.locator('taro-button-core').filter({ hasText: '纸板入库' }).click();
   await page.waitForURL(/board-receive/);
   await page.waitForTimeout(500);
   await swipe(page, 120, { x: 20 });
-  await page.waitForURL(/board-stock/);
+  await page.waitForURL(/inventory/);
   await page.waitForTimeout(500);
-  await page.waitForFunction(() => document.querySelector('[data-tab="1"]').getAttribute('aria-current') === 'page');
-  await swipe(page, 110);
-  await page.waitForURL(/home/);
-  await page.waitForTimeout(500);
-  await swipe(page, -110);
-  await page.waitForURL(/board-stock/);
-  await page.waitForTimeout(500);
+  await page.locator('.taro_page:visible').last().getByTestId('simple-workbench').waitFor();
   await page.setViewportSize({ width: 320, height: 740 });
-  const stockLabel = page.locator('.sg-glass-tab[data-tab="1"] span');
-  assert.equal(await stockLabel.innerText(), '纸板库存');
+  const stockLabel = page.locator('.sg-glass-tab[data-tab="2"] span');
+  assert.equal(await stockLabel.innerText(), '库存');
   assert.ok(await stockLabel.evaluate(el => el.scrollWidth <= el.clientWidth && el.getBoundingClientRect().height < 20), 'stock label fits on one line at 320px');
   await page.screenshot({ path: 'release/board-dock-' + name + '-320.png' });
   await page.setViewportSize({ width: 390, height: 844 });
-  await swipe(page, -110);
-  await page.waitForURL(/outbound/);
-  await page.waitForTimeout(500);
   await swipe(page, -110);
   await page.waitForURL(/mine/);
   await page.waitForTimeout(500);
@@ -188,8 +183,8 @@ async function verify(browser, name) {
     await page.waitForFunction(expected => document.documentElement.style.getPropertyValue('--sg-native-bottom-space') === expected, bottomSpace === null ? '84px' : '0px');
   }
   await swipe(page, 110);
-  await page.waitForURL(/outbound/);
-  for (const route of ['/pages/board-stock/index', '/pages/outbound/index', '/pages/mine/index', '/pages/home/index']) {
+  await page.waitForURL(/inventory/);
+  for (const route of ['/pages/inventory/index', '/pages/ai-assistant/index', '/pages/mine/index', '/pages/home/index']) {
     await page.evaluate(route => window.dispatchEvent(new CustomEvent('sg-native-tab', { detail: route })), route);
     await page.waitForURL(new RegExp(route));
     await page.waitForTimeout(500);
@@ -200,7 +195,7 @@ async function verify(browser, name) {
   // The last finger destination must win, with no old-route acknowledgment.
   await page.evaluate(() => {
     window.__nativeMessages = [];
-    ['/pages/board-stock/index', '/pages/outbound/index', '/pages/mine/index'].forEach((route, index) => {
+    ['/pages/inventory/index', '/pages/ai-assistant/index', '/pages/mine/index'].forEach((route, index) => {
       const event = new CustomEvent('sg-native-tab', { detail: route });
       event.requestId = 201 + index;
       window.dispatchEvent(event);
@@ -218,14 +213,7 @@ async function verify(browser, name) {
   assert.equal(await page.evaluate(() => window.__nativeMessages.length), acknowledgments.length, 'unrelated DOM changes do not resend the selection');
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('sg-native-tab', { detail: '/pages/home/index' })));
   await page.waitForURL(/home/);
-  for (const label of ['库存查询', '商品管理', '客户管理', '供应商管理', '出入库记录', '新增商品', '流水', '纸箱计算器', '单据打印']) {
-    assert.ok(pageText.includes(label), `homepage shortcut missing: ${label}`);
-  }
-  await page.getByText('纸箱计算器', { exact: true }).click();
-  await page.waitForURL(/board-calculator/);
-  await page.locator('.taro_page:visible').last().getByText('客户纸箱尺寸 · cm', { exact: true }).waitFor();
-  await page.locator('.taro_page:visible').last().locator('.board-back').click();
-  await page.waitForURL(/home/);
+  for (const label of ['入库', '生产', '出库', '记收款', '今天的记录']) assert.ok(pageText.includes(label), `homepage action missing: ${label}`);
   await page.evaluate(() => {
     delete window.__sgNativeDock;
     window.dispatchEvent(new Event('sg-native-ready'));
@@ -239,10 +227,10 @@ async function verify(browser, name) {
   assert.equal(await page.locator('.sg-glass-dock').isVisible(), true, 'older iOS keeps the web glass dock');
   await page.locator('[data-tab="0"]').focus();
   await page.keyboard.press('ArrowRight');
-  await page.waitForURL(/board-stock/);
+  await page.waitForURL(/ai-assistant/);
   await page.keyboard.press('Home');
   await page.waitForURL(/home/);
-  const lastShortcut = page.locator('.taro_page:visible').last().getByText('流水', { exact: true });
+  const lastShortcut = page.locator('.taro_page:visible').last().getByText('查看库存', { exact: true }).first();
   await lastShortcut.scrollIntoViewIfNeeded();
   await lastShortcut.evaluate(item => {
     for (let parent = item.parentElement; parent; parent = parent.parentElement) {

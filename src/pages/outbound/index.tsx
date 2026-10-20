@@ -10,7 +10,7 @@ import { lineAmount, numberValue, roundDecimal, sanitizeDecimalInput } from '@/u
 import StockProductPicker from '@/components/StockProductPicker';
 import { OutboundDocument } from './document';
 import styles from './index.module.scss';
-import { BoardPage, BoardButton } from '@/components/BoardUI';
+import { BoardPage, BoardButton, BoardConfirmBar } from '@/components/BoardUI';
 import { BoardMaterial } from '@/components/BoardUI/visuals';
 
 export default function OutboundPage() {
@@ -92,8 +92,8 @@ export default function OutboundPage() {
     } catch (e) { Taro.showToast({ title: e instanceof Error ? e.message : '出库失败', icon: 'none' }); }
     finally { lock.current = false; setBusy(false); }
   };
-  return <BoardPage back={false} title='订单出库' subtitle='选订单、核对数量，一键完成发货。' action={<BoardButton secondary disabled={busy} onClick={() => reload()}>刷新</BoardButton>}><View className={styles.container}>
-    <View className='board-summary inventory-hero'><View className='inventory-hero-main'><View><Text className='inventory-live'><i /> 发货总览</Text><Text className='board-summary-number'>{ready ? orders.filter(item => item.status === '生产中').length : '—'}<small>单待发</small></Text><Text className='board-muted'>库存校验 · 自动开单 · 交付追踪</Text></View><BoardMaterial /></View><View className='board-summary-bottom'><View><strong>{notes.length}</strong><Text className='board-muted'>最近出库单</Text></View><View><strong>{order ? remaining : '—'}</strong><Text className='board-muted'>本单待发数量</Text></View><View><strong>{order ? formatMoney(order.unit_price) : '—'}</strong><Text className='board-muted'>订单单价</Text></View></View></View>
+  return <BoardPage back={false} title='出库开单' subtitle='选订单、核对数量，确认后自动扣库存并生成送货单。' eyebrow='开单工作台' tone='outbound' steps={['选择订单', '核对数量', '确认出库']} activeStep={order ? (valid ? 2 : 1) : 0} action={<BoardButton secondary disabled={busy} onClick={() => reload()}>刷新</BoardButton>}><View className={styles.container}>
+    <View className={styles.summary}><View><Text className={styles.summaryLabel}>发货总览</Text><Text className={styles.summaryValue}>{ready ? orders.filter(item => item.status === '生产中').length : '—'} 单待发</Text><Text className={styles.summaryHint}>库存校验 · 自动开单 · 交付追踪</Text></View><BoardMaterial /></View>
     {error && <View className={styles.error} onClick={() => reload()}>{error} · 点击重试</View>}
     <View className={styles.card}><View className={styles.recentTop}><Text className={styles.cardTitle}>01 / 选择订单</Text><Text className={styles.link} onClick={() => Taro.navigateTo({ url: '/pages/orders/index' })}>管理订单 →</Text></View>
       <Input disabled={busy} className={styles.fieldInput} placeholder='搜索客户、订单号或规格' value={query} onInput={e => setQuery(e.detail.value)} />
@@ -107,9 +107,8 @@ export default function OutboundPage() {
       {product && <View className={valid ? styles.stockPreview : styles.error}>{product.unit !== order.unit ? '库存商品单位与订单不一致，请重新选择' : Number(quantity) > product.stock ? `库存不足，还缺 ${roundDecimal(Number(quantity) - product.stock, 6)}${product.unit}` : Number(quantity) > remaining ? '超过订单待发数量' : `当前库存 ${product.stock}${product.unit} · 发货后 ${roundDecimal(product.stock - Number(quantity || 0), 6)}${product.unit}`}</View>}
       <Input disabled={busy} className={styles.fieldInput} placeholder='备注（选填）' value={remark} onInput={e => setRemark(e.detail.value)} />
       <View className={Number.isFinite(totalAmount) ? styles.amountPreview : styles.error}>{Number.isFinite(totalAmount) ? `本单金额 ${formatMoney(totalAmount)}` : '金额超出支持范围，请减少数量或单价'}</View><Text className={styles.infoStock}>确认后自动扣库存、登记应收，并更新订单发货进度</Text>
-      <View className={`${styles.btnPrimary} ${busy || !valid ? styles.btnDisabled : ''}`} onClick={submit}>{busy ? '正在出库…' : '确认出库 · 生成送货单'}</View>
     </View>}
     {!!document.length && <OutboundDocument transactions={document} onClose={() => setDocument([])} />}
     <Text className={styles.sectionTitle}>最近出库单</Text><View className={styles.card}>{notes.map(([no, rows]) => <View className={styles.recentItem} key={no}><View className={styles.recentLeft}><Text className={styles.recentName}>{rows[0].customer_name || '未关联客户'} · {no}</Text><Text className={styles.recentTime}>{formatShortTime(rows[0].created_at)} · {rows.length} 项 · {formatMoney(rows.reduce((sum, tx) => sum + Number(tx.amount || 0), 0))}</Text></View><Text className={styles.tagOut} onClick={() => setDocument(rows)}>查看单据</Text></View>)}{!notes.length && <View className={styles.empty}>暂无出库记录</View>}</View>
-  </View></BoardPage>;
+  </View><BoardConfirmBar label={busy ? '正在更新库存' : order ? '本次出库金额' : '等待选择订单'} amount={Number.isFinite(totalAmount) && order ? formatMoney(totalAmount) : '—'} action='出库确认' confirmLabel='确认出库' busyLabel='正在出库…' busy={busy} disabled={!valid} onConfirm={submit} /></BoardPage>;
 }

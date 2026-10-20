@@ -1,20 +1,25 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Button, Input, Picker } from '@tarojs/components';
 import Taro, { useDidHide, useDidShow, useRouter } from '@tarojs/taro';
 import Icon, { IconName } from '@/components/Icon';
 import CustomerEditor from '@/components/CustomerEditor';
-import { addStocktake, getCustomers, getSuppliers, getProducts, getTransactions, getLedger, getOrders, settleCustomer, settleSupplier } from '@/services/api';
+import { addStocktake, getCustomers, getSuppliers, getProducts, getTransactions, getLedger, getOrders, getStats, settleCustomer, settleSupplier } from '@/services/api';
 import { getBoards, boardSpec, cartonSpec, today as currentDate } from '@/services/boards';
 import { completeProduction, getProduction } from '@/services/business-workflow';
 import { useRemoteData } from '@/hooks/useRemoteData';
 import { useSharedRefresh } from '@/services/shared-refresh';
-import { invalidateProducts } from '@/services/product-store';
+import { invalidateProducts, loadProducts } from '@/services/product-store';
+import { getCopy } from '@/services/copy';
 import { formatMoney, formatTime } from '@/utils/format';
-import type { Customer, CustomerOrder, Product } from '@/types';
+import type { Customer, CustomerOrder, Product, Stats } from '@/types';
 import styles from './workbench.module.scss';
 import { dailyRecords, localDay, DailyRecord } from './daily-records';
 
 type Panel = 'home' | 'inbound' | 'stock' | 'records' | 'photos' | 'production' | 'supplier' | 'customer';
+type WorkbenchProps = {
+  embedded?: boolean;
+  initial?: Panel;
+};
 const load = async () => {
   const [boards, products, customers, suppliers, transactions, ledger, production, orders] = await Promise.all([getBoards(), getProducts(), getCustomers(), getSuppliers(), getTransactions(), getLedger(), getProduction(), getOrders()]);
   return { boards, products, customers, suppliers, transactions, ledger, production, orders };
@@ -31,10 +36,12 @@ const initialPanel = (section?: string, detail?: string, route = ''): Panel =>
         : section === 'records' || detail === '1' ? 'records'
           : 'home';
 
-export default function Workbench() {
+export default function Workbench({ embedded = false, initial }: WorkbenchProps) {
   const { params, path } = useRouter();
   const remote = useRemoteData(load, empty), { data, reload } = remote;
-  const [panel, setPanel] = useState<Panel>(() => initialPanel(params.section, params.detail, path));
+  const [panel, setPanel] = useState<Panel>(() => initial || initialPanel(params.section, params.detail, path));
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [lowStock, setLowStock] = useState<Product[]>([]);
   const [kind, setKind] = useState<'board' | 'carton'>('board');
   const [query, setQuery] = useState('');
   const [now, setNow] = useState(new Date());
@@ -55,12 +62,30 @@ export default function Workbench() {
   const [stocktakeDate, setStocktakeDate] = useState('');
   const [stocktakeRemark, setStocktakeRemark] = useState('');
   const locked = useRef(false), shown = useRef(false);
-  useSharedRefresh(reload);
-  useDidShow(() => { if (typeof document !== 'undefined') document.body.setAttribute('data-simple-workbench-active', ''); if (shown.current) void reload(); shown.current = true; });
-  useDidHide(() => { if (typeof document !== 'undefined') document.body.removeAttribute('data-simple-workbench-active'); });
+  const loadHomeSummary = useCallback(async () => {
+    try {
+      const [nextStats, products] = await Promise.all([getStats(), loadProducts(true)]);
+      setStats(nextStats);
+      setLowStock(products.filter(product => Number(product.stock || 0) <= Number(product.safety_stock || 0)).slice(0, 3));
+    } catch (loadError) {
+      console.error('[Workbench] summary load failed', loadError);
+    }
+  }, []);
+  const refresh = useCallback(() => {
+    void reload();
+    if (embedded) void loadHomeSummary();
+  }, [embedded, loadHomeSummary, reload]);
+  useSharedRefresh(refresh);
+  useDidShow(() => {
+    if (!embedded && typeof document !== 'undefined') document.body.setAttribute('data-simple-workbench-active', '');
+    if (shown.current) refresh();
+    shown.current = true;
+  });
+  useDidHide(() => { if (!embedded && typeof document !== 'undefined') document.body.removeAttribute('data-simple-workbench-active'); });
+  useEffect(() => { if (embedded) void loadHomeSummary(); }, [embedded, loadHomeSummary]);
   useEffect(() => { const timer = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(timer); }, []);
   useEffect(() => {
-    if (typeof document === 'undefined' || typeof window === 'undefined') return;
+    if (embedded || typeof document === 'undefined' || typeof window === 'undefined') return;
     const updateShell = () => {
       const route = window.location.hash.slice(1);
       const routePath = route.split('?')[0];
@@ -71,7 +96,7 @@ export default function Workbench() {
     window.addEventListener('hashchange', updateShell);
     window.addEventListener('popstate', updateShell);
     return () => { window.removeEventListener('hashchange', updateShell); window.removeEventListener('popstate', updateShell); document.body.removeAttribute('data-simple-workbench-active'); };
-  }, []);
+  }, [embedded]);
 
   const batch = data.boards.find(b => b.id === batchId);
   const matches = (value: string) => value.toLowerCase().replace(/[ ×xX*]/g, '').includes(query.toLowerCase().replace(/[ ×xX*]/g, ''));
@@ -115,13 +140,15 @@ export default function Workbench() {
     } catch (e) { setError(e instanceof Error ? e.message : '盘点保存失败，请重试'); }
     finally { locked.current = false; setBusy(false); }
   };
-  const entries: { title: string; icon: IconName; fn: () => void }[] = [
-    { title: '入库', icon: 'package-plus', fn: () => changePanel('inbound') },
-    { title: '生产', icon: 'factory', fn: () => changePanel('production') },
-    { title: '出库', icon: 'truck', fn: () => void Taro.switchTab({ url: '/pages/outbound/index' }) },
-    { title: '记收款', icon: 'wallet', fn: () => changePanel('customer') }
+  const entries: { title: string; guide: string; icon: IconName; fn: () => void }[] = [
+    { title: '入库', guide: '选纸板或纸箱', icon: 'package-plus', fn: () => changePanel('inbound') },
+    { title: '生产', guide: '领料并完工', icon: 'factory', fn: () => changePanel('production') },
+    { title: '出库', guide: '选客户后发货', icon: 'truck', fn: () => open('/pages/outbound/index') },
+    { title: '记收款', guide: '核对欠款并收款', icon: 'wallet', fn: () => changePanel('customer') }
   ];
   const title = { home: '业务总台', inbound: '入库', stock: '查看库存', records: '业务记录与存根', photos: '票据原件', production: '生产完工', supplier: '供货商账单', customer: '客户账单' }[panel];
+  const appName = getCopy('appName');
+  const brandCharacter = Array.from(appName.trim())[0] || '曙';
   const day = localDay(now);
   const today = useMemo(() => dailyRecords(data, day).slice(0, 3), [data, day]);
   const visibleOrders = useMemo(() => orderStatus === '全部' ? data.orders : data.orders.filter(order => order.status === orderStatus), [data.orders, orderStatus]);
@@ -131,21 +158,27 @@ export default function Workbench() {
     else changePanel('records');
   };
   const chooseBatch = (id: string) => { setBatchId(id); setProductId(null); setName(''); setError(''); };
-  return <View className={styles.page} data-testid='simple-workbench'><View className={styles.surface}>
+  return <View className={embedded ? `${styles.page} ${styles.embedded}` : styles.page} data-testid='simple-workbench'><View className={styles.surface}>
     <View className={styles.masthead}>
       <View className={styles.header}><View className={styles.heading}>
-        {panel === 'home' ? <View className={styles.brand}><Icon name='workbench' color='#234832' strokeWidth={1.5} style={{ width: 20, height: 20 }} /></View> : <Button aria-label='返回总台' className={styles.back} onClick={() => changePanel('home')}>‹</Button>}
-        <Text className={styles.title}>{title}</Text>
-      </View><Button className={styles.refresh} aria-label='刷新服务器数据' disabled={remote.loading} onClick={() => void reload()}>{remote.loading ? '读取中' : '刷新'}</Button></View>
+        {panel === 'home' ? <View className={styles.brand} aria-label={`${appName}标识`} data-testid='workbench-brand'><Text className={styles.brandCharacter}>{brandCharacter}</Text></View> : <Button aria-label='返回总台' className={styles.back} onClick={() => changePanel('home')}>‹</Button>}
+        <View className={styles.headingText}><Text className={styles.brandName}>{appName}</Text><Text className={styles.title}>{title}</Text></View>
+      </View><Button className={styles.refresh} aria-label='刷新服务器数据' disabled={remote.loading} onClick={refresh}>{remote.loading ? '读取中' : '刷新'}</Button></View>
       <View className={styles.status}><Text>{now.getFullYear()}年{now.getMonth() + 1}月{now.getDate()}日 周{'日一二三四五六'[now.getDay()]}</Text><Text>{now.toLocaleTimeString('zh-CN', { hour12: false })}</Text></View>
     </View>
     <View className={styles.content}>
     {remote.loadError && <View role='alert' className={styles.error}>{remote.loadError}{action('重新读取', () => void reload())}</View>}
     {remote.ready && <View>
       {panel === 'home' && <View>
+        {embedded && <View className={styles.summary} data-testid='workbench-summary'>
+          <View className={styles.summaryItem}><Text>今日入库</Text><strong>{stats ? stats.todayIn : '--'}</strong></View>
+          <View className={styles.summaryItem}><Text>今日出库</Text><strong>{stats ? stats.todayOut : '--'}</strong></View>
+          <View className={styles.summaryItem}><Text>库存预警</Text><strong className={lowStock.length ? styles.alertValue : undefined}>{stats ? stats.lowStock : '--'}</strong></View>
+        </View>}
         <Text className={styles.sectionTitle}>办理业务</Text>
         <View className={styles.entries} data-testid='workbench-actions'>{entries.map(e => <Button key={e.title} className={styles.entry} onClick={e.fn}>
-          <Icon name={e.icon} color='#a6dcb8' strokeWidth={1.5} style={{ width: 21, height: 21 }} /><Text>{e.title}</Text><Icon name='chevron' color='#a8b6ad' strokeWidth={1.5} style={{ width: 16, height: 16 }} />
+          <View className={styles.entryTop}><Icon name={e.icon} color='#a6dcb8' strokeWidth={1.5} style={{ width: 21, height: 21 }} /><Text className={styles.entryTitle}>{e.title}</Text><Icon name='chevron' color='#a8b6ad' strokeWidth={1.5} style={{ width: 16, height: 16 }} /></View>
+          <View className={styles.entryGuide}><Text className={styles.entryBadge}>怎么用</Text><Text>{e.guide}</Text></View>
         </Button>)}</View>
         <View className={styles.recentHeading}><Text className={styles.sectionTitle}>今天的记录</Text><Button className={styles.textAction} onClick={() => changePanel('records')}>全部记录<Icon name='chevron' color='#a6dcb8' strokeWidth={1.5} style={{ width: 16, height: 16 }} /></Button></View>
         <View data-testid='workbench-today'>{today.map(row => <Button key={row.id} className={styles.activity} onClick={() => openRecord(row)}>
@@ -153,6 +186,10 @@ export default function Workbench() {
           <View className={styles.activityBody}><Text className={styles.activityTitle}>{row.title}</Text><Text className={styles.activityDetail}>{new Date(row.time).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' })} · {row.detail}</Text></View>
           <View className={styles.activityValue}><Text>{row.money ? formatMoney(row.value) : `${row.value} ${row.unit || ''}`}</Text><Text className={styles.activityStatus}>{row.status}</Text></View>
         </Button>)}{!today.length && <View className={styles.emptyToday}><Icon name='notebook' color='#8a9b8f' strokeWidth={1.5} style={{ width: 28, height: 28 }} /><Text>今天还没有业务记录</Text><Text>完成入库、生产、出库或收款后，会显示在这里。</Text></View>}</View>
+        {embedded && <Button className={styles.stockNotice} onClick={() => changePanel('stock')} data-testid='workbench-stock-notice'>
+          <View><Text className={styles.noticeTitle}>{lowStock.length ? `库存提醒 · ${lowStock.length} 项` : '库存状态'}</Text><Text className={styles.noticeDetail}>{lowStock.length ? lowStock.map(product => `${product.name} ${product.stock}${product.unit}`).join(' · ') : '纸板与纸箱库存均可从这里查看'}</Text></View>
+          <View className={styles.noticeAction}>查看库存<Icon name='chevron' color='#a6dcb8' strokeWidth={1.5} style={{ width: 16, height: 16 }} /></View>
+        </Button>}
       </View>}
       {panel === 'inbound' && <View><Text className={styles.sectionTitle}>这次入库的是什么？</Text><View className={styles.choices}>{[
         { title: '纸板入库', note: '收原材料 · 带入纸板尺寸和成箱规格', path: '/pages/board-receive/index' },
@@ -169,12 +206,12 @@ export default function Workbench() {
       </View>}
       {panel === 'records' && <View><View className={styles.segment}><Button aria-pressed={recordView === 'activity'} className={recordView === 'activity' ? styles.selected : styles.button} onClick={() => setRecordView('activity')}>出入库 / 生产</Button><Button aria-pressed={recordView === 'orders'} className={recordView === 'orders' ? styles.selected : styles.button} onClick={() => setRecordView('orders')}>规格与订单</Button></View>
         {recordView === 'activity' && <View><View className={styles.tools}>{action('打印存根', () => open('/pages/print-center/index'))}{action('收款 / 付款记录', () => open('/pages/ledger/index'))}</View>{data.production.map(p => <View className={styles.record} key={p.id}><strong>生产完工 · {p.product_name}</strong><Text>纸板 {p.specification_snapshot.board.join(' × ')} cm → 纸箱 {p.specification_snapshot.carton.join(' × ')} cm</Text><Text>领用 {p.consumed_quantity} 张 · 完工 {p.quantity} {p.unit}</Text><Text>{formatTime(p.created_at)} · {p.operator}</Text><Text>{p.id}</Text></View>)}{data.boards.map(b => <View className={styles.record} key={b.id}><strong>纸板入库 · {boardSpec(b)} cm</strong><Text>对应纸箱 {cartonSpec(b)} cm · 实收 {b.receivedQty} 张</Text><Text>送货日期 {b.date} · {b.supplier}</Text><Text>登记时间 {formatTime(b.createdAt)}</Text>{action('批次存根', () => open('/pages/board-detail/index?id=' + b.id))}</View>)}{data.transactions.filter(t => !t.production_id && !t.voided_at).slice(0, 30).map(t => <View className={styles.record} key={t.id}><strong>{t.type === 'in' ? '入库' : t.type === 'out' ? '出库' : '盘点'} · {t.product_name}</strong><Text>{t.specification} · {t.quantity} {t.unit}</Text><Text>{formatTime(t.created_at)}</Text></View>)}{action('全部出入库记录', () => open('/pages/records/index'))}</View>}
-        {recordView === 'orders' && <View><Input className={styles.input} aria-label='搜索订单' placeholder='搜索客户、规格或订单号' value={query} onInput={e => setQuery(e.detail.value)} /><View className={styles.segment}>{(['全部', '待生产', '生产中', '已发货', '已完成', '已取消'] as const).map(value => <Button key={value} aria-pressed={orderStatus === value} className={orderStatus === value ? styles.selected : styles.button} onClick={() => setOrderStatus(value)}>{value}</Button>)}</View>{visibleOrders.filter(order => matches([order.order_no, order.customer_name, order.specification, order.material, order.status, order.remark].join(' '))).map(order => <View key={order.id} className={styles.record} data-testid='workbench-order'><strong>{order.customer_name} · {order.specification || '未填规格'}</strong><Text>{order.quantity} {order.unit} × {formatMoney(order.unit_price)} · 合计 {formatMoney(order.amount)}</Text><Text>交期 {order.delivery_date || '未设置'} · {order.status}</Text><Text>{order.order_no} · {formatTime(order.created_at)}</Text><View className={styles.tools}>{action('打印存根', () => open('/pages/print-center/index'))}{action('核对出库', () => { Taro.setStorageSync('sg_outbound_order', order.id); void Taro.switchTab({ url: '/pages/outbound/index' }); }, true)}</View></View>)}{!visibleOrders.filter(order => matches([order.order_no, order.customer_name, order.specification, order.material, order.status, order.remark].join(' '))).length && <Text className={styles.empty}>没有找到匹配订单</Text>}</View>}
+        {recordView === 'orders' && <View><Input className={styles.input} aria-label='搜索订单' placeholder='搜索客户、规格或订单号' value={query} onInput={e => setQuery(e.detail.value)} /><View className={styles.segment}>{(['全部', '待生产', '生产中', '已发货', '已完成', '已取消'] as const).map(value => <Button key={value} aria-pressed={orderStatus === value} className={orderStatus === value ? styles.selected : styles.button} onClick={() => setOrderStatus(value)}>{value}</Button>)}</View>{visibleOrders.filter(order => matches([order.order_no, order.customer_name, order.specification, order.material, order.status, order.remark].join(' '))).map(order => <View key={order.id} className={styles.record} data-testid='workbench-order'><strong>{order.customer_name} · {order.specification || '未填规格'}</strong><Text>{order.quantity} {order.unit} × {formatMoney(order.unit_price)} · 合计 {formatMoney(order.amount)}</Text><Text>交期 {order.delivery_date || '未设置'} · {order.status}</Text><Text>{order.order_no} · {formatTime(order.created_at)}</Text><View className={styles.tools}>{action('打印存根', () => open('/pages/print-center/index'))}{action('核对出库', () => { Taro.setStorageSync('sg_outbound_order', order.id); open('/pages/outbound/index'); }, true)}</View></View>)}{!visibleOrders.filter(order => matches([order.order_no, order.customer_name, order.specification, order.material, order.status, order.remark].join(' '))).length && <Text className={styles.empty}>没有找到匹配订单</Text>}</View>}
       </View>}
       {panel === 'photos' && <View><Text className={styles.note}>原件照片按业务账单保存；选择一笔账单，可上传送货单、签收单或付款凭证。</Text>{data.ledger.filter(l => !l.voided_at).map(l => <Button className={styles.photoRow} key={l.id} onClick={() => open('/pages/ledger/index?entry=' + l.id)}><strong>{l.party_name || l.remark}</strong><Text>{formatTime(l.created_at)} · {formatMoney(l.amount)}</Text><Text>{l.attachments?.length ? l.attachments.length + ' 张原件照片' : '上传原件照片 ›'}</Text></Button>)}{!data.ledger.length && <Text className={styles.empty}>入库或出库保存后，账单会出现在这里。</Text>}</View>}
     </View>}
     </View>
-    <View className={styles.nav}>{([{ key: 'home', text: '总台', icon: 'home' }, { key: 'stock', text: '库存', icon: 'boxes' }, { key: 'records', text: '记录', icon: 'notebook' }, { key: 'photos', text: '票据', icon: 'photos' }] as const).map(n => <Button key={n.key} aria-pressed={panel === n.key} onClick={() => changePanel(n.key)}><Icon name={n.icon} color={panel === n.key ? '#a6dcb8' : '#a8b6ad'} strokeWidth={1.5} style={{ width: 21, height: 21 }} /><Text>{n.text}</Text></Button>)}</View>
+    {!embedded && <View className={styles.nav}>{([{ key: 'home', text: '总台', icon: 'home' }, { key: 'stock', text: '库存', icon: 'boxes' }, { key: 'records', text: '记录', icon: 'notebook' }, { key: 'photos', text: '票据', icon: 'photos' }] as const).map(n => <Button key={n.key} aria-pressed={panel === n.key} onClick={() => changePanel(n.key)}><Icon name={n.icon} color={panel === n.key ? '#a6dcb8' : '#a8b6ad'} strokeWidth={1.5} style={{ width: 21, height: 21 }} /><Text>{n.text}</Text></Button>)}</View>}
     <View className={styles.footer} role='status'><Text>{status}</Text><Text>{editor ? '资料编辑中' : settling ? '金额待确认' : '照片上传需确认保存'}</Text></View>
     {settling && <View className={styles.overlay}><View className={styles.dialog} role='dialog' aria-label={settling.supplier ? '付款' : '收款'}><strong>{settling.supplier ? '付款给' : '收到'} {settling.party.name}</strong><Text>当前余额 {formatMoney(Number(settling.supplier ? settling.party.payable || 0 : settling.party.debt || 0))}</Text><Input aria-label='本次金额' className={styles.input} type='digit' placeholder='本次金额' value={amount} onInput={e => setAmount(e.detail.value)} />{error && <View role='alert'>{error}</View>}<View className={styles.tools}>{action('取消', () => setSettling(null))}{action('确认保存', () => void submitSettlement(), true)}</View></View></View>}
     {stocktake && <View className={styles.overlay}><View className={styles.dialog} role='dialog' aria-label='库存盘点'><strong>{stocktake.product.name}</strong><View className={styles.stocktakeSummary}><Text>{stocktake.product.specification || '规格未填写'}</Text><Text>当前 {stocktake.product.stock} {stocktake.product.unit}</Text></View><Text className={styles.label}>新库存</Text><Input aria-label='实盘库存' className={styles.input} type='digit' placeholder='填写实际盘点数量' value={stocktakeValue} onInput={e => setStocktakeValue(e.detail.value)} /><Text className={styles.label}>盘点日期</Text><Picker mode='date' end={currentDate()} value={stocktakeDate} onChange={e => setStocktakeDate(e.detail.value)}><View aria-label='盘点日期' className={styles.input}>{stocktakeDate || '请选择日期'}</View></Picker><Input aria-label='盘点备注' className={styles.input} placeholder='备注（选填，如盘亏原因）' value={stocktakeRemark} onInput={e => setStocktakeRemark(e.detail.value)} />{stocktakeValue.trim() && /^\d+(?:\.\d{1,6})?$/.test(stocktakeValue.trim()) && <Text className={styles.note}>调整后库存 {stocktakeValue.trim()} {stocktake.product.unit}，盘点流水会同步保存。</Text>}{error && <View role='alert' className={styles.error}>{error}</View>}<View className={styles.tools}>{action('取消', () => { setStocktake(null); setError(''); })}{action(busy ? '保存中…' : '确认盘点', () => void submitStocktake(), true)}</View></View></View>}

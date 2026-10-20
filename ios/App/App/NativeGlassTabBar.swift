@@ -6,8 +6,8 @@ import Capacitor
 // A single live Capacitor bridge moves between lightweight tab hosts; data and
 // the JavaScript router survive every selection. Older systems use the web dock.
 final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHandler, UITabBarControllerDelegate {
-    private let routes = ["/pages/home/index", "/pages/ai-assistant/index", "/pages/outbound/index", "/pages/mine/index"]
-    private let titles = ["首页", "AI助手", "出库", "我的"]
+    private let routes = ["/pages/home/index", "/pages/ai-assistant/index", "/pages/inventory/index", "/pages/mine/index"]
+    private let titles = ["总台", "AI助手", "库存", "我的"]
     private lazy var tabImages = (0..<4).map { Self.tabIcon($0) }
     private let bridgeController = WarehouseBridgeController()
     private let tabsController = UITabBarController()
@@ -182,7 +182,7 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
     }
 
     // Same 24-unit line drawings as the web assets, rendered as tintable images.
-    // Inbound is a received package/check; outbound is a delivery truck.
+    // Stock is a layered package stack; outbound remains a first-screen action.
     private static func tabIcon(_ index: Int) -> UIImage {
         UIGraphicsImageRenderer(size: CGSize(width: 25, height: 25)).image { renderer in
             let context = renderer.cgContext
@@ -206,13 +206,9 @@ final class NativeGlassTabBarViewController: UIViewController, WKScriptMessageHa
                 line([(12, 2), (13.8, 8.2), (20, 10), (13.8, 11.8), (12, 18), (10.2, 11.8), (4, 10), (10.2, 8.2), (12, 2)])
                 line([(19, 16), (19.8, 18.2), (22, 19), (19.8, 19.8), (19, 22), (18.2, 19.8), (16, 19), (18.2, 18.2), (19, 16)])
             case 2:
-                line([(2.5, 16.5), (2.5, 5.5), (14.5, 5.5), (14.5, 16.5)])
-                line([(14.5, 9), (18.5, 9), (21.5, 13), (21.5, 16.5), (20, 16.5)])
-                line([(14.5, 13), (21.5, 13)])
-                line([(9, 16.5), (15, 16.5)])
-                line([(2.5, 16.5), (4, 16.5)])
-                context.strokeEllipse(in: CGRect(x: 4, y: 14.5, width: 5, height: 5))
-                context.strokeEllipse(in: CGRect(x: 15, y: 14.5, width: 5, height: 5))
+                line([(3, 8), (12, 3), (21, 8), (12, 13), (3, 8)])
+                line([(3, 12), (12, 17), (21, 12)])
+                line([(3, 16), (12, 21), (21, 16)])
             default:
                 context.strokeEllipse(in: CGRect(x: 8.5, y: 3, width: 7, height: 7))
                 context.move(to: CGPoint(x: 5, y: 21))

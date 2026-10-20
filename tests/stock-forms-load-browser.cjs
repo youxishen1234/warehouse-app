@@ -51,7 +51,8 @@ async function verifyLoadFailure({ origin, routeName, failedPath, submitSelector
     assert.match(await submit.getAttribute('class') || '', /disabled/i, `${routeName} must not become ready after partial load`);
     await errorBlock.click();
     await page.locator(`[class*=error]:has-text("${failure}")`).waitFor({ state: 'detached' });
-    assert.doesNotMatch(await submit.getAttribute('class') || '', /disabled/i, `${routeName} should become ready after recovery`);
+    if (routeName === 'inbound') assert.doesNotMatch(await submit.getAttribute('class') || '', /disabled/i, `${routeName} should become ready after recovery`);
+    else assert.match(await submit.getAttribute('class') || '', /disabled/i, 'outbound remains guarded until an order is selected');
     assert.deepEqual(errors, []);
     console.log(`${routeName}: parallel-load failure, no-ready guard, and retry passed`);
   } finally { await browser.close(); }
@@ -61,8 +62,8 @@ async function main() {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const origin = `http://127.0.0.1:${server.address().port}`;
   try {
-    await verifyLoadFailure({ origin, routeName: 'inbound', failedPath: '/api/delivery-notes', submitSelector: '[class*=fixedSave]' });
-    await verifyLoadFailure({ origin, routeName: 'outbound', failedPath: '/api/customers', submitSelector: '[class*=btnPrimary]' });
+    await verifyLoadFailure({ origin, routeName: 'inbound', failedPath: '/api/delivery-notes', submitSelector: '[class*=board-confirm-action]' });
+    await verifyLoadFailure({ origin, routeName: 'outbound', failedPath: '/api/orders', submitSelector: '[class*=board-confirm-action]' });
   } finally {
     server.closeAllConnections();
     await new Promise(resolve => server.close(resolve));

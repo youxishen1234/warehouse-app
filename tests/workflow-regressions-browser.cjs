@@ -62,7 +62,7 @@ async function main() {
     await expect(quantity).toHaveValue('10');
     await quantity.fill('2'); await remark.fill('保留这份出库草稿');
     await active().getByText('刷新', { exact: true }).click();
-    await expect(active().getByText('确认出库 · 生成送货单', { exact: true })).not.toHaveClass(/btnDisabled/);
+    await expect(active().getByLabel('出库确认').getByText('确认出库', { exact: true })).not.toHaveClass(/is-disabled/);
     await expect(quantity).toHaveValue('2'); await expect(remark).toHaveValue('保留这份出库草稿');
     const heldFinished = new Promise(resolve => { heldFinishedResolve = resolve; });
     // Reads of the same URL share an in-flight request. Hold the transaction
@@ -78,7 +78,7 @@ async function main() {
     const newOrders = ordersResponse();
     await active().getByText('刷新', { exact: true }).click();
     assert.equal((await (await newOrders).json()).data.find(row => row.id === order.id).quantity, 8);
-    await expect(active().getByText('确认出库 · 生成送货单', { exact: true })).toHaveClass(/btnDisabled/);
+    await expect(active().getByLabel('出库确认').getByText('确认出库', { exact: true })).toHaveClass(/is-disabled/);
     releaseOld(); await heldFinished;
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     await expect(active().getByText('订单 8', { exact: true })).toBeVisible();
@@ -86,11 +86,11 @@ async function main() {
     db.stockOut(product.id, 99);
     await active().getByText('刷新', { exact: true }).click();
     await expect(active().getByText(/库存不足，还缺/)).toBeVisible();
-    await expect(active().getByText('确认出库 · 生成送货单', { exact: true })).toHaveClass(/btnDisabled/);
+    await expect(active().getByLabel('出库确认').getByText('确认出库', { exact: true })).toHaveClass(/is-disabled/);
     await expect(quantity).toHaveValue('2'); await expect(remark).toHaveValue('保留这份出库草稿');
     db.stockIn(product.id, 99);
     await active().getByText('刷新', { exact: true }).click();
-    const submit = active().getByText('确认出库 · 生成送货单', { exact: true });
+    const submit = active().getByLabel('出库确认').getByText('确认出库', { exact: true });
     await expect(submit).not.toHaveClass(/btnDisabled/);
     await submit.click();
     await active().getByText('送货单预览', { exact: true }).waitFor();
