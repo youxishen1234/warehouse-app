@@ -31,10 +31,20 @@ async function main() {
   const token = process.env.BACKEND_ACCEPTANCE_TOKEN;
   let sessionToken = token;
   if (!sessionToken) {
-    const session = await request(port, 'POST', '/api/auth/guest', {
-      'Content-Type': 'application/json',
-      'X-Request-Id': process.env.BACKEND_ACCEPTANCE_REQUEST || ''
-    }, '{}');
+    const deadline = Date.now() + 15000;
+    let session;
+    do {
+      try {
+        session = await request(port, 'POST', '/api/auth/guest', {
+          'Content-Type': 'application/json',
+          'X-Request-Id': process.env.BACKEND_ACCEPTANCE_REQUEST || ''
+        }, '{}');
+        break;
+      } catch (error) {
+        if (error.code !== 'ECONNREFUSED' || Date.now() >= deadline) throw error;
+        await new Promise(resolve => setTimeout(resolve, 250));
+      }
+    } while (Date.now() < deadline);
     if (session.status !== 200) throw new Error(`guest session HTTP ${session.status}: ${session.body.slice(0, 200)}`);
     const parsed = JSON.parse(session.body);
     sessionToken = parsed?.data?.token;
