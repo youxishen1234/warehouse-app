@@ -116,6 +116,10 @@ export default function HomePage() {
     const task = tabUrls.has(url) ? Taro.switchTab({ url }) : Taro.navigateTo({ url });
     task.catch(error => console.error('[Home] navigation failed', url, error));
   };
+  const openWorkbench = (section?: 'stock' | 'records') => {
+    const task = Taro.navigateTo({ url: '/pages/business-center/index' + (section ? `?section=${section}` : '') });
+    task.catch(error => console.error('[Home] business center navigation failed', error));
+  };
 
   // The date label is derived from the midnight-aware `today` state. Memoizing
   // it keeps every stats refresh from rebuilding the string and indexing the
@@ -142,20 +146,20 @@ export default function HomePage() {
 
       <View className={styles.sectionHead}><Text className={styles.sectionTitle}>今日任务</Text><Text className={styles.cardCaption}>{loading ? '加载中…' : '实时数据'}</Text></View>
       <View className={styles.taskCard}>
-        <View className={styles.taskItem} onClick={() => goTo('/pages/board-stock/index')}><Text className={styles.taskNum}>{stats ? todayIn : '--'}</Text><Text className={styles.taskLabel}>今日入库</Text></View>
+        <View className={styles.taskItem} onClick={() => openWorkbench()}><Text className={styles.taskNum}>{stats ? todayIn : '--'}</Text><Text className={styles.taskLabel}>今日入库</Text></View>
         <View className={styles.taskItem} onClick={() => goTo('/pages/outbound/index')}><Text className={styles.taskNum}>{stats ? todayOut : '--'}</Text><Text className={styles.taskLabel}>今日出库</Text></View>
-        <View className={styles.taskItem} onClick={() => goTo('/pages/inventory/index')}><Text className={styles.taskNum}>{stats ? stats.totalProducts : '--'}</Text><Text className={styles.taskLabel}>商品种类</Text></View>
-        <View className={`${styles.taskItem} ${styles.attention}`} onClick={() => goTo('/pages/inventory/index')}><Text className={styles.taskNum}>{stats ? stats.lowStock : '--'}</Text><Text className={styles.taskLabel}>库存预警</Text></View>
+        <View className={styles.taskItem} onClick={() => openWorkbench('stock')}><Text className={styles.taskNum}>{stats ? stats.totalProducts : '--'}</Text><Text className={styles.taskLabel}>商品种类</Text></View>
+        <View className={`${styles.taskItem} ${styles.attention}`} onClick={() => openWorkbench('stock')}><Text className={styles.taskNum}>{stats ? stats.lowStock : '--'}</Text><Text className={styles.taskLabel}>库存预警</Text></View>
       </View>
 
       <View className={styles.sectionHead}><Text className={styles.sectionTitle}>库存流转</Text><Text className={styles.cardCaption}>今日数量</Text></View>
       <View className={styles.flowCard}>
         <View className={styles.flowLegend}><Text><Text className={styles.flowDotIn} />入库</Text><Text><Text className={styles.flowDotOut} />出库</Text><Text>单位：实际数量</Text></View>
-        <View className={styles.flowRow} onClick={() => goTo('/pages/board-stock/index')}><Text className={styles.flowLabel}>入库</Text><View className={styles.flowBar}><View className={styles.flowBarIn} style={{ width: `${Math.round(todayIn / flowMax * 100)}%` }} /></View><Text className={styles.flowValue}>{stats ? todayIn : '--'}</Text></View>
+        <View className={styles.flowRow} onClick={() => openWorkbench()}><Text className={styles.flowLabel}>入库</Text><View className={styles.flowBar}><View className={styles.flowBarIn} style={{ width: `${Math.round(todayIn / flowMax * 100)}%` }} /></View><Text className={styles.flowValue}>{stats ? todayIn : '--'}</Text></View>
         <View className={styles.flowRow} onClick={() => goTo('/pages/outbound/index')}><Text className={styles.flowLabel}>出库</Text><View className={styles.flowBar}><View className={styles.flowBarOut} style={{ width: `${Math.round(todayOut / flowMax * 100)}%` }} /></View><Text className={styles.flowValue}>{stats ? todayOut : '--'}</Text></View>
       </View>
 
-      <View className={styles.sectionHead}><Text className={styles.sectionTitle}>库存提醒</Text><Text className={styles.linkButton} onClick={() => goTo('/pages/inventory/index')}>查看库存</Text></View>
+      <View className={styles.sectionHead}><Text className={styles.sectionTitle}>库存提醒</Text><Text className={styles.linkButton} onClick={() => openWorkbench('stock')}>查看库存</Text></View>
       {loadError && <View className={styles.errorBox} onClick={() => loadData(true)}>{loadError} · 点击重试</View>}
       {!loadError && lowStockList.length === 0 ? (
         <View className={styles.emptyCard}><Icon name="check" color="#23a26d" /><Text>暂无库存预警，当前库存正常</Text></View>

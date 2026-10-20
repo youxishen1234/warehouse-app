@@ -39,6 +39,7 @@ export interface Customer {
 
 // 出入库记录类型
 export interface Transaction {
+  production_id?: string;
   order_id?: number;
   order_no?: string;
   outbound_no?: string;

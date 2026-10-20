@@ -12,8 +12,6 @@ import SwipeRow from '@/components/SwipeRow';
 import styles from './index.module.scss';
 import { useRemoteData } from '@/hooks/useRemoteData';
 
-// 跨页联动中转键：tabBar 页（入库/出库）无法通过 URL 传参，用 storage 中转
-const TRANSIT_KEY = 'sg_transit';
 const units = ['件', '箱', '个', '千克'];
 const emptyForm = {
   name: '', specification: '', material: '', category: '', corrugation: '',
@@ -22,16 +20,8 @@ const emptyForm = {
 };
 type ProductDraft = typeof emptyForm;
 
-// 跳入库页并自动选中该商品
-const goInbound = (p: Product) => {
-  Taro.setStorageSync(TRANSIT_KEY, { product_id: p.id, product_name: p.name });
-  Taro.switchTab({ url: '/pages/inbound/index' });
-};
-
-// 跳出库页并自动选中该商品
-const goOutbound = (p: Product) => {
-  Taro.setStorageSync(TRANSIT_KEY, { product_id: p.id, product_name: p.name });
-  Taro.switchTab({ url: '/pages/outbound/index' });
+const openWorkbench = (section: 'stock' | 'records') => {
+  void Taro.navigateTo({ url: '/pages/business-center/index?section=' + section });
 };
 
 async function compressImageDataUrl(dataUrl: string): Promise<string> {
@@ -101,8 +91,8 @@ const ProductListRow = React.memo(function ProductListRow({
         <Text className={styles.itemMeta}>{product.category || '未分类'} · {product.unit} · {formatMoney(product.price)} · 库存 {product.stock}</Text>
         <View className={styles.itemActions}>
           <View className={styles.btnIn} onClick={event => { event.stopPropagation(); onImage(product); }}>图片</View>
-          <View className={styles.btnOut} onClick={event => { event.stopPropagation(); goOutbound(product); }}>出库</View>
-          <View className={styles.btnIn} onClick={event => { event.stopPropagation(); goInbound(product); }}>入库</View>
+          <View className={styles.btnOut} onClick={event => { event.stopPropagation(); openWorkbench('records'); }}>业务记录</View>
+          <View className={styles.btnIn} onClick={event => { event.stopPropagation(); openWorkbench('stock'); }}>查看库存</View>
         </View>
       </View>
     </SwipeRow>

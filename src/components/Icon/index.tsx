@@ -13,7 +13,9 @@ export type IconName =
   | 'tag' | 'box' | 'money' | 'alert'
   | 'search' | 'clipboard' | 'records' | 'chevron'
   | 'plus' | 'edit' | 'list' | 'clock' | 'trend'
-  | 'check' | 'scan' | 'trash' | 'download';
+  | 'check' | 'scan' | 'trash' | 'download'
+  | 'workbench' | 'package-plus' | 'factory' | 'truck' | 'wallet'
+  | 'boxes' | 'notebook' | 'photos';
 
 // 24x24 viewBox，stroke 线性图标（与 tabBar 图标同风格）
 const ICON_PATHS: Record<IconName, string> = {
@@ -40,7 +42,15 @@ const ICON_PATHS: Record<IconName, string> = {
   scan: '<path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/>',
   trash: '<path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/>',
   // 下载：箭头入托盘
-  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>'
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
+  workbench: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>',
+  'package-plus': '<path d="m12 3 9 5-9 5-9-5 9-5ZM3 8v8l9 5M12 13v8M7.5 5.5l9 5M17 17h6M20 14v6"/>',
+  factory: '<path d="M3 21V4h4v9l6-4v4l8-4v12H3ZM7 17h1M12 17h1M17 17h1"/>',
+  truck: '<path d="M3 17V5h12v12M15 9h4l3 4v4h-3M7 17h7"/><circle cx="5" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>',
+  wallet: '<path d="M20 7V4H5a2 2 0 0 0 0 4h15v13H5a2 2 0 0 1-2-2V6M20 12h-5v5h5M16 14.5h.01"/>',
+  boxes: '<path d="m12 2 5 3-5 3-5-3 5-3ZM7 5v6l5 3 5-3V5M12 8v6M6 11l5 3-5 3-5-3 5-3ZM1 14v6l5 3 5-3v-6M6 17v6M18 11l5 3-5 3-5-3 5-3ZM13 14v6l5 3 5-3v-6M18 17v6"/>',
+  notebook: '<rect x="5" y="3" width="15" height="18" rx="2"/><path d="M9 3v18M2 6h5M2 10h5M2 14h5M2 18h5M13 8h3M13 12h3"/>',
+  photos: '<rect x="8" y="2" width="13" height="15" rx="2"/><path d="M4 7H3a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h13a1 1 0 0 0 1-1v-1M9 15l4-4 3 2 4-4"/><circle cx="12" cy="6" r="1"/>'
 };
 
 // 纯 ASCII base64 编码（不依赖 btoa / Buffer，双端可用）

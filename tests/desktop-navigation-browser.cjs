@@ -41,7 +41,7 @@ async function main() {
       await page.locator(`button[data-nav="/pages/${name}/index"]`).click();
       if (name === 'customers') {
         await current('customers');
-        await page.getByText('+ 新增', { exact: true }).waitFor();
+        await page.getByText('办理业务', { exact: true }).waitFor();
       } else await current(name);
       await page.goto(origin);
       await current('home');

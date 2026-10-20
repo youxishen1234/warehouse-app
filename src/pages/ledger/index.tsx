@@ -1,7 +1,7 @@
 import { useSharedRefresh } from '@/services/shared-refresh';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Input, Picker, ScrollView } from '@tarojs/components';
-import Taro from '@tarojs/taro';
+import Taro, { useRouter } from '@tarojs/taro';
 import Icon from '@/components/Icon';
 import type { IconName } from '@/components/Icon';
 import { addLedger, deleteLedger, getLedger, LedgerEntry, LedgerType } from '@/services/api';
@@ -58,6 +58,8 @@ const LedgerListRow = React.memo(function LedgerListRow({ entry, onOpen }: Ledge
 });
 
 export default function LedgerPage() {
+  const { params } = useRouter();
+  const entryId = Number(params.entry);
   const [list, setList] = useState<LedgerEntry[]>([]);
   const [type, setType] = useState<LedgerType | ''>('');
   const [keyword, setKeyword] = useState('');
@@ -92,13 +94,13 @@ export default function LedgerPage() {
       const data = await getLedger(dateBounds(range.from, range.to));
       if (sequence !== loadSequence.current) return;
       setList(data);
-      setSelected(current => current ? data.find(entry => entry.id === current.id) || current : null);
+      setSelected(current => current ? data.find(entry => entry.id === current.id) || current : Number.isSafeInteger(entryId) && entryId > 0 ? data.find(entry => entry.id === entryId) || null : null);
     } catch (error) {
       if (sequence === loadSequence.current) setLoadError(error instanceof Error ? error.message : 'LOAD_FAILED');
     } finally {
       if (sequence === loadSequence.current) setLoading(false);
     }
-  }, [range]);
+  }, [entryId, range]);
 
   useSharedRefresh(load);
   useEffect(() => { void load(); }, [load]);
@@ -184,12 +186,12 @@ export default function LedgerPage() {
     setExporting(true);
     try {
       const bounds = dateBounds(range.from, range.to);
-      const params = new URLSearchParams();
-      if (type) params.set('type', type);
-      if (keyword.trim()) params.set('keyword', keyword.trim());
-      if (bounds.from !== undefined) params.set('from', String(bounds.from));
-      if (bounds.to !== undefined) params.set('to', String(bounds.to));
-      await downloadCsv(`/api/export/ledger.csv${params.toString() ? `?${params}` : ''}`, 'warehouse-ledger.csv');
+      const query = new URLSearchParams();
+      if (type) query.set('type', type);
+      if (keyword.trim()) query.set('keyword', keyword.trim());
+      if (bounds.from !== undefined) query.set('from', String(bounds.from));
+      if (bounds.to !== undefined) query.set('to', String(bounds.to));
+      await downloadCsv(`/api/export/ledger.csv${query.toString() ? `?${query}` : ''}`, 'warehouse-ledger.csv');
     } catch (error) { Taro.showToast({ title: error?.message || '导出失败', icon: 'none' }); }
     finally { exportingRef.current = false; setExporting(false); }
   };

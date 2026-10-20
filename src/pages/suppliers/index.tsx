@@ -1,2 +1,3 @@
-import CustomersPage from '../customers';
-export default function SuppliersPage() { return <CustomersPage supplier />; }
+import Workbench from '../business-center/workbench';
+
+export default function SuppliersPage() { return <Workbench />; }

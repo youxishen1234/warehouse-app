@@ -28,9 +28,10 @@ async function main(){
   page=await browser.newPage({viewport:{width:390,height:844},acceptDownloads:true});page.setDefaultTimeout(30000);page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/*',async route=>{const url=new URL(route.request().url());if(url.origin===origin||['blob:','data:'].includes(url.protocol))return route.continue();if(!url.pathname.startsWith('/api/'))return route.abort();const request=route.request();if(request.method()==='POST'&&url.pathname.endsWith('/customers/'+customer.id+'/attachments')){const body=request.postDataJSON();uploaded=Buffer.from(body.data.split(',')[1],'base64');}return route.fulfill({response:await route.fetch({url:origin+url.pathname+url.search})});});
   await page.goto(origin+'/#/pages/customers/index');await page.locator('.team-boot').waitFor({state:'hidden'});
-  await expect(page.getByText('客户单据照片')).toBeVisible();
+  await expect(page.getByText('业务总台', { exact: true })).toBeVisible();
+  await page.goto(origin+'/#/pages/customer-photos/index');
+  await expect(page.getByRole('heading', { name: '客户单据照片' })).toBeVisible();
   await page.screenshot({path:path.resolve('release/customer-photos-20261011/customer-list.png'),fullPage:true});
-  await page.getByText('客户单据照片').click();
   await expect(page.locator('main h1')).toContainText('客户单据照片');
   await page.getByRole('button',{name:/4K原图测试客户/}).click();
   await expect(page.locator('main h1')).toContainText('4K原图测试客户');

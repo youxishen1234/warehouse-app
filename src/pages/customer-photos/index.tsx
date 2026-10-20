@@ -7,6 +7,7 @@ import type { CustomerPhoto } from '@/services/customer-photos';
 import { getCustomers } from '@/services/api';
 import type { Customer } from '@/types';
 import styles from './index.module.scss';
+import workbenchStyles from '@/pages/business-center/workbench.module.scss';
 
 const decodeCustomerName = (value?: string) => { try { return decodeURIComponent(value || '客户'); } catch { return value || '客户'; } };
 
@@ -111,7 +112,8 @@ export default function CustomerPhotosPage() {
     try { await savePhotoOriginal(viewer.data, viewer.name); }
     catch (issue) { Taro.showToast({ title: issue instanceof Error ? issue.message : '保存原图失败', icon: 'none' }); }
   };
-  return <main className={styles.page}>
+  return <main className={`${styles.page} ${workbenchStyles.page}`}>
+    <button type='button' className={workbenchStyles.pageBack} onClick={() => void Taro.navigateTo({ url: '/pages/business-center/index?section=records' })}>‹ 返回业务总台</button>
     <header className={styles.header}><h1>{customerId ? customerName : '客户单据照片'}</h1><p>拍摄三联送货单，上传并保存到客户档案</p></header>
     {!customerId&&<section className={styles.card}><div className={styles.sectionTitle}>先选择客户</div><input className={styles.customerSearch} type='search' aria-label='搜索客户名称或电话' placeholder='搜索客户名称或电话' value={customerQuery} onChange={event=>setCustomerQuery(event.target.value)} />{customerLoading?<p className={styles.empty}>正在加载客户…</p>:customerListError?<p role='alert' className={styles.error}>{customerListError}<button type='button' onClick={()=>setCustomerQuery(value=>value+' ')}>重试</button></p>:customerList.length?<div className={styles.customerList}>{customerList.map(customer=><button type='button' key={customer.id} onClick={()=>setSelectedCustomer(customer)}><strong>{customer.name}</strong><span>{[customer.contact,customer.phone].filter(Boolean).join(' · ')||'客户档案'}</span></button>)}</div>:<p className={styles.empty}>暂无客户资料，请先在“客户”页面新增客户，再上传照片。</p>}</section>}
     {customerId&&<><section className={styles.card}>
