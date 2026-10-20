@@ -5,7 +5,7 @@ const { test } = require('node:test');
 const ts = require('typescript');
 const { setImmediate: nextTurn } = require('node:timers/promises');
 
-function harness() {
+async function harness() {
   const messages = [], calls = [], requests = [], frames = new Map();
   let route = '/pages/home/index', frameId = 0, modal = false, mutation;
   const window = new EventTarget();
@@ -14,13 +14,13 @@ function harness() {
   window.webkit = { messageHandlers: { nativeTabSelected: { postMessage: s => messages.push(s) } } };
   const document = {
     documentElement: { classList: { toggle() {} }, style: { setProperty() {} } }, body: {},
-    querySelector: () => null,
+    querySelector: selector => selector === 'taro-tabbar' ? { id: 'test-dock' } : null,
     querySelectorAll: selector => selector === '.taro_page' || !modal ? [] : [{ getBoundingClientRect: () => ({ height: 100 }) }]
   };
   const exports = {};
   const context = vm.createContext({
     window, document, navigator: { userAgent: 'test' }, exports,
-    require: () => ({ createGlassTabBar: () => { throw new Error('no dock mounted in this unit test'); } }),
+    require: () => ({ createGlassTabBar: host => ({ host, update() { return this; }, preview() { return this; }, destroy() {} }) }),
     console: { error() {} }, setTimeout, clearTimeout,
     getComputedStyle: () => ({ display: 'block' }),
     requestAnimationFrame: callback => { frames.set(++frameId, callback); return frameId; },
@@ -48,15 +48,16 @@ function harness() {
     scheduled.forEach(callback => callback(0));
     await nextTurn();
   }
+  await flush();
   messages.length = 0;
   return { messages, calls, requests, dispose, select, flush, mutation: () => mutation(), modal: value => { modal = value; mutation(); } };
 }
 
 test('rapid native changes keep the final destination and suppress stale route acknowledgments', async () => {
-  const h = harness();
+  const h = await harness();
   try {
     h.select('ai-assistant', 1); h.select('inventory', 2); h.select('mine', 3);
-    h.mutation(); await h.flush();
+    await h.flush();
     assert.equal(h.messages.length, 0, 'old route cannot reset native selection while pending');
     assert.deepEqual(h.calls, ['/pages/ai-assistant/index']);
     h.requests[0].resolve(); await h.flush();
@@ -73,7 +74,7 @@ test('rapid native changes keep the final destination and suppress stale route a
 });
 
 test('failed navigation acknowledges the actual route and allows the next selection', async () => {
-  const h = harness();
+  const h = await harness();
   try {
     h.select('ai-assistant', 7); h.requests[0].reject(new Error('route failed')); await h.flush();
     assert.equal(h.messages[0].route, '/pages/home/index');
@@ -86,7 +87,7 @@ test('failed navigation acknowledges the actual route and allows the next select
 });
 
 test('native requests cannot switch behind a modal and same-tab selections still acknowledge', async () => {
-  const h = harness();
+  const h = await harness();
   try {
     h.modal(true); h.select('ai-assistant', 9); await h.flush();
     assert.equal(h.calls.length, 0);

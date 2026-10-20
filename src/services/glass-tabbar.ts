@@ -3,11 +3,13 @@ const paths = [
   '<path d="M3 10.5 12 3l9 7.5M5 9v12h5v-6h4v6h5V9"/>',
   '<path d="m12 2 1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8L12 2Z"/><path d="m19 16 .8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8L19 16Z"/>',
   '<path d="m3 8 9-5 9 5-9 5-9-5Z"/><path d="m3 12 9 5 9-5M3 16l9 5 9-5"/>',
+  '<path d="M2.5 16.5v-11h12v11m0-7.5h4l3 4v3.5H20m-5.5-3.5h7M9 16.5h6m-12.5 0H4"/><circle cx="6.5" cy="17" r="2.5"/><circle cx="17.5" cy="17" r="2.5"/>',
   '<circle cx="12" cy="6.5" r="3.5"/><path d="M5 21v-2c0-3.5 3-6 7-6s7 2.5 7 6v2"/>'
 ];
 // One 24-unit grid and stroke weight for every tab, including selected copies.
 const icon = (index: number) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + paths[index] + '</svg>';
-const titles = ['总台', 'AI助手', '库存', '我的'];
+const titles = ['总台', 'AI助手', '库存', '出库', '我的'];
+const MAX_TAB = titles.length - 1;
 // 桌面侧边栏的“业务中心”快捷入口（仅 ≥1024px 显示，手机端 CSS 隐藏）
 const bizNav = [
   { title: '纸板库存', path: '/pages/board-stock/index' },
@@ -86,13 +88,14 @@ export function createGlassTabBar(host: HTMLElement, onSelect: (index: number) =
     motion.onfinish = () => wave.remove();
     motion.oncancel = () => wave.remove();
   };
-  const clamp = (value: number) => Math.max(0, Math.min(3, value));
+  const clamp = (value: number) => Math.max(0, Math.min(MAX_TAB, value));
   const measure = () => {
     const width = rail.clientWidth;
-    cellWidth = Math.max(1, (width - 16) / 4);
+    cellWidth = Math.max(1, (width - 16) / titles.length);
     // Grow into the rail padding rather than clipping the outer capsules.
     // Narrow phones taper the growth so the same capsule still fits both edges.
-    lensExpansion = Math.min(8, Math.max(4, (width - 16) / 8));
+    // Keep the lens inside the rounded rail now that five cells are visible.
+    lensExpansion = Math.min(8, Math.max(2, (width - 16) / 16));
   };
   const render = () => {
     if (desktop.matches) {
@@ -110,11 +113,11 @@ export function createGlassTabBar(host: HTMLElement, onSelect: (index: number) =
     // Keep the capsule the same size throughout the gesture; resize is the
     // only event that may change its geometry.
     const expansion = lensExpansion;
-    lens.style.setProperty('--glass-light', (40 + position / 3 * 20) + '%');
+    lens.style.setProperty('--glass-light', (40 + position / MAX_TAB * 20) + '%');
     lens.style.setProperty('--glass-angle', (115 + position * 16) + 'deg');
     lens.style.width = (cell + expansion * 2) + 'px';
     lens.style.transform = 'translate3d(' + (8 + position * cell - expansion) + 'px,0,0)';
-    lensItems.style.width = (cell * 4) + 'px';
+    lensItems.style.width = (cell * titles.length) + 'px';
     lensItems.style.transform = 'translate3d(' + (expansion - position * cell) + 'px,0,0)';
     const left = position * cell - expansion, right = position * cell + cell + expansion;
     const mask = 'linear-gradient(to right, #000 0px, #000 ' + left + 'px, transparent ' + left + 'px, transparent ' + right + 'px, #000 ' + right + 'px)';
@@ -207,7 +210,7 @@ export function createGlassTabBar(host: HTMLElement, onSelect: (index: number) =
   const keydown = (event: KeyboardEvent) => {
     const index = buttons.indexOf(event.target as HTMLButtonElement);
     if (index < 0) return;
-    const next = event.key === 'ArrowRight' ? clamp(index + 1) : event.key === 'ArrowLeft' ? clamp(index - 1) : event.key === 'Home' ? 0 : event.key === 'End' ? 3 : -1;
+    const next = event.key === 'ArrowRight' ? clamp(index + 1) : event.key === 'ArrowLeft' ? clamp(index - 1) : event.key === 'Home' ? 0 : event.key === 'End' ? MAX_TAB : -1;
     if (next < 0) return;
     event.preventDefault(); buttons[next].focus(); settle(next); onSelect(next);
   };

@@ -208,7 +208,7 @@ html.sg-native-ios taro-scroll-view-core.taro-scroll-view__scroll-y {
 .sg-page-nav, .sg-back-btn, .sg-quick-add, .sg-home-search { display: none !important; pointer-events: none !important; }
 
 /* Reference dock: dark glass, white glyphs and a blue draggable lens.
-   Four business tabs share the full rail; there is no search control. */
+   Five business tabs share the full rail; there is no search control. */
 taro-tabbar.sg-glass-host { bottom: max(20px, calc(env(safe-area-inset-bottom, 0px) - 14px)) !important; height: 64px !important; }
 taro-tabbar.sg-glass-host > .weui-tabbar { display: none !important; }
 .sg-glass-dock { position: absolute; inset: 0 20px; display: flex; gap: 8px; height: 64px; color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; pointer-events: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
@@ -216,7 +216,7 @@ taro-tabbar.sg-glass-host > .weui-tabbar { display: none !important; }
 .sg-glass-rail { flex: 1; min-width: 0; touch-action: none; isolation: isolate; overflow: hidden; }
 .sg-glass-items, .sg-glass-lens-items { display: flex; height: 56px; }
 .sg-glass-items { position: absolute; inset: 4px 8px; }
-.sg-glass-tab { flex: 1 0 25%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 0; margin: 0; border: 0; border-radius: 0; background: transparent; color: inherit; min-width: 0; font: inherit; cursor: pointer; box-sizing: border-box; }
+.sg-glass-tab { flex: 1 0 20%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 0; margin: 0; border: 0; border-radius: 0; background: transparent; color: inherit; min-width: 0; font: inherit; cursor: pointer; box-sizing: border-box; }
 .sg-glass-tab svg { display: block; width: 25px; height: 25px; fill: none; flex-shrink: 0; }
 .sg-glass-tab span { font-size: 11px; font-weight: 500; line-height: 13px; white-space: nowrap; }
 .sg-glass-tab:focus-visible { outline: 2px solid #24a6f8; outline-offset: 4px; border-radius: 28px; }

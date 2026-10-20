@@ -52,10 +52,10 @@ async function verify(browser, name) {
   assert.equal(await workbench.locator('[data-testid="workbench-actions"] > taro-button-core').count(), 4);
   const before = await page.locator('taro-tabbar').boundingBox();
   assert.ok(before.y > 700 && before.y + before.height <= 845, JSON.stringify(before));
-  assert.equal(await page.locator('.sg-glass-tab[data-tab]').count(), 4);
+  assert.equal(await page.locator('.sg-glass-tab[data-tab]').count(), 5);
   assert.equal(await page.locator('.sg-glass-search').count(), 0, 'no search button');
-  assert.deepEqual(await page.locator('.sg-glass-tab[data-tab] span').allTextContents(), ['总台', 'AI助手', '库存', '我的']);
-  assert.ok(Math.abs((await page.locator('.sg-glass-rail').boundingBox()).width - (await page.locator('.sg-glass-dock').boundingBox()).width) < 1, 'four tabs fill the dock with no search gap');
+  assert.deepEqual(await page.locator('.sg-glass-tab[data-tab] span').allTextContents(), ['总台', 'AI助手', '库存', '出库', '我的']);
+  assert.ok(Math.abs((await page.locator('.sg-glass-rail').boundingBox()).width - (await page.locator('.sg-glass-dock').boundingBox()).width) < 1, 'five tabs fill the dock with no search gap');
   assert.equal(await page.locator('.weui-tabbar').isVisible(), false, 'old rectangular dock is replaced');
   const colors = await page.evaluate(() => ({
     normal: getComputedStyle(document.querySelector('.sg-glass-items')).color,
@@ -75,7 +75,7 @@ async function verify(browser, name) {
     assert.ok(lens.y >= railBounds.y + 3.9 && lens.y + lens.height <= railBounds.y + railBounds.height - 3.9, 'capsule never protrudes');
   }
   const first = await page.locator('.sg-glass-tab[data-tab="0"]').boundingBox();
-  const last = await page.locator('.sg-glass-tab[data-tab="3"]').boundingBox();
+  const last = await page.locator('.sg-glass-tab[data-tab="4"]').boundingBox();
   await page.mouse.move(first.x + first.width / 2, first.y + first.height / 2);
   await page.mouse.down();
   await assertStableLens();
@@ -93,7 +93,7 @@ async function verify(browser, name) {
   await assertStableLens();
   await page.mouse.up();
   await page.waitForURL(/mine/);
-  await page.waitForFunction(() => document.querySelector('[data-tab="3"]').getAttribute('aria-current') === 'page');
+  await page.waitForFunction(() => document.querySelector('[data-tab="4"]').getAttribute('aria-current') === 'page');
   await page.locator('.sg-glass-tab[data-tab="0"]').click();
   await page.waitForURL(/home/);
   await page.waitForTimeout(400);
@@ -101,11 +101,11 @@ async function verify(browser, name) {
     const touch = await page.context().newCDPSession(page);
     const point = { x: first.x + first.width / 2, y: first.y + first.height / 2 };
     await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
-    await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ ...point, x: point.x + first.width * 2.35 }] });
-    assert.ok(Number(await page.locator('.sg-glass-dock').getAttribute('data-position')) > 2.2, 'real touch follows the dock, not the page swipe handler');
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ ...point, x: point.x + first.width * 3.35 }] });
+    assert.ok(Number(await page.locator('.sg-glass-dock').getAttribute('data-position')) > 3.2, 'real touch follows the dock, not the page swipe handler');
     assert.match(page.url(), /home/);
     await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-    await page.waitForURL(/inventory/);
+    await page.waitForURL(/outbound/);
     await page.locator('.sg-glass-tab[data-tab="0"]').click();
     await page.waitForURL(/home/);
     await touch.detach();
@@ -155,6 +155,9 @@ async function verify(browser, name) {
   await page.screenshot({ path: 'release/board-dock-' + name + '-320.png' });
   await page.setViewportSize({ width: 390, height: 844 });
   await swipe(page, -110);
+  await page.waitForURL(/outbound/);
+  await page.waitForTimeout(500);
+  await swipe(page, -110);
   await page.waitForURL(/mine/);
   await page.waitForTimeout(500);
   await swipe(page, 110, { x: 20 });
@@ -183,8 +186,8 @@ async function verify(browser, name) {
     await page.waitForFunction(expected => document.documentElement.style.getPropertyValue('--sg-native-bottom-space') === expected, bottomSpace === null ? '84px' : '0px');
   }
   await swipe(page, 110);
-  await page.waitForURL(/inventory/);
-  for (const route of ['/pages/inventory/index', '/pages/ai-assistant/index', '/pages/mine/index', '/pages/home/index']) {
+  await page.waitForURL(/outbound/);
+  for (const route of ['/pages/inventory/index', '/pages/ai-assistant/index', '/pages/outbound/index', '/pages/mine/index', '/pages/home/index']) {
     await page.evaluate(route => window.dispatchEvent(new CustomEvent('sg-native-tab', { detail: route })), route);
     await page.waitForURL(new RegExp(route));
     await page.waitForTimeout(500);
@@ -195,17 +198,17 @@ async function verify(browser, name) {
   // The last finger destination must win, with no old-route acknowledgment.
   await page.evaluate(() => {
     window.__nativeMessages = [];
-    ['/pages/inventory/index', '/pages/ai-assistant/index', '/pages/mine/index'].forEach((route, index) => {
+    ['/pages/inventory/index', '/pages/ai-assistant/index', '/pages/outbound/index', '/pages/mine/index'].forEach((route, index) => {
       const event = new CustomEvent('sg-native-tab', { detail: route });
       event.requestId = 201 + index;
       window.dispatchEvent(event);
     });
   });
   await page.waitForURL(/mine/);
-  await page.waitForFunction(() => window.__nativeMessages.at(-1)?.requestId === 203);
+  await page.waitForFunction(() => window.__nativeMessages.at(-1)?.requestId === 204);
   const acknowledgments = await page.evaluate(() => window.__nativeMessages);
   assert.ok(acknowledgments.length > 0);
-  assert.ok(acknowledgments.every(s => s.route === '/pages/mine/index' && s.requestId === 203), JSON.stringify(acknowledgments));
+  assert.ok(acknowledgments.every(s => s.route === '/pages/mine/index' && s.requestId === 204), JSON.stringify(acknowledgments));
   await page.evaluate(() => {
     for (let i = 0; i < 20; i++) { const item = document.createElement('span'); document.body.appendChild(item); item.remove(); }
   });
@@ -247,7 +250,7 @@ async function verify(browser, name) {
   assert.ok(rotated.y + rotated.height <= 391 && rotated.y >= 300);
   assert.deepEqual(errors, [], name + ' page errors');
   await page.close();
-  console.log(name + ': startup, 4-tab navigation, native handshake, gestures, edges, cancellation, calculator and layout passed');
+  console.log(name + ': startup, 5-tab navigation, native handshake, gestures, edges, cancellation, calculator and layout passed');
 }
 
 (async () => {

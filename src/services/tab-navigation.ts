@@ -1,7 +1,7 @@
 import { createGlassTabBar } from './glass-tabbar';
 
 // Keep this list aligned with app.config.ts and the custom glass dock.
-export const tabRoutes = ['/pages/home/index', '/pages/ai-assistant/index', '/pages/inventory/index', '/pages/mine/index'];
+export const tabRoutes = ['/pages/home/index', '/pages/ai-assistant/index', '/pages/inventory/index', '/pages/outbound/index', '/pages/mine/index'];
 
 export function normalizeRoute(value: string): string {
   return '/' + value.replace(/^#?\/?/, '').split(/[?#]/)[0].replace(/\/$/, '');
@@ -29,6 +29,7 @@ export function installTabNavigation(nav: Navigation): () => void {
   let suppressClickUntil = 0;
   let disposed = false;
   let dock: ReturnType<typeof createGlassTabBar> | null = null;
+  let tabBarEnabled = true;
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const android = /Android/i.test(navigator.userAgent) || win.Capacitor?.getPlatform?.() === 'android';
   const route = () => normalizeRoute(nav.route());
@@ -52,6 +53,7 @@ export function installTabNavigation(nav: Navigation): () => void {
     const native = capability?.api === 2 && bridge;
     root.classList.toggle('sg-native-ios', !!native);
     const host = document.querySelector<HTMLElement>('taro-tabbar');
+    tabBarEnabled = !!host && getComputedStyle(host).display !== 'none';
     if (dock && dock.host !== host) { dock.destroy(); dock = null; }
     if (host && !dock) dock = createGlassTabBar(host, index => { void switchTo(tabRoutes[index]); }, url => { void switchTo(url, undefined, true); });
     if (!state?.locked && !busy) dock?.update(Math.max(0, tabRoutes.indexOf(route())));
@@ -98,7 +100,7 @@ export function installTabNavigation(nav: Navigation): () => void {
         try {
           if (modalOpen()) { navigationFailed = true; continue; }
           if (target.url !== route()) {
-            if (tabRoutes.includes(target.url)) await nav.switchTab(target.url);
+            if (tabRoutes.includes(target.url) && tabBarEnabled) await nav.switchTab(target.url);
             else await nav.navigateTo(target.url);
           }
         } catch (error) {

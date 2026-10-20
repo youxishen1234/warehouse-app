@@ -61,6 +61,12 @@ export default defineAppConfig({
         selectedIconPath: 'assets/tabbar/inbound-selected.svg'
       },
       {
+        pagePath: 'pages/outbound/index',
+        text: '出库',
+        iconPath: 'assets/tabbar/outbound.svg',
+        selectedIconPath: 'assets/tabbar/outbound-selected.svg'
+      },
+      {
         pagePath: 'pages/mine/index',
         text: '我的',
         iconPath: 'assets/tabbar/mine.svg',

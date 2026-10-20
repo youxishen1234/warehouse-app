@@ -32,7 +32,7 @@ async function main() {
   }, '/pages/' + route + '/index');
   try {
     await page.goto(origin);
-    for (const [index, route] of [[3, 'mine'], [0, 'home'], [2, 'inventory'], [0, 'home'], [1, 'ai-assistant'], [0, 'home']]) {
+    for (const [index, route] of [[4, 'mine'], [0, 'home'], [2, 'inventory'], [0, 'home'], [1, 'ai-assistant'], [0, 'home'], [3, 'outbound'], [0, 'home']]) {
       await tab(index).click();
       await current(route);
     }
@@ -53,7 +53,7 @@ async function main() {
     await current('inventory');
     await tab(0).click();
     await current('home');
-    const first = await tab(0).boundingBox(), last = await tab(3).boundingBox();
+    const first = await tab(0).boundingBox(), last = await tab(4).boundingBox();
     await page.mouse.move(first.x + first.width / 2, first.y + first.height / 2);
     await page.mouse.down();
     await page.mouse.move(last.x + last.width / 2, last.y + last.height / 2, { steps: 12 });

@@ -36,13 +36,15 @@ async function check(engine, name, base) {
       await page.goto(base);
       await page.getByTestId('workbench-actions').waitFor();
       await page.locator('.team-boot').waitFor({ state: 'detached' });
-      for (const [index, route] of ['home', 'ai-assistant', 'inventory', 'mine'].entries()) {
-        await page.getByRole('button', { name: ['总台', 'AI助手', '库存', '我的'][index], exact: true }).click();
+      for (const [index, route] of ['home', 'ai-assistant', 'inventory', 'outbound', 'mine'].entries()) {
+        await page.getByRole('button', { name: ['总台', 'AI助手', '库存', '出库', '我的'][index], exact: true }).click();
         await page.waitForURL(new RegExp('/pages/' + route + '/index'));
+        assert.equal(await page.locator('taro-tabbar:visible .sg-glass-tab[data-tab]').count(), 5, `${name}/${width}/${route}: five dock tabs`);
+        if (route === 'outbound') {
+          await page.waitForFunction(() => document.querySelector('taro-tabbar .sg-glass-tab[data-tab="3"]')?.getAttribute('aria-current') === 'page');
+        }
         const active = page.locator('.taro_page:visible').last();
-        await active.getByTestId('simple-workbench').first().waitFor({ timeout: 10000 }).catch(async () => {
-          await active.locator('taro-pull-to-refresh-core, taro-page, taro-scroll-view-core').first().waitFor();
-        });
+        if (route === 'home' || route === 'inventory') await active.getByTestId('simple-workbench').first().waitFor();
         await page.evaluate(() => {
           document.querySelectorAll('.taro_page, taro-scroll-view-core').forEach(el => { el.scrollTop = 0; });
           window.scrollTo(0, 0);
@@ -66,7 +68,7 @@ async function check(engine, name, base) {
       }
       assert.deepEqual(errors, [], `${name}/${width}: page errors`);
       await page.close();
-      console.log(`${name} ${width}px: four pages, visible actions, labels, dock/submit clearance, connection dialog passed`);
+      console.log(`${name} ${width}px: five pages, visible actions, labels, dock/submit clearance, connection dialog passed`);
     }
   } finally { await browser.close(); }
 }
