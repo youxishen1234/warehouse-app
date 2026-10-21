@@ -103,6 +103,11 @@ jobs:
         env:
           LABEL_PRINT_WEB_ROOT: dist-${{ github.run_id }}-${{ github.run_attempt }}
         run: node tests/label-print-empty-browser.cjs
+      - name: Validate 70 x 100 mm label paper default
+        env:
+          LABEL_PRINT_WEB_ROOT: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          LABEL_PAPER_CHECK_DIR: release/label-paper-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/label-paper-browser.cjs
       - name: Validate remote print failure recovery
         env:
           REMOTE_PRINT_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}

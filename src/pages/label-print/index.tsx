@@ -19,7 +19,8 @@ const boardOptions: FieldOption[] = [{ key: 'layers', title: '层数' }, { key: 
 const names: Record<string, string> = { name: '商品名称', specification: '规格', unit: '库存单位', productId: '商品 ID', batchId: '批次号', boardLength: '纸板长', boardWidth: '纸板宽', fluteType: '楞型', supplier: '板厂', material: '材质', corrugation: '楞型', layers: '层数', weight: '克重', stockSnapshot: '打印时库存', printedAt: '打印日期', faceGsm: '面纸克重', linerGsm: '里纸克重', flutingGsm: '楞纸克重', cartonLength: '纸箱长', cartonWidth: '纸箱宽', cartonHeight: '纸箱高', receivedDate: '入库日期', location: '库位', receivedQty: '实收数量', remainingQtySnapshot: '打印时余量' };
 const phases: Record<string, string> = { scanning: '搜索设备中', connecting: '连接中', rendering: '正在准备', submitting: '数据提交中', printing: '等待 SDK 状态', ending: '等待 SDK 结束', 'sdk-completed': 'SDK 任务完成', failed: '任务失败', cancelled: '已取消，请检查实物', uncertain: '结果未确认，请检查实物' };
 const initialState: LabelPrinterState = { supported: false, connected: false, mediaProfiles: [], productionEnabled: false, maxCopies: 1, reason: '正在检查打印机能力…' };
-const emptyMedia = { widthMm: '', heightMm: '', density: '3', top: '', right: '', bottom: '', left: '' };
+const defaultMedia = { widthMm: '70', heightMm: '100', density: '3', top: '', right: '', bottom: '', left: '' };
+const mediaFromProfile = (item: MediaProfile) => ({ widthMm: String(item.widthMm), heightMm: String(item.heightMm), density: String(item.density), top: String(item.marginMm.top), right: String(item.marginMm.right), bottom: String(item.marginMm.bottom), left: String(item.marginMm.left) });
 const PAGE_SIZE = 12;
 const errorText = (error: unknown) => {
   if (typeof error === 'string' && error.trim()) return error;
@@ -70,7 +71,7 @@ export default function LabelPrintPage() {
   const [printers, setPrinters] = useState<LabelPrinter[]>([]);
   const [settings, setSettings] = useState(false);
   const [profileId, setProfileId] = useState('');
-  const [media, setMedia] = useState(emptyMedia);
+  const [media, setMedia] = useState(defaultMedia);
   const [copies, setCopies] = useState('1');
   const [operation, setOperation] = useState('');
   const [notice, setNotice] = useState('');
@@ -229,7 +230,9 @@ export default function LabelPrintPage() {
       if (!alive.current || verificationGeneration !== stateGeneration.current) return;
       if (!state) throw new Error('连接请求已返回，但未能读取真实连接状态，请点击“刷新状态”核对。');
       if (!state.connected || state.printerName !== device.printerName) throw new Error('SDK 未确认目标 K3 已连接，请检查蓝牙、设备距离及是否被其他 App 占用。');
-      setMedia(emptyMedia); setNotice(`已连接 ${state.printerName}。请配置实际纸张并打印单张校准样张。`);
+      const saved = state.mediaProfiles.find(item => item.printerName === state.printerName);
+      setMedia(saved ? mediaFromProfile(saved) : defaultMedia);
+      setNotice(saved ? `已连接 ${state.printerName}。已载入已保存的 ${saved.widthMm} × ${saved.heightMm} mm 纸张配置。` : `已连接 ${state.printerName}。纸张默认 70 × 100 mm，请核对实物并打印单张校准样张。`);
     } finally {
       clearTimeout(watchdog);
       if (alive.current) { setConnectingName(''); setConnectionWarning(''); }
@@ -301,7 +304,7 @@ export default function LabelPrintPage() {
   };
   const chooseProfile = (item: MediaProfile) => {
     if (busy) return; setProfileId(item.profileId);
-    setMedia({ widthMm: String(item.widthMm), heightMm: String(item.heightMm), density: String(item.density), top: String(item.marginMm.top), right: String(item.marginMm.right), bottom: String(item.marginMm.bottom), left: String(item.marginMm.left) });
+    setMedia(mediaFromProfile(item));
   };
   const switchKind = (next: LabelKind) => {
     if (busy || next === kind) return; choiceGeneration.current += 1; setKind(next); setSelected(null); setQuery(''); setPage(1); setNotice(''); setActionError(''); setRefreshRequired(false);
@@ -342,7 +345,7 @@ export default function LabelPrintPage() {
     {(!settings || !printer.supported) && printerFeedback}
     {!printer.productionEnabled && <View className={styles.notice}><Text>{printer.reason || 'K3 真机与正式扫码路线尚未验收，正式打印暂未开放。可先配置耗材并检查 SDK 预览。'}</Text>{!printer.supported && <Button className={styles.secondary} onClick={openIOSDownload}>去安装新版 iOS App</Button>}</View>}
     {settings && printer.supported && <View className={styles.card}>
-      <Text className={styles.sectionTitle}>连接与纸张设置</Text><Text className={styles.meta}>请核对铭牌为 K3，测量当前纸卷；首版仅提供间隙纸。当前模板支持宽 20–120 mm、高 20–200 mm、四边边距各 0.5–30 mm，不代表已验收全部耗材。配置与任务只保存在本机。</Text>
+      <Text className={styles.sectionTitle}>连接与纸张设置</Text><Text className={styles.meta}>请核对铭牌为 K3，测量当前纸卷；首版仅提供间隙纸。纸张默认 70 × 100 mm，如实测不同请修改。当前模板支持宽 20–120 mm、高 20–200 mm、四边边距各 0.5–30 mm，不代表已验收全部耗材。配置与任务只保存在本机。</Text>
       <View className={styles.actions}><Button className={styles.secondary} loading={operation === '搜索附近打印机…'} disabled={disabledIf(!printer.supported || busy)} onClick={() => void run('搜索附近打印机…', async () => { const result = await labelPrinter.scanPrinters(); if (alive.current) { setPrinters(result.printers); setNotice(result.printers.length ? `找到 ${result.printers.length} 台设备，请核对铭牌后选择 K3。` : '未找到设备。请靠近打印机，确认蓝牙已开启并退出其他打印 App 后重试。'); } })}>搜索附近打印机</Button><Button className={styles.smallButton} onClick={() => void refreshPrinter()}>刷新状态</Button>{printer.connected && <Button className={styles.smallButton} disabled={disabledIf(busy)} onClick={() => void run('断开连接…', async () => { await labelPrinter.disconnectPrinter(); })}>断开</Button>}</View>
       {printerFeedback}
       {!printer.connected && <Text className={styles.meta}>请先搜索并连接精臣 K3；连接后才能保存纸张配置和打印校准样张。</Text>}
