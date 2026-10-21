@@ -33,19 +33,20 @@ const server = http.createServer((request, response) => {
     await context.addInitScript(initial => {
       localStorage.setItem('sg_getting_started_seen_v1', JSON.stringify({ data: true }));
       localStorage.setItem('warehouse_session_v1', JSON.stringify({ data: initial.guest }));
-      const state = { connected: false, calls: [] };
+      const state = { connected: false, calls: [], profiles: [] };
       window.CapacitorCustomPlatform = { name: 'ios' };
       window.Capacitor = {
-        PluginHeaders: [{ name: 'OfficialLabelPrinter', methods: ['getState', 'scanPrinters', 'connectPrinter', 'getActiveJob', 'getRecentJobs', 'saveMediaProfile', 'removeListener', 'addListener'].map(name => ({ name, rtype: name === 'addListener' ? 'callback' : 'promise' })) }],
+        PluginHeaders: [{ name: 'OfficialLabelPrinter', methods: ['getState', 'scanPrinters', 'connectPrinter', 'getActiveJob', 'getRecentJobs', 'saveMediaProfile', 'printCalibration', 'removeListener', 'addListener'].map(name => ({ name, rtype: name === 'addListener' ? 'callback' : 'promise' })) }],
         nativePromise(plugin, method, input) {
           state.calls.push({ plugin, method, input });
           if (plugin !== 'OfficialLabelPrinter') return Promise.reject(new Error('Unexpected native plugin: ' + plugin));
-          if (method === 'getState') return Promise.resolve({ supported: true, connected: state.connected, printerName: state.connected ? initial.printerName : undefined, mediaProfiles: [], productionEnabled: false, maxCopies: 1, reason: '测试夹具：正式打印保持关闭' });
+          if (method === 'getState') return Promise.resolve({ supported: true, connected: state.connected, printerName: state.connected ? initial.printerName : undefined, mediaProfiles: state.profiles, productionEnabled: false, maxCopies: 1, reason: '测试夹具：正式打印保持关闭' });
           if (method === 'scanPrinters') return Promise.resolve({ printers: [{ printerName: initial.printerName, connected: false }] });
           if (method === 'connectPrinter') { state.connected = true; return Promise.resolve(); }
           if (method === 'getActiveJob') return Promise.resolve({ job: null });
           if (method === 'getRecentJobs') return Promise.resolve({ jobs: [] });
-          if (method === 'saveMediaProfile') return Promise.resolve();
+          if (method === 'saveMediaProfile') { state.profiles = [input.profile]; return Promise.resolve(); }
+          if (method === 'printCalibration') return Promise.resolve();
           if (method === 'removeListener') return Promise.resolve();
           return Promise.reject(new Error('Unexpected native method: ' + method));
         },
@@ -82,6 +83,12 @@ const server = http.createServer((request, response) => {
     await expect(width).toHaveValue('70');
     await expect(height).toHaveValue('100');
     await expect(density).toHaveValue('3');
+    await expect(page.getByText('第 1 步：点“搜索附近打印机”，选择精臣 K3 并核对铭牌型号。', { exact: true })).toBeVisible();
+
+    const calibrate = page.locator('taro-button-core').filter({ hasText: /^打印校准样张$/ });
+    await expect(calibrate).not.toHaveAttribute('disabled', '');
+    await calibrate.click();
+    await expect(page.locator('#calibration-action-error')).toContainText('请先连接精臣 K3，再打印校准样张。');
 
     const scan = page.locator('taro-button-core').filter({ hasText: /^搜索附近打印机$/ });
     await scan.click();
@@ -91,9 +98,13 @@ const server = http.createServer((request, response) => {
     await expect(modal).toContainText('核对打印机铭牌');
     await modal.locator('.taro-model__confirm').click();
     await expect(page.locator('.label-printer-status')).toContainText(`已连接 · ${printerName}`);
+    await expect(modal).toHaveCount(0);
     await expect(width).toHaveValue('70');
     await expect(height).toHaveValue('100');
     await expect(density).toHaveValue('3');
+    await expect(page.getByText('第 2 步：纸张已填 70 × 100 mm。补全四边边距后，点“保存纸张配置”。', { exact: true })).toBeVisible();
+    await page.locator('[class*=setupGuide]').filter({ hasText: '当前下一步' }).first().screenshot({ path: path.join(output, 'label-calibration-next-step.png'), animations: 'disabled' });
+    await page.screenshot({ path: path.join(output, 'label-calibration-guide.png'), fullPage: true, animations: 'disabled' });
 
     for (const [label, value] of [['上边距（mm）', '2'], ['右边距（mm）', '2'], ['下边距（mm）', '2'], ['左边距（mm）', '2']]) {
       await field(label).fill(value);
@@ -111,6 +122,16 @@ const server = http.createServer((request, response) => {
     assert.equal(profile.density, 3);
     assert.deepEqual(profile.marginMm, { top: 2, right: 2, bottom: 2, left: 2 });
     assert.equal(profile.printerName, printerName);
+    await expect(page.getByText('第 3 步：点“打印校准样张”会出一张纸，检查实物后再点“已核对校准实物”。', { exact: true })).toBeVisible();
+
+    await calibrate.click();
+    await expect(modal).toContainText('打印一张校准样张');
+    await modal.locator('.taro-model__confirm').click();
+    await expect.poll(() => page.evaluate(() => window.__labelPaperFixture.calls.filter(call => call.method === 'printCalibration').length)).toBe(1);
+    const calibrationCall = await page.evaluate(() => window.__labelPaperFixture.calls.find(call => call.method === 'printCalibration'));
+    assert.equal(calibrationCall.input.profileId, profile.profileId);
+    assert.equal(calibrationCall.input.acknowledged, true);
+    assert.match(calibrationCall.input.jobId, /^label-\d+-[a-z0-9]+$/);
     await page.screenshot({ path: path.join(output, 'label-paper-70x100.png'), fullPage: true, animations: 'disabled' });
     assert.deepEqual(errors, [], 'no runtime errors');
     assert.deepEqual(requests.filter(item => item.method !== 'GET' && item.path !== '/api/auth/guest'), [], 'paper setup never writes business records');

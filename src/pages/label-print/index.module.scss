@@ -13,6 +13,10 @@
 .deviceStatus { flex: 1 1 240px; min-width: 0; }
 .deviceName { display: block; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
 .card { max-width: 1400px; margin: 0 auto 22px; padding: 25px; border: 1px solid #dfe5e9; border-radius: 20px; background: white; box-sizing: border-box; min-width: 0; }
+.setupGuide { margin: 18px 0; padding: 18px 20px; border-left: 5px solid #2a8194; border-radius: 12px; background: #eef7f8; }
+.setupGuideLabel { display: block; margin-bottom: 7px; color: #246476; font-size: 21px; font-weight: 650; letter-spacing: 1px; }
+.setupGuideText { display: block; color: #174252; font-size: 24px; line-height: 1.6; }
+.setupGuideMeta { display: block; margin-top: 9px; color: #586f79; font-size: 21px; line-height: 1.55; overflow-wrap: anywhere; }
 .sectionTitle { display: block; font-size: 29px; font-weight: 650; margin-bottom: 18px; margin-top: 8px; }
 .meta { display: block; color: #6b7a86; font-size: 23px; line-height: 1.55; white-space: normal; overflow-wrap: anywhere; }
 .notice, .errorBox { max-width: 1400px; box-sizing: border-box; padding: 20px 24px; margin: 0 auto 20px; line-height: 1.65; border-radius: 14px; background: #fff5df; color: #755215; white-space: pre-wrap; }

@@ -251,14 +251,17 @@ export default function LabelPrintPage() {
     setProfileId(nextId); setNotice('配置已保存。请打印一张校准样张，并检查实物。');
   });
   const calibrate = () => void run('准备校准样张…', async () => {
-    if (!profile) throw new Error('请先保存实际纸张配置');
+    if (!printer.connected) throw new Error('请先连接精臣 K3，再打印校准样张。');
+    if (!profile) throw new Error('请先确认纸张为 70 × 100 mm，填好四边边距并点“保存纸张配置”。');
     const confirmation = await Taro.showModal({ title: '打印一张校准样张', content: '这会实际出纸。K3 的完成信号仍待真机验收，提交后可能显示“结果未确认”。请现场检查边界、走纸、边距和浓度；不要连续点击重试。', confirmText: '确认出纸' });
     if (!confirmation.confirm || !alive.current) return;
     await labelPrinter.printCalibration(jobId(), profile.profileId);
   });
   const calibrationJob = [job, ...recent].find(item => item && item.kind === 'calibration' && item.profileId === profile?.profileId);
   const confirmCalibration = () => void run('保存校准确认…', async () => {
-    if (!profile || !calibrationJob) throw new Error('请先为当前配置打印校准样张');
+    if (!printer.connected) throw new Error('请先连接精臣 K3。');
+    if (!profile) throw new Error('请先保存纸张配置。');
+    if (!calibrationJob) throw new Error('还没有可核对的校准任务，请先点“打印校准样张”。');
     const confirmation = await Taro.showModal({ title: '核对校准实物', content: '请确认样张确实出纸，四边标记完整、方向与尺寸正确、走纸无偏移且浓度清晰。此确认只记录纸张校准，正式打印仍需完成 K3 与扫码路线验收。', confirmText: '已核对' });
     if (confirmation.confirm && alive.current) await labelPrinter.confirmCalibration(profile.profileId, calibrationJob.jobId);
   }, true);
@@ -311,6 +314,21 @@ export default function LabelPrintPage() {
   };
   const optionState = kind === 'finished-product' ? finishedOptions : boardFields;
   const printDisabled = busy || refreshRequired || !printer.productionEnabled || !printer.connected || !profile?.calibrated || !built.data || !copiesValid || !preview || preview.key !== previewKey || preview.warnings.length > 0;
+  const setupNextStep = !printer.supported
+    ? '请先打开新版 iOS App，再连接精臣 K3。'
+    : printer.hardwareBusy
+      ? calibrationJob
+        ? '打印机正在处理校准任务。请先检查实物：确认样张正常后点“已核对校准实物”；如果没有出纸，请在页面下方“当前任务”中取消。'
+        : '打印机仍在处理上一个操作。请稍候并点“刷新状态”，不要重复提交。'
+      : !printer.connected
+        ? '第 1 步：点“搜索附近打印机”，选择精臣 K3 并核对铭牌型号。'
+        : !profile
+          ? '第 2 步：纸张已填 70 × 100 mm。补全四边边距后，点“保存纸张配置”。'
+          : !profile.calibrated
+            ? calibrationJob
+              ? '第 3 步：检查刚打印的校准样张，确认尺寸、边距和浓度正常后，点“已核对校准实物”。'
+              : '第 3 步：点“打印校准样张”会出一张纸，检查实物后再点“已核对校准实物”。'
+            : '纸张已校准。现在可以在下方选择商品或纸板批次，生成标签预览。';
   const returnToDelivery = async () => {
     if (busy) return;
     try {
@@ -346,13 +364,15 @@ export default function LabelPrintPage() {
     {!printer.productionEnabled && <View className={styles.notice}><Text>{printer.reason || 'K3 真机与正式扫码路线尚未验收，正式打印暂未开放。可先配置耗材并检查 SDK 预览。'}</Text>{!printer.supported && <Button className={styles.secondary} onClick={openIOSDownload}>去安装新版 iOS App</Button>}</View>}
     {settings && printer.supported && <View className={styles.card}>
       <Text className={styles.sectionTitle}>连接与纸张设置</Text><Text className={styles.meta}>请核对铭牌为 K3，测量当前纸卷；首版仅提供间隙纸。纸张默认 70 × 100 mm，如实测不同请修改。当前模板支持宽 20–120 mm、高 20–200 mm、四边边距各 0.5–30 mm，不代表已验收全部耗材。配置与任务只保存在本机。</Text>
+      <View className={styles.setupGuide} aria-live='polite'><Text className={styles.setupGuideLabel}>当前下一步</Text><Text className={styles.setupGuideText}>{setupNextStep}</Text>{calibrationJob && <Text className={styles.setupGuideMeta}>校准任务：{phases[calibrationJob.phase] || calibrationJob.phase}{calibrationJob.message ? ` · ${calibrationJob.message}` : ''}</Text>}</View>
       <View className={styles.actions}><Button className={styles.secondary} loading={operation === '搜索附近打印机…'} disabled={disabledIf(!printer.supported || busy)} onClick={() => void run('搜索附近打印机…', async () => { const result = await labelPrinter.scanPrinters(); if (alive.current) { setPrinters(result.printers); setNotice(result.printers.length ? `找到 ${result.printers.length} 台设备，请核对铭牌后选择 K3。` : '未找到设备。请靠近打印机，确认蓝牙已开启并退出其他打印 App 后重试。'); } })}>搜索附近打印机</Button><Button className={styles.smallButton} onClick={() => void refreshPrinter()}>刷新状态</Button>{printer.connected && <Button className={styles.smallButton} disabled={disabledIf(busy)} onClick={() => void run('断开连接…', async () => { await labelPrinter.disconnectPrinter(); })}>断开</Button>}</View>
       {printerFeedback}
       {!printer.connected && <Text className={styles.meta}>请先搜索并连接精臣 K3；连接后才能保存纸张配置和打印校准样张。</Text>}
       {printers.map(device => <View key={device.printerName} className={`label-printer-device ${styles.printerRow}`}><Text>{device.printerName}{device.ambiguous ? ' · 同名设备，无法区分' : ''}</Text><Button className={styles.smallButton} loading={connectingName === device.printerName} disabled={disabledIf(busy || Boolean(device.ambiguous))} onClick={() => connect(device)}>{connectingName === device.printerName ? '正在连接…' : '选择并核对型号'}</Button></View>)}
       {printer.mediaProfiles.filter(item => item.printerName === printer.printerName).map(item => <Button key={item.profileId} disabled={disabledIf(busy)} className={item.profileId === profileId ? styles.selectedProfile : styles.profileButton} onClick={() => chooseProfile(item)}>{item.widthMm} × {item.heightMm} mm · {item.calibrated ? '已校准' : '待校准'}</Button>)}
       <View className={styles.mediaGrid}>{([{ key: 'widthMm', title: '实测宽度（mm）' }, { key: 'heightMm', title: '实测高度（mm）' }, { key: 'density', title: '浓度（1–5）' }, { key: 'top', title: '上边距（mm）' }, { key: 'right', title: '右边距（mm）' }, { key: 'bottom', title: '下边距（mm）' }, { key: 'left', title: '左边距（mm）' }] as const).map(field => <View className={styles.inputField} key={field.key}><Text>{field.title}</Text><Input ariaLabel={field.title} type='digit' value={media[field.key]} placeholder='请输入' disabled={disabledIf(!printer.supported || busy)} onInput={event => setMedia(value => ({ ...value, [field.key]: event.detail.value }))} /></View>)}</View>
-      <View className={styles.actions}><Button className={styles.secondary} disabled={disabledIf(!printer.connected || busy)} onClick={saveMedia}>保存纸张配置</Button><Button className={styles.secondary} disabled={disabledIf(!profile || !printer.connected || busy)} onClick={calibrate}>打印校准样张</Button><Button className={styles.smallButton} disabled={disabledIf(!calibrationJob || !profile || Boolean(operation) || cancelling)} onClick={confirmCalibration}>已核对校准实物</Button></View>
+      <View className={styles.actions}><Button className={styles.secondary} disabled={disabledIf(!printer.supported || busy)} onClick={saveMedia}>保存纸张配置</Button><Button className={styles.secondary} disabled={disabledIf(busy)} onClick={calibrate}>打印校准样张</Button><Button className={styles.smallButton} disabled={disabledIf(Boolean(operation) || cancelling)} onClick={confirmCalibration}>已核对校准实物</Button></View>
+      {actionError && <Text id='calibration-action-error' className={styles.error} aria-live='assertive'>{actionError}</Text>}
     </View>}
     <View className={styles.tabs}><Button className={kind === 'finished-product' ? styles.activeTab : styles.tab} disabled={disabledIf(busy)} onClick={() => switchKind('finished-product')}>成品标签</Button><Button className={kind === 'paperboard-batch' ? styles.activeTab : styles.tab} disabled={disabledIf(busy)} onClick={() => switchKind('paperboard-batch')}>纸板批次标签</Button></View>
     <View className={styles.columns}><View className={styles.card}>
