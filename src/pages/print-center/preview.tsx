@@ -10,7 +10,7 @@ import styles from './index.module.scss';
 import RemotePrint from './remote';
 
 export default function PrintPreview({ note, saved, onClose }: { note: PrintNoteInput; saved?: SavedPrintNote; onClose: () => void }) {
-  const [paper, setPaper] = useState(note.paper);
+  const [paper] = useState(note.paper);
   const settings = useMemo(() => printSettings({ ...note, paper }), [note, paper]);
   const doc = useMemo(() => printDocument(note, saved), [note, saved]);
   const html = useMemo(() => buildDotMatrixHtml(doc, settings), [doc, settings]);
@@ -67,9 +67,12 @@ export default function PrintPreview({ note, saved, onClose }: { note: PrintNote
     return () => { window.removeEventListener('beforeprint', before); window.removeEventListener('afterprint', clear); clear(); };
   }, [native, ready, settings]);
   useEffect(() => {
-    const key = (event: KeyboardEvent) => { if (event.key === 'Escape' && !busy.current) onClose(); };
+    const key = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || busy.current) return;
+      if (zoomed) setZoomed(false); else onClose();
+    };
     window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key);
-  }, [onClose]);
+  }, [onClose, zoomed]);
   const load = async () => {
     const element = frame.current, content = element?.contentDocument;
     if (!content || element?.srcdoc !== html) return;
@@ -104,14 +107,13 @@ export default function PrintPreview({ note, saved, onClose }: { note: PrintNote
 
   return createPortal(<div className={styles.backdrop}><section role='dialog' aria-modal='true' aria-label='送货单预览' className={styles.previewDialog}>
     <div className={styles.previewHeader}><h2>送货单预览</h2><button type='button' className={styles.textButton} disabled={printing} onClick={onClose}>关闭</button></div>
-    <div className={styles.previewControls}><select aria-label='预览纸张' value={paper} disabled={printing} onChange={event => { setPaper(event.target.value as PrintNoteInput['paper']); setMessage(''); }}><option value='241-93'>241 × 93 mm · 三等分</option><option value='241-140'>241 × 140 mm · 二等分</option><option value='a4'>A4 · 210 × 297 mm</option></select><button type='button' onClick={() => setZoomed(!zoomed)}>{zoomed ? '适合屏幕' : '放大查看'}</button></div>
     {bridge && <div className={styles.previewControls}><select aria-label='打印机' value={printerName} disabled={printerLoading || printing} onChange={event => setPrinterName(event.target.value)}><option value=''>{printerLoading ? '正在读取打印机…' : '请选择打印机'}</option>{printers.map(printer => <option key={printer.name} value={printer.name} disabled={printer.unavailable}>{printer.displayName}{printer.unavailable ? '（不可用）' : ''}</option>)}</select><button type='button' disabled={printerLoading || printing} onClick={() => setPrinterRetry(value => value + 1)}>刷新</button></div>}
     {printerError && <p role='alert' className={styles.error}>{printerError}</p>}{error && <p role='alert' className={styles.error}>{error}</p>}
-    <div className={styles.previewStage} ref={stage}><div className={styles.frameShell} style={{ width: width * scale, height: layout.height * scale }}><iframe key={html} ref={frame} title='送货单纸张预览' sandbox='allow-same-origin allow-modals' srcDoc={html} onLoad={load} style={{ width, height: layout.height, transform: `scale(${scale})` }} /></div></div>
+    <div className={styles.previewStage} ref={stage}><button type='button' className={styles.previewTrigger} aria-label={zoomed ? '缩小送货单预览' : '放大送货单预览'} aria-pressed={zoomed} disabled={!ready} onClick={() => setZoomed(value => !value)}><span className={styles.frameShell} style={{ width: width * scale, height: layout.height * scale }}><iframe key={html} ref={frame} title='送货单纸张预览' tabIndex={-1} sandbox='allow-same-origin allow-modals' srcDoc={html} onLoad={load} style={{ width, height: layout.height, transform: `scale(${scale})` }} /></span></button></div>
     <RemotePrint saved={saved && JSON.stringify(printDocument(saved, saved)) === JSON.stringify(doc) ? saved : undefined} paper={paper} />
     <p className={styles.muted}>{ready ? `共 ${layout.pages} 页 · 规格使用 × · 单位为个` : '正在排版…'}</p>
     {native && <p className={styles.muted}>手机可编辑和保存；在电脑打开历史单据，即可连接打印机打印。</p>}
     {message && <p role='status' className={styles.notice}>{message}</p>}
-    <div className={styles.previewActions}><button type='button' className={styles.secondary} disabled={printing} onClick={onClose}>返回单据</button><button type='button' className={styles.primary} disabled={!ready || printing || native || (!!bridge && (printerLoading || !!printerError || !selectedPrinter || selectedPrinter.unavailable))} onClick={() => void print()}>{printing ? '正在发送…' : selectedPrinter?.isPdf ? '保存 PDF' : '打印送货单'}</button></div>
+    <div className={styles.previewActions}><button type='button' className={styles.secondary} disabled={printing} onClick={zoomed ? () => setZoomed(false) : onClose}>{zoomed ? '缩小预览' : '返回单据'}</button><button type='button' className={styles.primary} disabled={!ready || printing || native || (!!bridge && (printerLoading || !!printerError || !selectedPrinter || selectedPrinter.unavailable))} onClick={() => void print()}>{printing ? '正在发送…' : selectedPrinter?.isPdf ? '保存 PDF' : '打印送货单'}</button></div>
   </section></div>, document.body);
 }

@@ -119,7 +119,11 @@
 .previewHeader { display: flex; align-items: center; justify-content: space-between; gap: 12PX; margin-bottom: 14PX; }
 .previewControls { display: flex; align-items: center; flex-wrap: wrap; gap: 10PX; margin-bottom: 14PX; }
 .previewControls select { width: auto; max-width: 100%; flex: 1; }.previewControls [type=button] { background: white; color: #385f72; border: 1PX solid #dce2e7; }
-.previewStage { width: 100%; overflow: auto; background: #e8ebef; border-radius: 10PX; }.frameShell { position: relative; margin: 0 auto; }
+.previewStage { width: 100%; overflow: auto; background: #e8ebef; border-radius: 10PX; }
+.previewTrigger { display: block; width: 100%; min-height: 120PX; margin: 0; border: 0; border-radius: 10PX; background: transparent; padding: 12PX; cursor: zoom-in; }
+.previewTrigger iframe { pointer-events: none; }
+.previewTrigger[aria-pressed=true] { cursor: zoom-out; }
+.frameShell { display: block; position: relative; margin: 0 auto; }
 .frameShell iframe { position: absolute; top: 0; left: 0; border: 0; transform-origin: top left; display: block; }
 .previewActions { display: flex; gap: 12PX; justify-content: flex-end; margin-top: 16PX; }
 @media (max-width: 520PX) {

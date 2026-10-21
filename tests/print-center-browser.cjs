@@ -16,8 +16,8 @@ async function main() {
   const app = process.env.PRINT_SOURCE_PREVIEW === '1' ? require('./helpers/print-center-source.cjs')(db) : require('../backend/server');
   const pair = require('../backend/remote-print').createStore(process.env.WAREHOUSE_REMOTE_PRINT_FILE).register('店里电脑','EPSON LQ-630K ESC/P2');
   require('../backend/remote-print').createStore(process.env.WAREHOUSE_REMOTE_PRINT_FILE).claim(pair.agent,true);
-  const customer = db.addCustomer({ name: '华兴包装（演示）', contact: '王先生', phone: '13800000000', address: '河北省沧州市东光县工业园', specs: [{ id: 'spec-demo', goods: '五层瓦楞纸箱', specification: '400x300*200mm', material: '五层', unit: '箱', price: 3.5 }] });
-  db.updateCustomer(customer.id, { specs: [{ id: 'spec-demo', goods: '五层瓦楞纸箱', specification: '400x300*200mm', unit: '个', price: 3.5 }] });
+  const customer = db.addCustomer({ name: '华兴包装（演示）', contact: '王先生', phone: '13800000000', address: '河北省沧州市东光县工业园', specs: [{ id: 'spec-demo', goods: '五层瓦楞纸箱', specification: '30x20*15mm', material: '五层', unit: '箱', price: 3.5 }] });
+  db.updateCustomer(customer.id, { specs: [{ id: 'spec-demo', goods: '五层瓦楞纸箱', specification: '30x20*15mm', unit: '个', price: 3.5 }] });
   db.addCustomer({ name: '宏远纸业（演示）', contact: '李女士', phone: '13900000000', address: '东光县开发区' });
   const server = app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
@@ -57,6 +57,8 @@ async function main() {
     };
     await page.goto(origin + '/#/pages/print-center/index');
     await page.locator('.team-boot').waitFor({ state: 'hidden' });
+    await page.goto(origin + '/#/pages/print-center/index?mode=edit');
+    await page.locator('.team-boot').waitFor({ state: 'hidden' });
     await page.getByRole('button', { name: '新建送货单', exact: true }).click();
     await button('搜索客户').click();
     await page.getByLabel('搜索客户名称或电话').fill('13800000000');
@@ -65,29 +67,22 @@ async function main() {
     await expect(page.getByLabel('收货地址', { exact: true })).toHaveValue(customer.address);
     await expect(page.getByLabel('收货人', { exact: true })).toHaveValue(customer.contact);
     await page.getByLabel('选择客户常用规格').selectOption('spec-demo');
-    await expect(page.getByLabel('第1项规格尺寸')).toHaveValue('400×300×200');
-    await page.getByLabel('第1项规格尺寸').fill('400x300*200');
-    await expect(page.getByLabel('第1项规格尺寸')).toHaveValue('400×300×200');
+    await expect(page.getByLabel('第1项规格尺寸')).toHaveValue('30×20×15');
+    await page.getByLabel('第1项规格尺寸').fill('30x20*15');
+    await expect(page.getByLabel('第1项规格尺寸')).toHaveValue('30×20×15');
     await expect(page.getByLabel('第1项规格尺寸')).toBeFocused();
     await page.getByLabel('第1项规格尺寸').fill('');
-    await page.getByLabel('第1项规格尺寸').pressSequentially('400');
-    await expect(page.getByLabel('第1项规格尺寸')).toHaveValue('400×');
-    await page.getByLabel('第1项规格尺寸').pressSequentially('300');
-    await expect(page.getByLabel('第1项规格尺寸')).toHaveValue('400×300×');
-    await page.getByLabel('第1项规格尺寸').pressSequentially('200');
-    await expect(page.getByLabel('第1项规格尺寸')).toHaveValue('400×300×200');
+    await page.getByLabel('第1项规格尺寸').pressSequentially('30');
+    await expect(page.getByLabel('第1项规格尺寸')).toHaveValue('30×');
+    await page.getByLabel('第1项规格尺寸').pressSequentially('20');
+    await expect(page.getByLabel('第1项规格尺寸')).toHaveValue('30×20×');
+    await page.getByLabel('第1项规格尺寸').pressSequentially('15');
+    await expect(page.getByLabel('第1项规格尺寸')).toHaveValue('30×20×15');
     await page.getByLabel('第1项规格尺寸').press('Backspace');
-    await expect(page.getByLabel('第1项规格尺寸')).toHaveValue('400×300×20');
-    await page.getByLabel('第1项规格尺寸').pressSequentially('0');
-    await button('两位数').click();
-    await page.getByLabel('第1项规格尺寸').fill('');
-    await page.getByLabel('第1项规格尺寸').pressSequentially('40');
-    await expect(page.getByLabel('第1项规格尺寸')).toHaveValue('40×');
-    await page.getByLabel('第1项规格尺寸').pressSequentially('3020');
-    await expect(page.getByLabel('第1项规格尺寸')).toHaveValue('40×30×20');
-    await button('三位数').click();
-    await expect(page.getByLabel('第1项规格尺寸')).toHaveValue('40×30×20');
-    await page.getByLabel('第1项规格尺寸').fill('400×300×200');
+    await expect(page.getByLabel('第1项规格尺寸')).toHaveValue('30×20×1');
+    await page.getByLabel('第1项规格尺寸').pressSequentially('5');
+    await expect(button('两位数')).toHaveCount(0);
+    await expect(button('三位数')).toHaveCount(0);
     await page.getByLabel('第1项产品名称').fill('');
     await page.getByLabel('第1项数量').fill('100');
     await page.getByLabel('送货人', { exact: true }).fill('张师傅');
@@ -136,10 +131,11 @@ async function main() {
     await expect.poll(() => db.listPrintNotes()[0].total).toBe(420);
     assert.equal(db.listPrintNotes().length, 1); assert.equal(db.listPrintNotes()[0].number, saved.number);
     await page.goto(origin + '/#/pages/print-center/index?mode=edit');
+    await page.goto(origin + '/#/pages/print-center/index?mode=edit');
     await page.reload();
     await page.locator('.team-boot').waitFor({ state: 'hidden' });
     await button('历史单据').click(); await page.getByRole('button', { name: /查看详情/ }).click();
-    await expect(page.getByText('400×300×200 · 120 个 × ¥ 3.5')).toBeVisible();
+    await expect(page.getByText('30×20×15 · 120 个 × ¥ 3.5')).toBeVisible();
     await button('编辑单据').click(); await page.getByLabel('第1项备注').fill('保存失败也保留');
     failSave = true; await button('保存单据').click();
     await expect(page.getByRole('alert')).toHaveText('测试保存失败，内容已保留');
@@ -161,7 +157,7 @@ async function main() {
     await expect(button('打印送货单')).toBeEnabled();
     const frame = () => page.frameLocator('iframe[title="送货单纸张预览"]');
     await expect(frame().getByRole('heading', { name: '送 货 单' })).toBeVisible();
-    await expect(frame().getByText('400×300×200')).toBeVisible();
+    await expect(frame().getByText('30×20×15')).toBeVisible();
     await expect(frame().locator('tr[data-line] td:nth-child(2)')).toHaveText('');
     const remoteStore=require('../backend/remote-print').createStore(process.env.WAREHOUSE_REMOTE_PRINT_FILE);
     remoteStore.claim(pair.agent,true);
@@ -196,19 +192,21 @@ async function main() {
     await expect(button('再打印一份')).toBeEnabled();
     await page.getByText(/远程打印到店里/).click();
     await page.screenshot({ path: path.join(artifacts, 'mobile-preview.png'), fullPage: true });
-    for (const paper of ['241-93', '241-140', 'a4']) {
-      await page.getByLabel('预览纸张').selectOption(paper); await expect(button('打印送货单')).toBeEnabled();
-      await page.evaluate(() => { window.__printCalls = 0; window.print = () => window.__printCalls++; });
-      await button('打印送货单').click(); assert.equal(await page.evaluate(() => window.__printCalls), 1);
-      await expect(page.locator('[data-dot-matrix-print-root]')).toHaveCount(1);
-      assert.equal(await page.locator('[data-dot-matrix-print-root] tr[data-line]').count(), 1);
-      if (engine === 'chromium') {
-        const pdf = await page.pdf({ path: path.join(artifacts, 'delivery-' + paper + '.pdf'), preferCSSPageSize: true, printBackground: false });
-        assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 1);
-      }
-      await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
-      await expect(page.locator('[data-dot-matrix-print-root]')).toHaveCount(0);
+    await expect(page.getByLabel('预览纸张')).toHaveCount(0);
+    await page.getByRole('button', { name: '放大送货单预览' }).click();
+    await expect(page.getByRole('button', { name: '缩小送货单预览' })).toHaveAttribute('aria-pressed', 'true');
+    await page.getByRole('button', { name: '缩小预览' }).click();
+    await expect(page.getByRole('button', { name: '放大送货单预览' })).toHaveAttribute('aria-pressed', 'false');
+    await page.evaluate(() => { window.__printCalls = 0; window.print = () => window.__printCalls++; });
+    await button('打印送货单').click(); assert.equal(await page.evaluate(() => window.__printCalls), 1);
+    await expect(page.locator('[data-dot-matrix-print-root]')).toHaveCount(1);
+    assert.equal(await page.locator('[data-dot-matrix-print-root] tr[data-line]').count(), 1);
+    if (engine === 'chromium') {
+      const pdf = await page.pdf({ path: path.join(artifacts, 'delivery-241-93.pdf'), preferCSSPageSize: true, printBackground: false });
+      assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 1);
     }
+    await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+    await expect(page.locator('[data-dot-matrix-print-root]')).toHaveCount(0);
     await button('返回单据').click();
     for (const width of [320, 375, 430, 1280]) { await page.setViewportSize({ width, height: 900 }); await noOverflow(); }
     await page.screenshot({ path: path.join(artifacts, 'desktop-editor.png'), fullPage: true });
@@ -235,7 +233,7 @@ async function main() {
     await expect(page.getByLabel('第1项备注')).toHaveValue('我的待保存修改');
     assert.equal(db.listPrintNotes().find(note => note.id === multi.id).sender, '另一个设备');
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ engine, savedEditReload: 'passed', customersAndStaleSearch: 'passed', saveFailure: 'passed', conflict: 'passed', mobileWidths: [320, 375, 390, 430], printPapers: 3, multipage: 12, screenshots: artifacts }));
+    console.log(JSON.stringify({ engine, savedEditReload: 'passed', customersAndStaleSearch: 'passed', saveFailure: 'passed', conflict: 'passed', mobileWidths: [320, 375, 390, 430], twoDigitSpecification: 'passed', previewZoom: 'passed', paperSelector: 'removed', multipage: 12, screenshots: artifacts }));
   } catch (error) {
     if (page) { await page.screenshot({ path: path.join(artifacts, 'failure.png'), fullPage: true }); console.error((await page.locator('body').innerText()).slice(0, 2200)); }
     throw error;
