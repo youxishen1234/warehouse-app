@@ -85,6 +85,8 @@ export const syncUpload = (payload: { action: string; type?: string; id?: number
   request<{ ok: boolean }>({ url: '/api/sync/upload', method: 'POST', data: payload });
 
 // 记录
+export const updateTransaction = (id: number, data: { product_id?: number; quantity?: number; unit_price?: number; supplier_id?: number | null; customer_id?: number | null; remark?: string }) =>
+  request<{ product: Product; transaction: Transaction }>({ url: `/api/transactions/${id}`, method: 'PUT', data });
 export const deleteTransaction = (id: number) =>
   request<{ id: number; product_id: number; type: 'in' | 'out'; quantity: number }>({ url: `/api/transactions/${id}`, method: 'DELETE' });
 

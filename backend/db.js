@@ -989,6 +989,83 @@ function deleteTransaction(id) {
   if (tx.production_id) throw new Error('生产完工同时关联纸板领料，不能单独作废纸箱入库');
   return atomicMutation(() => { const result = reverseTransaction(tx); const order = cache.orders.find(item => item.id === tx.order_id); if (order && (order.status === '已发货' || order.status === '已完成')) { const remaining = orderShippedQuantity(order.id); const next = remaining >= roundDecimal(Number(order.quantity || 0), 6) ? '已发货' : '生产中'; if (order.status !== next) { const before = order.status; order.status = next; cache.order_events.push({ id: cache._meta.nextOrderEventId++, order_id: order.id, from: before, to: order.status, created_at: Date.now() }); } } persist(); return result; });
 }
+// Edit a posted stock movement in place: stock, party balance and the linked
+// ledger row move together inside one atomic mutation, so an edited record can
+// never leave inventory or receivables half-updated.
+function updateTransaction(id, d = {}) {
+  const tx = cache.transactions.find(t => t.id === Number(id));
+  if (!tx) throw new Error('交易记录不存在');
+  if (tx.voided_at) throw new Error('已作废的记录不能修改，请新增一笔正确记录');
+  if (tx.type === 'adjustment' || tx.stocktake_id) throw new Error('盘点调整记录不能在这里修改，请到库存页重新盘点');
+  if (tx.delivery_note_id) throw new Error('送货单入库请在入库页面修改整张送货单');
+  if (tx.production_id) throw new Error('生产完工记录关联纸板领料，不能单独修改');
+  if (tx.order_id) throw new Error('订单出库请在订单页面修改');
+  const incoming = tx.type === 'in';
+  const oldProduct = getProduct(tx.product_id);
+  if (!oldProduct) throw new Error('原商品不存在，无法安全修改');
+  const productId = d.product_id === undefined ? tx.product_id : numberValue(d.product_id, '商品编号', true);
+  const product = Number.isInteger(productId) ? getProduct(productId) : null;
+  if (!product || product.deleted_at) throw new Error('商品不存在或已停用');
+  const quantity = d.quantity === undefined ? tx.quantity : numberValue(d.quantity, '数量', true);
+  if (!(quantity > 0)) throw new Error('数量必须大于零');
+  const rawPrice = d.unit_price !== undefined ? d.unit_price : d.price !== undefined ? d.price : tx.unit_price;
+  const unitPrice = moneyValue(rawPrice, '单价');
+  const unit = product.unit || tx.unit || '件';
+  if (d.unit !== undefined && d.unit !== unit) throw new Error(`单位必须与商品库存单位「${unit}」一致`);
+  const amount = lineAmount(quantity, unitPrice);
+  const partyField = incoming ? 'supplier_id' : 'customer_id';
+  const party = activeParty(d[partyField] !== undefined ? d[partyField] : tx[partyField], incoming ? 'supplier' : 'customer');
+  const sameProduct = product.id === oldProduct.id;
+  const restoredStock = roundDecimal(Number(oldProduct.stock) + (incoming ? -tx.quantity : tx.quantity), 6);
+  if (restoredStock < 0) throw new Error('无法修改：当前库存已低于该入库数量，请先核对后续出库流水');
+  const newStock = roundDecimal((sameProduct ? restoredStock : Number(product.stock)) + (incoming ? quantity : -quantity), 6);
+  if (newStock < 0) throw new Error(`库存不足！${product.name} 修改后库存将为 ${newStock}${unit}`);
+  numberValue(newStock, '库存');
+  const field = incoming ? 'payable' : 'debt';
+  const partyType = incoming ? 'supplier' : 'customer';
+  const oldParty = incoming ? getSupplier(tx.supplier_id) : getCustomer(tx.customer_id);
+  if (oldParty && roundDecimal(Number(oldParty[field] || 0), 2) < Number(tx.amount || 0)) {
+    const settlements = cache.ledger.filter(entry => !entry.voided_at && entry.type === 'settlement' && entry.party_id === oldParty.id && (entry.party_type || partyType) === partyType && entry.created_at >= tx.created_at);
+    const settledAmount = roundDecimal(settlements.reduce((sum, entry) => sum + Number(entry.amount || 0), 0), 2);
+    const settlementIds = settlements.map(entry => `#${entry.id}`).join('、');
+    throw new Error(`该往来款已部分结算 ${settledAmount} 元${settlementIds ? `，结算流水：${settlementIds}` : ''}，请先撤销结算记录后再修改`);
+  }
+  return atomicMutation(() => {
+    oldProduct.stock = restoredStock;
+    product.stock = newStock;
+    oldProduct.updated_at = Date.now(); oldProduct.stock_updated_at = oldProduct.updated_at;
+    if (!sameProduct) { product.updated_at = Date.now(); product.stock_updated_at = product.updated_at; }
+    if (oldParty) oldParty[field] = roundDecimal(Number(oldParty[field] || 0) - Number(tx.amount || 0), 2);
+    if (party) party[field] = roundDecimal(Number(party[field] || 0) + amount, 2);
+    const ledgerType = incoming ? 'payable' : 'receivable';
+    const entries = cache.ledger.filter(entry => entry.transaction_id === tx.id && !entry.voided_at);
+    let target = amount > 0 && party ? entries.find(entry => entry.type === ledgerType) : null;
+    if (target) {
+      const remark = `${incoming ? '入库应付款' : '出库应收款'} · ${product.name}`;
+      target.amount = amount; target.party_id = party.id; target.party_name = party.name;
+      target.party_type = partyType; target.remark = remark;
+    } else if (amount > 0 && party) {
+      target = systemLedger(ledgerType, amount, party.id, party.name, tx.id, `${incoming ? '入库应付款' : '出库应收款'} · ${product.name}`, partyType);
+    }
+    const voidedAt = Date.now();
+    entries.forEach(entry => { if (entry !== target) entry.voided_at = voidedAt; });
+    tx.product_id = product.id; tx.product_name = product.name;
+    tx.quantity = quantity; tx.unit = unit; tx.unit_price = unitPrice; tx.amount = amount;
+    if (d.specification !== undefined) tx.specification = String(d.specification);
+    else if (!sameProduct) tx.specification = product.specification ?? '';
+    if (d.material !== undefined) tx.material = String(d.material);
+    else if (!sameProduct) tx.material = product.material ?? '';
+    if (!sameProduct) for (const name of ['corrugation', 'weight', 'length', 'width', 'layers']) tx[name] = product[name];
+    tx[partyField] = party?.id || null;
+    tx[incoming ? 'supplier_name' : 'customer_name'] = party?.name || '';
+    if (d.remark !== undefined) tx.remark = String(d.remark || '');
+    if (d.operator !== undefined) tx.operator = String(d.operator || '');
+    tx.updated_at = Date.now();
+    tx.edit_count = Number(tx.edit_count || 0) + 1;
+    persist();
+    return { product, transaction: tx };
+  });
+}
 function voidDeliveryNote(id) {
   const note = getDeliveryNote(id);
   if (!note || note.voided_at) throw new Error('送货单不存在或已作废');
@@ -1386,4 +1463,4 @@ module.exports = { listBusinessSpecifications, listProduction, completeProductio
   getLedgerAttachments, addLedgerAttachment, readLedgerAttachment, listCustomerAttachments, addCustomerAttachment, readCustomerAttachment, prepareLedgerAttachment: ledgerAttachments.prepare, prepareCustomerAttachment, validateBackup,
   listCustomers, getCustomer, addCustomer, updateCustomer, deleteCustomer,
   listSuppliers, getSupplier, addSupplier, updateSupplier, deleteSupplier,
-  stockIn, stockOut, stockOutBatch, orderToOutbound, listTx, streamTx, deleteTransaction, listLedger, streamLedger, addLedger, deleteLedger, listOrders, listOrderEvents, addOrder, updateOrder, addStocktake, listStocktakes, listDeliveryNotes, getDeliveryNote, addDeliveryNote, voidDeliveryNote, backupData, restoreData, health, stats, transact, revision, audit, receipt, settleParty };
+  stockIn, stockOut, stockOutBatch, orderToOutbound, listTx, streamTx, updateTransaction, deleteTransaction, listLedger, streamLedger, addLedger, deleteLedger, listOrders, listOrderEvents, addOrder, updateOrder, addStocktake, listStocktakes, listDeliveryNotes, getDeliveryNote, addDeliveryNote, voidDeliveryNote, backupData, restoreData, health, stats, transact, revision, audit, receipt, settleParty };

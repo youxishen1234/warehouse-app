@@ -448,7 +448,7 @@ function install(db, options = {}) {
     const result = db.transact(req.user, key, digest(operation + JSON.stringify(body)), req.get('If-Match'), operation, () => db.settleParty('supplier', Number(req.params.id), body.amount, body.remark));
     res.set('X-Warehouse-Revision', String(result.revision)); ok(res, result.data);
   });
-  const collections = { products: ['listProducts','getProduct','addProduct','updateProduct','deleteProduct'], customers: ['listCustomers','getCustomer','addCustomer','updateCustomer','deleteCustomer'], suppliers: ['listSuppliers','getSupplier','addSupplier','updateSupplier','deleteSupplier'], orders: ['listOrders',null,'addOrder','updateOrder'], transactions: ['listTx',null,null,null,'deleteTransaction'], ledger: ['listLedger',null,'addLedger',null,'deleteLedger'] };
+  const collections = { products: ['listProducts','getProduct','addProduct','updateProduct','deleteProduct'], customers: ['listCustomers','getCustomer','addCustomer','updateCustomer','deleteCustomer'], suppliers: ['listSuppliers','getSupplier','addSupplier','updateSupplier','deleteSupplier'], orders: ['listOrders',null,'addOrder','updateOrder'], transactions: ['listTx',null,null,'updateTransaction','deleteTransaction'], ledger: ['listLedger',null,'addLedger',null,'deleteLedger'] };
   route('get', '/stats', (req,res) => ok(res, db.stats()));
   route('get', '/print-notes', (req, res) => {
     const page = Number(req.query.page || 1), size = Number(req.query.page_size || 30);
