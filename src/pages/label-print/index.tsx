@@ -1,3 +1,4 @@
+/* eslint-disable react/forbid-elements */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Image, Input, Text, View } from '@tarojs/components';
 import Taro, { useDidShow, useRouter } from '@tarojs/taro';
@@ -307,6 +308,17 @@ export default function LabelPrintPage() {
   };
   const optionState = kind === 'finished-product' ? finishedOptions : boardFields;
   const printDisabled = busy || refreshRequired || !printer.productionEnabled || !printer.connected || !profile?.calibrated || !built.data || !copiesValid || !preview || preview.key !== previewKey || preview.warnings.length > 0;
+  const returnToDelivery = async () => {
+    if (busy) return;
+    try {
+      const pages = Taro.getCurrentPages();
+      if (pages.length > 1 && pages[pages.length - 2].route === 'pages/print-center/index') {
+        await Taro.navigateBack();
+      } else {
+        await Taro.switchTab({ url: '/pages/print-center/index' });
+      }
+    } catch (error) { setActionError(errorText(error)); }
+  };
 
   const printerFeedback = <View className='label-printer-feedback' aria-live='polite'>
     {(operation || printer.hardwareBusy) && <View className={styles.operationStatus}>{operation || '打印机仍在处理上次操作，请刷新状态核对。'}</View>}
@@ -318,6 +330,10 @@ export default function LabelPrintPage() {
   </View>;
 
   return <View className={styles.page}>
+    <nav className={styles.printModes} aria-label='打印类型'>
+      <button type='button' aria-pressed='false' disabled={busy} onClick={() => void returnToDelivery()}>送货单</button>
+      <button type='button' aria-pressed='true'>标签打印</button>
+    </nav>
     <View className={styles.hero}><Text className={styles.eyebrow}>仓库 · 标签</Text><Text className={styles.title}>标签工作台</Text><Text className={styles.subtitle}>选记录、核对字段，再用精臣 K3 打印。标签不会改变库存。</Text></View>
     <View className={styles.deviceBar}>
       <View className={styles.deviceStatus}><Text className={`label-printer-status ${styles.deviceName}`}>{connectingName ? operation : printer.connected ? `已连接 · ${printer.printerName}` : '尚未连接精臣 K3'}</Text><Text className={styles.meta}>{profile ? `${profile.widthMm} × ${profile.heightMm} mm · 间隙纸 · ${profile.calibrated ? '已确认校准' : '待校准'}` : '尚未配置实际纸张'}</Text></View>

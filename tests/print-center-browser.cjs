@@ -55,6 +55,18 @@ async function main() {
       await expect.poll(() => page.locator('main').first().evaluate(element => element.scrollWidth <= element.clientWidth + 1), { message: 'mobile page must not overflow horizontally' }).toBe(true);
       assert.equal(await active().locator('input:visible,select:visible').evaluateAll(elements => elements.filter(element => element.getBoundingClientRect().right > innerWidth + 1 || element.getBoundingClientRect().left < -1).length), 0, 'fields fit viewport');
     };
+    const actionLayout = () => page.locator('main').first().evaluate(element => {
+      const bar = element.querySelector('footer'), rect = bar.getBoundingClientRect();
+      const form = element.querySelector('fieldset'), formRect = form && form.getBoundingClientRect();
+      return { position: getComputedStyle(bar).position, top: rect.top, bottom: rect.bottom, scrollTop: element.scrollTop, formBottom: formRect && formRect.bottom, viewportBottom: element.getBoundingClientRect().bottom, paddingBottom: parseFloat(getComputedStyle(element).paddingBottom), scrollPaddingBottom: parseFloat(getComputedStyle(element).scrollPaddingBottom) };
+    });
+    const actionsFollowForm = async () => {
+      const layout = await actionLayout();
+      assert.equal(layout.position, 'static', 'actions remain in document flow rather than covering input fields');
+      assert.ok(layout.top >= layout.formBottom, 'actions follow all form fields: ' + JSON.stringify(layout));
+      assert.ok(layout.paddingBottom >= 102, 'page reserves dock space after the actions');
+      assert.ok(layout.scrollPaddingBottom >= layout.paddingBottom, 'focused fields scroll into the unobstructed viewport above the dock');
+    };
     await page.goto(origin + '/#/pages/print-center/index');
     await page.locator('.team-boot').waitFor({ state: 'hidden' });
     await page.goto(origin + '/#/pages/print-center/index?mode=edit');
@@ -98,6 +110,9 @@ async function main() {
     assert.ok(dateBounds.right<=dateBounds.parentRight+1,'localized date stays inside its column');
     assert.equal(dateBounds.height,46,'date matches the other input heights');
     await dateInput.evaluate(input=>{input.style.minWidth='300px';input.style.minHeight='70px';});
+    // Hit testing is meaningful only while this row is inside the safe viewport.
+    // WebKit can retain the scroll offset from the later remark field after fill().
+    await page.getByLabel('送货人',{exact:true}).evaluate(input=>input.scrollIntoView({block:'center',behavior:'instant'}));
     const dateClipping=await dateInput.evaluate(input=>{const wrapper=input.parentElement,r=wrapper.getBoundingClientRect(),sender=document.querySelector('input[aria-label="送货人"]'),s=sender.getBoundingClientRect();return {height:r.height,clips:getComputedStyle(wrapper).overflow,right:r.right,senderLeft:s.left,hit:document.elementFromPoint(s.left+s.width/2,s.top+s.height/2)===sender};});
     assert.equal(dateClipping.height,46);assert.equal(dateClipping.clips,'hidden');assert.ok(dateClipping.right<dateClipping.senderLeft);assert.ok(dateClipping.hit,'oversized iOS picker cannot cover sender');
     await dateInput.evaluate(input=>{input.style.removeProperty('min-width');input.style.removeProperty('min-height');});
@@ -106,11 +121,16 @@ async function main() {
     await page.getByLabel('送货日期',{exact:true}).scrollIntoViewIfNeeded();
     await page.screenshot({path:path.join(artifacts,'mobile-date-safe-area.png')});
     await main.evaluate(element=>{element.scrollTop=360;});
-    const scrollLayout=await main.evaluate(element=>{const bar=element.querySelector('footer'),r=bar.getBoundingClientRect();return {top:element.getBoundingClientRect().top,background:getComputedStyle(bar).backgroundColor,bottom:r.bottom,height:r.height,scrollTop:element.scrollTop};});
-    assert.equal(scrollLayout.top,59,'scroll viewport starts below the status bar');
-    assert.equal(scrollLayout.background,'rgb(244, 246, 248)','action bar fully hides content behind it');
-    assert.ok(scrollLayout.scrollTop>0);
-    assert.ok(scrollLayout.bottom<=756,'action bar stays above the five-tab dock: '+JSON.stringify(scrollLayout));
+    assert.equal(await main.evaluate(element=>element.getBoundingClientRect().top),59,'scroll viewport starts below the status bar');
+    await actionsFollowForm();
+    const scrollLayout = await actionLayout();
+    await main.evaluate(element=>{element.scrollTop += 100;});
+    const movedLayout = await actionLayout();
+    assert.ok(movedLayout.scrollTop > scrollLayout.scrollTop, 'long form scrolls normally');
+    assert.ok(Math.abs((scrollLayout.top - movedLayout.top) - (movedLayout.scrollTop - scrollLayout.scrollTop)) < 2, 'actions scroll with the form instead of floating over it');
+    await main.evaluate(element=>{element.scrollTop=element.scrollHeight;});
+    const endLayout = await actionLayout();
+    assert.ok(endLayout.bottom <= endLayout.viewportBottom - endLayout.paddingBottom + 1, 'actions are fully accessible above the bottom dock: ' + JSON.stringify(endLayout));
     await page.screenshot({path:path.join(artifacts,'mobile-scroll-actions.png')});
     await main.evaluate(element=>{element.style.removeProperty('--print-safe-top');element.scrollTop=0;});
     await page.screenshot({ path: path.join(artifacts, 'mobile-editor.png'), fullPage: true });
@@ -208,7 +228,15 @@ async function main() {
     await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
     await expect(page.locator('[data-dot-matrix-print-root]')).toHaveCount(0);
     await button('返回单据').click();
-    for (const width of [320, 375, 430, 1280]) { await page.setViewportSize({ width, height: 900 }); await noOverflow(); }
+    await button('当前单据').click();
+    await button('编辑单据').click();
+    for (const width of [320, 375, 430, 1280]) { await page.setViewportSize({ width, height: 900 }); await noOverflow(); await actionsFollowForm(); }
+    await page.setViewportSize({ width: 320, height: 480 });
+    await page.getByLabel('第1项备注').focus();
+    await page.getByLabel('第1项备注').scrollIntoViewIfNeeded();
+    await actionsFollowForm();
+    const focusedField = await page.getByLabel('第1项备注').evaluate(input => { const rect=input.getBoundingClientRect();return document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2)===input; });
+    assert.ok(focusedField, 'focused lower input stays unobstructed in a keyboard-height viewport');
     await page.screenshot({ path: path.join(artifacts, 'desktop-editor.png'), fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
     saved = db.listPrintNotes()[0];
@@ -217,6 +245,13 @@ async function main() {
     await expect(page.getByRole('alert')).toContainText('测试历史加载失败');
     await button('重试').click(); await page.getByRole('button', { name: /多页送货客户/ }).click();
     await button('编辑单据').click();
+    await actionsFollowForm();
+    await page.getByLabel('第12项备注').focus();
+    await page.getByLabel('第12项备注').scrollIntoViewIfNeeded();
+    await actionsFollowForm();
+    await main.evaluate(element=>{element.scrollTop=element.scrollHeight;});
+    const multiEndLayout = await actionLayout();
+    assert.ok(multiEndLayout.bottom <= multiEndLayout.viewportBottom - multiEndLayout.paddingBottom + 1, 'multi-item form keeps its final actions above bottom navigation');
     await button('预览打印').click(); await expect(button('打印送货单')).toBeEnabled();
     await expect(frame().locator('tr[data-line]')).toHaveCount(12);
     await expect(frame().locator('.sheet')).toHaveCount(3);

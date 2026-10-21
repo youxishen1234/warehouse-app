@@ -113,6 +113,14 @@ jobs:
           PRINT_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
           PRINT_ARTIFACTS: release/print-specification-${{ github.run_id }}-${{ github.run_attempt }}
         run: node tests/print-specification-browser.cjs
+      - name: Validate delivery actions and label mode navigation
+        env:
+          PRINT_SOURCE_PREVIEW: '0'
+          PRINT_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          PRINT_ARTIFACTS: release/print-workbench-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          node tests/print-center-browser.cjs
+          node tests/print-modes-browser.cjs
       - name: Validate desktop navigation
         env:
           NAV_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}

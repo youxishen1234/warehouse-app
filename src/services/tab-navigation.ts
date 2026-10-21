@@ -45,7 +45,7 @@ export function installTabNavigation(nav: Navigation): () => void {
     // reveal the acknowledged tab explicitly.
     if (!busy && tabRoutes.includes(route())) {
       document.querySelectorAll<HTMLElement>('.taro_page').forEach(page => {
-        if (normalizeRoute(page.id) === route()) page.classList.remove('taro_page_shade');
+        if (normalizeRoute(page.id) === route() && page.classList.contains('taro_page_shade')) page.classList.remove('taro_page_shade');
       });
     }
     const capability = win.__sgNativeDock;
@@ -187,8 +187,13 @@ export function installTabNavigation(nav: Navigation): () => void {
   window.addEventListener('sg-native-ready', nativeReady);
   window.addEventListener('hashchange', scheduleSync);
   window.addEventListener('popstate', scheduleSync);
-  const observer = new MutationObserver(scheduleSync);
-  observer.observe(document.body, { childList: true, subtree: true });
+  // Taro can finish an old hide timer after navigateBack has revealed the tab.
+  // Watch page classes too, without reacting to the dock's animated classes.
+  const observer = new MutationObserver(mutations => {
+    if (mutations.some(mutation => mutation.type === 'childList'
+      || (mutation.target instanceof HTMLElement && mutation.target.classList.contains('taro_page')))) scheduleSync();
+  });
+  observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
   sync();
   return () => {
     disposed = true;

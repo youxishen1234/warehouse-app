@@ -1,5 +1,10 @@
 .page { min-height: 100vh; padding: 28px 22px 100px; background: #f3f5f7; color: #182431; box-sizing: border-box; font-size: 26px; }
 .hero { max-width: 1400px; margin: 0 auto 24px; }
+.printModes { display: flex; gap: 4PX; max-width: 1400px; margin: 0 auto 20PX; padding: 4PX; background: #e4e9ed; border-radius: 12PX; }
+.page .printModes [type=button] { flex: 1; min-width: 0; min-height: 44PX; border: 0; border-radius: 9PX; padding: 10PX 14PX; background: transparent; color: #738590; font: inherit; font-size: 14PX; cursor: pointer; }
+.page .printModes [type=button][aria-pressed=true] { background: #fff; color: #214657; font-weight: 650; box-shadow: 0 1PX 3PX #17324308; }
+.page .printModes [type=button]:disabled { opacity: .45; cursor: default; }
+.page .printModes [type=button]:focus-visible { outline: 2PX solid #2a8194; outline-offset: 3PX; }
 .eyebrow { display: block; color: #526775; font-size: 22px; letter-spacing: 3px; margin-bottom: 12px; }
 .title { display: block; font-size: 44px; font-weight: 700; letter-spacing: -1px; }
 .subtitle { display: block; color: #647380; line-height: 1.6; margin-top: 10px; }

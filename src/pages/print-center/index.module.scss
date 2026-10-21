@@ -1,4 +1,6 @@
 .page { position: fixed; inset: var(--print-safe-top, env(safe-area-inset-top, 0PX)) 0 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; background: #f4f6f8; color: #172b3a; font: 14PX/1.5 -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif; color-scheme: light; padding: 20PX 20PX calc(max(var(--sg-native-bottom-space, 84PX), 84PX) + env(safe-area-inset-bottom, 0PX) + 18PX); box-sizing: border-box; }
+// Focused fields must scroll above the fixed glass/native dock, not behind it.
+.page { scroll-padding-top: 14PX; scroll-padding-bottom: calc(max(var(--sg-native-bottom-space, 84PX), 84PX) + env(safe-area-inset-bottom, 0PX) + 18PX); }
 .page *, .backdrop * { box-sizing: border-box; }
 .shell { width: 100%; max-width: 820PX; margin: 0 auto; }
 .page h1, .page h2, .page h3, .backdrop h2 { margin: 0; line-height: 1.4; }
@@ -78,8 +80,9 @@
 .settings summary { padding: 17PX 20PX; cursor: pointer; color: #647c89; font-size: 13PX; }
 .settings summary span { float: right; color: #97a5ad; }
 .settingsBody { padding: 2PX 20PX 6PX; }
-.actions { position: sticky; bottom: calc(max(var(--sg-native-bottom-space, 84PX), 84PX) + env(safe-area-inset-bottom, 0PX) + 8PX); z-index: 3; display: flex; gap: 12PX; background: #f4f6f8; padding: 14PX 20PX 16PX; margin: 8PX -20PX -24PX; border-top: 1PX solid #e4e9ed; }
-.actions [type=button] { flex: 1; height: 49PX; font-weight: 600; font-size: 15PX; }
+// Keep actions after the complete document instead of floating over editable fields.
+.actions { position: static; display: flex; gap: 12PX; background: #f4f6f8; padding: 14PX 0 0; margin: 16PX 0 0; border-top: 1PX solid #e4e9ed; }
+.actions [type=button] { flex: 1; min-width: 0; min-height: 49PX; font-weight: 600; font-size: 15PX; }
 .page .primary, .backdrop .primary { background: #245f72; color: #fff; }
 .page .secondary, .backdrop .secondary { background: white; border: 1PX solid #d2dee4; color: #315769; }
 .error { background: #fff1ed; color: #a74028; border-radius: 10PX; padding: 12PX 14PX; margin-bottom: 14PX; font-size: 13PX; overflow-wrap: anywhere; }
@@ -134,7 +137,7 @@
   .recent { padding-left: 13PX; padding-right: 13PX; }
   .toolbar { margin-bottom: 18PX; }.card { padding: 18PX 16PX; }.grid { gap: 0 10PX; }.sectionHeading { margin-bottom: 12PX; }
   .backdrop { padding: 12PX; align-items: center; }.dialog { padding: 20PX 16PX; }.previewDialog { padding: 16PX 12PX; border-radius: 14PX; }.historyCard { padding: 16PX !important; }
-  .actions { gap: 10PX; margin-left: -14PX; margin-right: -14PX; padding-left: 14PX; padding-right: 14PX; }.previewActions [type=button] { flex: 1; }.previewControls select { flex-basis: 100%; }
+  .actions { gap: 10PX; }.previewActions [type=button] { flex: 1; }.previewControls select { flex-basis: 100%; }
 }
 @media (max-width: 350PX) {
   .page { padding-top: 12PX; }

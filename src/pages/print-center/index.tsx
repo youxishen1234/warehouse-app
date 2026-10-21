@@ -215,11 +215,19 @@ export default function PrintCenterPage() {
     } catch (issue) { setError(messageOf(issue)); }
   };
   const amount = draftTotal(draft);
+  const printModes = <nav className={styles.tabs} aria-label='打印类型'>
+    <button type='button' aria-pressed='true'>送货单</button>
+    <button type='button' aria-pressed='false' disabled={busy || shipBusy} onClick={() => {
+      if (busyRef.current || shipBusy) return;
+      void Taro.navigateTo({ url: '/pages/label-print/index?from=print-center' }).catch(issue => setError(messageOf(issue)));
+    }}>标签打印</button>
+  </nav>;
   const input = (key: keyof Omit<NoteDraft, 'items' | 'customer_id' | 'paper'>, label: string, limit: number, type = 'text') => <label className={styles.field}>{label}{type === 'date' ? <span className={styles.dateControl}><span aria-hidden='true'>{draft[key].replace(/-/g, '/')}</span><input aria-label={label} type='date' value={draft[key]} onChange={event => change({ [key]: event.target.value })} /></span> : <input aria-label={label} type={type} value={draft[key]} maxLength={limit} onChange={event => change({ [key]: event.target.value })} />}</label>;
 
   return <main className={styles.page} data-print-view={tab}>
     <div className={styles.shell}>
       {tab !== 'home' && <><header className={styles.toolbar}><button type='button' className={styles.back} aria-label='返回' onClick={() => guard(() => setTab('home'))}>‹</button><div><h1>打印中心</h1><p>送货单</p></div><button type='button' className={styles.newButton} onClick={startNew} disabled={busy}>＋ 新建</button></header>
+      {printModes}
       <nav className={styles.tabs} aria-label='打印中心页面'><button type='button' aria-pressed={tab !== 'history'} onClick={() => setTab(saved && !dirty ? 'detail' : 'edit')}>当前单据</button><button type='button' aria-pressed={tab === 'history'} onClick={() => setTab('history')}>历史单据</button></nav></>}
       {error && <div ref={errorBox} className={styles.error} role='alert'>{error}</div>}
       {notice && <div className={styles.notice} role='status'>{notice}</div>}
@@ -228,6 +236,7 @@ export default function PrintCenterPage() {
           <div><span className={styles.eyebrow}>业务打印</span><h1>打印工作台</h1></div>
           <span className={`${styles.printerState} ${printerStatus.ready ? styles.printerReady : ''}`} role='status'><i aria-hidden='true' />{printerStatus.label}</span>
         </header>
+        {printModes}
         <section className={styles.printBrief}>
           <div className={styles.briefTop}><span>送货单</span><strong>{new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' })}</strong></div>
           <div className={styles.briefBody}><div><span>最近单据</span><strong>{historyLoading ? '…' : history.length}</strong></div><div><span>待出库</span><strong>{history.filter(note => !note.outbound_at).length}</strong></div></div>
