@@ -42,56 +42,43 @@ def validate_fixtures(fixtures):
     return fixtures
 
 
-def validate_calibration_evidence(evidence, element, text, profile):
-    """Require visible full-size text independently of the calibration border."""
-    assert evidence["schemaVersion"] == 1
-    assert element["sourceText"] == text == evidence["expectedText"], "Calibration text was changed or omitted"
+def validate_calibration_evidence(evidence, elements, text, profile):
+    """Require four border lines plus visible per-row text images.
+
+    The vendor SDK rejects one full-page calibration bitmap, so the sample must
+    stay on the same small per-row image path as normal labels. A border alone
+    is never accepted as proof that the calibration text survived.
+    """
+    assert evidence["schemaVersion"] == 2
+    assert evidence["expectedText"] == text, "Calibration text was changed or omitted"
     width = profile["widthMm"] - profile["marginMm"]["left"] - profile["marginMm"]["right"]
     height = profile["heightMm"] - profile["marginMm"]["top"] - profile["marginMm"]["bottom"]
-    width_px, height_px = math.ceil(width * 300 / 25.4), math.ceil(height * 300 / 25.4)
-    assert element["type"] == "image" and element["sourceField"] == "校准样张"
-    assert element["x"] == profile["marginMm"]["left"] and element["y"] == profile["marginMm"]["top"]
-    assert element["w"] == width and element["h"] == height
-    assert evidence["widthPx"] == width_px and evidence["heightPx"] == height_px
-    assert evidence["dpi"] == 300 and evidence["fontMm"] == min(4.0, max(2.2, height / 12))
-    assert evidence["excludedBorderPx"] == math.ceil(300 / 25.4) + 2
-    assert evidence["referencePNG"].startswith("reference-calibration-layout-")
-    assert evidence["referencePNG"].endswith(".png")
-    assert evidence["actualPNG"] == "render-calibration-" + evidence["fitId"] + ".png"
-    expected, actual = evidence["expectedInkPixels"], evidence["actualInteriorInkPixels"]
-    assert isinstance(expected, int) and expected > 0, "Independent calibration reference is blank"
-    assert isinstance(actual, int) and actual > 0, "Calibration contains only its border, not text"
-    # Two per cent allows threshold-level antialiasing variation, not scaled,
-    # displaced, clipped or missing text. Each actual pixel is compared against
-    # an independently drawn CoreText reference in the native harness.
-    tolerance = max(2, math.ceil(expected * 0.02))
-    assert abs(actual - expected) <= tolerance, "Calibration text ink area changed (size or clipping)"
-    assert 0 <= evidence["missingInkPixels"] <= tolerance, "Calibration text is missing, clipped, or misplaced"
-    assert 0 <= evidence["extraInteriorInkPixels"] <= tolerance, "Calibration text is scaled or misplaced"
-    expected_box, actual_box = evidence["expectedBoundsPx"], evidence["actualBoundsPx"]
-    assert len(expected_box) == len(actual_box) == 4
-    assert all(isinstance(value, int) for value in expected_box + actual_box)
-    assert expected_box[2] > 0 and expected_box[3] > 0
-    inset = evidence["excludedBorderPx"]
-    assert actual_box[0] >= inset and actual_box[1] >= inset
-    assert actual_box[0] + actual_box[2] <= width_px - inset
-    assert actual_box[1] + actual_box[3] <= height_px - inset
-    assert expected_box[0] >= inset and expected_box[1] >= inset
-    assert expected_box[0] + expected_box[2] <= width_px - inset
-    assert expected_box[1] + expected_box[3] <= height_px - inset
-    assert all(abs(a - b) <= 2 for a, b in zip(actual_box, expected_box)), "Calibration text bounds differ from physical layout"
-    lines = evidence["lines"]
-    assert 1 <= len(lines) <= 4 and "".join(line["text"] for line in lines) == text
-    assert sum(line["expectedInkPixels"] for line in lines) == expected
-    for index, line in enumerate(lines):
-        assert line["index"] == index and line["text"]
-        line_box = line["expectedBoundsPx"]
-        assert line["expectedInkPixels"] > 0 and len(line_box) == 4
-        assert line_box[2] > 0 and line_box[3] > 0
-        assert line_box[0] >= inset and line_box[1] >= inset
-        assert line_box[0] + line_box[2] <= width_px - inset
-        assert line_box[1] + line_box[3] <= height_px - inset
-        assert 0 <= line["missingInkPixels"] <= max(2, math.ceil(line["expectedInkPixels"] * 0.02)), "A calibration text line is missing or clipped"
+    assert evidence["dpi"] == 300
+    assert evidence["contentWidthMm"] == width and evidence["contentHeightMm"] == height
+    lines = [x for x in elements if x.get("type") == "line"]
+    images = [x for x in elements if x.get("type") == "image"]
+    assert len(lines) == 4 and evidence["lineElements"] == 4, \
+        "Calibration border must be four line primitives"
+    assert len(images) >= 3 and evidence["textElements"] == len(images)
+    assert len(elements) == len(lines) + len(images), "Calibration must not submit other element types"
+    for line in lines:
+        assert line["w"] > 0 and line["h"] > 0
+        assert min(line["w"], line["h"]) <= 1.5, "Calibration border must stay a thin line"
+    for element in images:
+        assert element["sourceField"] == "校准文字" and element["sourceText"]
+        assert element["h"] <= 12 and element["w"] <= width, "Calibration image became a full-page bitmap"
+    for item in evidence["images"]:
+        index = item["index"]
+        assert 0 <= index < len(elements) and elements[index]["type"] == "image"
+        assert item["sourceText"] == elements[index]["sourceText"]
+        assert item["widthPx"] == math.ceil(item["w"] * 300 / 25.4)
+        assert item["heightPx"] == math.ceil(item["h"] * 300 / 25.4)
+        assert item["inkPixelsBelow127"] > 20, "Calibration text row is blank"
+        assert item["edgeInkPixelsBelow127"] == 0, "Calibration text row is clipped"
+        assert item["w"] * item["h"] < width * height * 0.5, "Calibration must not become one full-page bitmap"
+    joined = "".join(item["sourceText"] for item in evidence["images"])
+    for token in ("校准", "中文", "成品", "纸板", "×", "g/m²"):
+        assert token in joined, "Calibration text is missing " + token
 
 
 def validate_report(report, fixtures):
@@ -134,20 +121,18 @@ def validate_report(report, fixtures):
             if element["type"] == "image":
                 validate_bitmap(element["bitmap"], element["w"], element["h"],
                                 allow_border=attempt["id"] == "calibration-original")
-    assert len(calibration["elements"]) == 1 and calibration["elements"][0]["type"] == "image"
-    assert calibration["elements"][0]["sourceField"] == "校准样张"
-    validate_calibration_evidence(calibration["calibrationEvidence"], calibration["elements"][0],
+    assert len(calibration["elements"]) >= 7
+    assert {x["type"] for x in calibration["elements"]} == {"line", "image"}
+    validate_calibration_evidence(calibration["calibrationEvidence"], calibration["elements"],
                                   fixtures["calibrationOriginalText"], fixtures["screenshotProfile"])
     calibration_regressions = {item["id"]: item for item in report["calibrationRegressions"]}
     assert set(calibration_regressions) == {"calibration-wrapped"}
     for item in calibration_regressions.values():
         assert item["outcome"] == "passed-font-and-layout-to-sdk-stub" and item["sdkStubCalls"] == 1, item
-        assert len(item["elements"]) == 1
-        element = item["elements"][0]
-        validate_bitmap(element["bitmap"], element["w"], element["h"], allow_border=True)
-        validate_calibration_evidence(item["calibrationEvidence"], element,
+        assert len(item["elements"]) >= 7
+        validate_calibration_evidence(item["calibrationEvidence"], item["elements"],
                                       fixtures["calibrationOriginalText"], item["profile"])
-        assert len(item["calibrationEvidence"]["lines"]) > 1, "Narrow calibration must exercise wrapping"
+        assert len(item["calibrationEvidence"]["images"]) > 4, "Narrow calibration must exercise wrapping"
     for case in fixtures["templateCases"]:
         text = "\n".join(x["text"] for x in snapshots[case["id"]]["fields"])
         assert all(token in text for token in case["expectedTextTokens"]), "Parsed snapshot dropped fixture data"
@@ -299,8 +284,8 @@ def main():
                     assert (output / bitmap["png"]).is_file()
             calibration_attempts = [report["productionAttempts"][0]] + report["calibrationRegressions"]
             for attempt in calibration_attempts:
-                assert (output / attempt["calibrationEvidence"]["referencePNG"]).is_file()
-                assert (output / attempt["calibrationEvidence"]["actualPNG"]).is_file()
+                for image in attempt["calibrationEvidence"]["images"]:
+                    assert (output / image["png"]).is_file()
                 for element in attempt["elements"]:
                     assert (output / element["bitmap"]["png"]).is_file()
             (output / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")

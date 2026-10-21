@@ -1,6 +1,5 @@
 """Exercise calibration acceptance on any host; UIKit is tested separately in CI."""
 
-import copy
 import importlib.util
 import math
 import pathlib
@@ -11,149 +10,104 @@ SPEC = importlib.util.spec_from_file_location("label_font_ios", ROOT / "scripts/
 RUNNER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(RUNNER)
 
+TEXT = "校准 中文 成品 纸板 × g/m²"
+ROWS = ["校准样张", "中文：纸板纸箱成品", "符号：× ÷ ± g/m²", "纸张 70 × 100 mm"]
+
+
+def build(width_mm=70, rows=None):
+    rows = list(ROWS if rows is None else rows)
+    content = width_mm - 6
+    height = 90
+    lines = [
+        {"type": "line", "x": 3, "y": 5, "w": content, "h": 0.6},
+        {"type": "line", "x": 3, "y": 5 + height - 0.6, "w": content, "h": 0.6},
+        {"type": "line", "x": 3, "y": 5, "w": 0.6, "h": height},
+        {"type": "line", "x": 3 + content - 0.6, "y": 5, "w": 0.6, "h": height},
+    ]
+    images, evidence, y = [], [], 30
+    for offset, row in enumerate(rows):
+        images.append({"type": "image", "x": 3, "y": y, "w": content, "h": 6.84,
+                       "sourceField": "校准文字", "sourceText": row})
+        evidence.append({
+            "index": 4 + offset, "sourceText": row, "w": content, "h": 6.84,
+            "widthPx": math.ceil(content * 300 / 25.4),
+            "heightPx": math.ceil(6.84 * 300 / 25.4),
+            "inkPixelsBelow127": 1200, "edgeInkPixelsBelow127": 0,
+            "png": "render-calibration-%d.png" % (4 + offset),
+        })
+        y += 6.84
+    report = {"schemaVersion": 2, "expectedText": TEXT, "dpi": 300,
+              "contentWidthMm": content, "contentHeightMm": height,
+              "lineElements": 4, "textElements": len(images),
+              "fitId": "calibration", "images": evidence}
+    return lines + images, report
+
 
 class CalibrationValidatorTests(unittest.TestCase):
     def setUp(self):
-        self.text = "校准 中文 成品 纸板 × g/m²"
         self.profile = {"widthMm": 70, "heightMm": 100,
                         "marginMm": {"left": 3, "right": 3, "top": 5, "bottom": 5}}
-        self.element = {"type": "image", "sourceField": "校准样张", "sourceText": self.text,
-                        "x": 3, "y": 5, "w": 64, "h": 90}
-        # Synthetic report statistics intentionally do not impersonate native
-        # evidence. These fixtures test the acceptance function, not font output.
-        self.evidence = {
-            "schemaVersion": 1, "expectedText": self.text, "fontMm": 4.0, "dpi": 300,
-            "widthPx": math.ceil(64 * 300 / 25.4), "heightPx": math.ceil(90 * 300 / 25.4),
-            "excludedBorderPx": math.ceil(300 / 25.4) + 2,
-            "referencePNG": "reference-calibration-layout-calibration-original.png",
-            "actualPNG": "render-calibration-calibration-original.png", "fitId": "calibration-original",
-            "expectedInkPixels": 1200, "actualInteriorInkPixels": 1200,
-            "missingInkPixels": 0, "extraInteriorInkPixels": 0,
-            "expectedBoundsPx": [40, 60, 500, 44], "actualBoundsPx": [40, 60, 500, 44],
-            "lines": [{"index": 0, "text": self.text, "expectedInkPixels": 1200,
-                       "expectedBoundsPx": [40, 60, 500, 44], "missingInkPixels": 0}],
-        }
+        self.elements, self.evidence = build()
 
     def validate(self):
-        RUNNER.validate_calibration_evidence(self.evidence, self.element, self.text, self.profile)
+        RUNNER.validate_calibration_evidence(self.evidence, self.elements, TEXT, self.profile)
 
-    def test_accepts_complete_correctly_placed_text(self):
+    def test_accepts_border_and_per_row_text(self):
         self.validate()
 
-    def test_accepts_small_threshold_antialias_variation(self):
-        self.evidence["actualInteriorInkPixels"] = 1190
-        self.evidence["missingInkPixels"] = 10
-        self.evidence["lines"][0]["missingInkPixels"] = 10
-        self.evidence["actualBoundsPx"][0] += 1
-        self.validate()
-
-    def test_accepts_independent_wrapped_line_evidence(self):
+    def test_accepts_wrapped_narrow_calibration(self):
         self.profile["widthMm"] = 40
-        self.element["w"] = 34
-        self.evidence["widthPx"] = math.ceil(34 * 300 / 25.4)
-        self.evidence["expectedBoundsPx"] = [40, 60, 260, 130]
-        self.evidence["actualBoundsPx"] = [40, 60, 260, 130]
-        self.evidence["lines"] = [
-            {"index": 0, "text": self.text[:8], "expectedInkPixels": 600,
-             "expectedBoundsPx": [40, 60, 260, 44], "missingInkPixels": 0},
-            {"index": 1, "text": self.text[8:], "expectedInkPixels": 600,
-             "expectedBoundsPx": [40, 146, 220, 44], "missingInkPixels": 0},
-        ]
+        self.elements, self.evidence = build(40, [
+            "校准样张", "中文：纸板纸", "箱成品", "符号：× ÷ ± g/m²", "纸张 40 × 100 mm"])
         self.validate()
 
-    def test_rejects_border_only_bitmap(self):
-        self.evidence["actualInteriorInkPixels"] = 0
-        self.evidence["actualBoundsPx"] = []
-        self.evidence["missingInkPixels"] = 1200
-        self.evidence["lines"][0]["missingInkPixels"] = 1200
-        with self.assertRaisesRegex(AssertionError, "only its border"):
+    def test_rejects_single_full_page_bitmap(self):
+        self.elements[4]["h"] = 90
+        self.evidence["images"][0]["h"] = 90
+        self.evidence["images"][0]["heightPx"] = math.ceil(90 * 300 / 25.4)
+        with self.assertRaisesRegex(AssertionError, "full-page"):
             self.validate()
 
-    def test_rejects_unscaled_points_as_pixels(self):
-        # 72/300 of the expected physical size: the original calibration bug.
-        self.evidence["actualBoundsPx"] = [9, 0, 120, 11]
-        self.evidence["actualInteriorInkPixels"] = 69
-        self.evidence["missingInkPixels"] = 1200
-        self.evidence["extraInteriorInkPixels"] = 69
-        with self.assertRaisesRegex(AssertionError, "ink area changed"):
-            self.validate()
-
-    def test_rejects_wrong_baseline_with_same_ink_area(self):
-        self.evidence["actualBoundsPx"][1] += 40
-        self.evidence["missingInkPixels"] = 1100
-        self.evidence["extraInteriorInkPixels"] = 1100
-        with self.assertRaisesRegex(AssertionError, "missing, clipped, or misplaced"):
-            self.validate()
-
-    def test_rejects_wrong_bbox_even_if_ink_counters_match(self):
-        self.evidence["actualBoundsPx"][1] += 40
-        with self.assertRaisesRegex(AssertionError, "bounds differ"):
-            self.validate()
-
-    def test_rejects_actual_text_touching_inner_bitmap_edge(self):
-        self.evidence["actualBoundsPx"] = [0, 60, 500, 44]
+    def test_rejects_border_only(self):
+        self.elements = [x for x in self.elements if x["type"] == "line"]
+        self.evidence["images"] = []
+        self.evidence["textElements"] = 0
         with self.assertRaises(AssertionError):
             self.validate()
 
-    def test_rejects_expected_line_touching_inner_bitmap_edge(self):
-        self.evidence["lines"][0]["expectedBoundsPx"] = [0, 60, 500, 44]
+    def test_rejects_blank_row(self):
+        self.evidence["images"][0]["inkPixelsBelow127"] = 0
+        with self.assertRaisesRegex(AssertionError, "blank"):
+            self.validate()
+
+    def test_rejects_clipped_row(self):
+        self.evidence["images"][0]["edgeInkPixelsBelow127"] = 3
+        with self.assertRaisesRegex(AssertionError, "clipped"):
+            self.validate()
+
+    def test_rejects_pixel_size_mismatch(self):
+        self.evidence["images"][0]["widthPx"] += 1
         with self.assertRaises(AssertionError):
             self.validate()
 
-    def test_keeps_short_wrapped_line_subject_to_line_tolerance(self):
-        self.evidence["lines"] = [
-            {"index": 0, "text": self.text[:-1], "expectedInkPixels": 1190,
-             "expectedBoundsPx": [40, 60, 500, 44], "missingInkPixels": 0},
-            {"index": 1, "text": self.text[-1:], "expectedInkPixels": 10,
-             "expectedBoundsPx": [40, 146, 10, 20], "missingInkPixels": 10},
-        ]
-        self.evidence["actualInteriorInkPixels"] = 1190
-        self.evidence["missingInkPixels"] = 10
-        with self.assertRaisesRegex(AssertionError, "line is missing or clipped"):
+    def test_rejects_missing_text_token(self):
+        self.elements[4]["sourceText"] = "★"
+        self.evidence["images"][0]["sourceText"] = "★"
+        with self.assertRaisesRegex(AssertionError, "missing 校准"):
             self.validate()
 
-    def test_rejects_removed_source_text(self):
-        del self.element["sourceText"]
-        with self.assertRaises(KeyError):
+    def test_rejects_changed_expected_text(self):
+        self.evidence["expectedText"] = "校准"
+        with self.assertRaisesRegex(AssertionError, "changed or omitted"):
             self.validate()
 
-    def test_rejects_changed_source_text(self):
-        self.element["sourceText"] = "校准"
-        with self.assertRaisesRegex(AssertionError, "text was changed or omitted"):
-            self.validate()
-
-    def test_rejects_displaced_image(self):
-        self.element["y"] = 0
+    def test_rejects_extra_border_line(self):
+        self.elements.append({"type": "line", "x": 3, "y": 50, "w": 64, "h": 0.6})
         with self.assertRaises(AssertionError):
             self.validate()
 
-    def test_rejects_changed_font_size(self):
-        self.evidence["fontMm"] = 0.96
-        with self.assertRaises(AssertionError):
-            self.validate()
-
-    def test_rejects_missing_line_source_text(self):
-        self.evidence["lines"][0]["text"] = "校准"
-        with self.assertRaises(AssertionError):
-            self.validate()
-
-    def test_rejects_border_exclusion_hiding_misplaced_text(self):
-        self.evidence["excludedBorderPx"] = 200
-        with self.assertRaises(AssertionError):
-            self.validate()
-
-    def test_rejects_negative_difference_counters(self):
-        self.evidence["missingInkPixels"] = -1
-        with self.assertRaises(AssertionError):
-            self.validate()
-
-    def test_rejects_empty_reference(self):
-        self.evidence["expectedInkPixels"] = 0
-        with self.assertRaisesRegex(AssertionError, "reference is blank"):
-            self.validate()
-
-    def test_rejects_duplicated_line_evidence(self):
-        self.evidence["lines"].append(copy.deepcopy(self.evidence["lines"][0]))
+    def test_rejects_unknown_element_type(self):
+        self.elements.append({"type": "qr", "x": 3, "y": 50, "w": 10, "h": 10})
         with self.assertRaises(AssertionError):
             self.validate()
 
