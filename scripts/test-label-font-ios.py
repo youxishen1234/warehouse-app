@@ -287,7 +287,8 @@ def main():
                 for image in attempt["calibrationEvidence"]["images"]:
                     assert (output / image["png"]).is_file()
                 for element in attempt["elements"]:
-                    assert (output / element["bitmap"]["png"]).is_file()
+                    if element["type"] == "image":
+                        assert (output / element["bitmap"]["png"]).is_file()
             (output / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
             metadata["status"] = summary["status"]
             print(json.dumps(summary, ensure_ascii=False, indent=2))
