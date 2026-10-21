@@ -43,11 +43,11 @@ def validate_fixtures(fixtures):
 
 
 def validate_calibration_evidence(evidence, elements, text, profile):
-    """Require four border lines plus visible per-row text images.
+    """Require four border images plus visible per-row text images.
 
-    The vendor SDK rejects one full-page calibration bitmap, so the sample must
-    stay on the same small per-row image path as normal labels. A border alone
-    is never accepted as proof that the calibration text survived.
+    NIIMBOT rejects both one full-page calibration bitmap and its line primitive,
+    so calibration must use only DrawLableImage: four thin border strips and one
+    small text image per row. A border alone is never proof that text survived.
     """
     assert evidence["schemaVersion"] == 2
     assert evidence["expectedText"] == text, "Calibration text was changed or omitted"
@@ -55,28 +55,30 @@ def validate_calibration_evidence(evidence, elements, text, profile):
     height = profile["heightMm"] - profile["marginMm"]["top"] - profile["marginMm"]["bottom"]
     assert evidence["dpi"] == 300
     assert evidence["contentWidthMm"] == width and evidence["contentHeightMm"] == height
-    lines = [x for x in elements if x.get("type") == "line"]
-    images = [x for x in elements if x.get("type") == "image"]
-    assert len(lines) == 4 and evidence["lineElements"] == 4, \
-        "Calibration border must be four line primitives"
+    assert all(x.get("type") == "image" for x in elements), "Calibration must use only image elements"
+    border = [x for x in elements if x.get("sourceField", "").startswith("校准边框")]
+    images = [x for x in elements if x.get("sourceField") == "校准文字"]
+    assert len(border) == 4 and evidence["borderImages"] == 4, \
+        "Calibration border must be four image strips"
     assert len(images) >= 3 and evidence["textElements"] == len(images)
-    assert len(elements) == len(lines) + len(images), "Calibration must not submit other element types"
-    for line in lines:
-        assert line["w"] > 0 and line["h"] > 0
-        assert min(line["w"], line["h"]) <= 1.5, "Calibration border must stay a thin line"
+    assert len(elements) == len(border) + len(images), "Calibration must not submit other element types"
+    for element in border:
+        assert element["sourceText"] and min(element["w"], element["h"]) <= 1.5
+        assert element["w"] <= width and element["h"] <= height, "Calibration border is too large"
     for element in images:
-        assert element["sourceField"] == "校准文字" and element["sourceText"]
-        assert element["h"] <= 12 and element["w"] <= width, "Calibration image became a full-page bitmap"
+        assert element["sourceText"] and element["h"] <= 12 and element["w"] <= width
     for item in evidence["images"]:
         index = item["index"]
         assert 0 <= index < len(elements) and elements[index]["type"] == "image"
         assert item["sourceText"] == elements[index]["sourceText"]
         assert item["widthPx"] == math.ceil(item["w"] * 300 / 25.4)
         assert item["heightPx"] == math.ceil(item["h"] * 300 / 25.4)
-        assert item["inkPixelsBelow127"] > 20, "Calibration text row is blank"
-        assert item["edgeInkPixelsBelow127"] == 0, "Calibration text row is clipped"
+        assert item["inkPixelsBelow127"] > 20, "Calibration image row is blank"
+        if item.get("sourceField") == "校准文字":
+            assert item["edgeInkPixelsBelow127"] == 0, "Calibration text row is clipped"
         assert item["w"] * item["h"] < width * height * 0.5, "Calibration must not become one full-page bitmap"
-    joined = "".join(item["sourceText"] for item in evidence["images"])
+    joined = "".join(item["sourceText"] for item in evidence["images"]
+                      if item.get("sourceField") == "校准文字")
     for token in ("校准", "中文", "成品", "纸板", "×", "g/m²"):
         assert token in joined, "Calibration text is missing " + token
 
@@ -122,7 +124,7 @@ def validate_report(report, fixtures):
                 validate_bitmap(element["bitmap"], element["w"], element["h"],
                                 allow_border=attempt["id"] == "calibration-original")
     assert len(calibration["elements"]) >= 7
-    assert {x["type"] for x in calibration["elements"]} == {"line", "image"}
+    assert {x["type"] for x in calibration["elements"]} == {"image"}
     validate_calibration_evidence(calibration["calibrationEvidence"], calibration["elements"],
                                   fixtures["calibrationOriginalText"], fixtures["screenshotProfile"])
     calibration_regressions = {item["id"]: item for item in report["calibrationRegressions"]}
@@ -132,7 +134,7 @@ def validate_report(report, fixtures):
         assert len(item["elements"]) >= 7
         validate_calibration_evidence(item["calibrationEvidence"], item["elements"],
                                       fixtures["calibrationOriginalText"], item["profile"])
-        assert len(item["calibrationEvidence"]["images"]) > 4, "Narrow calibration must exercise wrapping"
+        assert item["calibrationEvidence"]["textElements"] > 4, "Narrow calibration must exercise wrapping"
     for case in fixtures["templateCases"]:
         text = "\n".join(x["text"] for x in snapshots[case["id"]]["fields"])
         assert all(token in text for token in case["expectedTextTokens"]), "Parsed snapshot dropped fixture data"

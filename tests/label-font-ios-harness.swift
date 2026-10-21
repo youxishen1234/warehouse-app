@@ -150,15 +150,15 @@ enum FontDiagnostic {
                 "inkPixelsBelow127": ink, "edgeInkPixelsBelow127": edge]
     }
 
-    // The vendor SDK rejects one full-page calibration bitmap, so the sample is
-    // four line primitives plus one small text image per row. Every submitted
-    // element is still inspected: a border alone is never accepted as proof that
-    // the calibration text survived, and no element may become a full-page image.
+    // The vendor SDK rejects one full-page calibration bitmap and its line
+    // primitive, so the sample uses only DrawLableImage: four thin border strips
+    // plus one small text image per row. A border alone is never accepted as
+    // proof that the calibration text survived.
     static func calibrationEvidence(_ elements: [[String: Any]], name: String, text: String,
                                     profile: LabelMediaProfile, directory: URL) throws -> [String: Any] {
         let contentWidthMm = profile.widthMm - profile.marginMm.left - profile.marginMm.right
         let contentHeightMm = profile.heightMm - profile.marginMm.top - profile.marginMm.bottom
-        var lineCount = 0
+        var borderCount = 0
         var images: [[String: Any]] = []
         var joined = ""
         for (index, element) in elements.enumerated() {
@@ -171,22 +171,30 @@ enum FontDiagnostic {
                   y + h <= profile.heightMm + 0.01 else {
                 throw LabelFailure("TEST_CALIBRATION_LAYOUT", "Calibration element \(index) leaves the label")
             }
-            if type == "line" { lineCount += 1; continue }
             guard type == "image" else {
-                throw LabelFailure("TEST_CALIBRATION_LAYOUT", "Unsupported calibration element \(type)")
-            }
-            guard h <= 12, w <= contentWidthMm + 0.01 else {
-                throw LabelFailure("TEST_CALIBRATION_IMAGE", "Calibration image \(index) is too large for the SDK")
+                throw LabelFailure("TEST_CALIBRATION_LAYOUT", "Calibration must use only image elements, not \(type)")
             }
             let source = element["sourceText"] as? String ?? ""
             guard !source.isEmpty else {
                 throw LabelFailure("TEST_CALIBRATION_IMAGE", "Calibration row \(index) lost its text")
             }
+            let field = element["sourceField"] as? String ?? ""
+            let isBorder = field.hasPrefix("校准边框")
+            if isBorder {
+                guard min(w, h) <= 1.5, w <= contentWidthMm + 0.01, h <= contentHeightMm + 0.01 else {
+                    throw LabelFailure("TEST_CALIBRATION_IMAGE", "Calibration border \(index) is too large for the SDK")
+                }
+                borderCount += 1
+            } else {
+                guard h <= 12, w <= contentWidthMm + 0.01 else {
+                    throw LabelFailure("TEST_CALIBRATION_IMAGE", "Calibration image \(index) is too large for the SDK")
+                }
+            }
             var info = try bitmapEvidence(element, file: directory.appendingPathComponent(
                 "render-calibration-\(name)-\(index).png"))
             let ink = info["inkPixelsBelow127"] as! Int
             let edge = info["edgeInkPixelsBelow127"] as! Int
-            guard ink > 20, edge == 0 else {
+            guard ink > (isBorder ? 50 : 20), isBorder || edge == 0 else {
                 throw LabelFailure("TEST_CALIBRATION_IMAGE", "Calibration row \(index) is blank or clipped")
             }
             let expectedWidth = Int(ceil(w * dpi / 25.4)), expectedHeight = Int(ceil(h * dpi / 25.4))
@@ -195,14 +203,15 @@ enum FontDiagnostic {
             }
             info["index"] = index
             info["sourceText"] = source
+            info["sourceField"] = field
             info["x"] = x; info["y"] = y; info["w"] = w; info["h"] = h
             images.append(info)
-            joined += source
+            if !isBorder { joined += source }
         }
-        guard lineCount == 4 else {
-            throw LabelFailure("TEST_CALIBRATION_LAYOUT", "Calibration border must be four line primitives")
+        guard borderCount == 4 else {
+            throw LabelFailure("TEST_CALIBRATION_LAYOUT", "Calibration border must be four image strips")
         }
-        guard images.count >= 3 else {
+        guard images.count - borderCount >= 3 else {
             throw LabelFailure("TEST_CALIBRATION_LAYOUT", "Calibration text must use per-row images")
         }
         for token in ["校准", "中文", "成品", "纸板", "×", "g/m²"] {
@@ -212,7 +221,7 @@ enum FontDiagnostic {
         }
         return ["schemaVersion": 2, "expectedText": text, "dpi": dpi,
             "contentWidthMm": contentWidthMm, "contentHeightMm": contentHeightMm,
-            "lineElements": lineCount, "textElements": images.count,
+            "borderImages": borderCount, "textElements": images.count - borderCount,
             "fitId": name, "images": images]
     }
 

@@ -291,6 +291,23 @@ enum LabelTemplateRenderer {
         guard let json = output["sdkJson"] as? String, let image = output["imageBase64"] as? String else { throw LabelFailure("PREVIEW_FAILED", "官方 SDK 未返回有效预览") }
         return RenderedOfficialLabel(sdkJSON: json, imageBase64: image, warnings: warnings)
     }
+    private static func borderImage(x: Double, y: Double, w: Double, h: Double, field: String) throws -> [String: Any] {
+        let width = Int(ceil(w * LabelTextRasterizer.dpi / 25.4))
+        let height = Int(ceil(h * LabelTextRasterizer.dpi / 25.4))
+        guard width > 0, height > 0, width * height <= 1_000_000,
+              let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
+                bytesPerRow: width, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)
+        else { throw LabelFailure("TEXT_RASTER_FAILED", "\(field)图像创建失败") }
+        context.setFillColor(gray: 1, alpha: 1)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.setFillColor(gray: 0, alpha: 1)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        guard let image = context.makeImage(), let png = UIImage(cgImage: image, scale: 1, orientation: .up).pngData() else {
+            throw LabelFailure("TEXT_RASTER_FAILED", "\(field)图像编码失败")
+        }
+        return ["type": "image", "x": x, "y": y, "w": w, "h": h,
+            "imageBase64": png.base64EncodedString(), "sourceText": "边框", "sourceField": field]
+    }
     static func label(_ snapshot: LabelSnapshot, profile: LabelMediaProfile) throws -> RenderedOfficialLabel {
         let x = profile.marginMm.left, width = profile.widthMm - x - profile.marginMm.right
         let bottom = profile.heightMm - profile.marginMm.bottom
@@ -321,16 +338,15 @@ enum LabelTemplateRenderer {
         let w = profile.widthMm - x - profile.marginMm.right, h = profile.heightMm - y - profile.marginMm.bottom
         guard w >= 15, h >= 15 else { throw LabelFailure("LAYOUT_OVERFLOW", "当前纸张过小，无法生成校准样张") }
 
-        // The vendor SDK rejects a full-page bitmap of the calibration sample
-        // (DRAWING_IMAGE_REJECTED), so the sample is composed from thin line
-        // primitives plus one small text image per row, matching the working
-        // per-line path used by normal labels.
-        let stroke = 0.6
+        // NIIMBOT rejects both a full-page calibration bitmap and its line
+        // primitive. Use only DrawLableImage: four thin border strips plus one
+        // small text image per row, matching the normal per-line label path.
+        let stroke = 1.0
         var elements: [[String: Any]] = [
-            ["type": "line", "x": x, "y": y, "w": w, "h": stroke, "sourceField": "校准边框上"],
-            ["type": "line", "x": x, "y": y + h - stroke, "w": w, "h": stroke, "sourceField": "校准边框下"],
-            ["type": "line", "x": x, "y": y, "w": stroke, "h": h, "sourceField": "校准边框左"],
-            ["type": "line", "x": x + w - stroke, "y": y, "w": stroke, "h": h, "sourceField": "校准边框右"]
+            try borderImage(x: x, y: y, w: w, h: stroke, field: "校准边框上"),
+            try borderImage(x: x, y: y + h - stroke, w: w, h: stroke, field: "校准边框下"),
+            try borderImage(x: x, y: y, w: stroke, h: h, field: "校准边框左"),
+            try borderImage(x: x + w - stroke, y: y, w: stroke, h: h, field: "校准边框右")
         ]
         let text = "校准样张 中文 成品 纸板纸箱 × ÷ ± g/m²"
         let texts = ["校准样张", "中文：纸板纸箱成品", "符号：× ÷ ± g/m²",
@@ -353,7 +369,7 @@ enum LabelTemplateRenderer {
             cursor += lineHeight
         }
         return try render(profile, elements: elements,
-            warnings: ["校准样张由边框线和逐行文字组成；请目视确认边界、中文、浓度和走纸，SDK 回调不代表实物完成（样例：\(text)）"])
+            warnings: ["校准样张由四条边框图片和逐行文字组成；请目视确认边界、中文、浓度和走纸，SDK 回调不代表实物完成（样例：\(text)）"])
     }
 }
 #endif

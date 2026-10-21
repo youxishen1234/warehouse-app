@@ -18,18 +18,23 @@ def build(width_mm=70, rows=None):
     rows = list(ROWS if rows is None else rows)
     content = width_mm - 6
     height = 90
-    lines = [
-        {"type": "line", "x": 3, "y": 5, "w": content, "h": 0.6},
-        {"type": "line", "x": 3, "y": 5 + height - 0.6, "w": content, "h": 0.6},
-        {"type": "line", "x": 3, "y": 5, "w": 0.6, "h": height},
-        {"type": "line", "x": 3 + content - 0.6, "y": 5, "w": 0.6, "h": height},
+    borders = [
+        {"type": "image", "x": 3, "y": 5, "w": content, "h": 1,
+         "sourceField": "校准边框上", "sourceText": "边框"},
+        {"type": "image", "x": 3, "y": 5 + height - 1, "w": content, "h": 1,
+         "sourceField": "校准边框下", "sourceText": "边框"},
+        {"type": "image", "x": 3, "y": 5, "w": 1, "h": height,
+         "sourceField": "校准边框左", "sourceText": "边框"},
+        {"type": "image", "x": 3 + content - 1, "y": 5, "w": 1, "h": height,
+         "sourceField": "校准边框右", "sourceText": "边框"},
     ]
     images, evidence, y = [], [], 30
     for offset, row in enumerate(rows):
         images.append({"type": "image", "x": 3, "y": y, "w": content, "h": 6.84,
                        "sourceField": "校准文字", "sourceText": row})
         evidence.append({
-            "index": 4 + offset, "sourceText": row, "w": content, "h": 6.84,
+            "index": 4 + offset, "sourceField": "校准文字", "sourceText": row,
+            "w": content, "h": 6.84,
             "widthPx": math.ceil(content * 300 / 25.4),
             "heightPx": math.ceil(6.84 * 300 / 25.4),
             "inkPixelsBelow127": 1200, "edgeInkPixelsBelow127": 0,
@@ -38,9 +43,9 @@ def build(width_mm=70, rows=None):
         y += 6.84
     report = {"schemaVersion": 2, "expectedText": TEXT, "dpi": 300,
               "contentWidthMm": content, "contentHeightMm": height,
-              "lineElements": 4, "textElements": len(images),
+              "borderImages": 4, "textElements": len(images),
               "fitId": "calibration", "images": evidence}
-    return lines + images, report
+    return borders + images, report
 
 
 class CalibrationValidatorTests(unittest.TestCase):
@@ -65,11 +70,11 @@ class CalibrationValidatorTests(unittest.TestCase):
         self.elements[4]["h"] = 90
         self.evidence["images"][0]["h"] = 90
         self.evidence["images"][0]["heightPx"] = math.ceil(90 * 300 / 25.4)
-        with self.assertRaisesRegex(AssertionError, "full-page"):
+        with self.assertRaises(AssertionError):
             self.validate()
 
     def test_rejects_border_only(self):
-        self.elements = [x for x in self.elements if x["type"] == "line"]
+        self.elements = [x for x in self.elements if x["sourceField"].startswith("校准边框")]
         self.evidence["images"] = []
         self.evidence["textElements"] = 0
         with self.assertRaises(AssertionError):
@@ -101,7 +106,7 @@ class CalibrationValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, "changed or omitted"):
             self.validate()
 
-    def test_rejects_extra_border_line(self):
+    def test_rejects_line_primitive(self):
         self.elements.append({"type": "line", "x": 3, "y": 50, "w": 64, "h": 0.6})
         with self.assertRaises(AssertionError):
             self.validate()
