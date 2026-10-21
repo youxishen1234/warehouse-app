@@ -49,8 +49,13 @@ assert.ok(!adapter.includes('@"DRAWING_FAILED"'), 'generic drawing failures are 
 const renderer = read('ios/App/App/LabelTemplateRenderer.swift');
 assert.ok(renderer.includes('CTLineCreateWithAttributedString') && renderer.includes('CTLineDraw(line.shaped, context)'), 'same CoreText line shaped and drawn');
 assert.ok(!renderer.includes('CTFontGetGlyphsForCharacters'), 'single-font UTF-16 guard removed');
-assert.ok(renderer.includes('context.stroke(CGRect('), 'calibration border is rasterized into one bitmap');
-assert.ok(!renderer.includes('"type": "line"'), 'calibration no longer draws SDK line primitives');
+const calibrationStart = renderer.indexOf('static func calibration(');
+assert.ok(calibrationStart >= 0, 'calibration renderer exists');
+const calibration = renderer.slice(calibrationStart, renderer.indexOf('\n    }\n}', calibrationStart));
+assert.equal(count(calibration, '"type": "line"'), 4, 'calibration border uses four line primitives');
+assert.ok(!calibration.includes('"type": "image"'), 'calibration never submits a full-page image element');
+assert.ok(!calibration.includes('context.stroke(CGRect('), 'calibration no longer rasterizes one full-page bitmap');
+assert.match(calibration, /heightMm: lineHeight/, 'calibration text stays on the per-line rasterizer path');
 const activeNames = [...sources.matchAll(/[/][*] ([^*]+) in Sources [*][/]/g)].map(match => match[1]);
 for (const name of activeNames) {
   if (name === 'NIIMBOTSDKAdapter.m') continue;
