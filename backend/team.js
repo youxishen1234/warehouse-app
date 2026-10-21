@@ -511,7 +511,9 @@ function install(db, options = {}) {
     // HTTP status). Keep those user-correctable validation failures as 400 while
     // treating errors from unknown application code as 500. This preserves the
     // established API contract without exposing internal implementation details.
-    const fromDatabaseDomain = /[\\/]backend[\\/]db\.js(?::|$)/.test(String(e?.stack || ''));
+    // The production server keeps backend files directly in /opt/shuguang, so
+    // only the file name is stable across workspace and deployment layouts.
+    const fromDatabaseDomain = /[\\/]db\.js(?::|$)/.test(String(e?.stack || ''));
     const status = Number.isInteger(e?.status) && e.status >= 400 && e.status < 600
       ? e.status
       : (fromDatabaseDomain ? 400 : 500);
