@@ -78,9 +78,15 @@ assert.ok(adapter.includes('NIIMBOTBitmapBytes(image, YES)'), 'bitmap is composi
 assert.ok(adapter.includes('pixel[1] * 30 + pixel[2] * 59 + pixel[3] * 11'), 'ARGB channels drive BT.601 luma');
 assert.ok(adapter.includes('dst[i * 4] = pixel[0]'), 'source alpha is preserved');
 assert.ok(adapter.includes('expectedWidth') && adapter.includes('widthMm * 8.0'), 'bitmap width is checked against K3 native pixels');
-assert.ok(adapter.includes('finishPendingBitmapIfComplete') && adapter.includes('latestPrintCount < 1'), 'endPrint waits for printer count');
-assert.match(adapter, /endPrint:[^]*?completion\(YES\)/, 'endPrint completion follows the official demo callback semantics');
-assert.match(pluginSource, /asyncAfter\(deadline: [.]now\(\) \+ 90/, 'calibration allows the full K3 feed to finish');
+assert.ok(!adapter.includes('latestPrintCount') && !adapter.includes('pendingBitmapSubmitted'), 'optional printer count never gates job completion');
+assert.match(adapter, /dispatch_async\([^]*?diagnosticCount\(safe\);[^]*?\}\);/, 'printing count stays diagnostic-only');
+assert.match(adapter, /\[JCAPI print:[^]*?\[self finishPendingBitmapForGeneration:generation\]/, 'bitmap callback completes the SDK job');
+assert.match(adapter, /dispatch_after\([^]*?finish\)/, 'endPrint has a bounded callback fallback');
+assert.match(adapter, /\[JCAPI endPrint:[^]*?finish\(\);/, 'endPrint callback completes the pending bitmap');
+assert.ok(adapter.includes('completion(YES);'), 'submitted bitmap resolves without waiting for count');
+assert.match(pluginSource, /asyncAfter\(deadline: [.]now\(\) \+ 45/, 'calibration has a bounded submission timeout');
+assert.match(pluginSource, /CALIBRATION_TIMEOUT[^]*?已出纸/, 'timeout tells the operator to check physical output');
+assert.match(pluginSource, /submissionAttempted = true[^]*?sdk[.]printBitmap/, 'submission intent is persisted before hardware dispatch');
 const activeNames = [...sources.matchAll(/[/][*] ([^*]+) in Sources [*][/]/g)].map(match => match[1]);
 for (const name of activeNames) {
   if (name === 'NIIMBOTSDKAdapter.m') continue;

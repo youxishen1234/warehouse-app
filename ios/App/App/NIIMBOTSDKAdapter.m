@@ -12,11 +12,11 @@
 @property(nonatomic, copy, nullable) NSString *preferredImageEncoding;
 @property(nonatomic, strong) NSMutableArray<NSString *> *imageEncodingAttempts;
 @property(nonatomic, copy, nullable) void (^pendingBitmapCompletion)(BOOL completed);
-@property(nonatomic) BOOL pendingBitmapSubmitted;
-@property(nonatomic) NSInteger latestPrintCount;
+@property(nonatomic) NSUInteger bitmapGeneration;
 - (BOOL)drawImage:(NSString *)base64 x:(float)x y:(float)y width:(float)w height:(float)h;
 - (NSArray<NSDictionary<NSString *, id> *> *)imageCandidates:(NSString *)base64;
-- (void)finishPendingBitmapIfComplete;
+- (void)finishPendingBitmapForGeneration:(NSUInteger)generation;
+- (void)failPendingBitmapForGeneration:(NSUInteger)generation;
 @end
 
 #if !TARGET_OS_SIMULATOR
@@ -207,7 +207,8 @@ static NSString *NIIMBOTBitmapPNG(UIImage *image, BOOL alphaFirst) {
         });
     }];
     self.errorListenerReady = YES;
-    // The count drives endPrint, matching the official demo lifecycle.
+    // The SDK documents this count as device-specific and possibly lossy. Keep
+    // it as diagnostics only; waiting for it leaves K3 jobs stuck forever.
     [JCAPI getPrintingCountInfo:^(NSDictionary *counts) {
         dispatch_async(dispatch_get_main_queue(), ^{
             typeof(self) owner = weakSelf;
@@ -218,9 +219,7 @@ static NSString *NIIMBOTBitmapPNG(UIImage *image, BOOL alphaFirst) {
                     if ([value isKindOfClass:NSNumber.class]) safe[key] = value;
                     else if ([value isKindOfClass:NSString.class] && [value length] < 16) safe[key] = value;
                 }
-                owner.latestPrintCount = [safe[@"totalCount"] integerValue];
                 owner.diagnosticCount(safe);
-                [owner finishPendingBitmapIfComplete];
             }
         });
     }];
@@ -231,6 +230,7 @@ static NSString *NIIMBOTBitmapPNG(UIImage *image, BOOL alphaFirst) {
     NSAssert(NSThread.isMainThread, @"The label SDK owner must run on the main queue");
     ++self.connectionGeneration;
     self.errorListenerReady = NO;
+    [self failPendingBitmapForGeneration:self.bitmapGeneration];
 #if !TARGET_OS_SIMULATOR
     [JCAPI closePrinter];
 #endif
@@ -365,42 +365,66 @@ static NSString *NIIMBOTBitmapPNG(UIImage *image, BOOL alphaFirst) {
     }
     [JCAPI setPrintWithCache:NO];
     [JCAPI setTotalQuantityOfPrints:1];
-    self.latestPrintCount = 0;
-    self.pendingBitmapSubmitted = NO;
+    NSUInteger generation = ++self.bitmapGeneration;
     self.pendingBitmapCompletion = completion;
     [JCAPI startJob:(int)density withPaperStyle:1 withCompletion:^(BOOL started) {
-        if (!started) {
-            self.pendingBitmapCompletion = nil;
-            completion(NO);
-            return;
-        }
-        [JCAPI print:binary dataWidth:(unsigned int)width dataHeight:(unsigned int)height withCount:1
-            withEpc:nil withDashLine:NO withComplete:^(BOOL printed) {
-            if (!printed) {
-                self.pendingBitmapCompletion = nil;
-                completion(NO);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (self.bitmapGeneration != generation) return;
+            if (!started) {
+                [self failPendingBitmapForGeneration:generation];
                 return;
             }
-            self.pendingBitmapSubmitted = YES;
-            [self finishPendingBitmapIfComplete];
-        }];
+            [JCAPI print:binary dataWidth:(unsigned int)width dataHeight:(unsigned int)height withCount:1
+                withEpc:nil withDashLine:NO withComplete:^(BOOL printed) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (self.bitmapGeneration != generation) return;
+                    if (!printed) {
+                        [self failPendingBitmapForGeneration:generation];
+                        return;
+                    }
+                    [self finishPendingBitmapForGeneration:generation];
+                });
+            }];
+        });
     }];
 #endif
 }
 
-- (void)finishPendingBitmapIfComplete {
-    // Match the official demo lifecycle: endPrint belongs after the printer's
-    // count reaches the submitted quantity, not immediately after submission.
-    if (!self.pendingBitmapCompletion || !self.pendingBitmapSubmitted || self.latestPrintCount < 1) return;
+- (void)finishPendingBitmapForGeneration:(NSUInteger)generation {
+    // Printing callbacks are the reliable submission signal on K3. finish the
+    // SDK job immediately instead of waiting for a count that may never arrive.
+    if (self.bitmapGeneration != generation || !self.pendingBitmapCompletion) return;
     void (^completion)(BOOL) = self.pendingBitmapCompletion;
     self.pendingBitmapCompletion = nil;
+    __block BOOL finished = NO;
+    void (^finish)(void) = ^{
+        if (finished) return;
+        finished = YES;
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(YES); });
+    };
     [JCAPI endPrint:^(BOOL ended) {
         // The official demo completes on the endPrint callback regardless of
-        // its BOOL. A reached print count is the stronger completion signal;
-        // treating this BOOL as failure can report an already-printed label as
-        // rejected. Printer errors still arrive through the error listener.
-        dispatch_async(dispatch_get_main_queue(), ^{ completion(YES); });
+        // its BOOL. Treat this BOOL as failure can report an already-printed
+        // label as rejected. Printer errors still arrive through the listener.
+        finish();
     }];
+    // Some K3 firmware accepts endPrint but never invokes its completion.
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)), dispatch_get_main_queue(), finish);
+}
+
+- (void)failPendingBitmapForGeneration:(NSUInteger)generation {
+    if (self.bitmapGeneration != generation || !self.pendingBitmapCompletion) return;
+    void (^completion)(BOOL) = self.pendingBitmapCompletion;
+    self.pendingBitmapCompletion = nil;
+    ++self.bitmapGeneration;
+    __block BOOL finished = NO;
+    void (^finish)(void) = ^{
+        if (finished) return;
+        finished = YES;
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(NO); });
+    };
+    [JCAPI cancelJob:^(BOOL acknowledged) { finish(); }];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)), dispatch_get_main_queue(), finish);
 }
 
 - (void)cancel:(void (^)(BOOL))completion {
@@ -414,6 +438,6 @@ static NSString *NIIMBOTBitmapPNG(UIImage *image, BOOL alphaFirst) {
 #endif
 }
 
-// K3 physical output remains a separate acceptance gate; endPrint follows
-// the printer's own count signal rather than the bitmap submission callback.
+// K3 physical output remains a separate acceptance gate. The app releases the
+// task after submission instead of waiting forever for an optional device count.
 @end

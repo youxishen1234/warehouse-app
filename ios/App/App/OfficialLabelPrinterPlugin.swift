@@ -87,8 +87,8 @@ private final class OfficialLabelCoordinator: NSObject, CBCentralManagerDelegate
         }
         sdk.printingError = { [weak self] code in self?.sdkError(code) }
         sdk.diagnosticCount = { [weak self] values in
-            // Native printing waits for this count before endPrint; the user
-            // still confirms the paper itself before calibration is accepted.
+            // The SDK documents this count as lossy/device-specific. It is
+            // diagnostic only; the bitmap callback owns job completion.
             let signal = ["totalCount", "pageCount", "pageNO"].compactMap { key -> String? in
                 guard let value = values[key] else { return nil }; return "\(key)=\(value)"
             }.joined(separator: ",")
@@ -289,10 +289,13 @@ private final class OfficialLabelCoordinator: NSObject, CBCentralManagerDelegate
             let generation = taskGeneration; emitCurrent()
             let timeout = DispatchWorkItem { [weak self] in
                 guard let self = self, self.taskGeneration == generation, self.hardwareBusy else { return }
-                self.failTask("CALIBRATION_TIMEOUT", "校准任务等待超时，结果未确认；请检查实体标签，不会自动重试")
+                self.failTask("CALIBRATION_TIMEOUT", "打印提交等待超时，结果未确认；请先检查是否已出纸，不会自动重试")
             }
-            operationTimeout = timeout; DispatchQueue.main.asyncAfter(deadline: .now() + 90, execute: timeout)
+            operationTimeout = timeout; DispatchQueue.main.asyncAfter(deadline: .now() + 45, execute: timeout)
             recordSignal("bitmap:NO;cache:NO;total:1")
+            guard taskGeneration == generation, hardwareBusy else { return }
+            if let index = currentIndex() { journal.jobs[index].submissionAttempted = true }
+            do { try persist() } catch { failTask("STORAGE_UNAVAILABLE", "无法写入打印提交日志"); return }
             guard taskGeneration == generation, hardwareBusy else { return }
             sdk.printBitmap(base64: bitmap, widthMm: media.widthMm, heightMm: media.heightMm,
                 density: media.density) { [weak self] accepted in
@@ -302,7 +305,6 @@ private final class OfficialLabelCoordinator: NSObject, CBCentralManagerDelegate
                 guard accepted else { self.failTask("BITMAP_PRINT_REJECTED", "SDK 未接受校准位图；请检查打印机、纸卷和蓝牙状态"); return }
                 self.operationTimeout?.cancel(); self.operationTimeout = nil
                 if let index = self.currentIndex() {
-                    self.journal.jobs[index].submissionAttempted = true
                     self.journal.jobs[index].submissionAccepted = true
                 }
                 do { try self.persist() } catch { self.failTask("STORAGE_UNAVAILABLE", "无法写入提交日志"); return }
@@ -315,11 +317,13 @@ private final class OfficialLabelCoordinator: NSObject, CBCentralManagerDelegate
         do {
             try requireSupported()
             guard call.getBool("acknowledged") == true, let id = call.getString("jobId"),
-                  let index = currentIndex(id), journal.jobs[index].kind == "calibration", journal.jobs[index].submissionAccepted,
-                  journal.jobs[index].errorCode == nil, journal.jobs[index].profileId == call.getString("profileId"),
+                  let index = currentIndex(id), journal.jobs[index].kind == "calibration", journal.jobs[index].submissionAttempted,
+                  journal.jobs[index].submissionAccepted || journal.jobs[index].errorCode == "CALIBRATION_TIMEOUT",
+                  journal.jobs[index].errorCode == nil || journal.jobs[index].errorCode == "CALIBRATION_TIMEOUT",
+                  journal.jobs[index].profileId == call.getString("profileId"),
                   let profileIndex = journal.profiles.firstIndex(where: { $0.profileId == journal.jobs[index].profileId }),
                   journal.profiles[profileIndex].signature == journal.jobs[index].profileSignature
-            else { throw LabelFailure("CALIBRATION_NOT_CONFIRMABLE", "只有已提交且无已知错误的本机校准任务可在检查实物后确认") }
+            else { throw LabelFailure("CALIBRATION_NOT_CONFIRMABLE", "只有已提交且无已知打印机错误的本机校准任务可在检查实物后确认") }
             guard operation == nil, !hardwareBusy || activeJobId == id else { throw LabelFailure("PRINTER_BUSY", "另一个操作仍在进行") }
             if journal.jobs[index].calibrationConfirmed { call.resolve(); return }
             let previous = journal

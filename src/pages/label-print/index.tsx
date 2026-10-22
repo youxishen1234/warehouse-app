@@ -259,7 +259,6 @@ export default function LabelPrintPage() {
   });
   const calibrationJob = [job, ...recent].find(item => item && item.kind === 'calibration' && item.profileId === profile?.profileId);
   const confirmCalibration = () => void run('保存校准确认…', async () => {
-    if (!printer.connected) throw new Error('请先连接精臣 K3。');
     if (!profile) throw new Error('请先保存纸张配置。');
     if (!calibrationJob) throw new Error('还没有可核对的校准任务，请先点“打印校准样张”。');
     const confirmation = await Taro.showModal({ title: '核对校准实物', content: '请确认样张确实出纸，四边标记完整、方向与尺寸正确、走纸无偏移且浓度清晰。此确认只记录纸张校准，正式打印仍需完成 K3 与扫码路线验收。', confirmText: '已核对' });
