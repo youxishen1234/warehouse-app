@@ -260,9 +260,11 @@ static NSString *NIIMBOTBitmapPNG(UIImage *image, BOOL alphaFirst) {
                 if (data.length == 0) return @{@"errorCode": @"DRAWING_IMAGE_DATA_MISSING",
                     @"message": [NSString stringWithFormat:@"官方 SDK 图片元素 %lu（%@）缺少 PNG 数据", (unsigned long)index + 1, field ?: @"图片"]};
                 drawn = [self drawImage:data x:x y:y width:w height:h];
-                if (!drawn) return @{@"errorCode": @"DRAWING_IMAGE_REJECTED",
-                    @"message": [NSString stringWithFormat:@"官方 SDK 拒绝图片元素 %lu（%@，%.2f × %.2f mm；已尝试 %@）", (unsigned long)index + 1, field ?: @"图片", w, h,
-                        [self.imageEncodingAttempts componentsJoinedByString:@","]]};
+                if (!drawn && ![element[@"optional"] boolValue]) {
+                    return @{@"errorCode": @"DRAWING_IMAGE_REJECTED",
+                        @"message": [NSString stringWithFormat:@"官方 SDK 拒绝图片元素 %lu（%@，%.2f × %.2f mm；已尝试 %@）", (unsigned long)index + 1, field ?: @"图片", w, h,
+                            [self.imageEncodingAttempts componentsJoinedByString:@","]]};
+                }
             } else if ([type isEqualToString:@"qr"]) {
                 NSString *text = [element[@"text"] isKindOfClass:NSString.class] ? element[@"text"] : @"";
                 if (text.length == 0) return @{@"errorCode": @"DRAWING_QR_DATA_MISSING",

@@ -306,7 +306,8 @@ enum LabelTemplateRenderer {
             throw LabelFailure("TEXT_RASTER_FAILED", "\(field)图像编码失败")
         }
         return ["type": "image", "x": x, "y": y, "w": w, "h": h,
-            "imageBase64": png.base64EncodedString(), "sourceText": "边框", "sourceField": field]
+            "imageBase64": png.base64EncodedString(), "sourceText": "边框", "sourceField": field,
+            "optional": true]
     }
     static func label(_ snapshot: LabelSnapshot, profile: LabelMediaProfile) throws -> RenderedOfficialLabel {
         let x = profile.marginMm.left, width = profile.widthMm - x - profile.marginMm.right
