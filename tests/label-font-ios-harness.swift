@@ -150,6 +150,37 @@ enum FontDiagnostic {
                 "inkPixelsBelow127": ink, "edgeInkPixelsBelow127": edge]
     }
 
+    static func calibrationBitmapEvidence(_ profile: LabelMediaProfile, directory: URL) throws -> [String: Any] {
+        let base64 = try LabelTemplateRenderer.calibrationBitmap(profile)
+        guard let data = Data(base64Encoded: base64), let image = UIImage(data: data)?.cgImage,
+              let context = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8,
+                bytesPerRow: image.width, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)
+        else { throw LabelFailure("TEST_CALIBRATION_BITMAP", "Calibration bitmap is not a decodable PNG") }
+        context.setFillColor(gray: 1, alpha: 1)
+        context.fill(CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        guard let bytes = context.data?.assumingMemoryBound(to: UInt8.self) else {
+            throw LabelFailure("TEST_CALIBRATION_BITMAP", "Cannot inspect calibration pixels")
+        }
+        var ink = 0, edge = 0
+        for y in 0..<image.height {
+            for x in 0..<image.width where bytes[y * context.bytesPerRow + x] < 127 {
+                ink += 1
+                if x == 0 || y == 0 || x == image.width - 1 || y == image.height - 1 { edge += 1 }
+            }
+        }
+        let expectedWidth = Int(ceil(profile.widthMm * LabelTextRasterizer.k3PixelsPerMm))
+        let expectedHeight = Int(ceil(profile.heightMm * LabelTextRasterizer.k3PixelsPerMm))
+        guard image.width == expectedWidth, image.height == expectedHeight,
+              ink > 1000, edge == 0 else {
+            throw LabelFailure("TEST_CALIBRATION_BITMAP", "Calibration bitmap is blank, clipped or off K3 pixels")
+        }
+        try data.write(to: directory.appendingPathComponent("calibration-70x100.png"), options: .atomic)
+        return ["widthPx": image.width, "heightPx": image.height, "dpi": 200,
+                "inkPixelsBelow127": ink, "edgeInkPixelsBelow127": edge,
+                "physicalPrintingTested": false]
+    }
+
     // The vendor SDK rejects one full-page calibration bitmap and its line
     // primitive, so the sample uses only DrawLableImage: four thin border strips
     // plus one small text image per row. A border alone is never accepted as
@@ -332,6 +363,7 @@ enum FontDiagnostic {
                 "productionAttempts": production, "parsedSnapshots": snapshots,
                 "calibrationRegressions": [wrappedCalibration],
                 "rendererRegressions": regressionCases.map { regression($0, directory: directory) }, "clippingNegative": clipping,
+                "calibrationBitmap": try calibrationBitmapEvidence(profile, directory: directory),
                 "interpretation": "CoreText regression uses the production rasterizer. SDK calls are a test double, not SDK preview or physical printing proof."
             ]
             try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])

@@ -157,6 +157,10 @@ def validate_report(report, fixtures):
                 validate_bitmap(bitmap, bitmap["w"], bitmap["h"], invisible=id == "space-only")
     assert len(regressions["long-wrapping"]["bitmaps"]) > 1
     assert report["clippingNegative"]["errorCode"] == "LAYOUT_OVERFLOW" and report["clippingNegative"]["sdkStubCalls"] == 0
+    bitmap = report["calibrationBitmap"]
+    assert bitmap["widthPx"] == 560 and bitmap["heightPx"] == 800, bitmap
+    assert bitmap["dpi"] == 200 and bitmap["inkPixelsBelow127"] > 1000, bitmap
+    assert bitmap["edgeInkPixelsBelow127"] == 0 and bitmap["physicalPrintingTested"] is False, bitmap
     return {
         "status": "renderer-regressions-passed-sdk-and-paper-not-tested",
         "nativeTextCases": len(results),
@@ -164,6 +168,7 @@ def validate_report(report, fixtures):
         "calibrationLayoutRegressions": 1 + len(calibration_regressions),
         "rendererRegressions": len(regressions),
         "calibrationResult": {key: calibration[key] for key in ("id", "outcome", "sdkStubCalls")},
+        "calibrationBitmap": bitmap,
         "templateResults": [{key: x[key] for key in ("id", "outcome", "sdkStubCalls")} for x in attempts.values()],
         "calibrationBaseUnmappedGraphemes": [
             {"character": x["character"], "unicodeScalars": x["unicodeScalars"]}
