@@ -20,8 +20,8 @@
 @end
 
 #if !TARGET_OS_SIMULATOR
-/// JCAPI decodes label images itself. Its demo pipeline hands it RGBA bitmaps,
-/// while this app historically produced grayscale PNGs that it rejects.
+/// JCAPI's bitmap channel needs composited ARGB bytes. The SDK demo builds
+/// PremultipliedFirst buffers; callers choose the byte order it produces.
 static NSData *NIIMBOTBitmapBytes(UIImage *image, BOOL alphaFirst) {
     CGImageRef cgImage = image.CGImage;
     if (!cgImage) return nil;
@@ -207,7 +207,7 @@ static NSString *NIIMBOTBitmapPNG(UIImage *image, BOOL alphaFirst) {
         });
     }];
     self.errorListenerReady = YES;
-    // Diagnostic evidence only. K3 counting has not been accepted and never drives completion.
+    // The count drives endPrint, matching the official demo lifecycle.
     [JCAPI getPrintingCountInfo:^(NSDictionary *counts) {
         dispatch_async(dispatch_get_main_queue(), ^{
             typeof(self) owner = weakSelf;
@@ -395,7 +395,11 @@ static NSString *NIIMBOTBitmapPNG(UIImage *image, BOOL alphaFirst) {
     void (^completion)(BOOL) = self.pendingBitmapCompletion;
     self.pendingBitmapCompletion = nil;
     [JCAPI endPrint:^(BOOL ended) {
-        dispatch_async(dispatch_get_main_queue(), ^{ completion(ended); });
+        // The official demo completes on the endPrint callback regardless of
+        // its BOOL. A reached print count is the stronger completion signal;
+        // treating this BOOL as failure can report an already-printed label as
+        // rejected. Printer errors still arrive through the error listener.
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(YES); });
     }];
 }
 

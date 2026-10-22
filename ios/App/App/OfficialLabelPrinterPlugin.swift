@@ -291,7 +291,7 @@ private final class OfficialLabelCoordinator: NSObject, CBCentralManagerDelegate
                 guard let self = self, self.taskGeneration == generation, self.hardwareBusy else { return }
                 self.failTask("CALIBRATION_TIMEOUT", "校准任务等待超时，结果未确认；请检查实体标签，不会自动重试")
             }
-            operationTimeout = timeout; DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: timeout)
+            operationTimeout = timeout; DispatchQueue.main.asyncAfter(deadline: .now() + 90, execute: timeout)
             recordSignal("bitmap:NO;cache:NO;total:1")
             guard taskGeneration == generation, hardwareBusy else { return }
             sdk.printBitmap(base64: bitmap, widthMm: media.widthMm, heightMm: media.heightMm,

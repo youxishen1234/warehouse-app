@@ -79,6 +79,8 @@ assert.ok(adapter.includes('pixel[1] * 30 + pixel[2] * 59 + pixel[3] * 11'), 'AR
 assert.ok(adapter.includes('dst[i * 4] = pixel[0]'), 'source alpha is preserved');
 assert.ok(adapter.includes('expectedWidth') && adapter.includes('widthMm * 8.0'), 'bitmap width is checked against K3 native pixels');
 assert.ok(adapter.includes('finishPendingBitmapIfComplete') && adapter.includes('latestPrintCount < 1'), 'endPrint waits for printer count');
+assert.match(adapter, /endPrint:[^]*?completion\(YES\)/, 'endPrint completion follows the official demo callback semantics');
+assert.match(pluginSource, /asyncAfter\(deadline: [.]now\(\) \+ 90/, 'calibration allows the full K3 feed to finish');
 const activeNames = [...sources.matchAll(/[/][*] ([^*]+) in Sources [*][/]/g)].map(match => match[1]);
 for (const name of activeNames) {
   if (name === 'NIIMBOTSDKAdapter.m') continue;

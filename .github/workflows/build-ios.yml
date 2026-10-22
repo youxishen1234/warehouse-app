@@ -35,6 +35,8 @@ jobs:
         run: python3 scripts/test-official-label-native.py
       - name: Test calibration layout acceptance
         run: python3 -m unittest discover -s tests -p 'test_label_calibration_validator.py' -v
+      - name: Test K3 full-page calibration bitmap
+        run: python3 scripts/test-calibration-bitmap-ios.py
       - name: Test label CoreText fallback renderer
         run: python3 scripts/test-label-font-ios.py
       - name: Upload label font regression evidence
