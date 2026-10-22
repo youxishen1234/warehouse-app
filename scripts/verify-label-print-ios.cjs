@@ -39,6 +39,10 @@ assert.match(adapter, /#if TARGET_OS_SIMULATOR[^#]+return NO;/, 'simulator expli
 assert.ok(adapter.includes('setPrintWithCache:NO'), 'cache disabled per job');
 assert.ok(adapter.includes('setTotalQuantityOfPrints:copies'), 'total set from frozen copies');
 assert.ok(adapter.includes('withOnePageNumbers:(int)copies'), 'commit uses frozen copies');
+assert.ok(adapter.includes('initImageProcessing:nil'), 'system font pipeline initialized without an empty path');
+for (const encoding of ['png-rgba', 'png-argb', 'jpeg', 'raw-rgba', 'raw-argb']) {
+  assert.ok(adapter.includes(encoding), 'label image encoding fallback exists: ' + encoding);
+}
 assert.ok(adapter.includes('DrawLableImage:x') && adapter.includes('withImageProcessingType:1 withImageProcessingValue:127'), 'official SDK consumes text PNGs');
 assert.ok(adapter.includes('fontArray:@[]'), 'no SDK font lookup when text is rasterized');
 assert.ok(!adapter.includes('drawLableText:') && !adapter.includes('withFontFamily:'), 'no second font engine for shaped text');
