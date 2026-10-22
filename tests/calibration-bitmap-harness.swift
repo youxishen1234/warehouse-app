@@ -9,9 +9,8 @@ final class NIIMBOTSDKAdapter {
     }
 }
 
-@main
-struct CalibrationBitmapHarness {
-    static func main() {
+enum CalibrationBitmapDiagnostic {
+    static func execute() {
         let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         do {
             let profile = try LabelMediaProfile.parse([
@@ -70,3 +69,21 @@ struct CalibrationBitmapHarness {
         }
     }
 }
+
+@objc(CalibrationBitmapDiagnosticDelegate)
+final class CalibrationBitmapDiagnosticDelegate: UIResponder, UIApplicationDelegate {
+    var window: UIWindow?
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        let window = UIWindow(frame: UIScreen.main.bounds)
+        let controller = UIViewController()
+        controller.view.backgroundColor = .white
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        self.window = window
+        DispatchQueue.main.async { CalibrationBitmapDiagnostic.execute() }
+        return true
+    }
+}
+
+UIApplicationMain(CommandLine.argc, CommandLine.unsafeArgv, nil,
+    NSStringFromClass(CalibrationBitmapDiagnosticDelegate.self))
