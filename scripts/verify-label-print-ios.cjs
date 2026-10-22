@@ -66,11 +66,19 @@ assert.match(calibration, /heightMm: lineHeight/, 'calibration text stays on the
 const bitmap = renderer.slice(bitmapStart, renderer.indexOf('\n    }\n}', bitmapStart));
 assert.ok(bitmap.includes('context.stroke(CGRect('), 'direct bitmap draws the calibration border');
 assert.ok(bitmap.includes('CTLineDraw(line.shaped, context)'), 'direct bitmap draws shaped text');
+assert.ok(renderer.includes('k3PixelsPerMm = 8.0'), 'K3 bitmap uses its native 8 dots/mm');
+assert.ok(bitmap.includes('profile.widthMm * LabelTextRasterizer.k3PixelsPerMm'), 'bitmap covers the full K3 page width');
+assert.ok(bitmap.includes('profile.heightMm * LabelTextRasterizer.k3PixelsPerMm'), 'bitmap covers the full K3 page height');
 const pluginSource = read('ios/App/App/OfficialLabelPrinterPlugin.swift');
 assert.match(pluginSource, /LabelTemplateRenderer[.]calibrationBitmap[(]media[)]/, 'plugin submits a direct calibration bitmap');
 assert.match(pluginSource, /sdk[.]printBitmap[(]/, 'plugin uses the direct bitmap channel');
 assert.ok(adapter.includes('print:binary dataWidth:(unsigned int)width dataHeight:(unsigned int)height'), 'adapter uses JCAPI bitmap printing');
 assert.ok(adapter.includes('withDashLine:NO withComplete:'), 'bitmap print has explicit dash-line setting');
+assert.ok(adapter.includes('NIIMBOTBitmapBytes(image, YES)'), 'bitmap is composited as ARGB before binarization');
+assert.ok(adapter.includes('pixel[1] * 30 + pixel[2] * 59 + pixel[3] * 11'), 'ARGB channels drive BT.601 luma');
+assert.ok(adapter.includes('dst[i * 4] = pixel[0]'), 'source alpha is preserved');
+assert.ok(adapter.includes('expectedWidth') && adapter.includes('widthMm * 8.0'), 'bitmap width is checked against K3 native pixels');
+assert.ok(adapter.includes('finishPendingBitmapIfComplete') && adapter.includes('latestPrintCount < 1'), 'endPrint waits for printer count');
 const activeNames = [...sources.matchAll(/[/][*] ([^*]+) in Sources [*][/]/g)].map(match => match[1]);
 for (const name of activeNames) {
   if (name === 'NIIMBOTSDKAdapter.m') continue;

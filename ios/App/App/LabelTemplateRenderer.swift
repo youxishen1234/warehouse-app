@@ -178,6 +178,7 @@ struct RenderedOfficialLabel { let sdkJSON: String; let imageBase64: String; let
 enum LabelTextRasterizer {
     static let pointsPerMm = 72.0 / 25.4
     static let dpi = 300.0 // Intermediate sampling, not an assertion about the printer's native DPI.
+    static let k3PixelsPerMm = 8.0 // K3 is a 200 dpi, 8 dots/mm printer.
     static let paddingPoints = 2.0 * 72.0 / dpi
 
     struct Line {
@@ -376,23 +377,30 @@ enum LabelTemplateRenderer {
     /// Full-page bitmap for the SDK's direct bitmap print channel. This path
     /// never uses DrawLableImage, which the K3 rejects for calibration content.
     static func calibrationBitmap(_ profile: LabelMediaProfile) throws -> String {
-        let x = profile.marginMm.left, y = profile.marginMm.top
-        let w = profile.widthMm - x - profile.marginMm.right
-        let h = profile.heightMm - y - profile.marginMm.bottom
+        let left = profile.marginMm.left, right = profile.marginMm.right
+        let bottom = profile.marginMm.bottom, top = profile.marginMm.top
+        let w = profile.widthMm - left - right
+        let h = profile.heightMm - bottom - top
         guard w >= 15, h >= 15 else { throw LabelFailure("LAYOUT_OVERFLOW", "当前纸张过小，无法生成校准样张") }
-        let width = Int(ceil(w * LabelTextRasterizer.dpi / 25.4))
-        let height = Int(ceil(h * LabelTextRasterizer.dpi / 25.4))
+        // JCAPI prints the direct bitmap at its native pixel size. A 70 mm
+        // K3 page is 560 pixels wide, so the bitmap must cover the whole page
+        // rather than only the printable margins or the head will clip it.
+        let width = Int(ceil(profile.widthMm * LabelTextRasterizer.k3PixelsPerMm))
+        let height = Int(ceil(profile.heightMm * LabelTextRasterizer.k3PixelsPerMm))
         guard width > 0, height > 0, width * height <= 8_000_000,
               let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
                 bytesPerRow: width, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)
         else { throw LabelFailure("TEXT_RASTER_FAILED", "校准位图创建失败，请检查纸张尺寸") }
         context.setFillColor(gray: 1, alpha: 1)
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
-        let border = max(2.0, 0.8 * LabelTextRasterizer.dpi / 25.4)
+        let pointsPerMm = LabelTextRasterizer.pointsPerMm
+        let boxWidth = profile.widthMm * pointsPerMm, boxHeight = profile.heightMm * pointsPerMm
+        context.scaleBy(x: CGFloat(width) / boxWidth, y: CGFloat(height) / boxHeight)
+        let border = max(0.6, 0.8 * pointsPerMm)
         context.setStrokeColor(gray: 0, alpha: 1)
         context.setLineWidth(border)
-        context.stroke(CGRect(x: border / 2, y: border / 2, width: CGFloat(width) - border,
-            height: CGFloat(height) - border))
+        context.stroke(CGRect(x: left * pointsPerMm + border / 2, y: bottom * pointsPerMm + border / 2,
+            width: w * pointsPerMm - border, height: h * pointsPerMm - border))
         let text = "校准样张\n中文：纸板纸箱成品\n符号：× ÷ ± g/m²\n" +
             String(format: "纸张 %.0f × %.0f mm", profile.widthMm, profile.heightMm)
         let fontMm = min(5.0, max(3.2, h / 16))
@@ -405,13 +413,10 @@ enum LabelTemplateRenderer {
         }
         let blockHeight = lineHeight * Double(rows.count)
         guard blockHeight + 8 <= h else { throw LabelFailure("LAYOUT_OVERFLOW", "当前标签无法放下校准文字，请检查纸卷尺寸") }
-        let pointsPerMm = LabelTextRasterizer.pointsPerMm
-        let boxWidth = w * pointsPerMm, boxHeight = h * pointsPerMm
-        context.scaleBy(x: CGFloat(width) / boxWidth, y: CGFloat(height) / boxHeight)
-        var cursor = (h - blockHeight) / 2 + blockHeight
+        var cursor = bottom + (h - blockHeight) / 2 + blockHeight
         for line in rows {
             context.textMatrix = .identity
-            context.textPosition = CGPoint(x: 4 * pointsPerMm + LabelTextRasterizer.paddingPoints - Double(line.bounds.minX),
+            context.textPosition = CGPoint(x: left * pointsPerMm + 4 * pointsPerMm + LabelTextRasterizer.paddingPoints - Double(line.bounds.minX),
                 y: cursor * pointsPerMm - (lineHeight * pointsPerMm + Double(line.bounds.height)) / 2 - Double(line.bounds.minY))
             CTLineDraw(line.shaped, context)
             cursor -= lineHeight

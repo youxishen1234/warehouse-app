@@ -1,6 +1,7 @@
 #import "NIIMBOTSDKAdapter.h"
 #import <TargetConditionals.h>
 #import <UIKit/UIKit.h>
+#import <math.h>
 #if !TARGET_OS_SIMULATOR
 #import "Vendor/NIIMBOT/JCAPI.h"
 #endif
@@ -10,8 +11,12 @@
 @property(nonatomic, readwrite) BOOL errorListenerReady;
 @property(nonatomic, copy, nullable) NSString *preferredImageEncoding;
 @property(nonatomic, strong) NSMutableArray<NSString *> *imageEncodingAttempts;
+@property(nonatomic, copy, nullable) void (^pendingBitmapCompletion)(BOOL completed);
+@property(nonatomic) BOOL pendingBitmapSubmitted;
+@property(nonatomic) NSInteger latestPrintCount;
 - (BOOL)drawImage:(NSString *)base64 x:(float)x y:(float)y width:(float)w height:(float)h;
 - (NSArray<NSDictionary<NSString *, id> *> *)imageCandidates:(NSString *)base64;
+- (void)finishPendingBitmapIfComplete;
 @end
 
 #if !TARGET_OS_SIMULATOR
@@ -213,7 +218,9 @@ static NSString *NIIMBOTBitmapPNG(UIImage *image, BOOL alphaFirst) {
                     if ([value isKindOfClass:NSNumber.class]) safe[key] = value;
                     else if ([value isKindOfClass:NSString.class] && [value length] < 16) safe[key] = value;
                 }
+                owner.latestPrintCount = [safe[@"totalCount"] integerValue];
                 owner.diagnosticCount(safe);
+                [owner finishPendingBitmapIfComplete];
             }
         });
     }];
@@ -336,41 +343,60 @@ static NSString *NIIMBOTBitmapPNG(UIImage *image, BOOL alphaFirst) {
     if (!image.CGImage) { completion(NO); return; }
     size_t width = CGImageGetWidth(image.CGImage), height = CGImageGetHeight(image.CGImage);
     if (!width || !height) { completion(NO); return; }
-    // The direct bitmap channel wants the fully composited page, not the
-    // printable margins. Scale the bitmap to the physical media size.
+    size_t expectedWidth = (size_t)ceil(widthMm * 8.0);
+    size_t expectedHeight = (size_t)ceil(heightMm * 8.0);
+    if (width != expectedWidth || height != expectedHeight) { completion(NO); return; }
+    // JCAPI's direct bitmap channel expects composited ARGB pixels, not PNG
+    // channel order. NIIMBOTBitmapBytes also removes transparency by filling
+    // the page with white before drawing the label.
+    NSData *argb = NIIMBOTBitmapBytes(image, YES);
+    if (!argb) { completion(NO); return; }
     size_t rowBytes = width * 4;
-    NSMutableData *rgba = [NSMutableData dataWithLength:rowBytes * height];
-    CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
-    if (!space) { completion(NO); return; }
-    CGContextRef context = CGBitmapContextCreate(rgba.mutableBytes, width, height, 8, rowBytes, space,
-        (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
-    CGColorSpaceRelease(space);
-    if (!context) { completion(NO); return; }
-    CGContextSetFillColorWithColor(context, UIColor.whiteColor.CGColor);
-    CGContextFillRect(context, CGRectMake(0, 0, width, height));
-    CGContextDrawImage(context, CGRectMake(0, 0, width, height), image.CGImage);
-    CGContextRelease(context);
-    const unsigned char *src = rgba.bytes;
+    const unsigned char *src = argb.bytes;
     NSMutableData *binary = [NSMutableData dataWithLength:rowBytes * height];
     unsigned char *dst = binary.mutableBytes;
     for (size_t i = 0; i < width * height; i++) {
         const unsigned char *pixel = src + i * 4;
-        unsigned char luma = (unsigned char)((pixel[0] * 30 + pixel[1] * 59 + pixel[2] * 11 + 50) / 100);
+        // PremultipliedFirst is ARGB: alpha, red, green, blue.
+        unsigned char luma = (unsigned char)((pixel[1] * 30 + pixel[2] * 59 + pixel[3] * 11 + 50) / 100);
         unsigned char value = luma < 128 ? 0 : 255;
-        dst[i * 4] = dst[i * 4 + 1] = dst[i * 4 + 2] = value;
-        dst[i * 4 + 3] = 255;
+        dst[i * 4] = pixel[0];
+        dst[i * 4 + 1] = dst[i * 4 + 2] = dst[i * 4 + 3] = value;
     }
     [JCAPI setPrintWithCache:NO];
     [JCAPI setTotalQuantityOfPrints:1];
+    self.latestPrintCount = 0;
+    self.pendingBitmapSubmitted = NO;
+    self.pendingBitmapCompletion = completion;
     [JCAPI startJob:(int)density withPaperStyle:1 withCompletion:^(BOOL started) {
-        if (!started) { completion(NO); return; }
+        if (!started) {
+            self.pendingBitmapCompletion = nil;
+            completion(NO);
+            return;
+        }
         [JCAPI print:binary dataWidth:(unsigned int)width dataHeight:(unsigned int)height withCount:1
             withEpc:nil withDashLine:NO withComplete:^(BOOL printed) {
-            if (!printed) { completion(NO); return; }
-            [JCAPI endPrint:^(BOOL ended) { completion(YES); }];
+            if (!printed) {
+                self.pendingBitmapCompletion = nil;
+                completion(NO);
+                return;
+            }
+            self.pendingBitmapSubmitted = YES;
+            [self finishPendingBitmapIfComplete];
         }];
     }];
 #endif
+}
+
+- (void)finishPendingBitmapIfComplete {
+    // Match the official demo lifecycle: endPrint belongs after the printer's
+    // count reaches the submitted quantity, not immediately after submission.
+    if (!self.pendingBitmapCompletion || !self.pendingBitmapSubmitted || self.latestPrintCount < 1) return;
+    void (^completion)(BOOL) = self.pendingBitmapCompletion;
+    self.pendingBitmapCompletion = nil;
+    [JCAPI endPrint:^(BOOL ended) {
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(ended); });
+    }];
 }
 
 - (void)cancel:(void (^)(BOOL))completion {
@@ -384,5 +410,6 @@ static NSString *NIIMBOTBitmapPNG(UIImage *image, BOOL alphaFirst) {
 #endif
 }
 
-// No endPrint call until a source-controlled K3 acceptance record proves a reliable end signal.
+// K3 physical output remains a separate acceptance gate; endPrint follows
+// the printer's own count signal rather than the bitmap submission callback.
 @end

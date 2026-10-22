@@ -87,7 +87,8 @@ private final class OfficialLabelCoordinator: NSObject, CBCentralManagerDelegate
         }
         sdk.printingError = { [weak self] code in self?.sdkError(code) }
         sdk.diagnosticCount = { [weak self] values in
-            // No count-derived progress, no automatic endPrint. Preserve numeric evidence only.
+            // Native printing waits for this count before endPrint; the user
+            // still confirms the paper itself before calibration is accepted.
             let signal = ["totalCount", "pageCount", "pageNO"].compactMap { key -> String? in
                 guard let value = values[key] else { return nil }; return "\(key)=\(value)"
             }.joined(separator: ",")
