@@ -22,6 +22,8 @@ def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
     stage = pathlib.Path(tempfile.mkdtemp(prefix="calibration-bitmap-", dir=ROOT / "release"))
     try:
+        main_harness = stage / "main.swift"
+        shutil.copy2(HARNESS, main_harness)
         sdk = subprocess.check_output(
             ["xcrun", "--sdk", "iphonesimulator", "--show-sdk-path"], text=True
         ).strip()
@@ -30,7 +32,7 @@ def main():
         subprocess.run(
             [
                 "xcrun", "--sdk", "iphonesimulator", "swiftc", "-swift-version", "5", "-sdk", sdk,
-                "-target", arch + "-apple-ios18.0-simulator", str(RENDERER), str(HARNESS),
+                "-target", arch + "-apple-ios18.0-simulator", str(RENDERER), str(main_harness),
                 "-o", str(binary), "-framework", "UIKit", "-framework", "CoreText", "-framework", "CoreImage",
             ],
             cwd=ROOT,
