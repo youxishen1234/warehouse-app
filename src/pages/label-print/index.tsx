@@ -74,6 +74,7 @@ export default function LabelPrintPage() {
   const [media, setMedia] = useState(defaultMedia);
   const [copies, setCopies] = useState('1');
   const [operation, setOperation] = useState('');
+  const [operationElapsed, setOperationElapsed] = useState(0);
   const [notice, setNotice] = useState('');
   const [actionError, setActionError] = useState('');
   const [stateReadError, setStateReadError] = useState('');
@@ -96,6 +97,13 @@ export default function LabelPrintPage() {
   const eventRevision = useRef(0);
   const currentJob = useRef<PrintProgress | null>(null);
   const stateGeneration = useRef(0);
+  useEffect(() => {
+    if (!operation) { setOperationElapsed(0); return; }
+    const startedAt = Date.now();
+    setOperationElapsed(0);
+    const timer = setInterval(() => { if (alive.current) setOperationElapsed(Math.floor((Date.now() - startedAt) / 1000)); }, 1000);
+    return () => clearInterval(timer);
+  }, [operation]);
   const busy = Boolean(operation) || printer.hardwareBusy === true || isActivePrintJob(job);
   const profile = printer.mediaProfiles.find(item => item.profileId === profileId && item.printerName === printer.printerName);
   const maxCopies = Math.max(1, Math.floor(printer.maxCopies || 1));
@@ -341,7 +349,10 @@ export default function LabelPrintPage() {
   };
 
   const printerFeedback = <View className='label-printer-feedback' aria-live='polite'>
-    {(operation || printer.hardwareBusy) && <View className={styles.operationStatus}>{operation || '打印机仍在处理上次操作，请刷新状态核对。'}</View>}
+    {(operation || printer.hardwareBusy) && <View className={styles.operationStatus}>
+      {operation ? `${operation}${operationElapsed >= 5 ? ` ·已等待 ${operationElapsed} 秒` : ''}` : '打印机仍在处理上次操作，请刷新状态核对。'}
+      {operationElapsed >= 20 && !cancelling ? '仍在等待打印机回执；如已出纸，请检查实物，等待结束后点“已核对校准实物”。' : ''}
+    </View>}
     {connectionWarning && <View className={styles.notice}>{connectionWarning}</View>}
     {notice && <View className={styles.notice}>{notice}</View>}
     {actionError && <View className={styles.errorBox}>{actionError}</View>}

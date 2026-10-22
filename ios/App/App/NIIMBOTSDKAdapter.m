@@ -402,12 +402,14 @@ static NSString *NIIMBOTBitmapPNG(UIImage *image, BOOL alphaFirst) {
         finished = YES;
         dispatch_async(dispatch_get_main_queue(), ^{ completion(YES); });
     };
+#if !TARGET_OS_SIMULATOR
     [JCAPI endPrint:^(BOOL ended) {
         // The official demo completes on the endPrint callback regardless of
         // its BOOL. Treat this BOOL as failure can report an already-printed
         // label as rejected. Printer errors still arrive through the listener.
         finish();
     }];
+#endif
     // Some K3 firmware accepts endPrint but never invokes its completion.
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)), dispatch_get_main_queue(), finish);
 }
@@ -423,7 +425,9 @@ static NSString *NIIMBOTBitmapPNG(UIImage *image, BOOL alphaFirst) {
         finished = YES;
         dispatch_async(dispatch_get_main_queue(), ^{ completion(NO); });
     };
+#if !TARGET_OS_SIMULATOR
     [JCAPI cancelJob:^(BOOL acknowledged) { finish(); }];
+#endif
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)), dispatch_get_main_queue(), finish);
 }
 

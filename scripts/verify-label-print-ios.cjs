@@ -83,6 +83,8 @@ assert.match(adapter, /dispatch_async\([^]*?diagnosticCount\(safe\);[^]*?\}\);/,
 assert.match(adapter, /\[JCAPI print:[^]*?\[self finishPendingBitmapForGeneration:generation\]/, 'bitmap callback completes the SDK job');
 assert.match(adapter, /dispatch_after\([^]*?finish\)/, 'endPrint has a bounded callback fallback');
 assert.match(adapter, /\[JCAPI endPrint:[^]*?finish\(\);/, 'endPrint callback completes the pending bitmap');
+assert.match(adapter, /#if !TARGET_OS_SIMULATOR\s*\n\s*\[JCAPI endPrint:/, 'endPrint stays out of simulator builds');
+assert.match(adapter, /#if !TARGET_OS_SIMULATOR\s*\n\s*\[JCAPI cancelJob:[^]*?finish\(\);[^]*?#endif/, 'cancelJob fallback stays out of simulator builds');
 assert.ok(adapter.includes('completion(YES);'), 'submitted bitmap resolves without waiting for count');
 assert.match(pluginSource, /asyncAfter\(deadline: [.]now\(\) \+ 45/, 'calibration has a bounded submission timeout');
 assert.match(pluginSource, /CALIBRATION_TIMEOUT[^]*?已出纸/, 'timeout tells the operator to check physical output');

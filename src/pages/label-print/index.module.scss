@@ -1,4 +1,4 @@
-.page { min-height: 100vh; padding: 28px 22px 100px; background: #f3f5f7; color: #182431; box-sizing: border-box; font-size: 26px; }
+.page { position: fixed; inset: env(safe-area-inset-top, 0PX) 0 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 20PX 22PX calc(env(safe-area-inset-bottom, 0PX) + 100PX); background: #f3f5f7; color: #182431; box-sizing: border-box; font-size: 26px; color-scheme: light; }
 .hero { max-width: 1400px; margin: 0 auto 24px; }
 .printModes { display: flex; gap: 4PX; max-width: 1400px; margin: 0 auto 20PX; padding: 4PX; background: #e4e9ed; border-radius: 12PX; }
 .page .printModes [type=button] { flex: 1; min-width: 0; min-height: 44PX; border: 0; border-radius: 9PX; padding: 10PX 14PX; background: transparent; color: #738590; font: inherit; font-size: 14PX; cursor: pointer; }
