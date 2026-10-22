@@ -55,12 +55,22 @@ assert.ok(renderer.includes('CTLineCreateWithAttributedString') && renderer.incl
 assert.ok(!renderer.includes('CTFontGetGlyphsForCharacters'), 'single-font UTF-16 guard removed');
 const calibrationStart = renderer.indexOf('static func calibration(');
 assert.ok(calibrationStart >= 0, 'calibration renderer exists');
-const calibration = renderer.slice(calibrationStart, renderer.indexOf('\n    }\n}', calibrationStart));
+const bitmapStart = renderer.indexOf('static func calibrationBitmap(', calibrationStart);
+assert.ok(bitmapStart > calibrationStart, 'direct calibration bitmap exists');
+const calibration = renderer.slice(calibrationStart, bitmapStart);
 assert.ok(!calibration.includes('"type": "line"'), 'calibration never calls the rejected line primitive');
 assert.equal(count(calibration, 'borderImage('), 4, 'calibration border uses four image strips');
 assert.ok(!/"w": w, "h": h/.test(calibration), 'calibration never submits a full-page image element');
 assert.ok(!calibration.includes('context.stroke(CGRect('), 'calibration no longer rasterizes one full-page bitmap');
 assert.match(calibration, /heightMm: lineHeight/, 'calibration text stays on the per-line rasterizer path');
+const bitmap = renderer.slice(bitmapStart, renderer.indexOf('\n    }\n}', bitmapStart));
+assert.ok(bitmap.includes('context.stroke(CGRect('), 'direct bitmap draws the calibration border');
+assert.ok(bitmap.includes('CTLineDraw(line.shaped, context)'), 'direct bitmap draws shaped text');
+const pluginSource = read('ios/App/App/OfficialLabelPrinterPlugin.swift');
+assert.match(pluginSource, /LabelTemplateRenderer[.]calibrationBitmap[(]media[)]/, 'plugin submits a direct calibration bitmap');
+assert.match(pluginSource, /sdk[.]printBitmap[(]/, 'plugin uses the direct bitmap channel');
+assert.ok(adapter.includes('print:binary dataWidth:(unsigned int)width dataHeight:(unsigned int)height'), 'adapter uses JCAPI bitmap printing');
+assert.ok(adapter.includes('withDashLine:NO withComplete:'), 'bitmap print has explicit dash-line setting');
 const activeNames = [...sources.matchAll(/[/][*] ([^*]+) in Sources [*][/]/g)].map(match => match[1]);
 for (const name of activeNames) {
   if (name === 'NIIMBOTSDKAdapter.m') continue;

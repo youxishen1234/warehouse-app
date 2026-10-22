@@ -322,6 +322,57 @@ static NSString *NIIMBOTBitmapPNG(UIImage *image, BOOL alphaFirst) {
 #endif
 }
 
+- (void)printBitmapBase64:(NSString *)base64 widthMm:(double)widthMm heightMm:(double)heightMm density:(NSInteger)density
+    completion:(void (^)(BOOL))completion {
+    NSAssert(NSThread.isMainThread, @"The label SDK owner must run on the main queue");
+#if TARGET_OS_SIMULATOR
+    completion(NO);
+#else
+    if (!self.connected || !self.errorListenerReady || density < 1 || density > 5 || base64.length == 0) {
+        completion(NO); return;
+    }
+    NSData *png = [[NSData alloc] initWithBase64EncodedString:base64 options:0];
+    UIImage *image = png ? [UIImage imageWithData:png] : nil;
+    if (!image.CGImage) { completion(NO); return; }
+    size_t width = CGImageGetWidth(image.CGImage), height = CGImageGetHeight(image.CGImage);
+    if (!width || !height) { completion(NO); return; }
+    // The direct bitmap channel wants the fully composited page, not the
+    // printable margins. Scale the bitmap to the physical media size.
+    size_t rowBytes = width * 4;
+    NSMutableData *rgba = [NSMutableData dataWithLength:rowBytes * height];
+    CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+    if (!space) { completion(NO); return; }
+    CGContextRef context = CGBitmapContextCreate(rgba.mutableBytes, width, height, 8, rowBytes, space,
+        (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
+    CGColorSpaceRelease(space);
+    if (!context) { completion(NO); return; }
+    CGContextSetFillColorWithColor(context, UIColor.whiteColor.CGColor);
+    CGContextFillRect(context, CGRectMake(0, 0, width, height));
+    CGContextDrawImage(context, CGRectMake(0, 0, width, height), image.CGImage);
+    CGContextRelease(context);
+    const unsigned char *src = rgba.bytes;
+    NSMutableData *binary = [NSMutableData dataWithLength:rowBytes * height];
+    unsigned char *dst = binary.mutableBytes;
+    for (size_t i = 0; i < width * height; i++) {
+        const unsigned char *pixel = src + i * 4;
+        unsigned char luma = (unsigned char)((pixel[0] * 30 + pixel[1] * 59 + pixel[2] * 11 + 50) / 100);
+        unsigned char value = luma < 128 ? 0 : 255;
+        dst[i * 4] = dst[i * 4 + 1] = dst[i * 4 + 2] = value;
+        dst[i * 4 + 3] = 255;
+    }
+    [JCAPI setPrintWithCache:NO];
+    [JCAPI setTotalQuantityOfPrints:1];
+    [JCAPI startJob:(int)density withPaperStyle:1 withCompletion:^(BOOL started) {
+        if (!started) { completion(NO); return; }
+        [JCAPI print:binary dataWidth:(unsigned int)width dataHeight:(unsigned int)height withCount:1
+            withEpc:nil withDashLine:NO withComplete:^(BOOL printed) {
+            if (!printed) { completion(NO); return; }
+            [JCAPI endPrint:^(BOOL ended) { completion(YES); }];
+        }];
+    }];
+#endif
+}
+
 - (void)cancel:(void (^)(BOOL))completion {
     NSAssert(NSThread.isMainThread, @"The label SDK owner must run on the main queue");
 #if TARGET_OS_SIMULATOR

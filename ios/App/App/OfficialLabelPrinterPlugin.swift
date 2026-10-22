@@ -277,7 +277,7 @@ private final class OfficialLabelCoordinator: NSObject, CBCentralManagerDelegate
             let id = try LabelInput.jobID(call.getString("jobId")); let media = try profile(call.getString("profileId"))
             guard !journal.jobs.contains(where: { $0.jobId == id }) else { throw LabelFailure("DUPLICATE_JOB", "此任务已存在，不能自动重发；请先检查原任务与实体标签") }
             guard sdk.connected, sdk.connectedPrinterName == media.printerName, sdk.errorListenerReady else { throw LabelFailure("PRINTER_NOT_READY", "请连接媒体配置对应的 K3，并确认蓝牙状态") }
-            let rendered = try LabelTemplateRenderer.calibration(media)
+            let bitmap = try LabelTemplateRenderer.calibrationBitmap(media)
             let job = OfficialLabelJob(jobId: id, kind: "calibration", businessId: "", profileId: media.profileId, profileSignature: media.signature,
                 createdAt: ISO8601DateFormatter().string(from: Date()), total: 1, phase: "submitting",
                 errorCode: nil, message: "正在配置单张校准任务；尚未确认出纸", submissionAttempted: false, submissionAccepted: false, calibrationConfirmed: false, requiresResolution: true, diagnosticSignals: [])
@@ -291,29 +291,22 @@ private final class OfficialLabelCoordinator: NSObject, CBCentralManagerDelegate
                 self.failTask("CALIBRATION_TIMEOUT", "校准任务等待超时，结果未确认；请检查实体标签，不会自动重试")
             }
             operationTimeout = timeout; DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: timeout)
-            recordSignal("cache:NO;total:1;startJob")
+            recordSignal("bitmap:NO;cache:NO;total:1")
             guard taskGeneration == generation, hardwareBusy else { return }
-            sdk.begin(density: media.density, copies: 1) { [weak self] accepted in
+            sdk.printBitmap(base64: bitmap, widthMm: media.widthMm, heightMm: media.heightMm,
+                density: media.density) { [weak self] accepted in
                 guard let self = self, self.taskGeneration == generation, self.hardwareBusy else { return }
-                self.recordSignal("startJob:\(accepted)")
+                self.recordSignal("bitmapPrint:\(accepted)")
                 guard self.taskGeneration == generation, self.hardwareBusy else { return }
-                guard accepted else { self.failTask("START_REJECTED", "SDK 未接受校准配置；请检查打印机和实物"); return }
-                guard let index = self.currentIndex() else { return }
-                self.journal.jobs[index].submissionAttempted = true
-                // Persist the submission boundary before the real commit call.
-                do { try self.persist() } catch { self.failTask("STORAGE_UNAVAILABLE", "无法写入提交日志，已停止校准"); return }
-                self.sdk.commit(json: rendered.sdkJSON, copies: 1) { [weak self] committed in
-                    guard let self = self, self.taskGeneration == generation, self.hardwareBusy else { return }
-                    self.recordSignal("commit:\(committed)")
-                    guard self.taskGeneration == generation, self.hardwareBusy else { return }
-                    guard committed else { self.failTask("COMMIT_REJECTED", "SDK 未确认校准数据提交；请检查实体标签"); return }
-                    self.operationTimeout?.cancel(); self.operationTimeout = nil
-                    if let index = self.currentIndex() { self.journal.jobs[index].submissionAccepted = true }
-                    self.updateTask("uncertain", message: "校准数据已提交，SDK 完成语义未经验证；请检查实物边界、中文、浓度及走纸，再明确确认或取消")
-                    guard self.taskGeneration == generation, self.hardwareBusy else { return }
-                    self.pendingCall = nil; call.resolve()
-                    // Keep the global owner locked until explicit physical inspection or cancellation.
+                guard accepted else { self.failTask("BITMAP_PRINT_REJECTED", "SDK 未接受校准位图；请检查打印机、纸卷和蓝牙状态"); return }
+                self.operationTimeout?.cancel(); self.operationTimeout = nil
+                if let index = self.currentIndex() {
+                    self.journal.jobs[index].submissionAttempted = true
+                    self.journal.jobs[index].submissionAccepted = true
                 }
+                do { try self.persist() } catch { self.failTask("STORAGE_UNAVAILABLE", "无法写入提交日志"); return }
+                self.updateTask("uncertain", message: "校准位图已提交，SDK 完成语义未经验证；请检查实物边界、中文、浓度及走纸，再明确确认或取消")
+                self.pendingCall = nil; call.resolve()
             }
         } catch { reject(call, error) }
     }

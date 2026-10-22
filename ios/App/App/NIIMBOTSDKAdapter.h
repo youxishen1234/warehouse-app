@@ -24,6 +24,11 @@ NS_ASSUME_NONNULL_BEGIN
     NS_SWIFT_NAME(begin(density:copies:completion:));
 - (void)commitJSON:(NSString *)json copies:(NSInteger)copies completion:(void (^)(BOOL accepted))completion
     NS_SWIFT_NAME(commit(json:copies:completion:));
+/// Direct full-page bitmap channel (JCAPI print:dataWidth:dataHeight:), used
+/// because the K3 rejects calibration content drawn through DrawLableImage.
+- (void)printBitmapBase64:(NSString *)base64 widthMm:(double)widthMm heightMm:(double)heightMm density:(NSInteger)density
+    completion:(void (^)(BOOL accepted))completion
+    NS_SWIFT_NAME(printBitmap(base64:widthMm:heightMm:density:completion:));
 - (void)cancel:(void (^)(BOOL acknowledged))completion;
 @end
 
