@@ -10,6 +10,8 @@
 @property(nonatomic, readwrite) BOOL errorListenerReady;
 @property(nonatomic, copy, nullable) NSString *preferredImageEncoding;
 @property(nonatomic, strong) NSMutableArray<NSString *> *imageEncodingAttempts;
+- (BOOL)drawImage:(NSString *)base64 x:(float)x y:(float)y width:(float)w height:(float)h;
+- (NSArray<NSDictionary<NSString *, id> *> *)imageCandidates:(NSString *)base64;
 @end
 
 #if !TARGET_OS_SIMULATOR
@@ -24,7 +26,7 @@ static NSData *NIIMBOTBitmapBytes(UIImage *image, BOOL alphaFirst) {
     NSMutableData *buffer = [NSMutableData dataWithLength:rowBytes * height];
     CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
     if (!space) return nil;
-    CGBitmapInfo info = alphaFirst ? kCGImageAlphaPremultipliedFirst : kCGImageAlphaPremultipliedLast;
+    CGBitmapInfo info = (CGBitmapInfo)(alphaFirst ? kCGImageAlphaPremultipliedFirst : kCGImageAlphaPremultipliedLast);
     CGContextRef context = CGBitmapContextCreate(buffer.mutableBytes, width, height, 8, rowBytes, space, info);
     CGColorSpaceRelease(space);
     if (!context) return nil;
@@ -36,12 +38,12 @@ static NSData *NIIMBOTBitmapBytes(UIImage *image, BOOL alphaFirst) {
 }
 
 static NSString *NIIMBOTBitmapPNG(UIImage *image, BOOL alphaFirst) {
-    NSData *bytes = NIIMBOTBitmapBytes(image, alphaFirst);
+    NSMutableData *bytes = (NSMutableData *)NIIMBOTBitmapBytes(image, alphaFirst);
     if (!bytes) return nil;
     size_t width = CGImageGetWidth(image.CGImage), height = CGImageGetHeight(image.CGImage);
     CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
     if (!space) return nil;
-    CGBitmapInfo info = alphaFirst ? kCGImageAlphaPremultipliedFirst : kCGImageAlphaPremultipliedLast;
+    CGBitmapInfo info = (CGBitmapInfo)(alphaFirst ? kCGImageAlphaPremultipliedFirst : kCGImageAlphaPremultipliedLast);
     CGContextRef context = CGBitmapContextCreate(bytes.mutableBytes, width, height, 8, width * 4, space, info);
     CGColorSpaceRelease(space);
     if (!context) return nil;
@@ -52,6 +54,8 @@ static NSString *NIIMBOTBitmapPNG(UIImage *image, BOOL alphaFirst) {
     CGImageRelease(rendered);
     return png ? [png base64EncodedStringWithOptions:0] : nil;
 }
+
+@implementation NIIMBOTSDKAdapter (ImageDrawing)
 
 - (BOOL)drawImage:(NSString *)base64 x:(float)x y:(float)y width:(float)w height:(float)h {
     NSArray<NSDictionary<NSString *, id> *> *candidates = [self imageCandidates:base64];
@@ -105,6 +109,9 @@ static NSString *NIIMBOTBitmapPNG(UIImage *image, BOOL alphaFirst) {
     }
     return candidates;
 }
+
+@end
+
 #endif
 
 @implementation NIIMBOTSDKAdapter
