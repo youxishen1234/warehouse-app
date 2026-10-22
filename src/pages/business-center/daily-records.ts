@@ -12,6 +12,42 @@ export const localDay = (time: number | Date) => {
   return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
 };
 
+export type PartyMonthSummary = {
+  monthSales: number;
+  monthSettled: number;
+};
+
+const monthKey = (time: number) => {
+  const date = new Date(time);
+  return `${date.getFullYear()}-${date.getMonth() + 1}`;
+};
+
+// Sum this month's posted billing and cash settlement per party.  Linked
+// receivable/payable rows are accruals and are counted as sales; they must not
+// also be counted as money received or paid.  Voided rows are excluded so an
+// edited or cancelled record never inflates the month.
+// An explicit party_type is authoritative; only legacy rows without it are
+// inferred from the ledger type.
+export function partyMonthSummary(ledger: LedgerEntry[], supplier: boolean, now = new Date()): Map<number, PartyMonthSummary> {
+  const result = new Map<number, PartyMonthSummary>();
+  const key = monthKey(now.getTime());
+  const partyType = supplier ? 'supplier' : 'customer';
+  for (const entry of ledger) {
+    if (entry.voided_at || entry.party_id == null || monthKey(entry.created_at) !== key) continue;
+    const type = entry.party_type ?? (entry.type === 'receivable' ? 'customer' : entry.type === 'payable' ? 'supplier' : null);
+    if (type !== partyType) continue;
+    const row = result.get(Number(entry.party_id)) || { monthSales: 0, monthSettled: 0 };
+    if (entry.type === 'settlement') row.monthSettled += Math.round(Number(entry.amount || 0) * 100);
+    else if (entry.type === (supplier ? 'payable' : 'receivable')) row.monthSales += Math.round(Number(entry.amount || 0) * 100);
+    result.set(Number(entry.party_id), row);
+  }
+  for (const row of result.values()) {
+    row.monthSales /= 100;
+    row.monthSettled /= 100;
+  }
+  return result;
+}
+
 // Display saved business data only; linked accruals must not duplicate receipts.
 export function dailyRecords(data: { boards: BoardBatch[]; production: ProductionRecord[]; transactions: Transaction[]; ledger: LedgerEntry[] }, day: string): DailyRecord[] {
   const rows: DailyRecord[] = [];

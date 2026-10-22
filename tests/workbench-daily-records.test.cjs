@@ -6,7 +6,7 @@ const ts = require('typescript');
 const exportsObject = {};
 const source = fs.readFileSync('src/pages/business-center/daily-records.ts', 'utf8');
 vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, { exports: exportsObject, Date });
-const { dailyRecords, localDay } = exportsObject;
+const { dailyRecords, localDay, partyMonthSummary } = exportsObject;
 const now = new Date(2026, 9, 19, 12).getTime();
 const blank = () => ({ boards: [], production: [], transactions: [], ledger: [] });
 
@@ -51,4 +51,34 @@ test('missing amount stays a quantity instead of an invented price', () => {
   const data = blank(); data.transactions = [{ id: 1, type: 'out', quantity: 4, unit: '个', created_at: now }];
   const row = dailyRecords(data, localDay(now))[0];
   assert.equal(row.money, false); assert.equal(row.value, 4); assert.equal(row.unit, '个');
+});
+
+test('party month summary separates billing, settlements and voided rows', () => {
+  const current = new Date(2026, 9, 19, 12).getTime();
+  const previous = new Date(2026, 8, 30, 23, 59).getTime();
+  const ledger = [
+    { id: 1, type: 'receivable', party_type: 'customer', party_id: 7, amount: 120.5, created_at: current },
+    { id: 2, type: 'receivable', party_type: 'customer', party_id: 7, amount: 30, created_at: current },
+    { id: 3, type: 'settlement', party_type: 'customer', party_id: 7, amount: 50, created_at: current },
+    { id: 4, type: 'receivable', party_type: 'customer', party_id: 7, amount: 999, created_at: previous },
+    { id: 5, type: 'receivable', party_type: 'customer', party_id: 7, amount: 500, created_at: current, voided_at: current },
+    { id: 6, type: 'payable', party_type: 'supplier', party_id: 7, amount: 80, created_at: current },
+    { id: 7, type: 'settlement', party_type: 'supplier', party_id: 7, amount: 20, created_at: current }
+  ];
+  const customers = partyMonthSummary(ledger, false, new Date(current));
+  const suppliers = partyMonthSummary(ledger, true, new Date(current));
+  assert.equal(customers.get(7).monthSales, 150.5);
+  assert.equal(customers.get(7).monthSettled, 50);
+  assert.equal(suppliers.get(7).monthSales, 80);
+  assert.equal(suppliers.get(7).monthSettled, 20);
+  assert.equal(customers.has(99), false);
+});
+
+test('month summary ignores legacy rows whose party type contradicts the ledger type', () => {
+  const current = new Date(2026, 9, 19, 12).getTime();
+  const rows = partyMonthSummary([
+    { id: 1, type: 'settlement', party_type: 'supplier', party_id: 3, amount: 40, created_at: current },
+    { id: 2, type: 'payable', party_id: 4, amount: 25, created_at: current }
+  ], false, new Date(current));
+  assert.equal(rows.size, 0);
 });

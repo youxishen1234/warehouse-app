@@ -13,7 +13,7 @@ import { getCopy } from '@/services/copy';
 import { formatMoney, formatTime } from '@/utils/format';
 import type { Customer, CustomerOrder, Product, Stats } from '@/types';
 import styles from './workbench.module.scss';
-import { dailyRecords, localDay, DailyRecord } from './daily-records';
+import { dailyRecords, localDay, partyMonthSummary, DailyRecord } from './daily-records';
 
 type Panel = 'home' | 'inbound' | 'stock' | 'records' | 'photos' | 'production' | 'supplier' | 'customer';
 type WorkbenchProps = {
@@ -156,6 +156,18 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
   const day = localDay(now);
   const today = useMemo(() => dailyRecords(data, day).slice(0, 3), [data, day]);
   const visibleOrders = useMemo(() => orderStatus === '全部' ? data.orders : data.orders.filter(order => order.status === orderStatus), [data.orders, orderStatus]);
+  // The party bill default is the current calendar month, while the card
+  // labels stay explicit because a running current balance is never the same
+  // thing as this month's business.
+  const yearMonth = `${now.getFullYear()}-${now.getMonth()}`;
+  const month = useMemo(() => {
+    const reference = new Date(Number(yearMonth.split('-')[0]), Number(yearMonth.split('-')[1]), 1);
+    return {
+      supplier: partyMonthSummary(data.ledger, true, reference),
+      customer: partyMonthSummary(data.ledger, false, reference)
+    };
+  }, [data.ledger, yearMonth]);
+  const monthSuffix = `${now.getMonth() + 1}月`;
   const openRecord = (row: DailyRecord) => {
     if ('board' in row.target) open('/pages/board-detail/index?id=' + encodeURIComponent(row.target.board));
     else if ('ledger' in row.target) open('/pages/ledger/index?entry=' + row.target.ledger);
@@ -204,7 +216,15 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
       {(panel === 'supplier' || panel === 'customer') && <View>
         <View className={styles.segment}>{action('客户账单', () => changePanel('customer'), panel === 'customer')}{action('供货商账单', () => changePanel('supplier'), panel === 'supplier')}</View>
         <View className={styles.balanceSummary}><Text>{panel === 'supplier' ? '待付款合计' : '待收款合计'}</Text><strong>{formatMoney((panel === 'supplier' ? data.suppliers : data.customers).reduce((sum, p) => sum + Number(panel === 'supplier' ? p.payable || 0 : p.debt || 0), 0))}</strong></View>
-        {(panel === 'supplier' ? data.suppliers : data.customers).map(p => <View key={p.id} className={styles.row}><View><strong>{p.name}</strong><Text>{panel === 'supplier' ? '待付款' : '待收款'} {formatMoney(Number(panel === 'supplier' ? p.payable || 0 : p.debt || 0))}</Text></View><View>{action(panel === 'supplier' ? '付款' : '收款', () => { setSettling({ party: p, supplier: panel === 'supplier' }); setAmount(''); setError(''); })}{action('账单 / 票据', () => ledgerLink(panel === 'supplier', p.id))}{action('编辑资料', () => setEditor({ id: p.id, supplier: panel === 'supplier' }))}</View></View>)}
+        <View className={styles.monthSummary} data-testid='party-month-summary'>
+          <View><Text>{monthSuffix}业务额</Text><strong>{formatMoney((panel === 'supplier' ? data.suppliers : data.customers).reduce((sum, p) => sum + Number((panel === 'supplier' ? month.supplier : month.customer).get(p.id)?.monthSales || 0), 0))}</strong></View>
+          <View><Text>{monthSuffix}已{panel === 'supplier' ? '付' : '收'}</Text><strong>{formatMoney((panel === 'supplier' ? data.suppliers : data.customers).reduce((sum, p) => sum + Number((panel === 'supplier' ? month.supplier : month.customer).get(p.id)?.monthSettled || 0), 0))}</strong></View>
+        </View>
+        {(panel === 'supplier' ? data.suppliers : data.customers).map(p => {
+          const summary = (panel === 'supplier' ? month.supplier : month.customer).get(p.id);
+          const current = Number(panel === 'supplier' ? p.payable || 0 : p.debt || 0);
+          return <View key={p.id} className={styles.row}><View><strong>{p.name}</strong><Text>{panel === 'supplier' ? '待付款' : '待收款'} {formatMoney(current)}</Text><Text className={styles.monthLine}>{monthSuffix}业务 {formatMoney(summary?.monthSales || 0)} · 已{panel === 'supplier' ? '付' : '收'} {formatMoney(summary?.monthSettled || 0)}</Text></View><View>{action(panel === 'supplier' ? '付款' : '收款', () => { setSettling({ party: p, supplier: panel === 'supplier' }); setAmount(''); setError(''); })}{action('账单 / 票据', () => ledgerLink(panel === 'supplier', p.id))}{action('编辑资料', () => setEditor({ id: p.id, supplier: panel === 'supplier' }))}</View></View>;
+        })}
         {!(panel === 'supplier' ? data.suppliers : data.customers).length && <Text className={styles.empty}>还没有{panel === 'supplier' ? '供货商' : '客户'}，可先添加资料。</Text>}
         <View className={styles.tools}>{action('新增' + (panel === 'supplier' ? '供货商' : '客户'), () => setEditor({ supplier: panel === 'supplier' }), true)}{action('上传送货单照片', () => changePanel('photos'))}{action('查看全部账单', () => ledgerLink(panel === 'supplier'))}</View>
       </View>}

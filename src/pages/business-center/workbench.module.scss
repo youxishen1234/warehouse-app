@@ -67,6 +67,11 @@
 .stockHeading .note { margin: 0; }
 .balanceSummary { display: flex; align-items: center; justify-content: space-between; gap: 14PX; border-bottom: 1PX solid #414e44; padding: 14PX 0 22PX; color: #bacac0; }
 .balanceSummary strong { font-size: 24PX; color: #eef3ef; }
+.monthSummary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1PX; margin: 0 0 4PX; border-bottom: 1PX solid #414e44; background: #414e44; }
+.monthSummary > view { display: flex; flex-direction: column; gap: 5PX; padding: 14PX 0; background: #222924; color: #b5c0b9; font-size: 13PX; }
+.monthSummary > view:last-child { align-items: flex-end; text-align: right; }
+.monthSummary strong { color: #eef3ef; font-size: 18PX; font-weight: 500; font-variant-numeric: tabular-nums; }
+.monthLine { color: #a6dcb8 !important; font-variant-numeric: tabular-nums; }
 .input { display: block; background: #1b231e; border: 1PX solid #526357; border-radius: 6PX; padding: 12PX; min-height: 46PX; width: 100%; margin: 8PX 0 18PX; font-size: 16PX; color: #eef3ef; }
 .input input { color: #eef3ef; font-size: 16PX; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 16PX; }
