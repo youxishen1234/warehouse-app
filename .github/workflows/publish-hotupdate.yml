@@ -112,6 +112,11 @@ jobs:
         env:
           REMOTE_PRINT_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
         run: node tests/remote-print-recovery-browser.cjs
+      - name: Validate mobile print status notifications
+        env:
+          PRINT_NOTICE_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          PRINT_NOTICE_QA_DIR: release/print-notifications-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/print-notifications-browser.cjs
       - name: Validate print specification search and quick add
         env:
           PRINT_SOURCE_PREVIEW: '0'

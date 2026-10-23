@@ -1,0 +1,157 @@
+.banner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8PX;
+  width: 100%;
+  min-width: 0;
+  margin: 0 0 16PX;
+  padding: 12PX 10PX 12PX 12PX;
+  border: 1PX solid #dce6e9;
+  border-left: 4PX solid #2f7384;
+  border-radius: 10PX;
+  background: #f3f8f9;
+  color: #27424e;
+  box-shadow: 0 4PX 12PX #1c3e4b0a;
+  box-sizing: border-box;
+}
+
+.banner[data-tone='success'] { border-left-color: #3b8a67; background: #f1f8f4; }
+.banner[data-tone='warning'] { border-left-color: #c58a2c; background: #fff8eb; }
+.banner[data-tone='danger'] { border-left-color: #bd4a40; background: #fff3f0; }
+.banner[data-global='true'] {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0PX) + 12PX + var(--sg-offline-offset, 0PX));
+  z-index: 9995;
+  left: 12PX;
+  right: 12PX;
+  width: auto;
+  max-width: 480PX;
+  margin-left: auto;
+  margin-right: auto;
+  box-shadow: 0 6PX 20PX #1733441f;
+}
+
+.main {
+  display: flex;
+  align-items: flex-start;
+  gap: 9PX;
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6PX;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.main:disabled { cursor: default; }
+
+.icon {
+  display: grid;
+  place-items: center;
+  width: 30PX;
+  height: 30PX;
+  flex: 0 0 auto;
+  border-radius: 8PX;
+  background: #e1eff2;
+  color: #2b6a7b;
+}
+
+.banner[data-tone='success'] .icon { background: #e2f1e8; color: #337b5c; }
+.banner[data-tone='warning'] .icon { background: #f8ebd1; color: #956316; }
+.banner[data-tone='danger'] .icon { background: #f8e2de; color: #a33b33; }
+
+.icon svg { width: 17PX; height: 17PX; }
+
+.copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2PX;
+  min-width: 0;
+  flex: 1;
+}
+
+.copy strong {
+  color: #233f4b;
+  font-size: 13PX;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.copy .meta {
+  color: #6c818b;
+  font-size: 10PX;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.copy small {
+  margin-top: 2PX;
+  color: #566f7a;
+  font-size: 11PX;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 4PX;
+  flex: 0 0 auto;
+}
+
+.actions button {
+  min-width: 34PX;
+  min-height: 34PX;
+  margin: 0;
+  padding: 6PX;
+  border: 0;
+  border-radius: 7PX;
+  font: inherit;
+  cursor: pointer;
+}
+
+.actions button:disabled { opacity: .5; cursor: default; }
+.actions svg { width: 17PX; height: 17PX; }
+
+.iconButton {
+  display: grid;
+  place-items: center;
+  width: 34PX;
+  background: transparent;
+  color: #647d88;
+}
+
+.iconButton[aria-label='关闭打印通知'] { color: #8798a0; }
+
+.resolveButton {
+  min-width: 52PX !important;
+  padding: 6PX 8PX !important;
+  background: #2a6577;
+  color: #fff;
+  font-size: 11PX !important;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.resolveButton + .resolveButton {
+  background: #fff;
+  color: #405f6c;
+  border: 1PX solid #ccdbe1 !important;
+}
+
+@media (max-width: 350PX) {
+  .banner {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6PX;
+    padding: 11PX 9PX 10PX 10px;
+  }
+
+  .actions { justify-content: flex-end; }
+  .resolveButton { min-width: 62PX !important; }
+}

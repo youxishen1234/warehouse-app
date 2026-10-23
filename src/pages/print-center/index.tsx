@@ -17,6 +17,7 @@ import SpecificationPicker from './specification-picker';
 import { addSpecificationOptions, buildSpecificationOptions } from './specification-library';
 import type { SpecificationOption } from './specification-library';
 import { getRemoteDevice, getRemotePrintHistory, readPrintPair } from '@/services/remote-print';
+import PrintNotifications from '@/components/PrintNotifications';
 import styles from './index.module.scss';
 
 const currency = (value: number) => Number.isFinite(value) ? value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
@@ -226,6 +227,7 @@ export default function PrintCenterPage() {
 
   return <main className={styles.page} data-print-view={tab}>
     <div className={styles.shell}>
+      <PrintNotifications onOpenNote={id => openNote(id, true)} />
       {tab !== 'home' && <><header className={styles.toolbar}><button type='button' className={styles.back} aria-label='返回' onClick={() => guard(() => setTab('home'))}>‹</button><div><h1>打印中心</h1><p>送货单</p></div><button type='button' className={styles.newButton} onClick={startNew} disabled={busy}>＋ 新建</button></header>
       {printModes}
       <nav className={styles.tabs} aria-label='打印中心页面'><button type='button' aria-pressed={tab !== 'history'} onClick={() => setTab(saved && !dirty ? 'detail' : 'edit')}>当前单据</button><button type='button' aria-pressed={tab === 'history'} onClick={() => setTab('history')}>历史单据</button></nav></>}
