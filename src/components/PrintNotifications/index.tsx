@@ -1,5 +1,5 @@
 /* eslint-disable react/forbid-elements */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Taro from '@tarojs/taro';
 import {
   describePrintNotice, dismissPrintNotice, refreshPrintNotices, resolvePrintNotice,
@@ -26,26 +26,11 @@ function RefreshIcon() {
 // they leave the print center. It renders no desktop UI.
 export function PrintNotificationMonitor() {
   const mobile = useMobilePrintNotifications();
-  const snapshot = usePrintNotices();
-  const previous = useRef(new Map<string, string>());
 
   useEffect(() => {
     if (!mobile) return;
     return startPrintNoticeMonitor();
   }, [mobile]);
-
-  useEffect(() => {
-    if (!mobile) return;
-    for (const record of snapshot.records) {
-      if (record.dismissed) continue;
-      const phase = record.job?.status || 'waiting';
-      const prior = previous.current.get(record.id);
-      if (prior && prior !== phase && phase !== 'waiting') {
-        void Taro.showToast({ title: describePrintNotice(record, snapshot).title, icon: 'none', duration: 2600 });
-      }
-      previous.current.set(record.id, phase);
-    }
-  }, [mobile, snapshot]);
 
   return null;
 }

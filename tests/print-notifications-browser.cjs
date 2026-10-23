@@ -84,6 +84,7 @@ async function main() {
         submissions++;
         data = { id: 'should-not-submit', status: 'waiting', message: 'unexpected' };
       } else if (url.pathname === '/api/print-notes') data = { items: [], total: 0, page: 1, page_size: 30 };
+      else if (/^\/api\/(?:boards|products|customers|suppliers|transactions|ledger|production|orders)$/.test(url.pathname)) data = [];
       else data = {};
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data }) });
     });
@@ -155,7 +156,16 @@ async function main() {
     await page.waitForTimeout(500);
     await page.waitForURL(/home/);
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.waitForTimeout(500);
+    try {
+      await page.locator('[data-testid="workbench-actions"]').waitFor({ timeout: 8000 });
+    } catch (error) {
+      console.log('HOME DIAGNOSTIC url=' + page.url());
+      console.log('HOME DIAGNOSTIC errors=' + JSON.stringify(errors));
+      console.log('HOME DIAGNOSTIC body=' + JSON.stringify((await page.locator('body').innerText()).slice(0, 2000)));
+      console.log('HOME DIAGNOSTIC html=' + JSON.stringify((await page.content()).slice(0, 1000)));
+      throw error;
+    }
+    await page.waitForTimeout(300);
     const floating = page.locator('[data-global="true"]:visible');
     await floating.waitFor();
     const floatingBox = await floating.boundingBox();
