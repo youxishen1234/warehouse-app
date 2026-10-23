@@ -486,8 +486,13 @@ export function describePrintNotice(record: PrintNoticeRecord, state: PrintNotic
   const recovered = !!recovery && recovery.count > 0;
   const recoveryAge = recovered && recovery.last_at ? state.now - recovery.last_at : Infinity;
   // Old recovery events stay available as a tail, but only a recent one can
-  // explain the current delay. Never let this text claim paper came out.
-  const recentRecovery = recovered && recoveryAge <= 10 * 60 * 1000;
+  // explain the current delay, and only when it happened after this notice
+  // was created. Never let this text claim paper came out.
+  // Server timestamps can run ahead of a device clock; a future start time
+  // must not hide a recovery that really happened during this wait.
+  const noticeStartedAt = Math.min(job?.created_at ?? record.createdAt, state.now);
+  const recentRecovery = recovered && recoveryAge <= 10 * 60 * 1000
+    && (recovery.last_at ?? 0) >= noticeStartedAt - 30_000;
   const recoveryMessage = recentRecovery
     ? `打印电脑刚刚${recovery.last_kind === 'spooler' ? '自动恢复了打印服务' : '重新启动了接收程序'}，原任务没有被重复发送。`
     : '';

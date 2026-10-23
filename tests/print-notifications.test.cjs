@@ -387,6 +387,14 @@ test('automatic receiver and spooler recovery is reported without claiming paper
     recovery: { count: 2, last_at: now - 11 * 60 * 1000, last_kind: 'spooler', repaired: true }
   });
   assert.doesNotMatch(old.message, /自动恢复/);
+
+  const beforeTask = describe(record('older-recovery', {
+    createdAt: now,
+    job: job('older-recovery', 'waiting', '等待打印电脑接收', { created_at: now })
+  }), {
+    recovery: { count: 2, last_at: now - 25 * 60 * 1000, last_kind: 'spooler', repaired: true }
+  });
+  assert.doesNotMatch(beforeTask.message, /自动恢复过/, 'a recovery before this task cannot explain its delay');
 });
 
 test('a successful status refresh fetches recovery without changing or resubmitting the print job', async () => {
