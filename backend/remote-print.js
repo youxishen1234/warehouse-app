@@ -39,6 +39,17 @@ function createStore(file, clock = Date.now) {
     },
     device(token) { const state = read(); return publicDevice(authenticate(state, token, 'client')); },
     history(token) { const state=read(),device=authenticate(state,token,'client');const latest=new Map();for(const job of state.jobs){if(job.device_id===device.id&&job.status==='queued'&&(!latest.has(job.note_id)||latest.get(job.note_id).printed_at<job.updated_at))latest.set(job.note_id,{note_id:job.note_id,printed_at:job.updated_at});}return [...latest.values()]; },
+    recovery(token) {
+      const state = read(), device = authenticate(state, token, 'client');
+      const entry = device.recovery;
+      if (!entry) return { count: 0, repaired: false, last_kind: 'receiver' };
+      return {
+        count: Math.min(Number(entry.count) || 0, 1000),
+        last_at: Number(entry.at) || undefined,
+        last_kind: entry.kind === 'spooler' ? 'spooler' : 'receiver',
+        repaired: entry.repaired === true,
+      };
+    },
     enqueue(token, input, note) {
       const state = read(), device = authenticate(state, token, 'client'); expire(state);
       if (!/^[a-zA-Z0-9-]{16,100}$/.test(input.id || '')) throw fail('打印任务编号无效');
@@ -70,6 +81,20 @@ function createStore(file, clock = Date.now) {
       if (job.status !== 'uncertain') delete job.note;
       write(state); return publicJob(job);
     },
+    recover(token, input) {
+      const state = read(), device = authenticate(state, token, 'agent');
+      if (!['receiver', 'spooler'].includes(input.kind)) throw fail('恢复记录无效');
+      device.last_seen = clock();
+      const prior = device.recovery;
+      device.recovery = {
+        kind: input.kind,
+        count: Math.min(1000, (Number(prior?.count) || 0) + 1),
+        at: clock(),
+        repaired: input.kind === 'spooler' ? input.repaired === true : true
+      };
+      write(state);
+      return { acknowledged: true };
+    },
     // An uncertain job blocks the whole device queue by design (never reprint a
     // job that may already have left the printer). Only a person standing at the
     // printer can say what happened, so this resolves it into a terminal state.
@@ -94,6 +119,7 @@ function install(router, db, options = {}) {
   const client = req => req.get('X-Print-Client'), agent = req => req.get('X-Print-Agent');
   route('get','/remote-print/device',req => store.device(client(req)));
   route('get','/remote-print/history',req => store.history(client(req)));
+  route('get','/remote-print/recovery',req => store.recovery(client(req)));
   route('post','/remote-print/jobs',req => {
     store.device(client(req));
     const note = db.listPrintNotes().find(row => row.id === req.body?.note_id);
@@ -105,5 +131,6 @@ function install(router, db, options = {}) {
   route('post','/remote-print/jobs/:id/resolve',req => store.resolve(client(req),req.params.id,req.body || {}));
   route('post','/remote-print/agent/poll',req => store.claim(agent(req),req.body?.ready));
   route('post','/remote-print/agent/jobs/:id',req => store.acknowledge(agent(req),req.params.id,req.body || {}));
+  route('post','/remote-print/agent/recovery',req => store.recover(agent(req),req.body || {}));
 }
 module.exports = { createStore, install };

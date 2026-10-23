@@ -62,3 +62,27 @@ test('launcher adopts an orphaned receiver before rotating its logs or starting 
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('launcher keeps recovering after repeated crashes instead of requiring a manual marker reset', { skip: process.platform !== 'win32' }, () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'remote repeated crash '));
+  try {
+    fs.mkdirSync(path.join(directory, 'scripts'));
+    const config = path.join(directory, 'agent.json');
+    fs.writeFileSync(config, '{}');
+    // The same crash repeats four times, which previously exhausted the
+    // restart budget and left the receiver stopped until an operator acted.
+    fs.writeFileSync(path.join(directory, 'scripts/remote-print-agent.cjs'), 'process.exit(7);');
+    const restarts = Array.from({ length: 4 }, () => ({
+      at: Date.now() - 60000, pid: 1234, ageSeconds: 91
+    }));
+    fs.writeFileSync(path.join(directory, 'receiver-restarts.json'), JSON.stringify(restarts));
+    fs.writeFileSync(path.join(directory, 'receiver-needs-attention.txt'), 'stale from an older release');
+    const run = () => spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('scripts/run-remote-print-agent.ps1'), '-ConfigFile', config, '-NodeExe', process.execPath], { windowsHide: true, encoding: 'utf8', timeout: 15000 });
+    for (let index = 0; index < 2; index++) {
+      const result = run();
+      assert.equal(result.status, 7, result.stderr || result.error?.message);
+    }
+    assert.equal(fs.existsSync(path.join(directory, 'receiver-needs-attention.txt')), false);
+    assert.match(fs.readFileSync(path.join(directory, 'supervisor.log'), 'utf8'), /prior automatic restarts in the last 30 minutes: 4/);
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});

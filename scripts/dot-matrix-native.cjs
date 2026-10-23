@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
+const { spawn, execFile } = require('node:child_process');
 const { createHash, timingSafeEqual } = require('node:crypto');
 
 function fail(message, code = 'INVALID_JOB', safeToRetry = true) {
@@ -129,6 +129,25 @@ function createPrintService(runner = runNative) {
   };
 }
 
+// Service control only: never deletes spool files or cancels a job that may
+// already be printing. If the service cannot be restarted without elevation,
+// report that instead of pretending recovery succeeded.
+function repairSpooler() {
+  if (process.platform !== 'win32') return Promise.reject(fail('只有 Windows 打印电脑可以重启打印服务', 'SPOOLER_PLATFORM', true));
+  return new Promise((resolve, reject) => {
+    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command',
+      "$s=Get-Service -Name Spooler; if ($s.Status -eq 'Running') { 'already-running' } else { Start-Service -Name Spooler -ErrorAction Stop; 'started' }"],
+    { windowsHide: true, timeout: 20000 }, (error, stdout) => {
+      if (error) return reject(fail('Windows 打印服务无法自动恢复，请检查服务权限', 'SPOOLER_REPAIR'));
+      const output = String(stdout);
+      if (!/already-running|started/.test(output)) return reject(fail('Windows 打印服务仍未运行', 'SPOOLER_REPAIR'));
+      // Starting a stopped service is a real recovery. Finding an already
+      // running service is not, and must not be announced as one.
+      resolve({ kind: 'spooler-repaired', repaired: /started/.test(output) });
+    });
+  });
+}
+
 function authorizeLocalPrint(request, { port, token }, requireToken = true) {
   if (request.headers.host !== `127.0.0.1:${port}`) return false;
   const origin = request.headers.origin;
@@ -139,4 +158,4 @@ function authorizeLocalPrint(request, { port, token }, requireToken = true) {
   return typeof supplied === 'string' && Buffer.byteLength(supplied) === Buffer.byteLength(token) && timingSafeEqual(Buffer.from(supplied), Buffer.from(token));
 }
 
-module.exports = { validatePrintJob, printOptions, runNative, createPrintService, authorizeLocalPrint, fail };
+module.exports = { validatePrintJob, printOptions, runNative, createPrintService, repairSpooler, authorizeLocalPrint, fail };

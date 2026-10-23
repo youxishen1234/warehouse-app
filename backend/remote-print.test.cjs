@@ -76,3 +76,26 @@ test('confirming no paper fails the job and still releases the queue',()=>{
   assert.equal(store.history(pair.client).length,0,'a job that never printed is not print history');
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+test('receiver recovery is authenticated, persisted, bounded and visible to the paired phone',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'remote-print-recovery-'));let now=100000;const file=path.join(dir,'queue.json');
+ try{
+  const store=createStore(file,()=>now),pair=store.register('店里电脑','EPSON LQ-630K ESC/P2');
+  assert.deepEqual(store.recovery(pair.client),{count:0,repaired:false,last_kind:'receiver'});
+  assert.throws(()=>store.recovery(pair.agent),/配对/);
+  assert.throws(()=>store.recover(pair.client,{kind:'receiver'}),/配对/);
+  assert.throws(()=>store.recover(pair.agent,{kind:'script'}),/恢复记录/);
+  store.recover(pair.agent,{kind:'receiver',repaired:true});
+  now+=7000;
+  const recovery=store.recover(pair.agent,{kind:'spooler',repaired:true});
+  assert.deepEqual(recovery,{acknowledged:true});
+  const visible=createStore(file,()=>now).recovery(pair.client);
+  assert.equal(visible.count,2);
+  assert.equal(visible.last_kind,'spooler');
+  assert.equal(visible.repaired,true);
+  assert.equal(visible.last_at,now);
+  const raw=fs.readFileSync(file,'utf8');
+  assert.ok(!raw.includes(pair.agent));
+  assert.ok(!raw.includes(pair.client));
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});

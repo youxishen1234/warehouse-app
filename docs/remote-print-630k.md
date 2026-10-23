@@ -14,7 +14,13 @@ Windows 长期运行请使用 `scripts/install-remote-print-task.ps1 -ConfigFile
 
 Windows 接收程序使用随进程退出而释放的命名管道保证单实例，`agent.lock` 仅保留进程号用于诊断，旧进程号不会阻止恢复。长时间打印期间继续发送心跳；打印机驱动暂时不可读时上报不可用并自动重试。回执丢失会从本地打印记录补发，绝不重新送入打印机。更新接收代码时需一起更新 `scripts/remote-print-agent.cjs` 和 `scripts/remote-print-lock.cjs`，并在当前任务结束后重启接收程序。
 
-维护验证：`node --test tests/remote-print-agent.test.cjs tests/remote-print-client.test.cjs tests/remote-print-task.test.cjs backend/remote-print.test.cjs`；`node tests/remote-print-recovery-browser.cjs`；Windows 自动恢复实测使用 `powershell -NoProfile -File tests/remote-print-watchdog.ps1`。这些测试使用隔离数据和模拟打印，不提交正式单据、不实际出纸。
+接收程序会自动恢复自身：计划任务每分钟检查一次；接收进程崩溃或心跳停止时，看门狗结束该进程，启动器重新启动它，不再因为短时间内多次重启而停在第 3 次并等待人工删除标记文件。启动器日志只保留最近几份，不会无限增长。打印机枚举连续失败 3 次时，接收程序会检查 Windows Spooler；仅当服务确实处于停止状态时才启动它，最多每分钟尝试一次。打印机只是离线、缺纸或 USB 断开时不会重启服务。
+
+自动恢复的边界是“恢复通道，不恢复那一张纸”。接收程序不会删除 `jobs.json`、不会清空打印队列、不会取消或重新投递原任务。已经交给 Windows 队列的任务由队列继续处理；结果不确定时仍停在人工核对状态。缺纸、色带、纸张卡住、USB 物理断开和打印机硬件故障不能靠软件修复。新接收代码需要按安装脚本更新并重启接收目录后才会在现场生效。
+
+手机前端通知只负责报告状态，不是系统推送，也不会在 App 完全关闭后持续轮询。最近 10 分钟内有接收程序或 Spooler 启动记录时，等待、离线、打印机暂不可用或处理较久的通知会附带“打印电脑刚刚自动恢复过…，原任务没有被重复发送”；只恢复到服务已运行、没有启动服务的情况不会这样报告，也不会声称纸张已经打印。
+
+维护验证：`node --test tests/remote-print-agent.test.cjs tests/remote-print-client.test.cjs tests/remote-print-task.test.cjs tests/remote-print-watchdog.test.cjs tests/print-notifications.test.cjs backend/remote-print.test.cjs`；`node tests/remote-print-recovery-browser.cjs`；`node tests/print-notifications-browser.cjs`；Windows 自动恢复实测使用 `powershell -NoProfile -File tests/remote-print-watchdog.ps1`。这些测试使用隔离数据和模拟打印，不提交正式单据、不实际出纸。
 
 电脑每1秒检查任务，只有指定实体打印机可用时才领取。已结束任务可点“再打印一份”，检查队列和实际出纸后确认才创建新的任务。领取后服务器不自动重新投递；电脑在调用打印驱动前落盘任务编号，网络重试和程序重启不会自动重复打印。发生结果不确定时队列暂停，需要核对实际出纸。状态“已送入打印队列”表示 Windows 接受任务，不等于已经出纸。
 

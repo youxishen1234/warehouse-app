@@ -1,7 +1,7 @@
 import Taro from '@tarojs/taro';
 import { useEffect, useState } from 'react';
-import { getRemoteDevice, getRemotePrintJob, readPrintPair, resolveRemotePrintJob } from './remote-print';
-import type { RemoteDevice, RemoteJob } from './remote-print';
+import { getRemoteDevice, getRemotePrintJob, getRemotePrintRecovery, readPrintPair, resolveRemotePrintJob } from './remote-print';
+import type { RemoteDevice, RemoteJob, RemotePrintRecovery } from './remote-print';
 
 export type PrintNoticeRecord = {
   id: string;
@@ -18,6 +18,7 @@ export type PrintNoticeRecord = {
 export type PrintNoticeSnapshot = {
   records: PrintNoticeRecord[];
   device?: RemoteDevice;
+  recovery?: RemotePrintRecovery;
   deviceError: string;
   now: number;
   checking: boolean;
@@ -304,6 +305,8 @@ async function performRefresh(token: string, generation: number, fingerprint: st
       return priority(left) - priority(right) || left.createdAt - right.createdAt;
     })
     .slice(0, MAX_POLLED_TASKS);
+  // Recovery context is only shown alongside a pending notice. With nothing
+  // pending, the background monitor must not keep polling device state.
   if (!ids.length) {
     snapshot = { ...snapshot, checking: false, now: Date.now() };
     notify();
@@ -313,13 +316,18 @@ async function performRefresh(token: string, generation: number, fingerprint: st
     device => ({ ok: true as const, device }),
     error => ({ ok: false as const, error })
   );
+  const recoveryRequest = getRemotePrintRecovery(token).then(
+    recovery => ({ ok: true as const, recovery }),
+    () => ({ ok: false as const })
+  );
   const jobRequests = ids.map(async record => {
     try { return { id: record.id, job: await getRemotePrintJob(record.id, token) }; }
     catch (error) { return { id: record.id, error }; }
   });
 
-  const [deviceResult, jobResults] = await Promise.all([
+  const [deviceResult, recoveryResult, jobResults] = await Promise.all([
     deviceRequest,
+    recoveryRequest,
     Promise.all(jobRequests)
   ]);
   if (!isCurrentPair(generation, fingerprint)) return;
@@ -341,6 +349,7 @@ async function performRefresh(token: string, generation: number, fingerprint: st
   } else {
     snapshot = { ...snapshot, deviceError: messageOf(deviceResult.error), now: Date.now() };
   }
+  if (recoveryResult.ok) snapshot = { ...snapshot, recovery: recoveryResult.recovery, now: Date.now() };
 
   const allowedIds = new Set(records.filter(isPending).map(record => record.id));
   const nextRecords = records.map(record => {
@@ -473,6 +482,15 @@ export function startPrintNoticeMonitor(): () => void {
 
 export function describePrintNotice(record: PrintNoticeRecord, state: PrintNoticeSnapshot): PrintNoticeDescription {
   const job = record.job;
+  const recovery = state.recovery;
+  const recovered = !!recovery && recovery.count > 0;
+  const recoveryAge = recovered && recovery.last_at ? state.now - recovery.last_at : Infinity;
+  // Old recovery events stay available as a tail, but only a recent one can
+  // explain the current delay. Never let this text claim paper came out.
+  const recentRecovery = recovered && recoveryAge <= 10 * 60 * 1000;
+  const recoveryMessage = recentRecovery
+    ? `打印电脑刚刚${recovery.last_kind === 'spooler' ? '自动恢复了打印服务' : '重新启动了接收程序'}，原任务没有被重复发送。`
+    : '';
   if (job?.status === 'uncertain') {
     const extra = state.deviceError ? ` ${state.deviceError}。` : '';
     return {
@@ -492,7 +510,7 @@ export function describePrintNotice(record: PrintNoticeRecord, state: PrintNotic
   if (!job) {
     return {
       title: '打印状态暂未确认',
-      message: '正在等待原任务的状态信息，请勿重复发送。',
+      message: `正在等待原任务的状态信息，请勿重复发送。${recoveryMessage}`,
       tone: 'warning'
     };
   }
@@ -500,14 +518,14 @@ export function describePrintNotice(record: PrintNoticeRecord, state: PrintNotic
     if (state.device && !state.device.online) {
       return {
         title: '等待打印电脑上线',
-        message: '打印电脑当前离线，任务仍在等待接收；电脑上线后将由原任务继续处理。',
+        message: `打印电脑当前离线，任务仍在等待接收；电脑上线后将由原任务继续处理。${recoveryMessage}`,
         tone: 'warning'
       };
     }
     if (state.device?.online && !state.device.ready) {
       return {
         title: '打印机暂不可用',
-        message: '打印电脑在线，但打印机暂不可用；任务仍在等待原打印机处理。',
+        message: `打印电脑在线，但打印机暂不可用；任务仍在等待原打印机处理。${recoveryMessage}`,
         tone: 'warning'
       };
     }
@@ -522,11 +540,15 @@ export function describePrintNotice(record: PrintNoticeRecord, state: PrintNotic
     if (state.now - since > 60_000) {
       return {
         title: '打印处理时间较长',
-        message: '打印电脑处理原任务已超过 1 分钟，请查看打印电脑状态；不要重复发送。',
+        message: `打印电脑处理原任务已超过 1 分钟，请查看打印电脑状态；不要重复发送。${recoveryMessage}`,
         tone: 'warning'
       };
     }
-    return { title: '打印处理中', message: job.message || '打印电脑正在处理原任务。', tone: 'info' };
+    return {
+      title: '打印处理中',
+      message: `${job.message || '打印电脑正在处理原任务。'}${recoveryMessage}`,
+      tone: 'info'
+    };
   }
   if (job.status === 'queued') {
     if (/人工核对|人工确认/.test(job.message)) {

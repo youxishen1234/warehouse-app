@@ -67,6 +67,10 @@ function setup(options = {}) {
     getRemotePrintJob: options.getJob || (async (id, token) => {
       calls.push({ method: 'GET', kind: 'job', id, token });
       return { id, status: 'waiting', message: '等待打印电脑接收' };
+    }),
+    getRemotePrintRecovery: options.getRecovery || (async token => {
+      calls.push({ method: 'GET', kind: 'recovery', token });
+      return { count: 0, repaired: false, last_kind: 'receiver' };
     })
   };
   class FakeDate extends Date {
@@ -357,4 +361,47 @@ test('an uncertain job keeps being observed but is not evicted as an old termina
   await api.refreshPrintNotices();
   assert.equal(api.readPrintNotices().records.length, 1);
   assert.equal(api.readPrintNotices().records[0].job.status, 'queued');
+});
+
+test('automatic receiver and spooler recovery is reported without claiming paper came out', async () => {
+  const now = 1_800_000_000_000;
+  const { api } = setup();
+  const describe = (notice, snapshot = {}) => api.describePrintNotice(notice, {
+    records: [], deviceError: '', now, checking: false, ...snapshot
+  });
+  const pending = record('recovered', { job: job('recovered', 'processing', '打印中', { updated_at: now - 70_000 }) });
+
+  const receiver = describe(pending, {
+    recovery: { count: 1, last_at: now - 1000, last_kind: 'receiver', repaired: true }
+  });
+  assert.match(receiver.message, /重新启动了接收程序/);
+  assert.match(receiver.message, /没有被重复发送/);
+
+  const spooler = describe(pending, {
+    recovery: { count: 2, last_at: now - 1000, last_kind: 'spooler', repaired: true }
+  });
+  assert.match(spooler.message, /自动恢复了打印服务/);
+  assert.doesNotMatch(spooler.message, /已出纸|已打印/);
+
+  const old = describe(pending, {
+    recovery: { count: 2, last_at: now - 11 * 60 * 1000, last_kind: 'spooler', repaired: true }
+  });
+  assert.doesNotMatch(old.message, /自动恢复/);
+});
+
+test('a successful status refresh fetches recovery without changing or resubmitting the print job', async () => {
+  const { api, calls } = setup({
+    getRecovery: async token => {
+      calls.push({ method: 'GET', kind: 'recovery', token });
+      return { count: 1, repaired: true, last_kind: 'spooler', last_at: 1_800_000_000_000 - 1000 };
+    }
+  });
+  api.trackPrintNotice(record('task-recovery'));
+  await api.refreshPrintNotices();
+  const state = api.readPrintNotices();
+  assert.equal(state.recovery.last_kind, 'spooler');
+  assert.equal(calls.filter(call => call.kind === 'recovery').length, 1);
+  assert.ok(calls.every(call => call.method === 'GET'));
+  assert.equal(state.records.length, 1);
+  assert.equal(state.records[0].job.status, 'waiting');
 });

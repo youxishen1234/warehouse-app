@@ -74,6 +74,7 @@ async function main() {
       else if (url.pathname === '/api/sync') data = { revision: 1 };
       else if (url.pathname === '/api/stats') data = { todayIn: 0, todayOut: 0, totalProducts: 0, totalStock: 0, lowStock: 0, totalValue: 0 };
       else if (url.pathname === '/api/remote-print/device') data = { id: 'device-mobile', name: '店里电脑', printer: 'LQ-630K', online: true, ready: true };
+      else if (url.pathname === '/api/remote-print/recovery') data = { count: 1, repaired: true, last_kind: 'spooler', last_at: Date.now() - 2000 };
       else if (url.pathname === '/api/remote-print/history') data = [];
       else if (url.pathname === '/api/remote-print/jobs/remote-task-mobile/resolve') {
         resolveCalls++;
@@ -97,6 +98,7 @@ async function main() {
     await banner.waitFor();
     assert.match(await banner.innerText(), /打印处理中/);
     assert.match(await banner.innerText(), /SH-20261023-018/);
+    assert.match(await banner.innerText(), /自动恢复了打印服务/);
     assert.equal(await page.locator('[data-global="true"]').count(), 0, 'the in-page banner replaces the floating one');
 
     for (const width of [320, 375, 390, 430]) {
