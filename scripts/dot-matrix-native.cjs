@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const http = require('node:http');
 const { spawn, execFile } = require('node:child_process');
 const { createHash, timingSafeEqual } = require('node:crypto');
 
@@ -61,6 +62,109 @@ function printOptions(printerName, settings, supportedDpi) {
     copies: 1, duplexMode: 'simplex', header: '', footer: '',
     pageSize: { width: Math.round(settings.width * 1000), height: Math.round(settings.height * 1000) },
     ...(settings.highClarity && supportedDpi ? { dpi: { horizontal: supportedDpi.horizontal, vertical: supportedDpi.vertical } } : {}) };
+}
+
+// One Electron process can render every job. Starting it per job cost about
+// half a second of cold start, which is most of the wait when a note has only
+// a few rows. Each request still gets a fresh hidden window below, so one job's
+// DOM, fonts or failure cannot leak into the next.
+function runResidentNative(request, child, state, failPending) {
+  return new Promise((resolve, reject) => {
+    const token = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    let finished = false;
+    const finish = (error, result) => {
+      if (finished) return;
+      finished = true; clearTimeout(timer);
+      state.pending.delete(token);
+      if (error) reject(error); else resolve(result);
+    };
+    const timer = setTimeout(() => {
+      failPending(token, fail(request.action === 'print' ? '打印响应超时，请先检查打印队列和实际出纸，不要重复发送。' : '读取打印机超时，请重试。', 'NATIVE_TIMEOUT', request.action !== 'print'));
+    }, request.action === 'print' ? 90000 : 25000);
+    state.pending.set(token, { finish });
+    const body = JSON.stringify({ request });
+    const pending = http.request({
+      host: '127.0.0.1', port: state.port, path: '/', method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), 'X-Render-Token': state.capability },
+    }, response => {
+      let data = '';
+      response.setEncoding('utf8');
+      response.on('data', chunk => { data += chunk; });
+      response.on('end', () => {
+        try {
+          const result = JSON.parse(data);
+          if (result.ok) finish(null, result.data);
+          else finish(fail(result.message, result.code, result.safeToRetry));
+        } catch { finish(fail('本机打印服务返回异常', 'NATIVE_RESPONSE', false)); }
+      });
+    });
+    pending.on('error', error => finish(fail(`本机打印服务已中断：${error.message}`, 'NATIVE_EXIT', false)));
+    pending.end(body);
+  });
+}
+
+function startResidentNative() {
+  const env = { ...process.env };
+  delete env.ELECTRON_RUN_AS_NODE;
+  const child = spawn(require('electron'), [path.join(__dirname, 'dot-matrix-electron.cjs'), '--resident'], {
+    env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  const state = { child, ready: false, buffer: '', pending: new Map(), port: 0, capability: '' };
+  let exited = false;
+  const failAll = error => {
+    for (const entry of [...state.pending.values()]) entry.finish(error);
+    state.pending.clear();
+  };
+  child.stdout.setEncoding('utf8');
+  child.stdout.on('data', chunk => {
+    state.buffer += chunk;
+    if (state.buffer.length > 16 * 1024 * 1024) { state.buffer = ''; child.kill(); return failAll(fail('打印响应过大', 'NATIVE_RESPONSE', false)); }
+    let index;
+    while ((index = state.buffer.indexOf('\n')) >= 0) {
+      const line = state.buffer.slice(0, index).trim();
+      state.buffer = state.buffer.slice(index + 1);
+      if (line.startsWith('WAREHOUSE_PRINT_READY:')) {
+        const [, port, capability] = line.split(':');
+        state.port = Number(port); state.capability = capability; state.ready = true;
+        continue;
+      }
+      const marker = 'WAREHOUSE_PRINT_RESULT:';
+      if (!line.startsWith(marker)) continue;
+      let result;
+      try { result = JSON.parse(line.slice(marker.length)); } catch { continue; }
+      const entry = state.pending.get(result.token);
+      if (!entry) continue;
+      if (result.ok) entry.finish(null, result.data);
+      else entry.finish(fail(result.message, result.code, result.safeToRetry));
+    }
+  });
+  child.stderr.resume();
+  child.once('error', () => failAll(fail('本机打印服务无法启动，请重新启动预览服务', 'NATIVE_START')));
+  child.once('close', () => {
+    exited = true;
+    failAll(fail('本机打印服务中断，请检查打印队列后再操作', 'NATIVE_EXIT', false));
+  });
+  return {
+    request: async req => {
+      // A process that died between jobs is replaced by the receiver instead of
+      // being reported as a printing fault for the current note.
+      if (exited) throw fail('本机打印服务已重启，正在恢复接收程序', 'NATIVE_START', true);
+      // Electron takes a moment to start; the first job waits for the handshake
+      // instead of reporting an offline printer.
+      const deadline = Date.now() + 15000;
+      while (!state.ready && !exited && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
+      if (!state.ready) throw fail('本机打印服务已重启，正在恢复接收程序', 'NATIVE_START', true);
+      return runResidentNative(req, child, state, (token, error) => {
+      const entry = state.pending.get(token);
+      if (entry) entry.finish(error);
+      // A hung renderer may leave the print spooler in an unknown state, so it
+      // is replaced rather than reused. The supervisor starts a new one.
+      child.kill();
+      });
+    },
+    ready: () => !exited,
+    stop: () => { try { child.kill(); } catch { /* already gone */ } },
+  };
 }
 
 function runNative(request) {
@@ -158,4 +262,4 @@ function authorizeLocalPrint(request, { port, token }, requireToken = true) {
   return typeof supplied === 'string' && Buffer.byteLength(supplied) === Buffer.byteLength(token) && timingSafeEqual(Buffer.from(supplied), Buffer.from(token));
 }
 
-module.exports = { validatePrintJob, printOptions, runNative, createPrintService, repairSpooler, authorizeLocalPrint, fail };
+module.exports = { validatePrintJob, printOptions, runNative, startResidentNative, createPrintService, repairSpooler, authorizeLocalPrint, fail };

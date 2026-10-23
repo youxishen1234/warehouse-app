@@ -23,6 +23,27 @@ test('paired print jobs persist, claim once, deduplicate, and never resend uncer
   const raw=fs.readFileSync(file,'utf8');assert.ok(!raw.includes(pair.client));assert.ok(!raw.includes(pair.agent));
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+test('heartbeat polls do not rewrite the queue file and old finished jobs are pruned',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'remote-print-poll-'));let now=100000;const file=path.join(dir,'queue.json');
+ try{
+  const store=createStore(file,()=>now),pair=store.register('店里电脑','630K');
+  const note={id:1,version:1,number:'SH-001',items:[]};
+  store.enqueue(pair.client,{id:'remote-print-task-poll-01',paper:'241-93'},note);
+  store.claim(pair.agent,false);
+  const before=fs.readFileSync(file,'utf8');
+  for(let i=0;i<10;i++){now+=1000;store.claim(pair.agent,false);}
+  assert.equal(fs.readFileSync(file,'utf8'),before,'idle polls must not write or fsync the queue');
+  // Heartbeats still refresh readiness for the phone after the flush interval.
+  now+=16000;store.claim(pair.agent,true);
+  assert.equal(JSON.parse(fs.readFileSync(file,'utf8')).devices[0].ready,true);
+  // A month of finished history is dropped instead of growing forever.
+  const job=JSON.parse(fs.readFileSync(file,'utf8')).jobs[0];
+  assert.equal(job.status,'processing');
+  now+=31*24*60*60*1000;store.claim(pair.agent,false);
+  assert.equal(JSON.parse(fs.readFileSync(file,'utf8')).jobs.length,1,'unfinished work is never pruned');
+  assert.equal(JSON.parse(fs.readFileSync(file,'utf8')).devices.length,1,'devices are retained');
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
 test('remote routes require pairing and print immutable saved snapshots without stock mutations',async()=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'remote-print-api-'));const file=path.join(dir,'queue.json');const store=createStore(file),pair=store.register('店里电脑','630K');
  const express=require('express'),app=express();app.use(express.json());const router=express.Router();

@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
-const { createPrintService, runNative, repairSpooler } = require('./dot-matrix-native.cjs');
+const { createPrintService, runNative, startResidentNative, repairSpooler } = require('./dot-matrix-native.cjs');
 const { acquireAgentLock } = require('./remote-print-lock.cjs');
 function printPayload(job) {
   const n = job.note, paper = job.paper;
@@ -97,7 +97,29 @@ function createReceiver({ service, journal, call, printerName, now = Date.now, h
       return row;
     } finally { clearInterval(timer); if (heartbeat) await heartbeat; }
   };
-  return { tick() { if (!active) active = cycle().finally(() => { active = undefined; }); return active; } };
+  return { tick() { if (!active) active = cycle().finally(() => { active = undefined; }); return active; }, idle: () => checkedAt !== -Infinity && now() - checkedAt < retryAfter };
+}
+
+// Warm Electron hides the per-note startup cost (~500 ms) behind the print
+// cycle. It is respawned lazily after a crash, and the persistent journal still
+// supplies the deduplication that the old one-process-per-job design relied on.
+function createPersistentPrintService() {
+  let resident, used = 0;
+  const native = () => {
+    // Recycle long-lived renderers between notes so a leak in Chromium cannot
+    // grow forever; this never interrupts an in-flight print.
+    if (!resident || !resident.ready() || used >= 200) { resident?.stop(); resident = startResidentNative(); used = 0; }
+    return resident;
+  };
+  // One service instance keeps the replay memory: a timeout followed by a
+  // retry of the same id must not print the note twice.
+  const printer = createPrintService(request => native().request(request));
+  return {
+    list: () => native().request({ action: 'list' }),
+    submit: async input => { used++; return printer.submit(input); },
+    repair: repairSpooler,
+    stop: () => resident?.stop(),
+  };
 }
 
 async function main(){
@@ -105,9 +127,7 @@ async function main(){
   const config=JSON.parse(fs.readFileSync(configFile,'utf8'));
   if(config.origin!=='https://youxishen.online'||!/^[a-f0-9]{64}$/.test(config.agent))throw new Error('打印电脑配置无效');
   const journal=createJournal(path.join(path.dirname(configFile),'jobs.json'));
-  // The persistent journal provides deduplication. A fresh native service per
-  // job avoids hitting the preview service's 500-job in-memory session limit.
-  const service={list:()=>runNative({action:'list'}),submit:input=>createPrintService().submit(input),repair:repairSpooler};
+  const service = createPersistentPrintService();
   const call=async(url,body)=>{const response=await fetch(config.origin+'/api/remote-print/'+url,{method:'POST',headers:{'Content-Type':'application/json','X-Print-Agent':config.agent},body:JSON.stringify(body),signal:AbortSignal.timeout(12000)});const result=await response.json();if(!response.ok||!result.success)throw new Error(result.message||'连接失败');return result.data;};
   let stopping=false;process.on('SIGTERM',()=>{stopping=true;});process.on('SIGINT',()=>{stopping=true;});
   const report=error=>console.error(new Date().toISOString(),error.message);
@@ -128,9 +148,11 @@ async function main(){
       try { const row=await receiver.tick(); if(row)console.log(new Date().toISOString(),row.id,row.result.status); }
       catch(error){report(error);}
       progress=Date.now();
-      if(!stopping)await new Promise(r=>setTimeout(r,1000));
+      // Idle polling only costs one small HTTPS request, so waiting a full
+      // second after every empty cycle just delayed a newly queued note.
+      if(!stopping)await new Promise(r=>setTimeout(r,receiver.idle()?1000:250));
     }
-  } finally { clearInterval(beatTimer); try{fs.unlinkSync(heartbeatFile);}catch{ /* already gone */ } releaseLock(); }
+  } finally { clearInterval(beatTimer); service.stop(); try{fs.unlinkSync(heartbeatFile);}catch{ /* already gone */ } releaseLock(); }
 }
 if(require.main===module)main().catch(e=>{console.error(e.message);process.exitCode=1;});
-module.exports={printPayload,createJournal,createReceiver,runNative};
+module.exports={printPayload,createJournal,createReceiver,createPersistentPrintService,runNative};

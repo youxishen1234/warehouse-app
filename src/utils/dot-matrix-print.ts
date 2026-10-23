@@ -237,56 +237,80 @@ function paginateDeliveryNote(document: Document, doc: PrintDocument, settings: 
   const original = document.querySelector<HTMLElement>('.sheet');
   if (!original) throw new Error('打印预览未加载');
   const lines = doc.lines.filter(line => !line.blank);
-  const rows = Array.from(original.querySelectorAll<HTMLTableRowElement>('tbody tr[data-line]'));
-  rows.forEach(row => row.remove());
-  const template = original.cloneNode(true) as HTMLElement;
-  const sheets = [original];
-  let sheet = original;
-  const updateTotal = () => {
-    const pageLines = Array.from(sheet.querySelectorAll<HTMLElement>('tbody [data-line]')).map(row => lines[Number(row.dataset.line)]);
-    const total = totalMoney(pageLines);
-    sheet.querySelector('[data-total-label]')!.textContent = '本页合计：人民币大写';
-    if (settings.showPrices) { sheet.querySelector('[data-upper]')!.textContent = total === null ? '金额未完整记录' : moneyUpper(total); sheet.querySelector('[data-total]')!.textContent = money(total); }
-    // Reserve page-number space before measuring rows; the final page count can add a page.
-    sheet.querySelector<HTMLElement>('.page-number')!.style.minHeight = '4mm';
-    sheet.querySelector<HTMLElement>('.page-number')!.style.display = 'block';
-  };
-  const fits = () => { updateTotal(); return sheet.querySelector('.delivery-content')!.getBoundingClientRect().bottom <= sheet.getBoundingClientRect().bottom - 5 * 96 / 25.4; };
-  const fitSpec = (row: HTMLElement) => row.querySelectorAll<HTMLElement>('.spec span').forEach(span => {
-    const range = document.createRange(); range.selectNodeContents(span);
-    const width = range.getBoundingClientRect().width;
-    if (width > span.clientWidth) span.style.fontSize = `${Math.max(6, 11 * span.clientWidth / width)}pt`;
-    if (span.scrollWidth > span.clientWidth + 1) throw new Error('规格文字过长，请缩短后打印');
-  });
-  for (const [index, row] of rows.entries()) {
-    const body = () => sheet.querySelector('tbody')!;
-    if (body().children.length >= settings.rowsPerPage) { sheet = template.cloneNode(true) as HTMLElement; document.body.appendChild(sheet); sheets.push(sheet); }
-    body().appendChild(row); fitSpec(row);
-    if (!fits() && body().children.length > 1) { row.remove(); updateTotal(); sheet = template.cloneNode(true) as HTMLElement; document.body.appendChild(sheet); sheets.push(sheet); body().appendChild(row); fitSpec(row); }
-    if (!fits()) throw new Error(`第 ${index + 1} 行内容放不下，请选择更大的纸张或缩短备注`);
-  }
-  for (const [index, current] of sheets.entries()) {
-    sheet = current;
-    sheet.querySelectorAll<HTMLElement>('td.num').forEach(cell => {
-      if (cell.scrollWidth > cell.clientWidth + 1) throw new Error('数量或金额过长，无法在纸张列内完整显示，请核对数值');
-    });
-    const body = sheet.querySelector('tbody')!;
-    const pageLines = Array.from(body.querySelectorAll<HTMLElement>('[data-line]')).map(row => lines[Number(row.dataset.line)]);
-    const total = totalMoney(pageLines);
-    if (settings.showPrices) { sheet.querySelector('[data-upper]')!.textContent = total === null ? '金额未完整记录' : moneyUpper(total); sheet.querySelector('[data-total]')!.textContent = money(total); }
-    if (sheets.length > 1) {
+  // A pristine copy is the layout source for every pass below.
+  const pristine = original.cloneNode(true) as HTMLElement;
+
+  // `reservePageNumber` costs about 4 mm of paper at the bottom. Reserving it
+  // for a one-page note used to push the fifth row onto a second sheet, so the
+  // caller lays out without it first and only retries when pagination is real.
+  const layout = (reservePageNumber: boolean) => {
+    document.querySelectorAll('.sheet').forEach(node => node.remove());
+    let sheet = pristine.cloneNode(true) as HTMLElement;
+    document.body.appendChild(sheet);
+    const sheets: HTMLElement[] = [sheet];
+    const rows = Array.from(sheet.querySelectorAll<HTMLTableRowElement>('tbody tr[data-line]'));
+    rows.forEach(row => row.remove());
+    const template = sheet.cloneNode(true) as HTMLElement;
+    const updateTotal = () => {
+      const pageLines = Array.from(sheet.querySelectorAll<HTMLElement>('tbody [data-line]')).map(row => lines[Number(row.dataset.line)]);
+      const total = totalMoney(pageLines);
       sheet.querySelector('[data-total-label]')!.textContent = '本页合计：人民币大写';
-      sheet.querySelector('.page-number')!.textContent = `第 ${index + 1} / ${sheets.length} 页 · 整单合计 ${money(totalMoney(lines))} 元`;
+      if (settings.showPrices) { sheet.querySelector('[data-upper]')!.textContent = total === null ? '金额未完整记录' : moneyUpper(total); sheet.querySelector('[data-total]')!.textContent = money(total); }
+      if (reservePageNumber) {
+        sheet.querySelector<HTMLElement>('.page-number')!.style.minHeight = '3.4mm';
+        sheet.querySelector<HTMLElement>('.page-number')!.style.display = 'block';
+      }
+    };
+    // The page number sits in the bottom margin below the signatures. Measure
+    // the printed form against the 5 mm safety margin and the page number only
+    // against the physical paper edge, so it cannot reject an otherwise valid
+    // five-row page.
+    const fits = () => {
+      updateTotal();
+      const bottom = sheet.getBoundingClientRect().bottom - 5 * 96 / 25.4;
+      const content = sheet.querySelector('.delivery-content')!;
+      const printed = content.querySelector('.document')!.getBoundingClientRect().bottom;
+      return printed <= bottom;
+    };
+    const fitSpec = (row: HTMLElement) => row.querySelectorAll<HTMLElement>('.spec span').forEach(span => {
+      const range = document.createRange(); range.selectNodeContents(span);
+      const width = range.getBoundingClientRect().width;
+      if (width > span.clientWidth) span.style.fontSize = `${Math.max(6, 11 * span.clientWidth / width)}pt`;
+      if (span.scrollWidth > span.clientWidth + 1) throw new Error('规格文字过长，请缩短后打印');
+    });
+    for (const [index, row] of rows.entries()) {
+      const body = () => sheet.querySelector('tbody')!;
+      if (body().children.length >= settings.rowsPerPage) { sheet = template.cloneNode(true) as HTMLElement; document.body.appendChild(sheet); sheets.push(sheet); }
+      body().appendChild(row); fitSpec(row);
+      if (!fits() && body().children.length > 1) { row.remove(); updateTotal(); sheet = template.cloneNode(true) as HTMLElement; document.body.appendChild(sheet); sheets.push(sheet); body().appendChild(row); fitSpec(row); }
+      if (!fits()) throw new Error(`第 ${index + 1} 行内容放不下，请选择更大的纸张或缩短备注`);
     }
-    if (!fits()) throw new Error('合计或签字内容超出纸张，请选择更大的纸张');
-    while (body.children.length < Math.min(5, settings.rowsPerPage)) {
-      const row = document.createElement('tr');
-      for (let i = 0; i < 8; i++) row.appendChild(document.createElement('td'));
-      body.appendChild(row); if (!fits()) { row.remove(); break; }
+    for (const [index, current] of sheets.entries()) {
+      sheet = current;
+      sheet.querySelectorAll<HTMLElement>('td.num').forEach(cell => {
+        if (cell.scrollWidth > cell.clientWidth + 1) throw new Error('数量或金额过长，无法在纸张列内完整显示，请核对数值');
+      });
+      const body = sheet.querySelector('tbody')!;
+      const pageLines = Array.from(body.querySelectorAll<HTMLElement>('[data-line]')).map(row => lines[Number(row.dataset.line)]);
+      const total = totalMoney(pageLines);
+      if (settings.showPrices) { sheet.querySelector('[data-upper]')!.textContent = total === null ? '金额未完整记录' : moneyUpper(total); sheet.querySelector('[data-total]')!.textContent = money(total); }
+      if (sheets.length > 1) {
+        sheet.querySelector('[data-total-label]')!.textContent = '本页合计：人民币大写';
+        sheet.querySelector('.page-number')!.textContent = `第 ${index + 1} / ${sheets.length} 页 · 整单合计 ${money(totalMoney(lines))} 元`;
+      }
+      if (!fits()) throw new Error('合计或签字内容超出纸张，请选择更大的纸张');
+      while (body.children.length < Math.min(5, settings.rowsPerPage)) {
+        const row = document.createElement('tr');
+        for (let i = 0; i < 8; i++) row.appendChild(document.createElement('td'));
+        body.appendChild(row); if (!fits()) { row.remove(); break; }
+      }
+      if (sheets.length === 1) sheet.querySelector('[data-total-label]')!.textContent = '合计：人民币大写';
     }
-    if (sheets.length === 1) sheet.querySelector('[data-total-label]')!.textContent = '合计：人民币大写';
-  }
-  return { pages: sheets.length, height: document.body.scrollHeight + 12 };
+    return { pages: sheets.length, height: document.body.scrollHeight + 12 };
+  };
+
+  const single = layout(false);
+  return single.pages === 1 ? single : layout(true);
 }
 
 /** A script-free, isolated document. Physical dimensions never pass through Taro's px transform. */

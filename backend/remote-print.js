@@ -4,8 +4,14 @@ const crypto = require('node:crypto');
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 const hash = value => crypto.createHash('sha256').update(String(value || '')).digest('hex');
 const terminal = new Set(['queued', 'failed', 'uncertain', 'expired']);
+const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 function createStore(file, clock = Date.now) {
   const read = () => fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : { devices: [], jobs: [] };
+  // The agent polls every second and the phone polls every two seconds. Each
+  // round used to rewrite and fsync this whole file (with full note snapshots),
+  // so the write path is reserved for real state changes.
+  let dirty = false, lastPrune = 0;
   const write = state => {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     const temporary = file + '.tmp-' + crypto.randomUUID();
@@ -14,7 +20,9 @@ function createStore(file, clock = Date.now) {
       try { fs.writeFileSync(fd, JSON.stringify(state)); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
       fs.renameSync(temporary, file);
     } finally { if (fs.existsSync(temporary)) fs.unlinkSync(temporary); }
+    dirty = false;
   };
+  const flush = state => { if (dirty) write(state); };
   const authenticate = (state, token, type) => {
     if (!/^[a-f0-9]{64}$/.test(String(token || ''))) throw fail('请先配对打印电脑', 401);
     const device = state.devices.find(row => row[type + '_hash'] === hash(token));
@@ -24,10 +32,21 @@ function createStore(file, clock = Date.now) {
   const publicDevice = device => ({ id: device.id, name: device.name, printer: device.printer, online: clock() - device.last_seen < 25000, ready: device.ready, last_seen: device.last_seen });
   const publicJob = job => ({ id: job.id, note_id: job.note_id, note_number: job.note_number, status: job.status, message: job.message, created_at: job.created_at, updated_at: job.updated_at });
   const expire = state => {
+    let changed = false;
     for (const job of state.jobs) {
-      if (job.status === 'waiting' && clock() - job.created_at > 86400000) { job.status = 'expired'; job.message = '任务已过期，请重新发送'; job.updated_at = clock(); }
-      if (job.status === 'processing' && clock() - job.updated_at > 180000) { job.status = 'uncertain'; job.message = '打印结果未确认，请检查电脑队列和出纸，勿重复发送'; job.updated_at = clock(); }
+      if (job.status === 'waiting' && clock() - job.created_at > 86400000) { job.status = 'expired'; job.message = '任务已过期，请重新发送'; job.updated_at = clock(); changed = true; }
+      if (job.status === 'processing' && clock() - job.updated_at > 180000) { job.status = 'uncertain'; job.message = '打印结果未确认，请检查电脑队列和出纸，勿重复发送'; job.updated_at = clock(); changed = true; delete job.note; }
     }
+    // Finished notes are the bulk of the file; keep recent history for the
+    // print-time list, then drop the rest so it cannot grow without bound.
+    if (clock() - lastPrune >= PRUNE_INTERVAL_MS) {
+      lastPrune = clock();
+      const cutoff = clock() - RETENTION_MS;
+      const kept = state.jobs.filter(job => !terminal.has(job.status) || job.updated_at >= cutoff);
+      if (kept.length !== state.jobs.length) { state.jobs = kept; changed = true; }
+    }
+    if (changed) dirty = true;
+    return changed;
   };
   return {
     register(name, printer) {
@@ -44,7 +63,7 @@ function createStore(file, clock = Date.now) {
       return publicDevice(authenticate(state, token, 'agent'));
     },
     device(token) { const state = read(); return publicDevice(authenticate(state, token, 'client')); },
-    history(token) { const state=read(),device=authenticate(state,token,'client');const latest=new Map();for(const job of state.jobs){if(job.device_id===device.id&&job.status==='queued'&&(!latest.has(job.note_id)||latest.get(job.note_id).printed_at<job.updated_at))latest.set(job.note_id,{note_id:job.note_id,printed_at:job.updated_at});}return [...latest.values()]; },
+    history(token) { const state=read(),device=authenticate(state,token,'client');expire(state);flush(state);const latest=new Map();for(const job of state.jobs){if(job.device_id===device.id&&job.status==='queued'&&(!latest.has(job.note_id)||latest.get(job.note_id).printed_at<job.updated_at))latest.set(job.note_id,{note_id:job.note_id,printed_at:job.updated_at});}return [...latest.values()]; },
     recovery(token) {
       const state = read(), device = authenticate(state, token, 'client');
       const entry = device.recovery;
@@ -69,13 +88,18 @@ function createStore(file, clock = Date.now) {
       const job = { id: input.id, device_id: device.id, note_id: note.id, note_number: note.number, fingerprint, note: JSON.parse(JSON.stringify(note)), paper, status: 'waiting', message: '等待打印电脑接收', created_at: clock(), updated_at: clock() };
       state.jobs.push(job); write(state); return publicJob(job);
     },
-    status(token, id) { const state = read(), device = authenticate(state, token, 'client'); expire(state); write(state); const job = state.jobs.find(row => row.id === id && row.device_id === device.id); if (!job) throw fail('打印任务不存在', 404); return publicJob(job); },
+    status(token, id) { const state = read(), device = authenticate(state, token, 'client'); expire(state); flush(state); const job = state.jobs.find(row => row.id === id && row.device_id === device.id); if (!job) throw fail('打印任务不存在', 404); return publicJob(job); },
     claim(token, ready) {
-      const state = read(), device = authenticate(state, token, 'agent'); expire(state); device.last_seen = clock(); device.ready = ready === true;
+      const state = read(), device = authenticate(state, token, 'agent'); expire(state);
+      const seen = clock();
+      // Heartbeats are diagnostics, not state transitions: refresh the
+      // in-memory values but only persist them when they actually change.
+      if (device.ready !== (ready === true) || seen - (device.last_written || 0) >= 15000) { dirty = true; device.last_written = seen; }
+      device.last_seen = seen; device.ready = ready === true;
       const blocked = state.jobs.some(job => job.device_id === device.id && ['processing', 'uncertain'].includes(job.status));
       const job = ready === true && !blocked ? state.jobs.find(row => row.device_id === device.id && row.status === 'waiting') : null;
-      if (job) { job.status = 'processing'; job.message = '电脑已接收，正在发送打印机'; job.updated_at = clock(); job.lease = crypto.randomBytes(32).toString('hex'); }
-      write(state); return { device: publicDevice(device), job: job ? { id: job.id, lease: job.lease, note: job.note, paper: job.paper, printer: device.printer } : null };
+      if (job) { job.status = 'processing'; job.message = '电脑已接收，正在发送打印机'; job.updated_at = clock(); job.lease = crypto.randomBytes(32).toString('hex'); dirty = true; }
+      flush(state); return { device: publicDevice(device), job: job ? { id: job.id, lease: job.lease, note: job.note, paper: job.paper, printer: device.printer } : null };
     },
     acknowledge(token, id, input) {
       const state = read(), device = authenticate(state, token, 'agent');

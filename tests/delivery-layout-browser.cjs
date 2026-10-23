@@ -52,7 +52,20 @@ async function main() {
       const exports = {}; new Function('exports', code)(exports); await document.fonts.ready;
       exports.paginateDotMatrixDocument(document, documentData, printSettings);
     }, { code: source, documentData: oversized, printSettings: settings }), /放不下/);
-    console.log(JSON.stringify({ engine, papers: 3, twelveLinesPreserved: true, longRemarks: true, artifacts: artifactDir }));
+
+    // A five-row note is the normal 241x93 delivery note: it must stay on one
+    // sheet. Reserving page-number space used to spill its last row onto page 2.
+    const fiveRows = { ...doc, lines: doc.lines.slice(0, 5) };
+    await page.setContent(buildDotMatrixHtml(fiveRows, settings));
+    const fiveLayout = await page.evaluate(async ({ code, documentData, printSettings }) => {
+      const exports = {}; new Function('exports', code)(exports); await document.fonts.ready;
+      return exports.paginateDotMatrixDocument(document, documentData, printSettings);
+    }, { code: source, documentData: fiveRows, printSettings: settings });
+    assert.equal(fiveLayout.pages, 1);
+    assert.equal(await page.locator('.sheet').count(), 1);
+    assert.equal(await page.locator('tr[data-line]').count(), 5);
+    assert.equal(await page.evaluate((_) => [...document.querySelectorAll('.delivery-content')].every(content => content.getBoundingClientRect().bottom <= content.parentElement.getBoundingClientRect().bottom)), true);
+    console.log(JSON.stringify({ engine, papers: 3, twelveLinesPreserved: true, fiveRowsOneSheet: true, longRemarks: true, artifacts: artifactDir }));
   } finally { await browser.close(); }
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
