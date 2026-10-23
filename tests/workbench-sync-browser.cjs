@@ -102,10 +102,8 @@ async function main() {
     await first.locator('taro-button-core').filter({ hasText: '选择已有规格' }).click();
     await expect(first.getByText('两套规格分别带入，未保存的尺寸需自行填写。', { exact: true })).toBeVisible();
     await first.locator('.board-template-list .board-button').first().click();
-    for (const [label, value] of [['纸箱长', '40'], ['纸箱宽', '30'], ['纸箱高', '20']]) await expect(first.locator('[aria-label=' + JSON.stringify(label) + '] input')).toHaveValue(value);
-    await expect(first.locator('[aria-label="纸板长"] input')).toHaveValue('160');
-    await expect(first.locator('[aria-label="纸板宽"] input')).toHaveValue('110');
-    for (const [label, value] of [['纸板长', '160'], ['纸板宽', '110'], ['纸箱长', '40'], ['纸箱宽', '30'], ['纸箱高', '20']]) await expect(first.locator('[aria-label=' + JSON.stringify(label) + '] input')).toHaveValue(value);
+    await expect(first.locator('[aria-label="纸板规格尺寸"] input')).toHaveValue('160×110');
+    await expect(first.locator('[aria-label="成箱规格尺寸"] input')).toHaveValue('40×30×20');
     await first.screenshot({ path: path.join(artifacts, 'shared-specifications.png'), fullPage: true });
     assert.equal(db.listBoards().find(b => b.id === batch.id).remainingQty, 90);
     assert.deepEqual(errors, []);

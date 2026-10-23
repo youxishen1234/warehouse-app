@@ -1,0 +1,178 @@
+.finance {
+  width: 100%;
+  min-width: 0;
+  color: #eef3ef;
+  font-size: 14PX;
+  overflow-wrap: anywhere;
+
+  &, * { box-sizing: border-box; }
+  taro-text-core { min-width: 0; }
+  taro-input-core { flex: 1; min-width: 0; }
+  input { min-width: 0; color: #eef3ef; font: inherit; }
+  :is(button, taro-button-core) { min-width: 0; width: auto; margin: 0; color: inherit; font: inherit; line-height: 1.45; white-space: normal; }
+  :is(button, taro-button-core)::after { border: 0; }
+  :is(button, taro-button-core):focus-visible { outline: 2PX solid #b2e8c3; outline-offset: 2PX; }
+}
+
+.tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6PX; padding: 5PX; margin-bottom: 18PX; border: 1PX solid #414e44; border-radius: 8PX; background: #1b231e; }
+.finance .tab { min-height: 42PX; padding: 7PX 4PX; border: 1PX solid transparent; border-radius: 6PX; background: transparent; color: #b5c0b9; font-size: 13PX; text-align: center; overflow-wrap: anywhere; }
+.finance .tabActive { background: #a6dcb8; color: #1c3325; border-color: #a6dcb8; font-weight: 600; }
+
+.toolbar, .periodTabs, .headingActions, .partyToolbar { display: flex; align-items: center; gap: 7PX; min-width: 0; }
+.toolbar { justify-content: space-between; flex-wrap: wrap; margin-bottom: 12PX; }
+.periodTabs { padding: 3PX; border-radius: 7PX; background: #1b231e; border: 1PX solid #414e44; }
+.finance .periodTab { min-height: 32PX; padding: 5PX 9PX; border-radius: 5PX; color: #b5c0b9; background: transparent; font-size: 12PX; white-space: nowrap; }
+.finance .periodActive { color: #1c3325; background: #a6dcb8; font-weight: 600; }
+.finance .rangeButton, .finance .headingActions button { display: inline-flex; align-items: center; justify-content: center; gap: 5PX; min-height: 34PX; padding: 6PX 9PX; border: 1PX solid #46584b; border-radius: 6PX; color: #d5eadb; background: #2b382f; font-size: 12PX; flex-shrink: 0; }
+.rangeButton taro-image-core { width: 15PX; height: 15PX; }
+
+.summary { padding: 18PX; border: 1PX solid #42634d; border-radius: 8PX; background: linear-gradient(140deg, #244b34, #1f3829); }
+.summaryTop { display: flex; justify-content: space-between; gap: 8PX; color: #c7dfce; font-size: 13PX; }
+.summaryTag { padding: 2PX 7PX; border: 1PX solid #ffffff26; border-radius: 5PX; color: #a6dcb8; font-size: 11PX; white-space: nowrap; }
+.netAmount { display: block; margin: 9PX 0 12PX; color: #eef3ef; font-size: 32PX; font-weight: 600; font-variant-numeric: tabular-nums; }
+.cashGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12PX; padding-top: 11PX; border-top: 1PX solid #ffffff24; }
+.cashGrid > view { display: flex; flex-direction: column; gap: 4PX; color: #bdcbbf; font-size: 12PX; }
+.cashGrid > view + view { padding-left: 12PX; border-left: 1PX solid #ffffff24; }
+.cashGrid strong { color: #eef3ef; font-size: 17PX; font-variant-numeric: tabular-nums; }
+.accruals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7PX; margin-top: 9PX; }
+.finance .accrual { min-width: 0; padding: 9PX 7PX; border: 1PX solid #414e44; border-radius: 7PX; background: #222924; color: #b5c0b9; text-align: left; }
+.finance .accrualActive { border-color: #a6dcb8; background: #2b382f; }
+.accrual taro-text-core { display: block; color: #b5c0b9; font-size: 11PX; }
+.accrual strong { display: block; margin-top: 5PX; color: #eef3ef; font-size: 14PX; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.cashNote { display: block; margin: 8PX 0 16PX; color: #9eada2; font-size: 11PX; }
+
+.listPanel { min-width: 0; border: 1PX solid #414e44; border-radius: 8PX; background: #222924; overflow: hidden; }
+.listHeading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8PX; padding: 13PX; border-bottom: 1PX solid #414e44; }
+.listHeading > view:first-child { display: flex; align-items: center; gap: 8PX; min-width: 0; font-weight: 500; }
+.count { padding: 2PX 7PX; border-radius: 5PX; background: #2b382f; color: #a6dcb8; font-size: 11PX; font-weight: 400; }
+.headingActions { justify-content: flex-end; flex-wrap: wrap; }
+.search, .partySearch { display: flex; align-items: center; gap: 8PX; min-height: 42PX; margin: 12PX 12PX 8PX; padding: 0 10PX; border: 1PX solid #526357; border-radius: 6PX; background: #1b231e; }
+.search taro-image-core { width: 16PX; height: 16PX; flex-shrink: 0; }
+.search taro-input-core { flex: 1; min-width: 0; }
+.search input, .partySearch input { width: 100%; min-width: 0; height: 38PX; padding: 0; border: 0; outline: 0; background: transparent; font-size: 13PX; }
+.search input::placeholder, .partySearch input::placeholder { color: #8c9b91; }
+.finance .search button { width: 26PX; padding: 0; border: 0; background: transparent; color: #a6dcb8; font-size: 20PX; }
+.typeTabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4PX; padding: 0 11PX 9PX; border-bottom: 1PX solid #414e44; }
+.finance .typeTab { min-height: 34PX; padding: 5PX 2PX; border: 1PX solid #46584b; border-radius: 5PX; background: #2b332d; color: #bac6bd; font-size: 12PX; }
+.finance .typeActive { border-color: #a6dcb8; background: #314b38; color: #bce8c9; }
+.filterStatus { display: flex; align-items: center; justify-content: space-between; gap: 8PX; padding: 8PX 12PX; background: #2b332d; color: #bce8c9; font-size: 12PX; }
+.filterStatus taro-text-core { min-width: 0; }
+.finance .filterStatus button { flex-shrink: 0; padding: 4PX 7PX; border: 1PX solid #46584b; border-radius: 4PX; background: #222924; font-size: 11PX; }
+.dayHeading { display: flex; justify-content: space-between; gap: 8PX; padding: 8PX 12PX; background: #2b332d; color: #b5c0b9; font-size: 12PX; }
+.dayGroup + .dayGroup { border-top: 1PX solid #414e44; }
+.finance .item { display: flex; align-items: center; gap: 9PX; width: 100%; min-height: 69PX; padding: 11PX 12PX; border: 0; border-bottom: 1PX solid #414e44; border-radius: 0; background: transparent; color: #eef3ef; text-align: left; }
+.entryIcon { display: flex; align-items: center; justify-content: center; width: 36PX; height: 36PX; flex: 0 0 36PX; border: 1PX solid #46584b; border-radius: 7PX; }
+.entryIcon taro-image-core { width: 18PX; height: 18PX; }
+.income { background: #243a2c; }
+.expense { background: #3b3026; }
+.receivable { background: #263444; }
+.payable { background: #3c3426; }
+.settlement { background: #30313d; }
+.itemMain { flex: 1; min-width: 0; }
+.itemTitle, .itemMeta { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.itemTitle { color: #eef3ef; font-size: 13PX; font-weight: 500; }
+.itemMeta { margin-top: 4PX; color: #a8b6ad; font-size: 11PX; }
+.itemRight { max-width: 44%; flex-shrink: 0; text-align: right; }
+.itemAmount { display: block; font-size: 14PX; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.incomeText { color: #a6dcb8; }
+.expenseText { color: #e0b27c; }
+.receivableText { color: #a4c8eb; }
+.payableText { color: #dec17f; }
+.settlementText { color: #c5c6d5; }
+.itemCategory { display: inline-block; margin-top: 3PX; padding: 1PX 5PX; border: 1PX solid #526357; border-radius: 4PX; font-size: 10PX; }
+.rowChevron { width: 13PX; height: 13PX; flex-shrink: 0; }
+.attachmentBadge { display: flex; align-items: center; gap: 4PX; margin-top: 4PX; color: #a6dcb8; font-size: 10PX; }
+.attachmentBadge taro-image-core { width: 11PX; height: 11PX; }
+.empty { display: flex; flex-direction: column; align-items: center; gap: 12PX; padding: 28PX 16PX; color: #b5c0b9; text-align: center; overflow-wrap: anywhere; }
+.finance .empty button { padding: 7PX 12PX; border: 1PX solid #526357; border-radius: 5PX; background: #2b382f; color: #bce8c9; }
+.ledgerActions, .partyActions { display: flex; justify-content: flex-end; margin-top: 13PX; }
+.finance .primary { min-height: 39PX; padding: 8PX 14PX; border: 1PX solid #a6dcb8; border-radius: 6PX; background: #a6dcb8; color: #1c3325; font-weight: 600; }
+
+.partyToolbar { align-items: stretch; flex-direction: column; margin-bottom: 12PX; }
+.partySearch { min-height: 40PX; margin: 0; }
+.partyToolbar .periodTabs { width: 100%; justify-content: space-between; }
+.partyToolbar .periodTabs .periodTab { flex: 1 0 auto; min-width: max-content; }
+.partySummary { display: flex; align-items: center; justify-content: space-between; gap: 12PX; padding: 12PX 14PX; margin-bottom: 8PX; border: 1PX solid #414e44; border-radius: 7PX; background: #2b332d; }
+.partySummary view { display: flex; flex-direction: column; gap: 3PX; }
+.partySummary taro-text-core { color: #b5c0b9; font-size: 12PX; }
+.partySummary strong { color: #eef3ef; font-size: 21PX; font-variant-numeric: tabular-nums; }
+.partySummary > taro-text-core { max-width: 45%; color: #a8b6ad; font-size: 10PX; text-align: right; }
+.partyCard { min-width: 0; margin-top: 9PX; padding: 13PX; border: 1PX solid #414e44; border-radius: 7PX; background: #222924; }
+.partyCardHead { display: flex; align-items: center; justify-content: space-between; gap: 9PX; min-width: 0; }
+.partyCardHead > view:first-child { min-width: 0; }
+.partyName { display: block; color: #eef3ef; font-size: 16PX; font-weight: 600; overflow-wrap: anywhere; }
+.balance { display: block; margin-top: 5PX; color: #a6dcb8; font-size: 13PX; font-variant-numeric: tabular-nums; }
+.partyButtons { display: flex; flex-shrink: 0; align-items: center; gap: 6PX; }
+.finance .partyButtons button:not(.primary) { min-height: 36PX; padding: 6PX 9PX; border: 1PX solid #526357; border-radius: 5PX; color: #c4d0c7; background: #2b332d; font-size: 12PX; }
+.metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8PX; margin-top: 12PX; padding: 10PX 0; border-top: 1PX solid #414e44; border-bottom: 1PX solid #414e44; }
+.metrics > view { min-width: 0; }
+.metrics > view + view { padding-left: 8PX; border-left: 1PX solid #414e44; }
+.metrics taro-text-core { display: block; color: #a8b6ad; font-size: 11PX; }
+.metrics strong { display: block; margin-top: 5PX; color: #eef3ef; font-size: 14PX; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.finance .expandButton { width: 100%; min-height: 36PX; margin-top: 8PX; padding: 7PX 9PX; border: 1PX solid #46584b; border-radius: 5PX; color: #bce8c9; background: #2b382f; font-size: 12PX; text-align: left; }
+.partyDetails { min-width: 0; padding-top: 11PX; }
+.detailSectionTitle { display: block; margin: 9PX 0 5PX; color: #bce8c9; font-size: 12PX; font-weight: 600; }
+.productionRow, .partyLedgerRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4PX 10PX; min-width: 0; padding: 9PX 0; border-bottom: 1PX solid #414e44; }
+.productionRow view { min-width: 0; }
+.productionRow taro-text-core, .partyLedgerRow taro-text-core { display: block; color: #b5c0b9; font-size: 12PX; overflow-wrap: anywhere; }
+.productionRow strong, .partyLedgerRow strong { color: #eef3ef; font-size: 13PX; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.productionRow view taro-text-core + taro-text-core { margin-top: 3PX; color: #97a69c; font-size: 11PX; }
+.finance .partyLedgerRow { width: 100%; border-top: 0; border-right: 0; border-left: 0; background: transparent; color: inherit; text-align: left; }
+.partyLedgerRow taro-text-core:last-child { grid-column: 1 / -1; color: #97a69c; }
+.muted { display: block; padding: 8PX 0; color: #9eada2; font-size: 12PX; }
+
+.overlay { position: fixed; z-index: 900; inset: 0; display: flex; align-items: flex-end; justify-content: center; padding: 16PX 0 env(safe-area-inset-bottom); background: #0009; }
+.backdrop { position: absolute; inset: 0; }
+.sheet { position: relative; z-index: 1; width: 100%; max-width: 520PX; max-height: 88vh; overflow-y: auto; padding: 16PX 20PX calc(20PX + env(safe-area-inset-bottom)); border: 1PX solid #526357; border-radius: 10PX 10PX 0 0; background: #222924; color: #eef3ef; box-shadow: 0 -8PX 32PX #0005; }
+.sheetHeader { display: flex; align-items: center; justify-content: space-between; gap: 12PX; margin-bottom: 11PX; font-size: 18PX; font-weight: 600; }
+.finance .sheetHeader button { width: 34PX; height: 34PX; padding: 0; border: 1PX solid #526357; border-radius: 50%; color: #c5d2c9; background: #2b332d; font-size: 21PX; }
+.sheetDescription { display: block; margin-bottom: 17PX; color: #b5c0b9; font-size: 13PX; line-height: 1.6; }
+.kindTabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7PX; margin: 9PX 0 18PX; }
+.finance .kindTab { display: flex; align-items: center; justify-content: center; gap: 7PX; min-height: 40PX; border: 1PX solid #526357; border-radius: 5PX; background: #2b332d; color: #c4d0c7; }
+.finance .kindActive { border-color: #a6dcb8; color: #bce8c9; background: #2d4031; }
+.fieldLabel { display: block; color: #bce8c9; font-size: 13PX; }
+.amountField { display: flex; align-items: center; gap: 10PX; min-height: 52PX; border-bottom: 1PX solid #526357; }
+.amountField > taro-text-core { color: #a6dcb8; font-size: 25PX; }
+.amountField input { height: 48PX; flex: 1; font-size: 25PX; font-weight: 600; background: transparent; }
+.amountField taro-input-core { flex: 1; min-width: 0; }
+.remark { display: block; margin-top: 7PX; color: #a8b6ad; font-size: 12PX; }
+.remarkLabel { display: flex; justify-content: space-between; gap: 8PX; margin: 17PX 0 7PX; color: #bce8c9; font-size: 12PX; }
+.remarkLabel taro-text-core:last-child { color: #97a69c; }
+.finance .remarkInput { width: 100%; min-height: 42PX; margin-bottom: 8PX; padding: 9PX; border: 1PX solid #526357; border-radius: 5PX; background: #1b231e; }
+.remarkPresets { display: flex; flex-wrap: wrap; gap: 6PX; margin: 8PX 0 16PX; }
+.finance .remarkPresets button { padding: 5PX 8PX; border: 1PX solid #526357; border-radius: 4PX; color: #b5c0b9; background: #2b332d; font-size: 11PX; }
+.finance .sheet > .primary { width: 100%; min-height: 42PX; margin-top: 14PX; }
+.error { display: block; margin-top: 8PX; color: #ffd0cb; font-size: 12PX; }
+.dateFields { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: end; gap: 8PX; margin: 17PX 0; color: #b5c0b9; font-size: 12PX; }
+.dateFields > view { min-width: 0; }
+.datePicker { margin-top: 6PX; padding: 9PX 6PX; border: 1PX solid #526357; border-radius: 5PX; background: #1b231e; text-align: center; }
+.detailHero { display: flex; align-items: center; flex-direction: column; gap: 8PX; padding: 12PX 0; color: #b5c0b9; text-align: center; }
+.detailAmount { color: #eef3ef; font-size: 28PX; font-variant-numeric: tabular-nums; }
+.detailRows { padding: 9PX 0; border-top: 1PX dashed #526357; }
+.detailRows > view { display: flex; justify-content: space-between; gap: 12PX; padding: 7PX 0; color: #a8b6ad; font-size: 12PX; }
+.detailRows > view > taro-text-core:last-child { color: #eef3ef; text-align: right; overflow-wrap: anywhere; }
+.linkedNote { display: block; margin-top: 13PX; padding: 9PX; border-radius: 5PX; background: #2b332d; color: #b5c0b9; font-size: 12PX; }
+.finance .voidButton { width: 100%; min-height: 40PX; margin-top: 14PX; border: 1PX solid #7c4d46; border-radius: 5PX; background: #412c2a; color: #ffd0cb; }
+.finance .detailHero .entryIcon { width: 42PX; height: 42PX; }
+.finance .detailHero .entryIcon taro-image-core { width: 20PX; height: 20PX; }
+
+@media (min-width: 760PX) {
+  .toolbar { flex-wrap: nowrap; }
+  .partyToolbar { flex-direction: row; align-items: center; justify-content: flex-start; flex-wrap: wrap; }
+  .partySearch { min-width: 220PX; max-width: 300PX; flex: 1 1 220PX; }
+  .partyToolbar .periodTabs { width: auto; flex: 0 0 auto; }
+  .partyToolbar .periodTabs .periodTab { flex: 0 0 auto; min-width: max-content; }
+  .sheet { align-self: center; max-height: 82vh; border-radius: 10PX; }
+  .overlay { align-items: center; padding: 24PX; }
+  .finance .item { padding-left: 16PX; padding-right: 16PX; }
+}
+
+@media (max-width: 359PX) {
+  .finance .periodTab { padding-left: 6PX; padding-right: 6PX; font-size: 11PX; }
+  .toolbar { gap: 5PX; }
+  .finance .rangeButton { padding-left: 6PX; padding-right: 6PX; }
+  .partyCard { padding: 10PX; }
+  .partyButtons { gap: 4PX; }
+  .finance .partyButtons button { padding-left: 6PX; padding-right: 6PX; }
+  .metrics strong { font-size: 12PX; }
+}

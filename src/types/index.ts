@@ -39,6 +39,9 @@ export interface Customer {
 
 // 出入库记录类型
 export interface Transaction {
+  billing_source?: 'production_inbound';
+  receivable_amount?: number;
+  billed_inbound_allocations?: Array<{ transaction_id: number; quantity: number }>;
   production_id?: string;
   delivery_note_id?: number | null;
   stocktake_id?: number | null;
@@ -173,6 +176,9 @@ export interface DeliveryLine {
   product_id?: number | null;
   product_name?: string;
   specification: string;
+  material?: string;
+  customer_spec_id?: string | null;
+  customer_spec_snapshot?: Pick<CustomerSpec, 'id' | 'goods' | 'specification' | 'material' | 'unit' | 'price'>;
   unit?: string;
   length?: number;
   width?: number;
@@ -188,7 +194,8 @@ export interface DeliveryNote {
   id: number;
   date: string;
   work_order_no: string;
-  party_type?: 'supplier' | 'customer';
+  source_type?: 'production';
+  party_type?: 'supplier' | 'customer' | null;
   supplier_id?: number | null;
   supplier_name?: string;
   customer_id?: number | null;

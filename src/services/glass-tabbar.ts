@@ -15,7 +15,7 @@ const bizNav = [
   { title: '纸板库存', path: '/pages/board-stock/index' },
   { title: '客户管理', path: '/pages/customers/index' },
   { title: '订单出库', path: '/pages/orders/index' },
-  { title: '账单流水', path: '/pages/ledger/index' },
+  { title: '收付款', path: '/pages/business-center/index?section=finance&view=ledger' },
   { title: '单据打印', path: '/pages/print-center/index' }
 ];
 

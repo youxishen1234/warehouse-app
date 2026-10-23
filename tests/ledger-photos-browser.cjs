@@ -62,19 +62,17 @@ async function main() {
       }
       return route.fulfill({ response });
     });
-    const rows = page.locator('[class*="__item___"]');
+    const rows = page.locator('[data-testid^="ledger-entry-"]');
     const draftRows = page.locator('[class*="__draft___"]');
-    const photos = page.locator('[class*="__photoCard___"]');
+    const photos = page.locator('[class*="__photoCard"]');
     const sheet = page.getByRole('dialog', { name: '流水详情', exact: true });
     const add = async (name, files) => {
       const chooser = page.waitForEvent('filechooser');
       await page.getByRole('button', { name, exact: true }).click();
       await (await chooser).setFiles(files);
     };
-    if (process.env.LEDGER_BUSINESS_ENTRY === '1') {
-      await page.goto(`${origin}/#/pages/business-center/index`);
-      await page.getByText('查看账单流水', { exact: true }).click();
-    } else await page.goto(`${origin}/#/pages/ledger/index`);
+    await page.goto(`${origin}/#/pages/business-center/index?section=finance&view=ledger`);
+    await expect(page.getByTestId('finance-center')).toBeVisible();
     await expect(rows).toHaveCount(2);
     await rows.filter({ hasText: '新星食品（示例）' }).click();
     await expect(page.getByText('单据凭证', { exact: true })).toBeVisible();

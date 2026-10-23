@@ -12,6 +12,8 @@
 .grid > view,.row > view { min-width: 0; }
 .row { margin-bottom: 14PX; }
 .stockNote { display: block; color: #b5c0b9; font-size: 11PX; margin-top: 8PX; }
+.amountNote { display: flex; align-items: center; justify-content: space-between; gap: 8PX; color: #b5c0b9; font-size: 12PX; margin-top: 10PX; }
+.amountNote > text:last-child { color: #a6dcb8; font-size: 14PX; }
 .hint { display: block; color: #b5c0b9; font-size: 11PX; margin: 7PX 0 10PX; line-height: 1.6; overflow-wrap: anywhere; }
 .remove,.textButton { width: auto; flex-shrink: 0; border: 0; background: none; color: #a6dcb8; padding: 8PX 4PX; min-height: 36PX; font-size: 12PX; line-height: 1.5; margin: 0; }
 .remove { color: #e8b6aa; }

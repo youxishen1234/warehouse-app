@@ -5,6 +5,7 @@ const { roundDecimal, numberValue, lineAmount, dimensions, localDate, MONEY_DECI
 const { ORDER_STATUSES } = require('./list-sort');
 const { parseDateQuery } = require('./date-query');
 const customerDimensions = require('./customer-dimensions');
+const productionPricing = require('./production-pricing');
 
 const DB_PATH = process.env.WAREHOUSE_DATA_FILE || path.join(__dirname, 'data.json');
 const ledgerAttachments = require('./ledger-attachments').createStore(DB_PATH);
@@ -358,7 +359,11 @@ function validateAccountingDelta(before, after) {
     // Existing stocktake adjustments must remain ledger-consistent on every
     // transaction, even when the adjustment row itself did not change (for
     // example, when a caller tries to attach an extra ledger entry later).
-    if (previous && previous.voided_at === tx.voided_at && previous.amount === tx.amount && tx.type !== 'adjustment') continue;
+    if (previous && previous.voided_at === tx.voided_at && previous.amount === tx.amount
+      && previous.billing_source === tx.billing_source
+      && previous.receivable_amount === tx.receivable_amount
+      && JSON.stringify(previous.billed_inbound_allocations || []) === JSON.stringify(tx.billed_inbound_allocations || [])
+      && tx.type !== 'adjustment') continue;
     const linked = linkedLedger.get(Number(tx.id)) || [];
     const active = linked.filter(entry => !entry.voided_at);
       if (tx.type === 'adjustment') {
@@ -380,20 +385,149 @@ function validateAccountingDelta(before, after) {
         throw new Error(`盘点流水 ${tx.id} 金额不一致`);
       }
     }
-    // A customer-supplied carton receipt links a customer for traceability but
-    // is an inventory adjustment, so only real payable/receivable pairs are
-    // required to have a ledger row.
-    const hasAccountingParty = (tx.type === 'in' && tx.supplier_id != null) || (tx.type === 'out' && tx.customer_id != null);
-    const zeroAmount = roundDecimal(Number(tx.amount || 0), 2) === 0;
-    if (hasAccountingParty && zeroAmount) {
-      // 零金额交易（赠品/免费样）保留往来对象关联但不产生应收应付账本。
-      if (active.length !== 0) throw new Error(`交易与账本流水不一致：交易 ${tx.id}`);
-    } else if (hasAccountingParty) {
-      if (tx.voided_at ? active.length : active.length !== 1) throw new Error(`交易与账本流水不一致：交易 ${tx.id}`);
-      if (!tx.voided_at && active.length === 1 && roundDecimal(Number(active[0].amount), 2) !== roundDecimal(Number(tx.amount), 2)) throw new Error(`交易与账本金额不一致：交易 ${tx.id}`);
+    // Stocktake adjustments are balanced by income/expense ledger entries,
+    // not customer/supplier accounting rows; their invariants were checked above.
+    if (tx.type === 'adjustment') continue;
+    const expectedAccounting = transactionAccounting(tx);
+    if (!expectedAccounting) {
+      if (linked.length) throw new Error(`交易 ${tx.id} 不应关联往来账本流水`);
+      continue;
+    }
+    const expectedAmount = roundDecimal(Number(expectedAccounting.amount || 0), 2);
+    const required = expectedAmount > 0;
+    if (tx.voided_at ? active.length !== 0 : (required ? active.length !== 1 : active.length !== 0)) {
+      throw new Error(`交易与账本流水不一致：交易 ${tx.id}`);
+    }
+    if (required && linked.length !== 1) throw new Error(`交易与账本流水不一致：交易 ${tx.id}`);
+    if (linked.length === 1) {
+      const entry = linked[0];
+      if (entry.type !== expectedAccounting.type
+        || Number(entry.party_id) !== Number(expectedAccounting.partyId)
+        || ledgerPartyType(entry, after) !== expectedAccounting.partyType
+        || roundDecimal(Number(entry.amount), 2) !== expectedAmount
+        || Boolean(entry.voided_at) !== Boolean(tx.voided_at)) {
+        throw new Error(`交易与账本金额或往来对象不一致：交易 ${tx.id}`);
+      }
+      if (tx.billing_source === 'production_inbound' && Number(entry.delivery_note_id) !== Number(tx.delivery_note_id)) {
+        throw new Error(`自产入库 ${tx.id} 应收账本缺少正确的入库单关联`);
+      }
     }
   }
 }
+
+function transactionAccounting(tx) {
+  if (tx.type === 'in' && tx.supplier_id != null) {
+    return { partyType: 'supplier', partyId: tx.supplier_id, type: 'payable', amount: tx.amount };
+  }
+  if (tx.type === 'in' && tx.billing_source === 'production_inbound' && tx.customer_id != null) {
+    return { partyType: 'customer', partyId: tx.customer_id, type: 'receivable', amount: tx.receivable_amount ?? tx.amount };
+  }
+  if (tx.type === 'out' && tx.customer_id != null) {
+    return { partyType: 'customer', partyId: tx.customer_id, type: 'receivable', amount: tx.receivable_amount ?? tx.amount };
+  }
+  return null;
+}
+
+function normalizeBilledSpecification(value) {
+  return String(value ?? '').normalize('NFKC').trim().replace(/\s+/g, '')
+    .replace(/[xX*＊]/g, '×').toLocaleLowerCase('en-US');
+}
+
+function sameBilledSpecification(left, right, unit) {
+  const normalizedUnit = normalizeBilledSpecification(unit);
+  if (!normalizedUnit) return false;
+  const a = productionPricing.dimensionsInCm(left, 'cm');
+  const b = productionPricing.dimensionsInCm(right, 'cm');
+  if (a?.length === 3 && b?.length === 3) return a.every((value, index) => value === b[index]);
+  const normalizedLeft = normalizeBilledSpecification(left);
+  const normalizedRight = normalizeBilledSpecification(right);
+  return normalizedLeft === normalizedRight;
+}
+
+function validateBilledInboundData(data) {
+  const transactions = Array.isArray(data.transactions) ? data.transactions : [];
+  const notes = Array.isArray(data.delivery_notes) ? data.delivery_notes : [];
+  const byTransactionId = new Map(transactions.map(tx => [Number(tx.id), tx]));
+  const notesById = new Map(notes.map(note => [Number(note.id), note]));
+  const activeAllocationTotals = new Map();
+
+  for (const tx of transactions) {
+    if (tx.billing_source !== undefined && tx.billing_source !== 'production_inbound') {
+      throw new Error(`交易 ${tx.id} 自产入库计费来源无效`);
+    }
+    if (tx.receivable_amount !== undefined) {
+      const receivableAmount = Number(tx.receivable_amount);
+      if (!Number.isFinite(receivableAmount) || receivableAmount < 0
+        || roundDecimal(receivableAmount, MONEY_DECIMALS) !== receivableAmount) {
+        throw new Error(`交易 ${tx.id} 应收金额无效`);
+      }
+      if (tx.type !== 'out' && tx.billing_source !== 'production_inbound') {
+        throw new Error(`交易 ${tx.id} 非出库或自产入库交易不能设置应收金额`);
+      }
+    }
+    if (tx.billing_source === 'production_inbound') {
+      const note = notesById.get(Number(tx.delivery_note_id));
+      if (tx.type !== 'in' || !note || note.source_type !== 'production'
+        || note.customer_id == null || Number(note.customer_id) !== Number(tx.customer_id)
+        || tx.supplier_id != null || roundDecimal(Number(tx.receivable_amount ?? tx.amount), 2) !== roundDecimal(Number(tx.amount), 2)) {
+        throw new Error(`自产入库交易 ${tx.id} 与客户应收来源不一致`);
+      }
+    }
+    const allocations = tx.billed_inbound_allocations;
+    if (allocations === undefined) {
+      if (tx.type === 'out' && tx.receivable_amount !== undefined
+        && roundDecimal(Number(tx.receivable_amount), MONEY_DECIMALS) !== roundDecimal(Number(tx.amount), MONEY_DECIMALS)) {
+        throw new Error(`出库交易 ${tx.id} 无自产入库抵扣明细时，应收金额必须等于交易金额`);
+      }
+      continue;
+    }
+    if (tx.type !== 'out' || !Array.isArray(allocations)) {
+      throw new Error(`交易 ${tx.id} 自产入库应收抵扣数据无效`);
+    }
+    const seenInboundIds = new Set();
+    let allocatedQuantity = 0;
+    for (const allocation of allocations) {
+      const inboundId = Number(allocation?.transaction_id);
+      const quantity = Number(allocation?.quantity);
+      if (!Number.isSafeInteger(inboundId) || inboundId <= 0 || seenInboundIds.has(inboundId)
+        || !Number.isFinite(quantity) || quantity <= 0 || roundDecimal(quantity, 6) !== quantity) {
+        throw new Error(`出库交易 ${tx.id} 自产入库应收抵扣明细无效`);
+      }
+      seenInboundIds.add(inboundId);
+      const inbound = byTransactionId.get(inboundId);
+      const inboundNote = inbound && notesById.get(Number(inbound.delivery_note_id));
+      const compatible = inbound && inbound.type === 'in' && inbound.billing_source === 'production_inbound'
+        && inboundNote?.source_type === 'production'
+        && Number(inbound.customer_id) === Number(tx.customer_id)
+        && Number(inbound.product_id) === Number(tx.product_id)
+        && normalizeBilledSpecification(inbound.unit) === normalizeBilledSpecification(tx.unit)
+        && sameBilledSpecification(inbound.specification, tx.specification, tx.unit);
+      if (!compatible) throw new Error(`出库交易 ${tx.id} 抵扣的自产入库来源不匹配`);
+      if (!tx.voided_at && (inbound.voided_at || inboundNote.voided_at)) {
+        throw new Error(`有效出库交易 ${tx.id} 不能抵扣已作废的自产入库`);
+      }
+      allocatedQuantity = roundDecimal(allocatedQuantity + quantity, 6);
+      if (!tx.voided_at) {
+        activeAllocationTotals.set(inboundId, roundDecimal((activeAllocationTotals.get(inboundId) || 0) + quantity, 6));
+      }
+    }
+    if (allocatedQuantity - Number(tx.quantity) > 1e-6) {
+      throw new Error(`出库交易 ${tx.id} 抵扣数量超过出库数量`);
+    }
+    const expectedReceivable = lineAmount(Math.max(0, roundDecimal(Number(tx.quantity) - allocatedQuantity, 6)), Number(tx.unit_price));
+    if (roundDecimal(Number(tx.receivable_amount ?? tx.amount), 2) !== expectedReceivable) {
+      throw new Error(`出库交易 ${tx.id} 应收金额与自产入库抵扣数量不一致`);
+    }
+  }
+
+  for (const [inboundId, quantity] of activeAllocationTotals) {
+    const inbound = byTransactionId.get(inboundId);
+    if (quantity - Number(inbound.quantity) > 1e-6) {
+      throw new Error(`自产入库交易 ${inboundId} 被抵扣数量超过入库数量`);
+    }
+  }
+}
+
 function listOrders(f={}) {
   let l = cache.orders.filter(order => f.status === undefined || order.status === f.status).slice();
   if (f.customer_id) l = l.filter(order => Number(order.customer_id) === Number(f.customer_id));
@@ -496,19 +630,40 @@ function addStocktake(d){
 function listStocktakes(f={}){let l=cache.stocktakes.slice();if(f.product_id)l=l.filter(x=>x.product_id===Number(f.product_id));return l.sort((a,b)=>b.created_at-a.created_at || b.id-a.id);}
 function listDeliveryNotes(){return cache.delivery_notes.slice().sort((a,b)=>b.created_at-a.created_at || b.id-a.id);}
 function getDeliveryNote(id){return cache.delivery_notes.find(note=>note.id===Number(id))||null;}
+function isProductionInboundProduct(product) {
+  if (!product || product.category === '纸板') return false;
+  return product.category === '纸箱' || productionPricing.dimensionsInCm(product.specification, product.size_unit || 'cm')?.length === 3;
+}
 function addDeliveryNote(data) {
   if (!Array.isArray(data.lines) || !data.lines.length) throw new Error('至少添加一行商品');
+  if (data.source_type !== undefined && data.source_type !== 'production') throw new Error('入库来源类型无效');
+  const productionInbound = data.source_type === 'production';
   const workOrderNo = String(data.work_order_no || '').trim();
   if (workOrderNo && cache.delivery_notes.some(note => !note.voided_at && String(note.work_order_no || '').trim() === workOrderNo) && data.confirm_duplicate_work_order !== true) {
     throw new Error(`工单编号「${workOrderNo}」已有未作废送货单，请确认后再重复开单`);
   }
   const now = Date.now();
-  const partyType = data.party_type === undefined ? (data.customer_id != null ? 'customer' : 'supplier') : data.party_type;
-  if (partyType !== 'supplier' && partyType !== 'customer') throw new Error('入库往来对象类型无效');
-  if (partyType === 'customer' && data.supplier_id != null) throw new Error('客户入库不能同时关联供货商');
-  if (partyType === 'supplier' && data.customer_id != null) throw new Error('供货商入库不能同时关联客户');
-  const supplier = partyType === 'supplier' ? activeParty(data.supplier_id, 'supplier') : null;
-  const customer = partyType === 'customer' ? activeParty(data.customer_id, 'customer') : null;
+  let partyType; let supplier = null; let customer = null;
+  if (productionInbound) {
+    const hasPartyId = value => value !== undefined && value !== null && String(value).trim() !== '';
+    if (hasPartyId(data.supplier_id) || hasPartyId(data.supplier_name)) throw new Error('自产成品入库不能关联供应商');
+    if (hasPartyId(data.customer_id)) {
+      if (data.party_type != null && data.party_type !== 'customer') throw new Error('关联客户的自产入库往来类型必须为客户');
+      customer = activeParty(data.customer_id, 'customer');
+      partyType = 'customer';
+    } else {
+      if (data.party_type != null) throw new Error('自产成品入库未选择客户时不能关联往来对象');
+      if (hasPartyId(data.customer_name)) throw new Error('客户信息必须通过客户编号选择');
+      partyType = null;
+    }
+  } else {
+    partyType = data.party_type === undefined ? (data.customer_id != null ? 'customer' : 'supplier') : data.party_type;
+    if (partyType !== 'supplier' && partyType !== 'customer') throw new Error('入库往来对象类型无效');
+    if (partyType === 'customer' && data.supplier_id != null) throw new Error('客户入库不能同时关联供货商');
+    if (partyType === 'supplier' && data.customer_id != null) throw new Error('供货商入库不能同时关联客户');
+    supplier = partyType === 'supplier' ? activeParty(data.supplier_id, 'supplier') : null;
+    customer = partyType === 'customer' ? activeParty(data.customer_id, 'customer') : null;
+  }
   const freight = numberValue(data.freight === undefined ? 0 : data.freight, '运费');
   const date = data.date === undefined ? localDate() : String(data.date);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date) throw new Error('日期格式无效');
@@ -517,24 +672,50 @@ function addDeliveryNote(data) {
   const prepared = data.lines.map(raw => {
     const product = getProduct(Number(raw?.product_id));
     if (!product || product.deleted_at) throw new Error('请选择有效商品，入库不会自动创建商品');
+    if (productionInbound && !isProductionInboundProduct(product)) throw new Error('自产成品入库只能选择纸箱商品，不能选择纸板');
     if (seen.has(product.id)) throw new Error('同一商品不能重复入库，请合并数量');
     seen.add(product.id);
     const quantity = numberValue(raw.quantity, '计划数量', true);
-    const delivered = numberValue(raw.delivered_qty === undefined ? quantity : raw.delivered_qty, '实际入库数量');
-    const values = stockValues(product, delivered, raw, delivered > 0);
-    const specification = String(raw.specification ?? product.specification ?? '').trim();
+    const delivered = numberValue(raw.delivered_qty === undefined ? quantity : raw.delivered_qty, '实际入库数量', productionInbound);
+    let customerSpecSnapshot;
+    let lineDetails = raw;
+    if (raw.customer_spec_id !== undefined && raw.customer_spec_id !== null && String(raw.customer_spec_id).trim() !== '') {
+      if (!productionInbound || !customer) throw new Error('客户规格只能用于已选择客户的自产成品入库');
+      const matched = productionPricing.matchCustomerSpecification(customer, product, String(raw.customer_spec_id));
+      const currentPrice = numberValue(matched.specification.price, '客户规格单价');
+      const requestedPrice = raw.unit_price !== undefined ? raw.unit_price : raw.price;
+      if (requestedPrice !== undefined && roundDecimal(numberValue(requestedPrice, '入库单价'), 6) !== roundDecimal(currentPrice, 6)) {
+        throw new Error('客户单价已更新，请刷新后重试');
+      }
+      const requestedSpecification = String(raw.specification ?? '').trim();
+      if (requestedSpecification) {
+        const requestedDimensions = productionPricing.dimensionsInCm(requestedSpecification, product.size_unit || 'cm');
+        const productDimensions = productionPricing.dimensionsInCm(product.specification, product.size_unit || 'cm');
+        if (!requestedDimensions || requestedDimensions.length !== 3 || requestedDimensions.some((value, index) => value !== productDimensions[index])) {
+          throw new Error('客户规格尺寸与所选纸箱商品不匹配');
+        }
+      }
+      customerSpecSnapshot = { ...matched.snapshot, price: currentPrice };
+      lineDetails = { ...raw, unit_price: currentPrice, specification: String(product.specification || '') };
+    }
+    const values = stockValues(product, delivered, lineDetails, delivered > 0);
+    const specification = String(lineDetails.specification ?? product.specification ?? '').trim();
     const [length, width] = dimensions(specification, product);
     const square = roundDecimal(delivered * length * width / 1000000, 4);
     if (!Number.isFinite(square)) throw new Error('面积超出支持范围');
-    return { product, quantity, delivered, ...values, specification, length, width, square };
+    return { product, quantity, delivered, ...values, specification, material: product.material || '', length, width, square, ...(customerSpecSnapshot ? { customer_spec_id: String(raw.customer_spec_id), customer_spec_snapshot: customerSpecSnapshot } : {}) };
   });
   return atomicMutation(() => {
-    const note = { id: cache._meta.nextDeliveryNoteId++, date, work_order_no: workOrderNo, party_type: partyType, supplier_id: supplier?.id || null, supplier_name: supplier?.name || '', customer_id: customer?.id || null, customer_name: customer?.name || '', driver_phone: String(data.driver_phone || '').trim(), vehicle_no: String(data.vehicle_no || '').trim(), operator: String(data.operator || '').trim(), freight, remark: String(data.remark || '').trim(), lines: [], total_square_meters: 0, total_amount: 0, created_at: now };
+    const note = { id: cache._meta.nextDeliveryNoteId++, date, work_order_no: workOrderNo, ...(productionInbound ? { source_type: 'production' } : {}), party_type: partyType, supplier_id: supplier?.id || null, supplier_name: supplier?.name || '', customer_id: customer?.id || null, customer_name: customer?.name || '', driver_phone: String(data.driver_phone || '').trim(), vehicle_no: String(data.vehicle_no || '').trim(), operator: String(data.operator || '').trim(), freight, remark: String(data.remark || '').trim(), lines: [], total_square_meters: 0, total_amount: 0, created_at: now };
     for (const item of prepared) {
-      const { product, quantity, delivered, unit, unitPrice, amount, specification, length, width, square } = item;
+      const { product, quantity, delivered, unit, unitPrice, amount, specification, material, length, width, square } = item;
       const partyId = note.party_type === 'customer' ? note.customer_id : note.supplier_id;
-      const result = delivered > 0 ? stockIn(product.id, delivered, note.operator, note.remark || `送货单 ${note.work_order_no}`, partyId, { specification, unit, unit_price: unitPrice, delivery_note_id: note.id, work_order_no: note.work_order_no, delivered_qty: delivered, square_meters: square }, note.party_type) : null;
-      note.lines.push({ product_id: product.id, product_name: product.name, specification, unit, length, width, quantity, unit_price: unitPrice, delivered_qty: delivered, square_meters: square, amount, ...(result ? { transaction_id: result.transaction.id } : {}) });
+      const transactionRemark = productionInbound
+        ? [`自产成品入库 · 送货单 #${note.id}`, note.remark].filter(Boolean).join(' · ')
+        : note.remark || `送货单 ${note.work_order_no}`;
+      const result = delivered > 0 ? stockIn(product.id, delivered, note.operator, transactionRemark, partyId, { specification, material, unit, unit_price: unitPrice, delivery_note_id: note.id, work_order_no: note.work_order_no, delivered_qty: delivered, square_meters: square }, note.party_type || 'supplier', productionInbound && customer ? 'production_inbound' : null) : null;
+      if (productionInbound && result && !customer) Object.assign(result.transaction, { supplier_id: null, supplier_name: '', customer_id: null, customer_name: '' });
+      note.lines.push({ product_id: product.id, product_name: product.name, specification, material, unit, length, width, quantity, unit_price: unitPrice, delivered_qty: delivered, square_meters: square, amount, ...(result ? { transaction_id: result.transaction.id } : {}), ...(item.customer_spec_id ? { customer_spec_id: item.customer_spec_id, customer_spec_snapshot: item.customer_spec_snapshot } : {}) });
       note.total_square_meters += square; note.total_amount += amount;
     }
     note.total_square_meters = roundDecimal(note.total_square_meters, 4);
@@ -861,7 +1042,40 @@ function stockValues(product, quantity, details, positive = true) {
   if (details.unit !== undefined && details.unit !== unit) throw new Error(`单位必须与商品库存单位「${unit}」一致`);
   return { qty, unitPrice, unit, amount: lineAmount(qty, unitPrice) };
 }
-function postStock(type, productId, quantity, op, remark, partyId, details, incomingPartyType = 'supplier') {
+function allocateBilledInbound(customerId, product, quantity, specification, unit, data = cache) {
+  const candidates = (data.transactions || [])
+    .filter(tx => {
+      if (tx.type !== 'in' || tx.voided_at || tx.billing_source !== 'production_inbound'
+        || Number(tx.customer_id) !== Number(customerId) || Number(tx.product_id) !== Number(product.id)
+        || String(tx.unit || '') !== String(unit || '')) return false;
+      const note = (data.delivery_notes || []).find(row => Number(row.id) === Number(tx.delivery_note_id));
+      return note?.source_type === 'production' && !note.voided_at && Number(note.customer_id) === Number(customerId)
+        && sameBilledSpecification(tx.specification, specification, unit);
+    })
+    .sort((a, b) => Number(a.created_at) - Number(b.created_at) || Number(a.id) - Number(b.id));
+  const usedByInbound = new Map();
+  for (const outbound of data.transactions || []) {
+    if (outbound.type !== 'out' || outbound.voided_at) continue;
+    for (const allocation of outbound.billed_inbound_allocations || []) {
+      const id = Number(allocation.transaction_id);
+      usedByInbound.set(id, roundDecimal((usedByInbound.get(id) || 0) + Number(allocation.quantity || 0), 6));
+    }
+  }
+  let remaining = roundDecimal(Number(quantity), 6);
+  const allocations = [];
+  for (const inbound of candidates) {
+    if (remaining <= 0) break;
+    const available = roundDecimal(Number(inbound.quantity) - (usedByInbound.get(Number(inbound.id)) || 0), 6);
+    if (available <= 0) continue;
+    const allocated = Math.min(remaining, available);
+    if (allocated > 0) {
+      allocations.push({ transaction_id: Number(inbound.id), quantity: roundDecimal(allocated, 6) });
+      remaining = roundDecimal(remaining - allocated, 6);
+    }
+  }
+  return { allocations, unbilledQuantity: Math.max(0, remaining) };
+}
+function postStock(type, productId, quantity, op, remark, partyId, details, incomingPartyType = 'supplier', billingSource = null) {
   const id = numberValue(productId, '商品编号', true);
   const product = Number.isInteger(id) ? getProduct(id) : null;
   if (!product || product.deleted_at) throw new Error('商品不存在或已停用');
@@ -870,6 +1084,14 @@ function postStock(type, productId, quantity, op, remark, partyId, details, inco
   const customerReceipt = incoming && incomingPartyType === 'customer';
   const partyType = incoming ? (customerReceipt ? 'customer' : 'supplier') : 'customer';
   const party = activeParty(partyId, partyType);
+  const productionInboundBilling = incoming && incomingPartyType === 'customer' && billingSource === 'production_inbound';
+  let billedInboundAllocations = [];
+  let receivableAmount = amount;
+  if (!incoming && party) {
+    const allocated = allocateBilledInbound(party.id, product, qty, details.specification ?? product.specification ?? '', unit);
+    billedInboundAllocations = allocated.allocations;
+    receivableAmount = lineAmount(allocated.unbilledQuantity, unitPrice);
+  }
   if (!incoming && roundDecimal(product.stock, 6) < qty) throw new Error(`库存不足！${product.name} 当前库存：${product.stock}${unit}，需出库：${qty}${unit}`);
   const after = roundDecimal(product.stock + (incoming ? qty : -qty), 6);
   numberValue(after, '库存');
@@ -879,21 +1101,36 @@ function postStock(type, productId, quantity, op, remark, partyId, details, inco
     const createdAt = Date.now();
     product.stock = after; product.updated_at = createdAt; product.stock_updated_at = createdAt;
     const tx = { id: cache._meta.nextTransactionId++, product_id: product.id, product_name: product.name, type, quantity: qty, operator: String(op || ''), remark: String(remark || ''), created_at: createdAt, specification: details.specification ?? product.specification ?? '', material: details.material ?? product.material ?? '', unit, unit_price: unitPrice, amount };
+    if (productionInboundBilling) {
+      tx.billing_source = 'production_inbound';
+      tx.receivable_amount = amount;
+    } else if (!incoming && party) {
+      tx.receivable_amount = receivableAmount;
+      tx.billed_inbound_allocations = billedInboundAllocations;
+    }
     tx[`${partyType}_id`] = party?.id || null;
     tx[`${partyType}_name`] = party?.name || '';
     for (const field of ['corrugation', 'weight', 'length', 'width', 'layers']) tx[field] = product[field];
     for (const field of ['delivery_note_id', 'work_order_no', 'delivered_qty', 'square_meters']) if (details[field] !== undefined) tx[field] = details[field];
-    // Customer-supplied cartons are an inventory adjustment: keep the customer
-    // link for traceability but never create debt for them.
-    if (party && !customerReceipt) {
-      const balance = incoming ? 'payable' : 'debt';
-      party[balance] = roundDecimal(Number(party[balance] || 0) + amount, 2);
-      systemLedger(incoming ? 'payable' : 'receivable', amount, party.id, party.name, tx.id, `${label}${incoming ? '应付款' : '应收款'} · ${product.name}`, incoming ? 'supplier' : 'customer');
+    // Customer-provided cartons remain stock-only; explicitly customer-billed
+    // production receipts are the only customer-linked inbound rows creating AR.
+    if (party && productionInboundBilling) {
+      party.debt = roundDecimal(Number(party.debt || 0) + amount, 2);
+      const receivable = systemLedger('receivable', amount, party.id, party.name, tx.id, `自产成品入库应收款 · ${product.name}`, 'customer');
+      if (receivable && details.delivery_note_id != null) receivable.delivery_note_id = Number(details.delivery_note_id);
+    } else if (party && !customerReceipt) {
+      if (incoming) {
+        party.payable = roundDecimal(Number(party.payable || 0) + amount, 2);
+        systemLedger('payable', amount, party.id, party.name, tx.id, `${label}应付款 · ${product.name}`, 'supplier');
+      } else if (receivableAmount > 0) {
+        party.debt = roundDecimal(Number(party.debt || 0) + receivableAmount, 2);
+        systemLedger('receivable', receivableAmount, party.id, party.name, tx.id, `${label}应收款 · ${product.name}`, 'customer');
+      }
     }
     cache.transactions.push(tx); persist(); return { product, transaction: tx };
   });
 }
-function stockIn(productId, qty, op='', rmk='', supplierId=null, details={}, incomingPartyType='supplier') { return postStock('in', productId, qty, op, rmk, supplierId, details, incomingPartyType); }
+function stockIn(productId, qty, op='', rmk='', supplierId=null, details={}, incomingPartyType='supplier', billingSource=null) { return postStock('in', productId, qty, op, rmk, supplierId, details, incomingPartyType, billingSource); }
 function stockOut(productId, qty, op='', rmk='', customerId=null, details={}) { return postStock('out', productId, qty, op, rmk, customerId, details); }
 
 function listTx(f={}) {
@@ -966,6 +1203,32 @@ function streamLedger(f = {}) {
   return { count, rows: rows() };
 }
 
+function hasSettledReceivable(tx, customerId, targetAmount) {
+  const rows = cache.ledger.filter(entry => !entry.voided_at && Number(entry.party_id) === Number(customerId)
+    && (entry.party_type || (entry.type === 'receivable' ? 'customer' : null)) === 'customer'
+    && (entry.type === 'receivable' || entry.type === 'settlement'))
+    .sort((a, b) => Number(a.created_at) - Number(b.created_at) || Number(a.id) - Number(b.id));
+  const openReceivables = [];
+  let targetOpen;
+  for (const entry of rows) {
+    if (entry.type === 'receivable') {
+      const amount = roundDecimal(Number(entry.amount || 0), 2);
+      openReceivables.push({ entry, amount });
+      if (Number(entry.transaction_id) === Number(tx.id)) targetOpen = amount;
+      continue;
+    }
+    let remaining = roundDecimal(Number(entry.amount || 0), 2);
+    for (const receivable of openReceivables) {
+      if (remaining <= 0) break;
+      const applied = Math.min(remaining, receivable.amount);
+      receivable.amount = roundDecimal(receivable.amount - applied, 2);
+      remaining = roundDecimal(remaining - applied, 2);
+      if (Number(receivable.entry.transaction_id) === Number(tx.id)) targetOpen = receivable.amount;
+    }
+  }
+  return targetOpen === undefined || roundDecimal(targetAmount - targetOpen, 2) > 0;
+}
+
 function reverseTransaction(tx) {
   if (tx.voided_at) throw new Error('记录已作废，不能重复作废');
   const p = getProduct(tx.product_id);
@@ -980,17 +1243,29 @@ function reverseTransaction(tx) {
       .join('、');
     throw new Error(`无法作废：当前库存已低于该入库数量，后续出库占用${blockers ? `：${blockers}` : '，请先核对相关流水'}`);
   }
-  const party = tx.type === 'in' ? getSupplier(tx.supplier_id) : getCustomer(tx.customer_id);
+  const billedProductionReceipt = tx.type === 'in' && tx.billing_source === 'production_inbound';
+  if (billedProductionReceipt) {
+    const activeAllocations = cache.transactions.some(outbound => outbound.type === 'out' && !outbound.voided_at
+      && (outbound.billed_inbound_allocations || []).some(allocation => Number(allocation.transaction_id) === Number(tx.id) && Number(allocation.quantity) > 0));
+    if (activeAllocations) throw new Error('该自产入库已被后续出库抵扣，请先作废相关出库后再作废入库');
+  }
+  const party = tx.type === 'in'
+    ? (billedProductionReceipt ? getCustomer(tx.customer_id) : getSupplier(tx.supplier_id))
+    : getCustomer(tx.customer_id);
+  const accountingAmount = roundDecimal(Number(tx.receivable_amount ?? tx.amount ?? 0), 2);
   if (party) {
-    const field = tx.type === 'in' ? 'payable' : 'debt';
-    const partyType = tx.type === 'in' ? 'supplier' : 'customer';
+    const field = tx.type === 'in' && !billedProductionReceipt ? 'payable' : 'debt';
+    const partyType = tx.type === 'in' && !billedProductionReceipt ? 'supplier' : 'customer';
     const settlements = cache.ledger.filter(entry => !entry.voided_at && entry.type === 'settlement' && entry.party_id === party.id && (entry.party_type || partyType) === partyType && entry.created_at >= tx.created_at);
-    if (roundDecimal(Number(party[field] || 0), 2) < Number(tx.amount || 0)) {
+    if (billedProductionReceipt && accountingAmount > 0 && hasSettledReceivable(tx, party.id, accountingAmount)) {
+      throw new Error('该自产入库应收已部分或全部收款，请先核对客户收款记录后再作废');
+    }
+    if (accountingAmount > 0 && roundDecimal(Number(party[field] || 0), 2) < accountingAmount) {
       const settledAmount = roundDecimal(settlements.reduce((sum, entry) => sum + Number(entry.amount || 0), 0), 2);
       const settlementIds = settlements.map(entry => `#${entry.id}`).join('、');
       throw new Error(`该往来款已部分结算 ${settledAmount} 元${settlementIds ? `，结算流水：${settlementIds}` : ''}，请先撤销结算记录后再作废`);
     }
-    party[field] = roundDecimal(Number(party[field] || 0) - Number(tx.amount || 0), 2);
+    party[field] = roundDecimal(Number(party[field] || 0) - accountingAmount, 2);
   }
   p.stock = roundDecimal(p.stock + (tx.type === 'in' ? -tx.quantity : tx.quantity), 6); p.updated_at = Date.now(); p.stock_updated_at = p.updated_at;
   tx.voided_at = Date.now();
@@ -1015,6 +1290,7 @@ function updateTransaction(id, d = {}) {
   if (tx.delivery_note_id) throw new Error('送货单入库请在入库页面修改整张送货单');
   if (tx.production_id) throw new Error('生产完工记录关联纸板领料，不能单独修改');
   if (tx.order_id) throw new Error('订单出库请在订单页面修改');
+  if (tx.type === 'out' && (tx.billed_inbound_allocations || []).length) throw new Error('该出库已抵扣自产入库应收，请先作废原出库再重新开单');
   const incoming = tx.type === 'in';
   const oldProduct = getProduct(tx.product_id);
   if (!oldProduct) throw new Error('原商品不存在，无法安全修改');
@@ -1039,7 +1315,9 @@ function updateTransaction(id, d = {}) {
   const field = incoming ? 'payable' : 'debt';
   const partyType = incoming ? 'supplier' : 'customer';
   const oldParty = incoming ? getSupplier(tx.supplier_id) : getCustomer(tx.customer_id);
-  if (oldParty && roundDecimal(Number(oldParty[field] || 0), 2) < Number(tx.amount || 0)) {
+  const oldReceivableAmount = roundDecimal(Number(tx.receivable_amount ?? tx.amount ?? 0), 2);
+  const nextReceivableAmount = amount;
+  if (oldParty && roundDecimal(Number(oldParty[field] || 0), 2) < oldReceivableAmount) {
     const settlements = cache.ledger.filter(entry => !entry.voided_at && entry.type === 'settlement' && entry.party_id === oldParty.id && (entry.party_type || partyType) === partyType && entry.created_at >= tx.created_at);
     const settledAmount = roundDecimal(settlements.reduce((sum, entry) => sum + Number(entry.amount || 0), 0), 2);
     const settlementIds = settlements.map(entry => `#${entry.id}`).join('、');
@@ -1050,22 +1328,23 @@ function updateTransaction(id, d = {}) {
     product.stock = newStock;
     oldProduct.updated_at = Date.now(); oldProduct.stock_updated_at = oldProduct.updated_at;
     if (!sameProduct) { product.updated_at = Date.now(); product.stock_updated_at = product.updated_at; }
-    if (oldParty) oldParty[field] = roundDecimal(Number(oldParty[field] || 0) - Number(tx.amount || 0), 2);
-    if (party) party[field] = roundDecimal(Number(party[field] || 0) + amount, 2);
+    if (oldParty) oldParty[field] = roundDecimal(Number(oldParty[field] || 0) - oldReceivableAmount, 2);
+    if (party && (incoming || nextReceivableAmount > 0)) party[field] = roundDecimal(Number(party[field] || 0) + nextReceivableAmount, 2);
     const ledgerType = incoming ? 'payable' : 'receivable';
     const entries = cache.ledger.filter(entry => entry.transaction_id === tx.id && !entry.voided_at);
-    let target = amount > 0 && party ? entries.find(entry => entry.type === ledgerType) : null;
+    let target = nextReceivableAmount > 0 && party ? entries.find(entry => entry.type === ledgerType) : null;
     if (target) {
       const remark = `${incoming ? '入库应付款' : '出库应收款'} · ${product.name}`;
-      target.amount = amount; target.party_id = party.id; target.party_name = party.name;
+      target.amount = nextReceivableAmount; target.party_id = party.id; target.party_name = party.name;
       target.party_type = partyType; target.remark = remark;
-    } else if (amount > 0 && party) {
-      target = systemLedger(ledgerType, amount, party.id, party.name, tx.id, `${incoming ? '入库应付款' : '出库应收款'} · ${product.name}`, partyType);
+    } else if (nextReceivableAmount > 0 && party) {
+      target = systemLedger(ledgerType, nextReceivableAmount, party.id, party.name, tx.id, `${incoming ? '入库应付款' : '出库应收款'} · ${product.name}`, partyType);
     }
     const voidedAt = Date.now();
     entries.forEach(entry => { if (entry !== target) entry.voided_at = voidedAt; });
     tx.product_id = product.id; tx.product_name = product.name;
     tx.quantity = quantity; tx.unit = unit; tx.unit_price = unitPrice; tx.amount = amount;
+    tx.receivable_amount = nextReceivableAmount;
     if (d.specification !== undefined) tx.specification = String(d.specification);
     else if (!sameProduct) tx.specification = product.specification ?? '';
     if (d.material !== undefined) tx.material = String(d.material);
@@ -1249,27 +1528,29 @@ function validateBackupData(data) {
     if (entry.delivery_note_id != null && !deliveryNoteIds.has(Number(entry.delivery_note_id))) throw new Error(`ledger ${entry.id} references a missing delivery note`);
     timestamp(entry.created_at, `ledger ${entry.id}`); timestamp(entry.voided_at, `ledger ${entry.id}`);
   }
+  validateBilledInboundData(data);
   for (const transaction of data.transactions.filter(row => row.type !== 'adjustment')) {
     const linked = data.ledger.filter(entry => Number(entry.transaction_id) === Number(transaction.id));
-    const expectedPartyType = transaction.type === 'in' && transaction.supplier_id != null ? 'supplier'
-      : transaction.type === 'out' && transaction.customer_id != null ? 'customer' : null;
-    if (!expectedPartyType) {
+    const expectedAccounting = transactionAccounting(transaction);
+    if (!expectedAccounting) {
       if (linked.length) throw new Error(`交易 ${transaction.id} 不应关联往来账本流水`);
       continue;
     }
-    if (roundDecimal(Number(transaction.amount), 2) === 0) {
+    const expectedAmount = roundDecimal(Number(expectedAccounting.amount || 0), MONEY_DECIMALS);
+    if (expectedAmount === 0) {
       if (linked.length) throw new Error(`交易 ${transaction.id} 零金额交易不应关联往来账本流水`);
       continue;
     }
     if (linked.length !== 1) throw new Error(`交易 ${transaction.id} 与账本流水不一致`);
     const entry = linked[0];
-    const expectedType = expectedPartyType === 'supplier' ? 'payable' : 'receivable';
-    const expectedPartyId = Number(expectedPartyType === 'supplier' ? transaction.supplier_id : transaction.customer_id);
-    if (entry.type !== expectedType || Number(entry.party_id) !== expectedPartyId
-      || ledgerPartyType(entry, data) !== expectedPartyType
+    if (entry.type !== expectedAccounting.type || Number(entry.party_id) !== Number(expectedAccounting.partyId)
+      || ledgerPartyType(entry, data) !== expectedAccounting.partyType
       || Boolean(entry.voided_at) !== Boolean(transaction.voided_at)
-      || roundDecimal(Number(entry.amount), MONEY_DECIMALS) !== roundDecimal(Number(transaction.amount), MONEY_DECIMALS)) {
+      || roundDecimal(Number(entry.amount), MONEY_DECIMALS) !== expectedAmount) {
       throw new Error(`交易 ${transaction.id} 与账本流水不一致`);
+    }
+    if (transaction.billing_source === 'production_inbound' && Number(entry.delivery_note_id) !== Number(transaction.delivery_note_id)) {
+      throw new Error(`自产入库交易 ${transaction.id} 应收账本未关联入库单`);
     }
   }
   for (const transaction of data.transactions.filter(row => row.type === 'adjustment')) {
@@ -1301,12 +1582,22 @@ function validateBackupData(data) {
     timestamp(take.created_at, `stocktake ${take.id}`); timestamp(take.counted_at, `stocktake ${take.id}`);
   }
   for (const note of data.delivery_notes) {
-    const partyType = note.party_type || (note.customer_id != null ? 'customer' : 'supplier');
-    if (partyType !== 'supplier' && partyType !== 'customer') throw new Error(`送货单 ${note.id} 往来对象类型无效`);
-    if (partyType === 'customer' && note.supplier_id != null) throw new Error(`送货单 ${note.id} 不能同时关联客户和供货商`);
-    if (partyType === 'supplier' && note.customer_id != null) throw new Error(`送货单 ${note.id} 不能同时关联客户和供货商`);
-    if (note.customer_id != null && !customerIds.has(Number(note.customer_id))) throw new Error(`送货单 ${note.id} 引用了不存在的客户`);
-    if (note.supplier_id != null && !supplierIds.has(Number(note.supplier_id))) throw new Error(`送货单 ${note.id} 引用了不存在的供应商`);
+    if (note.source_type !== undefined && note.source_type !== 'production') throw new Error(`送货单 ${note.id} 入库来源类型无效`);
+    if (note.source_type === 'production') {
+      const hasCustomer = note.customer_id != null;
+      if (note.supplier_id != null || note.supplier_name !== ''
+        || (hasCustomer && (note.party_type !== 'customer' || !customerIds.has(Number(note.customer_id)) || !String(note.customer_name || '').trim()))
+        || (!hasCustomer && (note.party_type !== null || note.customer_name !== ''))) {
+        throw new Error(`自产成品入库单 ${note.id} 往来对象关联无效`);
+      }
+    } else {
+      const partyType = note.party_type || (note.customer_id != null ? 'customer' : 'supplier');
+      if (partyType !== 'supplier' && partyType !== 'customer') throw new Error(`送货单 ${note.id} 往来对象类型无效`);
+      if (partyType === 'customer' && note.supplier_id != null) throw new Error(`送货单 ${note.id} 不能同时关联客户和供货商`);
+      if (partyType === 'supplier' && note.customer_id != null) throw new Error(`送货单 ${note.id} 不能同时关联客户和供货商`);
+      if (note.customer_id != null && !customerIds.has(Number(note.customer_id))) throw new Error(`送货单 ${note.id} 引用了不存在的客户`);
+      if (note.supplier_id != null && !supplierIds.has(Number(note.supplier_id))) throw new Error(`送货单 ${note.id} 引用了不存在的供应商`);
+    }
     const freight = note.freight === undefined ? 0 : note.freight;
     nonNegative(freight, '送货运费');
     lineAmount(1, Number(freight));
@@ -1326,16 +1617,48 @@ function validateBackupData(data) {
     } else if (freightLedgers.length !== 0) {
       throw new Error(`送货单 ${note.id} 不应包含运费账本流水`);
     }
+    if (note.source_type === 'production' && freightLedgers.some(entry => entry.party_id != null || entry.party_type != null)) {
+      throw new Error(`自产成品入库单 ${note.id} 运费不能关联往来对象`);
+    }
     let totalAmount = 0; let totalSquareMeters = 0;
     for (const line of note.lines) {
       nonNegative(line.quantity, 'delivery planned quantity'); nonNegative(line.delivered_qty, 'delivery received quantity'); nonNegative(line.unit_price, 'delivery unit price'); moneyNonNegative(line.amount, 'delivery amount');
       if (line.transaction_id != null && !transactionIds.has(Number(line.transaction_id))) throw new Error(`delivery note ${note.id} references a missing transaction`);
       const transaction = line.transaction_id == null ? null : transactionById.get(Number(line.transaction_id));
       if (Number(line.delivered_qty) > 0 && !transaction) throw new Error(`送货单 ${note.id} 明细缺少对应入库流水`);
+      if (line.customer_spec_id !== undefined || line.customer_spec_snapshot !== undefined) {
+        const snapshot = line.customer_spec_snapshot;
+        const product = data.products.find(row => Number(row.id) === Number(line.product_id));
+        const snapshotDimensions = productionPricing.dimensionsInCm(snapshot?.specification, 'cm');
+        const lineDimensions = productionPricing.dimensionsInCm(line.specification, 'cm');
+        if (note.source_type !== 'production' || note.customer_id == null
+          || typeof line.customer_spec_id !== 'string' || !line.customer_spec_id.trim()
+          || !snapshot || snapshot.id !== line.customer_spec_id
+          || typeof snapshot.goods !== 'string' || !Number.isFinite(snapshot.price) || snapshot.price < 0
+          || roundDecimal(Number(snapshot.price), 6) !== roundDecimal(Number(line.unit_price), 6)
+          || String(snapshot.material || '') !== String(line.material || '')
+          || String(snapshot.unit || '') !== String(line.unit || '')
+          || !snapshotDimensions || !lineDimensions || snapshotDimensions.length !== 3 || lineDimensions.length !== 3
+          || snapshotDimensions.some((value, index) => value !== lineDimensions[index])) {
+          throw new Error(`送货单 ${note.id} 客户规格快照无效`);
+        }
+      }
+      const productionHasCustomer = note.source_type === 'production' && note.customer_id != null;
+      const invalidProductionTransaction = note.source_type === 'production' && transaction && (
+        transaction.supplier_id != null || String(transaction.supplier_name || '') !== ''
+        || (productionHasCustomer
+          ? (Number(transaction.customer_id || 0) !== Number(note.customer_id)
+            || String(transaction.customer_name || '') !== String(note.customer_name || '')
+            || transaction.billing_source !== 'production_inbound'
+            || roundDecimal(Number(transaction.receivable_amount ?? transaction.amount), 2) !== roundDecimal(Number(transaction.amount), 2))
+          : (transaction.customer_id != null || String(transaction.customer_name || '') !== ''
+            || transaction.billing_source !== undefined || transaction.receivable_amount !== undefined))
+      );
+      if (invalidProductionTransaction) throw new Error(`自产成品入库单 ${note.id} 交易与往来关联不一致`);
       if (transaction && (transaction.type !== 'in'
         || Number(transaction.delivery_note_id) !== Number(note.id)
-        || (note.party_type === 'customer' && (Number(transaction.customer_id || 0) !== Number(note.customer_id || 0) || transaction.supplier_id != null))
-        || ((note.party_type || 'supplier') === 'supplier' && (Number(transaction.supplier_id || 0) !== Number(note.supplier_id || 0) || transaction.customer_id != null))
+        || (note.source_type !== 'production' && note.party_type === 'customer' && (Number(transaction.customer_id || 0) !== Number(note.customer_id || 0) || transaction.supplier_id != null))
+        || (note.source_type !== 'production' && (note.party_type || 'supplier') === 'supplier' && (Number(transaction.supplier_id || 0) !== Number(note.supplier_id || 0) || transaction.customer_id != null))
         || Number(transaction.product_id) !== Number(line.product_id)
         || roundDecimal(Number(transaction.quantity), 6) !== roundDecimal(Number(line.delivered_qty), 6)
         || roundDecimal(Number(transaction.unit_price), 2) !== roundDecimal(Number(line.unit_price), 2)

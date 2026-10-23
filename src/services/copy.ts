@@ -15,7 +15,7 @@ export const COPY_DEFAULTS: Record<string, string> = {
   recordsLoading: '正在加载记录…',
   recordsLoadFailed: '记录加载失败，请点击重试',
   recordsInvalidDates: '开始日期不能晚于结束日期，请调整筛选',
-  ledger: '账单流水',
+  ledger: '收付款',
   orders: '客户订单',
   addProduct: '新增商品',
   confirmInbound: '确认入库',

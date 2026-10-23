@@ -21,6 +21,7 @@ async function main() {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
+    await page.addInitScript(() => localStorage.setItem('sg_getting_started_seen_v1', JSON.stringify({ data: true })));
     await page.route('**/*', async route => {
       const url = new URL(route.request().url());
       if (url.origin === origin || ['data:', 'blob:'].includes(url.protocol)) return route.continue();
@@ -35,9 +36,10 @@ async function main() {
       }
       return route.abort();
     });
-    await page.goto(`${origin}/#/pages/ledger/index`);
-    await page.locator('.taro_page:visible').last().waitFor();
-    await page.locator('[class*=bottomBar]').getByRole('button', { name: '记一笔' }).click();
+    await page.goto(`${origin}/#/pages/business-center/index?section=finance&view=ledger`);
+    await page.getByTestId('finance-center').waitFor({ state: 'visible' });
+    await page.getByTestId('finance-tab-ledger').click();
+    await page.getByTestId('finance-add-entry').click();
     const amount = page.locator('input[placeholder="0.00"]');
     await amount.fill('12.345');
     assert.equal(await amount.inputValue(), '12.34');
@@ -53,7 +55,7 @@ async function main() {
     await preview.waitFor({ state: 'visible' });
     assert.match(await preview.innerText(), /12\.34/, 'preview shows the shared rounded amount');
     const writePromise = page.waitForRequest(request => new URL(request.url()).pathname === '/api/ledger' && request.method() === 'POST');
-    await page.getByText('\u4fdd\u5b58\u6d41\u6c34', { exact: true }).click();
+    await page.getByTestId('finance-save-entry').click();
     const write = await writePromise;
     const postedAmount = write.postDataJSON().amount;
     assert.equal(postedAmount, 12.34, 'submitted ledger amount must equal the preview amount');

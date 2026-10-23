@@ -3,23 +3,25 @@ const fs = require('node:fs');
 const test = require('node:test');
 
 test('ledger page separates loading, load failure and empty results', () => {
-  const source = fs.readFileSync('src/pages/ledger/index.tsx', 'utf8');
-  assert.match(source, /const \[loading, setLoading\] = useState\(true\)/);
-  assert.match(source, /const \[loadError, setLoadError\] = useState\(''\)/);
-  assert.match(source, /setLoadError\(error instanceof Error \? error\.message : 'LOAD_FAILED'\)/);
+  const source = fs.readFileSync('src/components/FinanceCenter/index.tsx', 'utf8');
+  assert.match(source, /loading: boolean/);
+  assert.match(source, /loadError: string/);
   assert.match(source, /\{loading \? <View className=\{styles\.empty\}/);
   assert.match(source, /: loadError \? <View className=\{styles\.empty\}/);
-  assert.match(source, /onClick=\{load\}>重新加载/);
-  assert.match(source, /: filtered\.length === 0 \? <View className=\{styles\.empty\}/);
-  assert.match(source, /const ready = !loading && !loadError/);
+  assert.match(source, /onClick=\{\(\) => void onReload\(\)\}>重新加载/);
+  assert.match(source, /groups\.length === 0 \? <View className=\{styles\.empty\}/);
+  assert.match(source, /data-testid='finance-center'/);
 });
 
 test('ledger deep links scope parties and retrieve exact entries without replacing the list', () => {
-  const source = fs.readFileSync('src/pages/ledger/index.tsx', 'utf8');
-  assert.match(source, /params\.party_type === 'customer' \|\| params\.party_type === 'supplier'/);
-  assert.match(source, /party_type: party\.type, party_id: party\.id/);
+  const source = fs.readFileSync('src/components/FinanceCenter/index.tsx', 'utf8');
+  const legacy = fs.readFileSync('src/pages/ledger/index.tsx', 'utf8');
+  assert.match(source, /partyType\?: PartyType/);
+  assert.match(source, /partyId\?: number/);
   assert.match(source, /getLedger\(\{ id: entryId, include_voided: true \}\)/);
-  assert.match(source, /const scoped = party\s*\?\s*data\s*\.filter\(entry => entry\.party_id === party\.id/);
-  assert.match(source, /const clearParty = \(\) => \{[\s\S]*setPeriod\('本月'\)[\s\S]*setRange\(monthRange\(\)\)/);
-  assert.match(source, /party \? '清除对象筛选' : '重置'/);
+  assert.match(source, /Number\(item\.party_id\) === selectedId/);
+  assert.match(legacy, /Taro\.redirectTo/);
+  assert.match(legacy, /target\.set\('party_type', partyType\)/);
+  assert.match(legacy, /target\.set\('entry', String\(params\.entry\)\)/);
+  assert.doesNotMatch(legacy, /流水明细|exportCsv|addLedger/);
 });

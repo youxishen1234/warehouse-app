@@ -86,22 +86,33 @@ async function main() {
     await expect(page.getByText('办理业务', { exact: true })).toBeVisible();
     await expect(page.getByText('服务器数据已读取 · 多设备自动同步', { exact: true })).toBeVisible();
     await click('收付款');
+    await page.getByTestId('finance-tab-customer').click();
+    await expect(page.getByTestId('finance-customer-view')).toBeVisible();
     await expect(page.getByText('客户账单', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('示例客户', { exact: true })).toBeVisible();
     await expect(page.getByText('客户单据照片', { exact: true })).toHaveCount(0);
-    await click('新增客户');
-    await expect(page.getByTestId('customer-editor')).toBeVisible();
-    await page.getByLabel('关闭资料抽屉').click();
-    await click('供货商账单');
-    await expect(page.getByText('示例供货商', { exact: true })).toBeVisible();
-    await page.screenshot({ path: path.join(artifacts, 'workbench-bills.png'), fullPage: true });
+    await page.getByTestId('finance-add-customer').click();
+    const customerEditor = page.getByTestId('customer-editor');
+    await expect(customerEditor).toBeVisible();
+    await customerEditor.getByLabel('公司名称').locator('input').fill('收付款页新增客户');
+    await customerEditor.getByLabel('联系电话').locator('input').fill('13800001234');
+    await customerEditor.getByText('保存客户', { exact: true }).click();
+    await expect(customerEditor).toHaveCount(0);
+    const financeCreatedCustomer = db.listCustomers().find(row => row.name === '收付款页新增客户');
+    assert.ok(financeCreatedCustomer, '客户账单页新增客户应保存到共享客户资料');
+    await expect(page.getByTestId(`customer-bill-${financeCreatedCustomer.id}`)).toBeVisible();
 
     await page.goto('about:blank');
     await page.goto(origin + '/#/pages/suppliers/index');
     await expect(page.getByText('办理业务', { exact: true })).toBeVisible();
     await expect(page.getByText('服务器数据已读取 · 多设备自动同步', { exact: true })).toBeVisible();
     await click('收付款');
+    await expect(page.getByTestId('finance-center')).toBeVisible();
+    await page.getByTestId('finance-tab-supplier').click();
+    await expect(page.getByTestId('finance-supplier-view')).toBeVisible();
     await expect(page.getByText('供货商账单', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('示例供货商', { exact: true })).toBeVisible();
+    await page.screenshot({ path: path.join(artifacts, 'workbench-bills.png'), fullPage: true });
     await page.goto('about:blank');
     await page.goto(origin + '/#/pages/inventory/index');
     await expect(page.getByText('纸板库存', { exact: false }).first()).toBeVisible();
@@ -127,8 +138,7 @@ async function main() {
     await page.screenshot({ path: path.join(artifacts, 'workbench-inbound.png'), fullPage: true });
 
     await go('/pages/business-center/index');
-    await click('收付款');
-    await click('上传送货单照片');
+    await click('票据');
     await expect(page.getByText('原件照片按业务账单保存', { exact: false })).toBeVisible();
 
     for (const width of [320, 390, 430, 736, 1280]) {

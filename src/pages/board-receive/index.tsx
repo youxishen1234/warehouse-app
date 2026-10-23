@@ -7,10 +7,14 @@ import { BoardBatch, getBoards, getBoard, receiveBoard, updateBoard, boardSpec, 
 import { BusinessSpecification, getBusinessSpecifications } from '../../services/business-workflow';
 import { useSharedRefresh } from '../../services/shared-refresh';
 import { watchSession } from '../../services/session';
+import { formatSpecificationInput } from '../print-center/specification-input';
+import { parseDimensionSpecification, preserveDimensionGrouping, shouldPreserveDimensionGrouping, specificationFromDimensions } from './specification-input';
 import './simple-entry.scss';
 const initial = { supplier: '', date: today(), boardLength: '', boardWidth: '', cartonLength: '', cartonWidth: '', cartonHeight: '', fluteType: 'B', layers: '3', faceGsm: '', linerGsm: '', flutingGsm: '', orderedQty: '', receivedQty: '', billedArea: '', unitPrice: '', warningQty: '0', location: '', deliveryNo: '', remark: '' };
 export default function BoardReceive() {
   const [form, setForm] = useState(() => ({ ...initial, date: today() })); const [selected, setSelected] = useState<BoardBatch | null>(null); const [templates, setTemplates] = useState<BoardBatch[]>([]); const [error, setError] = useState(''); const [busy, setBusy] = useState(false); const saving = useRef(false);
+  const [boardSpecification, setBoardSpecification] = useState('');
+  const [cartonSpecification, setCartonSpecification] = useState('');
   const [specsOpen, setSpecsOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [customField, setCustomField] = useState('');
@@ -38,7 +42,28 @@ export default function BoardReceive() {
     if (saving.current) return;
     draftChanged.current = true;
     setSelected(null); setSpecsOpen(false);
+    const boardSize = spec.board ? specificationFromDimensions(spec.board) : '';
+    const cartonSize = spec.carton ? specificationFromDimensions(spec.carton) : '';
+    setBoardSpecification(boardSize);
+    setCartonSpecification(cartonSize);
     setForm(f => ({ ...f, ...(spec.board ? { boardLength: String(spec.board[0]), boardWidth: String(spec.board[1]) } : { boardLength: '', boardWidth: '' }), ...(spec.carton ? { cartonLength: String(spec.carton[0]), cartonWidth: String(spec.carton[1]), cartonHeight: String(spec.carton[2]) } : { cartonLength: '', cartonWidth: '', cartonHeight: '' }), ...(spec.fluteType ? { fluteType: spec.fluteType } : {}), ...(spec.layers ? { layers: String(spec.layers) } : {}) }));
+  };
+  const changeSpecification = (kind: 'board' | 'carton', value: string) => {
+    if (saving.current) return;
+    draftChanged.current = true;
+    const previous = kind === 'board' ? boardSpecification : cartonSpecification;
+    const dimensionCount = kind === 'board' ? 2 : 3;
+    const next = shouldPreserveDimensionGrouping(value, previous)
+      ? preserveDimensionGrouping(value)
+      : formatSpecificationInput(value, previous, dimensionCount);
+    const parsed = parseDimensionSpecification(next, dimensionCount);
+    if (kind === 'board') {
+      setBoardSpecification(next);
+      setForm(f => ({ ...f, boardLength: parsed ? String(parsed[0]) : '', boardWidth: parsed ? String(parsed[1]) : '' }));
+    } else {
+      setCartonSpecification(next);
+      setForm(f => ({ ...f, cartonLength: parsed ? String(parsed[0]) : '', cartonWidth: parsed ? String(parsed[1]) : '', cartonHeight: parsed ? String(parsed[2]) : '' }));
+    }
   };
   const change = (key: string, value: string) => {
     if (saving.current) return;
@@ -46,7 +71,7 @@ export default function BoardReceive() {
     if (key === 'orderedQty') orderedQuantityEdited.current = true;
     setForm(f => ({ ...f, [key]: value, ...(key === 'receivedQty' && !orderedQuantityEdited.current ? { orderedQty: value } : {}) }));
   };
-  const fill = useCallback((b: BoardBatch) => { if (saving.current) return; draftChanged.current = true; orderedQuantityEdited.current = false; setSelected(b); setSpecsOpen(false); setError(''); setForm(() => { const next = { ...initial, date: today() }; for (const k of ['supplier', 'boardLength', 'boardWidth', 'cartonLength', 'cartonWidth', 'cartonHeight', 'fluteType', 'layers', 'faceGsm', 'linerGsm', 'flutingGsm', 'unitPrice', 'warningQty', 'location']) next[k] = String(b[k] ?? ''); return next; }); }, []);
+  const fill = useCallback((b: BoardBatch) => { if (saving.current) return; draftChanged.current = true; orderedQuantityEdited.current = false; setSelected(b); setSpecsOpen(false); setError(''); setBoardSpecification(specificationFromDimensions([b.boardLength, b.boardWidth])); setCartonSpecification(specificationFromDimensions([b.cartonLength, b.cartonWidth, b.cartonHeight])); setForm(() => { const next = { ...initial, date: today() }; for (const k of ['supplier', 'boardLength', 'boardWidth', 'cartonLength', 'cartonWidth', 'cartonHeight', 'fluteType', 'layers', 'faceGsm', 'linerGsm', 'flutingGsm', 'unitPrice', 'warningQty', 'location']) next[k] = String(b[k] ?? ''); return next; }); }, []);
   const loadBoards = useCallback(async () => {
     const params = routeParams.current;
     if (!params) return;
@@ -63,7 +88,7 @@ export default function BoardReceive() {
       if (!initialBatchApplied.current && !saving.current) {
         initialBatchApplied.current = true;
         if (!draftChanged.current) {
-          if (editing) { orderedQuantityEdited.current = true; setForm(Object.fromEntries(Object.keys(initial).map(k => [k, String(editing[k] ?? '')])) as typeof initial); }
+          if (editing) { orderedQuantityEdited.current = true; setBoardSpecification(specificationFromDimensions([editing.boardLength, editing.boardWidth])); setCartonSpecification(specificationFromDimensions([editing.cartonLength, editing.cartonWidth, editing.cartonHeight])); setForm(Object.fromEntries(Object.keys(initial).map(k => [k, String(editing[k] ?? '')])) as typeof initial); }
           else if (params.from) { const batch = rows.find(b => b.id === params.from); if (batch) fill(batch); }
         }
         if (params.id) setEditReady(true);
@@ -74,7 +99,7 @@ export default function BoardReceive() {
   useEffect(() => watchSession(() => { void loadSpecs(); void loadBoards(); }), [loadSpecs, loadBoards]);
   useLoad(params => { routeParams.current = { id: params.id || '', from: params.from || '' }; setEditingId(params.id || ''); setEditReady(!params.id); void loadBoards(); });
   const field = (key: keyof typeof initial, label: string, numeric = false, unit?: string) => <View className='stock-entry-field' key={key}><Text className='stock-entry-label'>{label}</Text><View className='board-input-wrap'><Input disabled={fieldsDisabled} aria-label={label} type={numeric ? 'digit' : 'text'} value={form[key]} onInput={e => change(key, e.detail.value)} maxlength={key === 'remark' ? 500 : 120} />{unit && <Text className='board-muted'>{unit}</Text>}</View></View>;
-  const dimension = (key: keyof typeof initial, label: string) => <Input key={key} aria-label={label} disabled={fieldsDisabled} type='digit' placeholder={label.replace(/^纸板|^纸箱/, '')} value={form[key]} onInput={e => change(key, e.detail.value)} />;
+  const specificationField = (kind: 'board' | 'carton', label: string, value: string) => <View className='stock-entry-field' key={kind}><Text className='stock-entry-label'>{label}（cm）</Text><View className='board-entry-specification'><Input aria-label={label} disabled={fieldsDisabled} type='text' value={value} onInput={e => changeSpecification(kind, e.detail.value)} /></View></View>;
   const options = (key: string) => [...new Set(allRows.map(b => String(b[key] || '')).filter(Boolean))];
   const selectField = (key: keyof typeof initial, label: string, choices: string[], custom = false) => <View className='stock-entry-field'><Text className='stock-entry-label'>{label}</Text><Picker disabled={fieldsDisabled} mode='selector' range={['请选择' + label, ...choices, ...(custom ? ['新增 / 手动填写'] : [])]} onChange={e => { const value = choices[Number(e.detail.value) - 1]; if (value) { change(key, value); setCustomField(''); } else if (custom && Number(e.detail.value) === choices.length + 1) { setCustomField(key); change(key, ''); } }}><View className='board-input-wrap'>{form[key] || '请选择' + label} ▾</View></Picker>{customField === key && <View className='board-input-wrap board-entry-custom'><Input disabled={fieldsDisabled} aria-label={key === 'location' ? '库位名称' : '自定义楞型'} value={form[key]} onInput={e => change(key, e.detail.value)} /></View>}</View>;
   const matches = templates.filter(b => [boardSpec(b), b.supplier, b.fluteType, b.layers + '层'].join(' ').toLowerCase().replace(/[ ×x*]/g, '').includes(templateQuery.toLowerCase().replace(/[ ×x*]/g, '')));
@@ -83,10 +108,14 @@ export default function BoardReceive() {
   const save = async () => {
     if (saving.current) return;
     if (routeParams.current?.id && !editReady) { setError('请先读取原入库单后再保存'); return; }
-    const required: [keyof typeof initial, string][] = [['supplier', '板厂'], ['boardLength', '纸板长'], ['boardWidth', '纸板宽'], ['cartonLength', '纸箱长'], ['cartonWidth', '纸箱宽'], ['cartonHeight', '纸箱高'], ['orderedQty', '订购数'], ['receivedQty', '实收数'], ['billedArea', '计费平米'], ['unitPrice', '每平米单价']];
+    const boardDimensions = parseDimensionSpecification(boardSpecification, 2);
+    if (!boardDimensions) { setError('纸板规格尺寸请填写完整的长×宽，且均为正数'); return; }
+    const cartonDimensions = parseDimensionSpecification(cartonSpecification, 3);
+    if (!cartonDimensions) { setError('成箱规格尺寸请填写完整的长×宽×高，且均为正数'); return; }
+    const required: [keyof typeof initial, string][] = [['supplier', '板厂'], ['orderedQty', '订购数'], ['receivedQty', '实收数'], ['billedArea', '计费平米'], ['unitPrice', '每平米单价']];
     for (const [key, label] of required) if (!form[key].trim()) { setError('请填写' + label); return; }
     saving.current = true; setBusy(true); setError('');
-    try { const b = await (editingId ? (data => updateBoard(editingId, data)) : receiveBoard)({ ...form, faceGsm: form.faceGsm || '0', linerGsm: form.linerGsm || '0', flutingGsm: form.flutingGsm || '0' }); Taro.redirectTo({ url: '/pages/board-detail/index?id=' + b.id + (editingId ? '' : '&received=1') }); } catch (e) { setError(e.message); } finally { saving.current = false; setBusy(false); }
+    try { const b = await (editingId ? (data => updateBoard(editingId, data)) : receiveBoard)({ ...form, boardLength: boardDimensions[0], boardWidth: boardDimensions[1], cartonLength: cartonDimensions[0], cartonWidth: cartonDimensions[1], cartonHeight: cartonDimensions[2], faceGsm: form.faceGsm || '0', linerGsm: form.linerGsm || '0', flutingGsm: form.flutingGsm || '0' }); Taro.redirectTo({ url: '/pages/board-detail/index?id=' + b.id + (editingId ? '' : '&received=1') }); } catch (e) { setError(e.message); } finally { saving.current = false; setBusy(false); }
   };
   return <StockEntryLayout title={editingId ? '编辑纸板入库' : '纸板入库'} busy={busy} onRefresh={() => { void loadSpecs(); void loadBoards(); }}>
     <View className='board-simple-entry'>
@@ -103,8 +132,8 @@ export default function BoardReceive() {
       {selected && <Text className='stock-entry-note'>已带入历史规格，本次另建新批次；确认保存后才增加库存。</Text>}
       <View className='stock-entry-section'>
         <View className='stock-entry-field'><View className='stock-entry-row'><Text className='stock-entry-label'>供货商</Text>{options('supplier').length > 0 && <Picker disabled={fieldsDisabled} range={['选择已有供货商', ...options('supplier')]} onChange={e => { const supplier = options('supplier')[Number(e.detail.value) - 1]; if (supplier) change('supplier', supplier); }}><Text className='board-entry-picker-link'>选择已有 ›</Text></Picker>}</View><Input disabled={fieldsDisabled} aria-label='板厂名称' className='stock-entry-input' value={form.supplier} onInput={e => change('supplier', e.detail.value)} /></View>
-        <View className='stock-entry-field'><Text className='stock-entry-label'>纸板规格尺寸（cm）</Text><View className='board-entry-dimensions'>{dimension('boardLength', '纸板长')}<Text>×</Text>{dimension('boardWidth', '纸板宽')}</View></View>
-        <View className='stock-entry-field'><Text className='stock-entry-label'>成箱规格尺寸（cm）</Text><View className='board-entry-dimensions'>{dimension('cartonLength', '纸箱长')}<Text>×</Text>{dimension('cartonWidth', '纸箱宽')}<Text>×</Text>{dimension('cartonHeight', '纸箱高')}</View></View>
+        {specificationField('board', '纸板规格尺寸', boardSpecification)}
+        {specificationField('carton', '成箱规格尺寸', cartonSpecification)}
         {field('receivedQty', '实收数', true, '张')}
         <View className='stock-entry-grid'>{field('billedArea', '计费平米', true, 'm²')}{field('unitPrice', '每平米单价', true, '元')}</View>
         <Text className='stock-entry-note'>计费平米按送货单填写，货款不按实收张数计算。</Text>

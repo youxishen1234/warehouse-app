@@ -11,12 +11,13 @@ const utility = {};
 vm.runInNewContext(compiled, { exports: utility, require: () => require(path.resolve('backend/stock-math.js')) });
 
 test('ledger amount field uses the shared non-negative two-decimal input sanitizer', () => {
-  const source = fs.readFileSync('src/pages/ledger/index.tsx', 'utf8');
+  const source = fs.readFileSync('src/components/FinanceCenter/index.tsx', 'utf8');
   assert.match(source, /import \{ parseMoneyInput, previewMoneyInput, sanitizeNonNegativeMoneyInput \}/);
   assert.match(source, /setAmount\(sanitizeNonNegativeMoneyInput\(e\.detail\.value\)\)/);
   assert.match(source, /parseMoneyInput\(amount,[\s\S]*?true\)/);
   assert.match(source, /previewMoneyInput\(amount\)/);
   assert.match(source, /addLedger\(\{ type: kind, amount: value/);
+  assert.match(source, /data-testid='finance-save-entry'/);
 });
 
 test('ledger preview and write parser share the stock-math rounded amount', () => {

@@ -3,9 +3,9 @@ const fs = require('node:fs');
 const test = require('node:test');
 
 test('ledger list rows are memoized and form state keeps callbacks stable', () => {
-  const source = fs.readFileSync('src/pages/ledger/index.tsx', 'utf8');
+  const source = fs.readFileSync('src/components/FinanceCenter/index.tsx', 'utf8');
   assert.match(source, /const LedgerListRow = React\.memo\(function LedgerListRow/);
-  assert.match(source, /const remove = useCallback\(/);
+  assert.match(source, /const remove = async \(entry: LedgerEntry\)/);
   assert.match(source, /group\.entries\.map\(entry => <LedgerListRow/);
   assert.match(source, /onOpen=\{openEntry\}/);
   assert.match(source, /const openEntry = useCallback\(/);

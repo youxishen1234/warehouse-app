@@ -236,13 +236,37 @@ function install(db, options = {}) {
   });
   route('get', '/delivery-notes/:id.csv', (req, res) => {
     const note = db.getDeliveryNote(Number(req.params.id)); if (!note) throw error('送货单不存在', 404);
-    const customerNote = note.party_type === 'customer' || (note.party_type == null && note.customer_id != null);
+    const productionNote = note.source_type === 'production';
+    const customerNote = !productionNote && (note.party_type === 'customer' || (note.party_type == null && note.customer_id != null));
     const partyLabel = customerNote ? '客户' : '供应商';
     const partyName = customerNote ? note.customer_name : note.supplier_name;
-    const freightLabel = customerNote ? '运费（单独记录，不计入客户应收）' : '运费（单独记录，不计入货款应付）';
-    const rows = [['状态', note.voided_at ? '已作废' : '已入库'], ['日期', note.date], ['工单编号/采购单号', note.work_order_no], [partyLabel, partyName || ''], ['操作人', note.operator || ''], ['司机电话', note.driver_phone], ['车号', note.vehicle_no], [freightLabel, note.freight], [], ['商品', '规格/楞别', '单位', '计划数量', '单价', '实际入库数量', '平米数', '货款金额']];
-    for (const line of note.lines) rows.push([line.product_name, line.specification, line.unit || '', line.quantity, line.unit_price, line.delivered_qty, line.square_meters, line.amount]);
-    rows.push(['货款合计', '', '', '', '', '', '', note.total_amount], ['总平米', note.total_square_meters], ['备注', note.remark]);
+    const freightLabel = productionNote ? '运费（单独费用，不计入往来账）'
+      : customerNote ? '运费（单独记录，不计入客户应收）' : '运费（单独记录，不计入货款应付）';
+    const amountLabel = productionNote ? '入库金额' : '货款金额';
+    const totalLabel = productionNote ? '入库金额合计' : '货款合计';
+    const rows = [['状态', note.voided_at ? '已作废' : '已入库'], ['日期', note.date],
+      [productionNote ? '生产单号' : '工单编号/采购单号', note.work_order_no],
+      [productionNote ? '入库来源' : partyLabel, productionNote ? '自产成品入库' : partyName || ''],
+      ...(productionNote && note.customer_id != null
+        ? [['关联客户', note.customer_name || ''], ['计价客户', note.customer_name || '']]
+        : []),
+      ['操作人', note.operator || ''], ['司机电话', note.driver_phone], ['车号', note.vehicle_no], [freightLabel, note.freight], [],
+      productionNote
+        ? ['商品', '规格/楞别', '客户规格来源', '单位', '计划数量', '单价', '实际入库数量', '平米数', amountLabel]
+        : ['商品', '规格/楞别', '单位', '计划数量', '单价', '实际入库数量', '平米数', amountLabel]];
+    for (const line of note.lines) {
+      if (productionNote) {
+        const snapshot = line.customer_spec_snapshot;
+        const specSource = snapshot
+          ? `客户规格报价：${snapshot.goods || snapshot.specification}（${snapshot.id}）`
+          : note.customer_id != null ? '手动录入单价' : '未关联客户';
+        rows.push([line.product_name, line.specification, specSource, line.unit || '', line.quantity, line.unit_price, line.delivered_qty, line.square_meters, line.amount]);
+      } else rows.push([line.product_name, line.specification, line.unit || '', line.quantity, line.unit_price, line.delivered_qty, line.square_meters, line.amount]);
+    }
+    rows.push(productionNote
+      ? [totalLabel, '', '', '', '', '', '', '', note.total_amount]
+      : [totalLabel, '', '', '', '', '', '', note.total_amount],
+    ['总平米', note.total_square_meters], ['备注', note.remark]);
     res.attachment(`delivery-note-${note.id}.csv`).type('text/csv').send('\ufeff' + rows.map(row => row.map(csvCell).join(',')).join('\r\n'));
   });
   route('get', '/backup/daily/status', async (req, res) => {

@@ -21,3 +21,14 @@ test('two-digit dimensions insert separators during numeric typing and accept pa
  assert.equal(format('3','30'),'3');
  assert.equal(format(''),'');
 });
+
+test('two-dimensional board input stops adding a separator after the width', () => {
+ let value = ''; for (const digit of '3020') value = format(value + digit, value, 2);
+ assert.equal(value, '30×20');
+ assert.equal(format('30', '', 2), '30×');
+ assert.equal(format('3020', '', 2), '30×20');
+ assert.equal(format('30', '30×', 2), '30');
+ assert.equal(format('30×2', '30×20', 2), '30×2');
+ assert.equal(format('', '30×20', 2), '');
+ assert.equal(format('302015', '', 2), '30×20×15');
+});
