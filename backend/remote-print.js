@@ -37,6 +37,12 @@ function createStore(file, clock = Date.now) {
       state.devices.push(device); write(state);
       return { device: publicDevice(device), agent, client };
     },
+    // Label registration reuses the delivery pairing. Return a public device
+    // only; the delivery agent token must never become a label credential.
+    agentDevice(token) {
+      const state = read();
+      return publicDevice(authenticate(state, token, 'agent'));
+    },
     device(token) { const state = read(); return publicDevice(authenticate(state, token, 'client')); },
     history(token) { const state=read(),device=authenticate(state,token,'client');const latest=new Map();for(const job of state.jobs){if(job.device_id===device.id&&job.status==='queued'&&(!latest.has(job.note_id)||latest.get(job.note_id).printed_at<job.updated_at))latest.set(job.note_id,{note_id:job.note_id,printed_at:job.updated_at});}return [...latest.values()]; },
     recovery(token) {
@@ -118,6 +124,7 @@ function install(router, db, options = {}) {
   const route = (method, url, handler) => router[method](url, (req,res,next) => Promise.resolve().then(() => handler(req)).then(data => res.json({success:true,data})).catch(next));
   const client = req => req.get('X-Print-Client'), agent = req => req.get('X-Print-Agent');
   route('get','/remote-print/device',req => store.device(client(req)));
+  route('get','/remote-print/agent/device',req => store.agentDevice(agent(req)));
   route('get','/remote-print/history',req => store.history(client(req)));
   route('get','/remote-print/recovery',req => store.recovery(client(req)));
   route('post','/remote-print/jobs',req => {
@@ -132,5 +139,6 @@ function install(router, db, options = {}) {
   route('post','/remote-print/agent/poll',req => store.claim(agent(req),req.body?.ready));
   route('post','/remote-print/agent/jobs/:id',req => store.acknowledge(agent(req),req.params.id,req.body || {}));
   route('post','/remote-print/agent/recovery',req => store.recover(agent(req),req.body || {}));
+  return store;
 }
 module.exports = { createStore, install };

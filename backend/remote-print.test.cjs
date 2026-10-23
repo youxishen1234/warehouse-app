@@ -99,3 +99,14 @@ test('receiver recovery is authenticated, persisted, bounded and visible to the 
   assert.ok(!raw.includes(pair.client));
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+test('label pairing can still resolve the public device without exposing credentials',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'remote-print-agent-device-'));const file=path.join(dir,'queue.json');
+ try{
+  const store=createStore(file),pair=store.register('店里电脑','EPSON LQ-630K ESC/P2');
+  assert.equal(store.agentDevice(pair.agent).id,pair.device.id);
+  assert.throws(()=>store.agentDevice(pair.client),/配对/);
+  const installed=install({get(){},post(){}},{} ,{file});
+  assert.equal(typeof installed.agentDevice,'function','the installed store is available to label registration');
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
