@@ -1,5 +1,10 @@
 import Taro from '@tarojs/taro';
-export const PUBLIC_ORIGIN = 'https://youxishen.online';
+declare const __WAREHOUSE_DEMO_API_ORIGIN__: string;
+const demoOrigin = typeof __WAREHOUSE_DEMO_API_ORIGIN__ === 'string'
+  ? __WAREHOUSE_DEMO_API_ORIGIN__.trim().replace(/\/+$/, '')
+  : '';
+// Demo builds may target a local, isolated API; release builds keep the canonical endpoint.
+export const PUBLIC_ORIGIN = demoOrigin || 'https://youxishen.online';
 // Keep the alias for callers, but never send requests to the retired IP.
 export const TEAM_ORIGIN = PUBLIC_ORIGIN;
 export function sessionOrigin(): string {

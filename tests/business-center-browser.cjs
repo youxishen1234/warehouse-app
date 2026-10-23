@@ -85,7 +85,7 @@ async function main() {
     await page.goto(origin + '/#/pages/customers/index');
     await expect(page.getByText('办理业务', { exact: true })).toBeVisible();
     await expect(page.getByText('服务器数据已读取 · 多设备自动同步', { exact: true })).toBeVisible();
-    await click('记收款');
+    await click('收付款');
     await expect(page.getByText('客户账单', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('示例客户', { exact: true })).toBeVisible();
     await expect(page.getByText('客户单据照片', { exact: true })).toHaveCount(0);
@@ -100,7 +100,7 @@ async function main() {
     await page.goto(origin + '/#/pages/suppliers/index');
     await expect(page.getByText('办理业务', { exact: true })).toBeVisible();
     await expect(page.getByText('服务器数据已读取 · 多设备自动同步', { exact: true })).toBeVisible();
-    await click('记收款');
+    await click('收付款');
     await expect(page.getByText('供货商账单', { exact: true }).first()).toBeVisible();
     await page.goto('about:blank');
     await page.goto(origin + '/#/pages/inventory/index');
@@ -116,7 +116,8 @@ async function main() {
     await page.getByLabel('搜索订单').locator('input').fill('TEST-ORDER-1');
     await click('核对出库');
     await expect(page).toHaveURL(/\/pages\/outbound\/index/);
-    await expect(page.getByText('02 / 核对出库', { exact: true })).toBeVisible();
+    await expect(page.getByText('出库', { exact: true }).first()).toBeVisible();
+    await expect(page.getByLabel('出库数量')).toBeVisible();
     await expect(page.getByText('TEST-ORDER-1', { exact: false }).first()).toBeVisible();
 
     await go('/pages/business-center/index');
@@ -126,7 +127,7 @@ async function main() {
     await page.screenshot({ path: path.join(artifacts, 'workbench-inbound.png'), fullPage: true });
 
     await go('/pages/business-center/index');
-    await click('记收款');
+    await click('收付款');
     await click('上传送货单照片');
     await expect(page.getByText('原件照片按业务账单保存', { exact: false })).toBeVisible();
 

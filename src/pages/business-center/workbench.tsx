@@ -148,7 +148,7 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
       if (host && getComputedStyle(host).display !== 'none') void Taro.switchTab({ url: '/pages/outbound/index' });
       else open('/pages/outbound/index');
     } },
-    { title: '记收款', guide: '核对欠款并收款', icon: 'wallet', fn: () => changePanel('customer') }
+    { title: '收付款', guide: '核对欠款并收付', icon: 'wallet', fn: () => changePanel('customer') }
   ];
   const title = { home: '业务总台', inbound: '入库', stock: '查看库存', records: '业务记录与存根', photos: '票据原件', production: '生产完工', supplier: '供货商账单', customer: '客户账单' }[panel];
   const appName = getCopy('appName');

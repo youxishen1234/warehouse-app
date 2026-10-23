@@ -54,6 +54,7 @@ function scanReferenceWarnings(data) {
   for (const row of data.stocktakes || []) if (!products.has(Number(row.product_id))) warnings.push(`stocktake:${row.id}:missing-product:${row.product_id}`);
   for (const row of data.order_events || []) if (!orders.has(Number(row.order_id))) warnings.push(`order-event:${row.id}:missing-order:${row.order_id}`);
   for (const note of data.delivery_notes || []) {
+    if (note.customer_id != null && !customers.has(Number(note.customer_id))) warnings.push(`delivery-note:${note.id}:missing-customer:${note.customer_id}`);
     if (note.supplier_id != null && !suppliers.has(Number(note.supplier_id))) warnings.push(`delivery-note:${note.id}:missing-supplier:${note.supplier_id}`);
     for (const line of note.lines || []) if (!products.has(Number(line.product_id))) warnings.push(`delivery-note:${note.id}:missing-product:${line.product_id}`);
   }
@@ -379,12 +380,15 @@ function validateAccountingDelta(before, after) {
         throw new Error(`盘点流水 ${tx.id} 金额不一致`);
       }
     }
-    const hasParty = tx.customer_id != null || tx.supplier_id != null;
+    // A customer-supplied carton receipt links a customer for traceability but
+    // is an inventory adjustment, so only real payable/receivable pairs are
+    // required to have a ledger row.
+    const hasAccountingParty = (tx.type === 'in' && tx.supplier_id != null) || (tx.type === 'out' && tx.customer_id != null);
     const zeroAmount = roundDecimal(Number(tx.amount || 0), 2) === 0;
-    if (hasParty && zeroAmount) {
+    if (hasAccountingParty && zeroAmount) {
       // 零金额交易（赠品/免费样）保留往来对象关联但不产生应收应付账本。
       if (active.length !== 0) throw new Error(`交易与账本流水不一致：交易 ${tx.id}`);
-    } else if (hasParty) {
+    } else if (hasAccountingParty) {
       if (tx.voided_at ? active.length : active.length !== 1) throw new Error(`交易与账本流水不一致：交易 ${tx.id}`);
       if (!tx.voided_at && active.length === 1 && roundDecimal(Number(active[0].amount), 2) !== roundDecimal(Number(tx.amount), 2)) throw new Error(`交易与账本金额不一致：交易 ${tx.id}`);
     }
@@ -498,7 +502,13 @@ function addDeliveryNote(data) {
   if (workOrderNo && cache.delivery_notes.some(note => !note.voided_at && String(note.work_order_no || '').trim() === workOrderNo) && data.confirm_duplicate_work_order !== true) {
     throw new Error(`工单编号「${workOrderNo}」已有未作废送货单，请确认后再重复开单`);
   }
-  const now = Date.now(); const supplier = activeParty(data.supplier_id, 'supplier');
+  const now = Date.now();
+  const partyType = data.party_type === undefined ? (data.customer_id != null ? 'customer' : 'supplier') : data.party_type;
+  if (partyType !== 'supplier' && partyType !== 'customer') throw new Error('入库往来对象类型无效');
+  if (partyType === 'customer' && data.supplier_id != null) throw new Error('客户入库不能同时关联供货商');
+  if (partyType === 'supplier' && data.customer_id != null) throw new Error('供货商入库不能同时关联客户');
+  const supplier = partyType === 'supplier' ? activeParty(data.supplier_id, 'supplier') : null;
+  const customer = partyType === 'customer' ? activeParty(data.customer_id, 'customer') : null;
   const freight = numberValue(data.freight === undefined ? 0 : data.freight, '运费');
   const date = data.date === undefined ? localDate() : String(data.date);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date) throw new Error('日期格式无效');
@@ -519,10 +529,11 @@ function addDeliveryNote(data) {
     return { product, quantity, delivered, ...values, specification, length, width, square };
   });
   return atomicMutation(() => {
-    const note = { id: cache._meta.nextDeliveryNoteId++, date, work_order_no: workOrderNo, supplier_id: supplier?.id || null, supplier_name: supplier?.name || '', driver_phone: String(data.driver_phone || '').trim(), vehicle_no: String(data.vehicle_no || '').trim(), operator: String(data.operator || '').trim(), freight, remark: String(data.remark || '').trim(), lines: [], total_square_meters: 0, total_amount: 0, created_at: now };
+    const note = { id: cache._meta.nextDeliveryNoteId++, date, work_order_no: workOrderNo, party_type: partyType, supplier_id: supplier?.id || null, supplier_name: supplier?.name || '', customer_id: customer?.id || null, customer_name: customer?.name || '', driver_phone: String(data.driver_phone || '').trim(), vehicle_no: String(data.vehicle_no || '').trim(), operator: String(data.operator || '').trim(), freight, remark: String(data.remark || '').trim(), lines: [], total_square_meters: 0, total_amount: 0, created_at: now };
     for (const item of prepared) {
       const { product, quantity, delivered, unit, unitPrice, amount, specification, length, width, square } = item;
-      const result = delivered > 0 ? stockIn(product.id, delivered, note.operator, note.remark || `送货单 ${note.work_order_no}`, note.supplier_id, { specification, unit, unit_price: unitPrice, delivery_note_id: note.id, work_order_no: note.work_order_no, delivered_qty: delivered, square_meters: square }) : null;
+      const partyId = note.party_type === 'customer' ? note.customer_id : note.supplier_id;
+      const result = delivered > 0 ? stockIn(product.id, delivered, note.operator, note.remark || `送货单 ${note.work_order_no}`, partyId, { specification, unit, unit_price: unitPrice, delivery_note_id: note.id, work_order_no: note.work_order_no, delivered_qty: delivered, square_meters: square }, note.party_type) : null;
       note.lines.push({ product_id: product.id, product_name: product.name, specification, unit, length, width, quantity, unit_price: unitPrice, delivered_qty: delivered, square_meters: square, amount, ...(result ? { transaction_id: result.transaction.id } : {}) });
       note.total_square_meters += square; note.total_amount += amount;
     }
@@ -850,13 +861,15 @@ function stockValues(product, quantity, details, positive = true) {
   if (details.unit !== undefined && details.unit !== unit) throw new Error(`单位必须与商品库存单位「${unit}」一致`);
   return { qty, unitPrice, unit, amount: lineAmount(qty, unitPrice) };
 }
-function postStock(type, productId, quantity, op, remark, partyId, details) {
+function postStock(type, productId, quantity, op, remark, partyId, details, incomingPartyType = 'supplier') {
   const id = numberValue(productId, '商品编号', true);
   const product = Number.isInteger(id) ? getProduct(id) : null;
   if (!product || product.deleted_at) throw new Error('商品不存在或已停用');
   const { qty, unitPrice, unit, amount } = stockValues(product, quantity, details);
   const incoming = type === 'in'; const label = incoming ? '入库' : '出库';
-  const party = activeParty(partyId, incoming ? 'supplier' : 'customer');
+  const customerReceipt = incoming && incomingPartyType === 'customer';
+  const partyType = incoming ? (customerReceipt ? 'customer' : 'supplier') : 'customer';
+  const party = activeParty(partyId, partyType);
   if (!incoming && roundDecimal(product.stock, 6) < qty) throw new Error(`库存不足！${product.name} 当前库存：${product.stock}${unit}，需出库：${qty}${unit}`);
   const after = roundDecimal(product.stock + (incoming ? qty : -qty), 6);
   numberValue(after, '库存');
@@ -866,11 +879,13 @@ function postStock(type, productId, quantity, op, remark, partyId, details) {
     const createdAt = Date.now();
     product.stock = after; product.updated_at = createdAt; product.stock_updated_at = createdAt;
     const tx = { id: cache._meta.nextTransactionId++, product_id: product.id, product_name: product.name, type, quantity: qty, operator: String(op || ''), remark: String(remark || ''), created_at: createdAt, specification: details.specification ?? product.specification ?? '', material: details.material ?? product.material ?? '', unit, unit_price: unitPrice, amount };
-    tx[incoming ? 'supplier_id' : 'customer_id'] = party?.id || null;
-    tx[incoming ? 'supplier_name' : 'customer_name'] = party?.name || '';
+    tx[`${partyType}_id`] = party?.id || null;
+    tx[`${partyType}_name`] = party?.name || '';
     for (const field of ['corrugation', 'weight', 'length', 'width', 'layers']) tx[field] = product[field];
     for (const field of ['delivery_note_id', 'work_order_no', 'delivered_qty', 'square_meters']) if (details[field] !== undefined) tx[field] = details[field];
-    if (party) {
+    // Customer-supplied cartons are an inventory adjustment: keep the customer
+    // link for traceability but never create debt for them.
+    if (party && !customerReceipt) {
       const balance = incoming ? 'payable' : 'debt';
       party[balance] = roundDecimal(Number(party[balance] || 0) + amount, 2);
       systemLedger(incoming ? 'payable' : 'receivable', amount, party.id, party.name, tx.id, `${label}${incoming ? '应付款' : '应收款'} · ${product.name}`, incoming ? 'supplier' : 'customer');
@@ -878,7 +893,7 @@ function postStock(type, productId, quantity, op, remark, partyId, details) {
     cache.transactions.push(tx); persist(); return { product, transaction: tx };
   });
 }
-function stockIn(productId, qty, op='', rmk='', supplierId=null, details={}) { return postStock('in', productId, qty, op, rmk, supplierId, details); }
+function stockIn(productId, qty, op='', rmk='', supplierId=null, details={}, incomingPartyType='supplier') { return postStock('in', productId, qty, op, rmk, supplierId, details, incomingPartyType); }
 function stockOut(productId, qty, op='', rmk='', customerId=null, details={}) { return postStock('out', productId, qty, op, rmk, customerId, details); }
 
 function listTx(f={}) {
@@ -1286,6 +1301,11 @@ function validateBackupData(data) {
     timestamp(take.created_at, `stocktake ${take.id}`); timestamp(take.counted_at, `stocktake ${take.id}`);
   }
   for (const note of data.delivery_notes) {
+    const partyType = note.party_type || (note.customer_id != null ? 'customer' : 'supplier');
+    if (partyType !== 'supplier' && partyType !== 'customer') throw new Error(`送货单 ${note.id} 往来对象类型无效`);
+    if (partyType === 'customer' && note.supplier_id != null) throw new Error(`送货单 ${note.id} 不能同时关联客户和供货商`);
+    if (partyType === 'supplier' && note.customer_id != null) throw new Error(`送货单 ${note.id} 不能同时关联客户和供货商`);
+    if (note.customer_id != null && !customerIds.has(Number(note.customer_id))) throw new Error(`送货单 ${note.id} 引用了不存在的客户`);
     if (note.supplier_id != null && !supplierIds.has(Number(note.supplier_id))) throw new Error(`送货单 ${note.id} 引用了不存在的供应商`);
     const freight = note.freight === undefined ? 0 : note.freight;
     nonNegative(freight, '送货运费');
@@ -1314,6 +1334,8 @@ function validateBackupData(data) {
       if (Number(line.delivered_qty) > 0 && !transaction) throw new Error(`送货单 ${note.id} 明细缺少对应入库流水`);
       if (transaction && (transaction.type !== 'in'
         || Number(transaction.delivery_note_id) !== Number(note.id)
+        || (note.party_type === 'customer' && (Number(transaction.customer_id || 0) !== Number(note.customer_id || 0) || transaction.supplier_id != null))
+        || ((note.party_type || 'supplier') === 'supplier' && (Number(transaction.supplier_id || 0) !== Number(note.supplier_id || 0) || transaction.customer_id != null))
         || Number(transaction.product_id) !== Number(line.product_id)
         || roundDecimal(Number(transaction.quantity), 6) !== roundDecimal(Number(line.delivered_qty), 6)
         || roundDecimal(Number(transaction.unit_price), 2) !== roundDecimal(Number(line.unit_price), 2)

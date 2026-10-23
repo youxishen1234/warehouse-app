@@ -63,7 +63,7 @@ async function main() {
     await expect(page.getByText('纸板入库', { exact: true })).toBeVisible();
     await expect(page.getByText('纸箱入库', { exact: true })).toBeVisible();
     await page.screenshot({ path: path.join(artifacts, 'reference-inbound.png'), fullPage: true });
-    await button(page.getByTestId('simple-workbench'), '总台').click(); await button(page.getByTestId('simple-workbench'), '记收款').click();
+    await button(page.getByTestId('simple-workbench'), '总台').click(); await button(page.getByTestId('simple-workbench'), '收付款').click();
     await expect(page.getByText('待收款 ¥22.00', { exact: true })).toBeVisible();
     await button(page.getByTestId('simple-workbench'), '供货商账单').click();
     await expect(page.getByText('待付款 ¥211.20', { exact: true })).toBeVisible();

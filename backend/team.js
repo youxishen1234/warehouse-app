@@ -236,7 +236,11 @@ function install(db, options = {}) {
   });
   route('get', '/delivery-notes/:id.csv', (req, res) => {
     const note = db.getDeliveryNote(Number(req.params.id)); if (!note) throw error('送货单不存在', 404);
-    const rows = [['状态', note.voided_at ? '已作废' : '已入库'], ['日期', note.date], ['工单编号/采购单号', note.work_order_no], ['供应商', note.supplier_name], ['操作人', note.operator || ''], ['司机电话', note.driver_phone], ['车号', note.vehicle_no], ['运费（单独记录，不计入货款应付）', note.freight], [], ['商品', '规格/楞别', '单位', '计划数量', '单价', '实际入库数量', '平米数', '货款金额']];
+    const customerNote = note.party_type === 'customer' || (note.party_type == null && note.customer_id != null);
+    const partyLabel = customerNote ? '客户' : '供应商';
+    const partyName = customerNote ? note.customer_name : note.supplier_name;
+    const freightLabel = customerNote ? '运费（单独记录，不计入客户应收）' : '运费（单独记录，不计入货款应付）';
+    const rows = [['状态', note.voided_at ? '已作废' : '已入库'], ['日期', note.date], ['工单编号/采购单号', note.work_order_no], [partyLabel, partyName || ''], ['操作人', note.operator || ''], ['司机电话', note.driver_phone], ['车号', note.vehicle_no], [freightLabel, note.freight], [], ['商品', '规格/楞别', '单位', '计划数量', '单价', '实际入库数量', '平米数', '货款金额']];
     for (const line of note.lines) rows.push([line.product_name, line.specification, line.unit || '', line.quantity, line.unit_price, line.delivered_qty, line.square_meters, line.amount]);
     rows.push(['货款合计', '', '', '', '', '', '', note.total_amount], ['总平米', note.total_square_meters], ['备注', note.remark]);
     res.attachment(`delivery-note-${note.id}.csv`).type('text/csv').send('\ufeff' + rows.map(row => row.map(csvCell).join(',')).join('\r\n'));

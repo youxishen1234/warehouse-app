@@ -216,7 +216,7 @@ async function verify(browser, name) {
   assert.equal(await page.evaluate(() => window.__nativeMessages.length), acknowledgments.length, 'unrelated DOM changes do not resend the selection');
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('sg-native-tab', { detail: '/pages/home/index' })));
   await page.waitForURL(/home/);
-  for (const label of ['入库', '生产', '出库', '记收款', '今天的记录']) assert.ok(pageText.includes(label), `homepage action missing: ${label}`);
+  for (const label of ['入库', '生产', '出库', '收付款', '今天的记录']) assert.ok(pageText.includes(label), `homepage action missing: ${label}`);
   await page.evaluate(() => {
     delete window.__sgNativeDock;
     window.dispatchEvent(new Event('sg-native-ready'));

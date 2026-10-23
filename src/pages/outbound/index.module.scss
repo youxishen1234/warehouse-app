@@ -1,11 +1,6 @@
 @use '@/styles/workflow.scss' as flow;
 .container { @include flow.page; }
 .container { padding: 0; background: transparent; min-height: 0; }
-.summary { display:flex; align-items:center; justify-content:space-between; min-height:130PX; padding:20PX; margin-bottom:16PX; border:1PX solid #4edca225; border-radius:18PX; background:linear-gradient(125deg,#193d36,#182a2a); color:#e8fff7; }
-.summary .board-material { width:108PX; height:92PX; flex-shrink:0; }
-.summaryLabel { display:block; color:#8bc8b6; font-size:11PX; }
-.summaryValue { display:block; margin:6PX 0; color:#f0fff9; font-size:27PX; font-weight:650; font-variant-numeric:tabular-nums; line-height:1.2; }
-.summaryHint { display:block; color:#8da8a1; font-size:10PX; }
 .hero { @include flow.hero(#076a62, #17847e); }
 .hero { background: linear-gradient(120deg, #132d31, #174d4c); box-shadow: 0 16rpx 40rpx rgba(13, 58, 54, .14); }
 .orderList { max-height: 620rpx; overflow-y: auto; margin-top: 20rpx; }
@@ -35,6 +30,7 @@
 .amountPreview { display: block; padding-top: 16rpx; margin-top: 8rpx; border-top: 1rpx solid #e7edf0; color: #076a62; font-size: 28rpx; font-weight: 700; line-height: 1.5; }
 .error { display: block; padding: 22rpx; margin: 16rpx 0 22rpx; border-radius: 20rpx; background: #fff0f1; border: 1rpx solid #f5ccd2; color: #a51d32; font-size: 24rpx; line-height: 1.5; }
 .addLine { display: flex; align-items: center; justify-content: center; min-height: 90rpx; padding: 18rpx; margin: 16rpx 0 24rpx; border: 2rpx dashed #8bbeb6; border-radius: 22rpx; background: #eaf6f2; color: #076a62; font-size: 28rpx; font-weight: 600; }
+.btnPrimary { @include flow.action(#076a62); }.btnDisabled { opacity: .5; pointer-events: none; }
 .recentItem { display: flex; align-items: flex-start; gap: 18rpx; padding: 22rpx 0; border-bottom: 1rpx solid #e7edf2; }.recentItem:last-child { border: 0; }.recentLeft { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12rpx; }.recentTop { display: flex; justify-content: space-between; align-items: center; gap: 14rpx; margin-bottom: 14rpx; }.recentName { color: #172235; font-size: 27rpx; font-weight: 600; }.recentCustomer { color: #076a62; background: #edf8f5; border-radius: 10rpx; padding: 6rpx 12rpx; font-size: 22rpx; align-self: flex-start; }.recentTime,.recentRemark { color: #61728a; font-size: 22rpx; line-height: 1.5; }.deleteBtn { padding: 14rpx 18rpx; background: #fff0f1; color: #b42332; border-radius: 14rpx; font-size: 23rpx; flex-shrink: 0; }.tagOut { color: #076a62; background: #edf8f5; border-radius: 14rpx; padding: 10rpx 16rpx; font-size: 24rpx; font-weight: 600; }.empty { padding: 28rpx 0; color: #66778d; font-size: 25rpx; text-align: center; }
 /* Match the shared paperboard inventory surfaces. */
 .container .card,.container .documentCard { background:linear-gradient(140deg,#202630,#191e27); border:1PX solid #ffffff0e; border-radius:22PX; padding:20PX; margin:16PX 0; box-shadow:0 8PX 25PX #00000010; }
@@ -51,8 +47,32 @@
 .container .progress { color:#d3e2ff; border-color:#ffffff0a; font-size:13PX; gap:8PX; }
 .container .stockPreview { color:#79d6b3; background:#4edca20e; border:1PX solid #4edca217; border-radius:12PX; font-size:13PX; }
 .container .amountPreview { color:#e1eafb; border-color:#ffffff0a; font-size:20PX; }
-.container .btnDisabled { color:#65738c; background:#202735; border-color:transparent; box-shadow:none; opacity:1; }
+.container .btnPrimary { background:linear-gradient(135deg,#468cfb,#3566eb); border:1PX solid #ffffff16; border-radius:14PX; font-size:14PX; padding:15PX; margin-top:20PX; }
+.container .btnDisabled { color:#65738c; background:#202735; opacity:1; }
 .container .recentItem { border-color:#ffffff0a; }
 .container .empty { color:#929eb1; font-size:13PX; }
 .container .error { color:#f9b6a9; background:#4e2729; border-color:#ffffff0b; font-size:13PX; }
 .container .paper { color:#111; color-scheme:light; }
+/* The three stock forms share the compact business-desk palette. */
+:global(.stock-entry-page) .container {
+  padding: 0; background: transparent; min-height: 0; color: #eef3ef;
+  .formField { margin-top: 14PX; }
+  .fieldGrid { margin-top: 14PX; gap: 12PX; }
+  .fieldLabel { margin: 0 0 6PX; color: #b5c0b9; font-size: 12PX; font-weight: 400; }
+  .fieldInput { display: flex; align-items: center; width: 100%; padding: 11PX 12PX; min-height: 46PX; margin: 0 0 10PX; border: 1PX solid #414e44; border-radius: 8PX; background: #29332c; color: #eef3ef; font-size: 16PX; line-height: 1.5; }
+  .inlineButton { min-height: 38PX; width: auto; padding: 6PX 0; border: 0; background: transparent; color: #a6dcb8; font-size: 12PX; text-align: left; }
+  .stockPreview { padding: 10PX 0; margin-top: 2PX; background: transparent; color: #b5c0b9; border: 0; border-radius: 0; font-size: 12PX; }
+  .amountPreview { padding-top: 14PX; margin: 16PX 0 0; border-color: #414e44; color: #eef3ef; font-size: 18PX; font-weight: 500; }
+  .btnPrimary { position: relative; left: auto; right: auto; bottom: auto; z-index: auto; width: 100%; min-height: 46PX; margin-top: 12PX; padding: 12PX; border: 1PX solid #a6dcb8; border-radius: 9PX; background: #a6dcb8; color: #223b2b; font-size: 15PX; font-weight: 500; line-height: 1.5; }
+  .btnDisabled { opacity: .5; background: #29332c; color: #b5c0b9; border-color: #414e44; }
+  .detailsBody { padding-top: 10PX; }
+  .progress { padding: 12PX 0; margin: 0 0 14PX; color: #b5c0b9; border-color: #414e44; font-size: 12PX; font-weight: 400; }
+  .card, .documentCard { padding: 14PX 0; margin: 12PX 0; background: transparent; border: 0; border-bottom: 1PX solid #414e44; border-radius: 0; box-shadow: none; }
+  .cardTitle, .recentName { color: #eef3ef; font-size: 14PX; font-weight: 500; }
+  .recentTime, .infoStock { color: #b5c0b9; font-size: 12PX; }
+  .recentItem { border-color: #414e44; padding: 14PX 0; align-items: center; }
+  .tagOut { width: auto; min-height: 40PX; padding: 9PX 10PX; background: #29332c; border: 1PX solid #414e44; border-radius: 8PX; color: #a6dcb8; font-size: 12PX; }
+  .link { color: #a6dcb8; }
+  .error { padding: 12PX; margin: 12PX 0; background: #4b2929; color: #ffd0cb; border-color: #704a49; border-radius: 8PX; font-size: 13PX; }
+  .empty { color: #b5c0b9; font-size: 13PX; }
+}

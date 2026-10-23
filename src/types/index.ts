@@ -188,8 +188,11 @@ export interface DeliveryNote {
   id: number;
   date: string;
   work_order_no: string;
+  party_type?: 'supplier' | 'customer';
   supplier_id?: number | null;
-  supplier_name: string;
+  supplier_name?: string;
+  customer_id?: number | null;
+  customer_name?: string;
   driver_phone: string;
   vehicle_no: string;
   freight: number;

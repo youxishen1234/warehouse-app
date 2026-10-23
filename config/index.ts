@@ -17,7 +17,11 @@ export default defineConfig<'webpack5'>(async (merge, { mode }) => {
     sourceRoot: 'src',
     outputRoot: process.env.TARO_OUTPUT_DIR || 'dist',
     plugins: ['@tarojs/plugin-html'],
-    defineConstants: {},
+    defineConstants: {
+      // Demo builds may point at a local, isolated API. Release builds leave
+      // this empty and keep the canonical HTTPS endpoint unchanged.
+      __WAREHOUSE_DEMO_API_ORIGIN__: JSON.stringify(process.env.TARO_DEMO_API_ORIGIN || '')
+    },
     copy: {
       patterns: [
         { from: 'www/js/home-search.js', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/js/home-search.js' },

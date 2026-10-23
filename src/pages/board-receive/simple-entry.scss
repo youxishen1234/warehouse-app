@@ -1,0 +1,14 @@
+.stock-entry-page .board-simple-entry {
+  .board-entry-reuse { margin-bottom: 18PX; }
+  .board-entry-history { margin-top: 18PX; }
+  .board-entry-picker-link { color: #a6dcb8; font-size: 12PX; padding: 8PX 0 8PX 12PX; white-space: nowrap; }
+  .board-entry-dimensions { display: flex; align-items: center; gap: 8PX; }
+  .board-entry-dimensions > :is(input, taro-input-core) { width: 0; flex: 1 1 0; min-width: 0; min-height: 46PX; padding: 11PX 8PX; border: 1PX solid var(--entry-line); border-radius: 8PX; background: var(--entry-panel); text-align: center; }
+  .board-entry-dimensions taro-input-core input { width: 100%; text-align: center; }
+  .board-entry-dimensions > :is(text, taro-text-core) { flex: 0 0 auto; color: #b5c0b9; }
+  .board-entry-custom { margin-top: 9PX; }
+  .board-template-list { display: grid; gap: 8PX; margin: 12PX 0; }
+  .board-template-list .board-button { justify-content: flex-start; text-align: left; font-size: 13PX; }
+  .board-detail-row { color: #eef3ef; border-color: #414e44; padding: 13PX 0 0; }
+  .board-detail-row strong { font-weight: 500; font-variant-numeric: tabular-nums; }
+}
