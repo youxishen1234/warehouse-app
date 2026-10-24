@@ -11,6 +11,7 @@
 .page :global(button), .page :global(taro-button-core) { box-sizing: border-box; min-width: 0; width: auto; margin: 0; font: inherit; line-height: 1.5; }
 .deviceBar { max-width: 1400px; margin: 0 auto 20px; background: #162e3b; color: white; padding: 25px; border-radius: 20px; display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 16px 20px; .meta { color: #c6d5dc; } }
 .deviceStatus { flex: 1 1 240px; min-width: 0; }
+.deviceActions { display: flex; flex-wrap: wrap; gap: 10px; }
 .deviceName { display: block; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
 .card { max-width: 1400px; margin: 0 auto 22px; padding: 25px; border: 1px solid #dfe5e9; border-radius: 20px; background: white; box-sizing: border-box; min-width: 0; }
 .setupGuide { margin: 18px 0; padding: 18px 20px; border-left: 5px solid #2a8194; border-radius: 12px; background: #eef7f8; }

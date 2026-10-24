@@ -181,9 +181,9 @@ async function main() {
       await modes().getByRole('button', { name: '标签打印', exact: true }).click();
       await page.waitForURL(/pages\/label-print\/index/);
       await expectModes('标签打印');
-      await expect(active().getByText('标签工作台', { exact: true })).toBeVisible();
-      await expect(active().getByText('精臣 K3 直连仅支持安装了新版原生插件的 iOS App；本页仍可浏览记录与字段。', { exact: true })).toBeVisible();
-      await expect(active().getByText('正式打印等待 K3 验收', { exact: true })).toHaveAttribute('disabled');
+      await expect(active().getByText('电脑 USB 打印 K3', { exact: true })).toBeVisible();
+      await expect(active().getByText('手机经互联网发送到店里电脑，再由 USB K3 打印；手机不连接蓝牙。送货单 630K 通道保持独立。', { exact: true })).toBeVisible();
+      await expect(active().locator('nav[aria-label="打印类型"]').locator('button')).toHaveCount(2);
       await noOverflow('label mode');
       await modes().getByRole('button', { name: '送货单', exact: true }).click();
       await page.waitForURL(/pages\/print-center\/index/);
@@ -283,6 +283,7 @@ async function main() {
     const nativePage = await nativeContext.newPage();
     nativePage.setDefaultTimeout(15000); nativePage.on('pageerror', error => errors.push(error.message));
     await nativePage.goto(webOrigin + '/#/pages/label-print/index');
+    await nativePage.locator('taro-button-core').filter({ hasText: /^切换手机蓝牙打印$/ }).click();
     await expect(nativePage.getByText('测试原生状态：K3 真机尚未完成验收，正式打印保持关闭。', { exact: true })).toBeVisible();
     await expect(nativePage.getByText('正式打印等待 K3 验收', { exact: true })).toHaveAttribute('disabled');
     await expect(nativePage.getByText('打印机设置', { exact: true })).toBeVisible();

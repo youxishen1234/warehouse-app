@@ -10,6 +10,7 @@ import { buildBoardLabelSnapshot, buildFinishedLabelSnapshot, changedSnapshotFie
 import type { BoardLabelOptions, FinishedLabelOptions, LabelKind, LabelSnapshot } from '@/features/label-print';
 import { isActivePrintJob, labelPrinter } from '@/features/label-print/native';
 import type { LabelPrinter, LabelPrinterState, MediaProfile, PrintProgress } from '@/features/label-print/native';
+import RemoteLabelPrintPage from './remote';
 import styles from './index.module.scss';
 
 type RecordChoice = { kind: 'finished-product'; data: Product } | { kind: 'paperboard-batch'; data: BoardBatch };
@@ -53,7 +54,7 @@ function fieldValue(key: string, value: unknown, data: LabelSnapshot): string {
   return String(value);
 }
 
-export default function LabelPrintPage() {
+export function NativeLabelPrintPage({ onComputer }: { onComputer?: () => void } = {}) {
   const router = useRouter();
   const [kind, setKind] = useState<LabelKind>(router.params.kind === 'paperboard-batch' ? 'paperboard-batch' : 'finished-product');
   const [query, setQuery] = useState('');
@@ -368,7 +369,7 @@ export default function LabelPrintPage() {
     <View className={styles.hero}><Text className={styles.eyebrow}>仓库 · 标签</Text><Text className={styles.title}>标签工作台</Text><Text className={styles.subtitle}>选记录、核对字段，再用精臣 K3 打印。标签不会改变库存。</Text></View>
     <View className={styles.deviceBar}>
       <View className={styles.deviceStatus}><Text className={`label-printer-status ${styles.deviceName}`}>{connectingName ? operation : printer.connected ? `已连接 · ${printer.printerName}` : '尚未连接精臣 K3'}</Text><Text className={styles.meta}>{profile ? `${profile.widthMm} × ${profile.heightMm} mm · 间隙纸 · ${profile.calibrated ? '已确认校准' : '待校准'}` : '尚未配置实际纸张'}</Text></View>
-      <Button className={styles.smallButton} disabled={disabledIf(busy)} onClick={() => printer.supported ? setSettings(!settings) : openIOSDownload()}>{printer.supported && settings ? '收起设置' : printer.supported ? '打印机设置' : '打开安装页'}</Button>
+      <View className={styles.deviceActions}>{onComputer && <Button className={styles.smallButton} disabled={disabledIf(busy)} onClick={onComputer}>电脑 USB 打印</Button>}<Button className={styles.smallButton} disabled={disabledIf(busy)} onClick={() => printer.supported ? setSettings(!settings) : openIOSDownload()}>{printer.supported && settings ? '收起设置' : printer.supported ? '打印机设置' : '打开安装页'}</Button></View>
     </View>
     {(!settings || !printer.supported) && printerFeedback}
     {!printer.productionEnabled && <View className={styles.notice}><Text>{printer.reason || 'K3 真机与正式扫码路线尚未验收，正式打印暂未开放。可先配置耗材并检查 SDK 预览。'}</Text>{!printer.supported && <Button className={styles.secondary} onClick={openIOSDownload}>去安装新版 iOS App</Button>}</View>}
@@ -404,4 +405,14 @@ export default function LabelPrintPage() {
     {job && <View className={styles.card}><Text className={styles.sectionTitle}>当前任务 · {phases[job.phase] || job.phase}</Text><Text className={styles.jobId}>{job.jobId}</Text>{job.message && <Text className={styles.meta}>{job.message}</Text>}{job.errorCode && <Text className={styles.error}>错误码：{job.errorCode}</Text>}{job.outcomeConfidence === 'count-verified' && Number.isFinite(job.printed) && <Text>已确认进度 {job.printed}/{job.total}</Text>}{job.phase === 'uncertain' && <Text className={styles.error}>可能已经出纸。请先查看实体标签，不会自动重试；需要重印时请重新选择记录并核对预览。</Text>}{isActivePrintJob(job) && <Button className={styles.secondary} disabled={disabledIf(cancelling)} onClick={() => void cancel()}>{cancelling ? '正在取消…' : '取消当前任务'}</Button>}</View>}
     {recent.length > 0 && <View className={styles.card}><Text className={styles.sectionTitle}>最近本机任务</Text><Text className={styles.meta}>仅保留最近 10 条轻量记录，不保存标签图像；清除 App 数据会丢失记录。</Text>{recent.map(item => <View className={styles.historyRow} key={item.jobId}><Text>{phases[item.phase] || item.phase} · {item.total} 份</Text><Text className={styles.jobId}>{item.jobId}</Text></View>)}</View>}
   </View>;
+}
+
+type LabelTransport = 'computer' | 'bluetooth';
+
+export default function LabelPrintPage() {
+  // Remote USB is the normal path: the phone must not need a Bluetooth
+  // connection for every label. Native Bluetooth stays available explicitly.
+  const [transport, setTransport] = useState<LabelTransport>('computer');
+  if (transport === 'bluetooth') return <NativeLabelPrintPage onComputer={() => setTransport('computer')} />;
+  return <RemoteLabelPrintPage onBluetooth={() => setTransport('bluetooth')} />;
 }

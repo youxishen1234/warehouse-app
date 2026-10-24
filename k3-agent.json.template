@@ -1,0 +1,9 @@
+{
+  "mode": "unpaired",
+  "origin": "https://youxishen.online",
+  "deliveryConfig": "E:\\aoo\\warehouse-app\\release\\remote-print-630k-20261011\\receiver\\agent.json",
+  "printer": "K3-I911020404",
+  "port": "COM3",
+  "baud": 115200,
+  "autoRegister": true
+}

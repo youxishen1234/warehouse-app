@@ -158,7 +158,11 @@ function install(db, options = {}) {
     next();
   });
   require('./customer-dimensions').install(router, db);
-  require('./remote-print').install(router, db);
+  const remotePrintStore = require('./remote-print').install(router, db);
+  require('./remote-label-print').install(router, db, {
+    clientDevice: token => remotePrintStore.device(token),
+    agentDevice: token => remotePrintStore.agentDevice(token)
+  });
   require('./ai').install(router, db);
   const requirePhotoSession = req => {
     const current = guestSessions.get(req.sessionKey);

@@ -108,6 +108,15 @@ jobs:
           LABEL_PRINT_WEB_ROOT: dist-${{ github.run_id }}-${{ github.run_attempt }}
           LABEL_PAPER_CHECK_DIR: release/label-paper-${{ github.run_id }}-${{ github.run_attempt }}
         run: node tests/label-paper-browser.cjs
+      - name: Validate phone to shop computer USB label workflow
+        env:
+          LABEL_PRINT_WEB_ROOT: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          REMOTE_LABEL_CHECK_DIR: release/remote-label-print-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/remote-label-print-browser.cjs
+      - name: Validate K3 serial receipts and agent recovery offline
+        run: |
+          node --test scripts/k3-serial.test.cjs
+          node scripts/k3-serial.cjs self-test
       - name: Validate remote print failure recovery
         env:
           REMOTE_PRINT_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
