@@ -73,6 +73,8 @@ const server = http.createServer((request, response) => {
     page.setDefaultTimeout(12000);
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(origin + '/#/pages/label-print/index');
+    // Remote USB is now the default; this suite exercises the native page.
+    await page.locator('taro-button-core').filter({ hasText: /^切换手机蓝牙打印$/ }).click();
     const field = label => page.getByLabel(label).locator('input');
     const width = field('实测宽度（mm）');
     const height = field('实测高度（mm）');
