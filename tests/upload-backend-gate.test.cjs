@@ -132,6 +132,8 @@ test('remote release plan stages the bundle and required publisher verifier in o
     `${plan.stage}/verify-backend-billing.cjs`
   ]);
   assert.ok(plan.publish.includes(`RELEASE_COMMIT='${commit}'`));
+  assert.match(plan.publish, /^if \[ "\$\(id -u\)" -eq 0 \]; then set --; else set -- sudo -n; fi; exec "\$@" env RELEASE_COMMIT=/);
+  assert.match(plan.summary, /^if \[ "\$\(id -u\)" -eq 0 \]; then set --; else set -- sudo -n; fi; exec "\$@" python3 /);
   assert.ok(plan.publish.includes(uploader.BACKUP_ROOT));
   assert.ok(plan.publish.endsWith('--restart'));
   assert.ok(plan.acceptance.startsWith(`${plan.stage}/`));
@@ -294,6 +296,7 @@ test('remote transport and publisher diagnostics use fixed categories only', () 
     ['ssh: connect to host server port 22: Connection refused', 'SSH connection refused'],
     ['Host key verification failed.', 'SSH host-key verification failed'],
     ['Permission denied (publickey,password).', 'SSH authentication failed'],
+    ['sudo: a password is required', 'backend publisher requires non-interactive sudo permission'],
     ['staged backend preflight failed: guest preflight contract failed', 'staged backend preflight failed'],
     ['service working directory is invalid', 'service working-directory configuration is invalid'],
     ['service restart failed: systemctl exit status 1', 'backend service restart or activation failed'],

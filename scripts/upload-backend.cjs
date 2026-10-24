@@ -167,7 +167,10 @@ function createRemotePlan(bundleFile, releaseCommit, id = crypto.randomUUID()) {
   };
   const remoteFiles = Object.values(names).map(name => `${stage}/${name}`);
   const cleanup = `rm -f -- ${[...remoteFiles, acceptance].map(shellQuote).join(' ')}; rmdir -- ${shellQuote(stage)}`;
+  const privileged = 'if [ "$(id -u)" -eq 0 ]; then set --; else set -- sudo -n; fi; exec "$@"';
   const publish = [
+    privileged,
+    'env',
     `RELEASE_COMMIT=${shellQuote(releaseCommit)}`,
     'python3',
     shellQuote(`${stage}/${names.publisher}`),
@@ -177,6 +180,7 @@ function createRemotePlan(bundleFile, releaseCommit, id = crypto.randomUUID()) {
     '--restart'
   ].join(' ');
   const summary = [
+    privileged,
     'python3',
     '-c',
     shellQuote(REMOTE_SUMMARY_SCRIPT),
@@ -249,6 +253,7 @@ function classifyRemoteFailure(error) {
     [/connection reset|reset by peer|econnreset/, 'SSH connection reset'],
     [/could not resolve hostname|name or service not known|temporary failure in name resolution|no route to host|network is unreachable|ehostunreach|enetunreach/, 'SSH host or network unreachable'],
     [/host key verification failed|remote host identification has changed|no matching host key type/, 'SSH host-key verification failed'],
+    [/sudo:.*(?:password is required|terminal is required|not allowed|not in the sudoers)|is not in the sudoers file/, 'backend publisher requires non-interactive sudo permission'],
     [/permission denied \(publickey|permission denied \(password|permission denied \(publickey,password|authentication failed|too many authentication failures|no supported authentication methods/, 'SSH authentication failed'],
     [/could not open remote file|failed to upload|scp:.*permission denied|permission denied.*(?:bundle\.json|publish-backend\.py|verify-backend)/, 'remote staging upload was denied'],
     [/staged backend preflight failed|preflight (?:contract|failed)/, 'staged backend preflight failed'],
