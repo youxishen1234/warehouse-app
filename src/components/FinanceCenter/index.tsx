@@ -116,6 +116,8 @@ export default function FinanceCenter({
   const saveLock = useRef(false), removeLock = useRef(false), exportLock = useRef(false), settleLock = useRef(false);
   const entryRequest = useRef(0);
   const alive = useRef(true);
+  const entryLedger = useRef(ledger);
+  entryLedger.current = ledger;
 
   useEffect(() => { onViewChange?.(view); }, [onViewChange, view]);
   useEffect(() => {
@@ -123,30 +125,34 @@ export default function FinanceCenter({
     return () => { alive.current = false; };
   }, []);
   useEffect(() => {
-    if (!entryId || !Number.isSafeInteger(entryId) || entryId <= 0 || selected?.id === entryId) return;
+    if (!entryId || !Number.isSafeInteger(entryId) || entryId <= 0) return;
     const requestId = ++entryRequest.current;
     let active = true;
-    const existing = ledger.find(item => item.id === entryId);
+    const existing = entryLedger.current.find(item => item.id === entryId);
     if (existing) { setSelected(existing); return; }
     void getLedger({ id: entryId, include_voided: true }).then(rows => {
       if (active && alive.current && requestId === entryRequest.current) setSelected(rows.find(item => item.id === entryId) || null);
     }).catch(error => {
-      if (active && requestId === entryRequest.current) Taro.showToast({ title: error?.message || '流水详情加载失败', icon: 'none' });
+      if (active && alive.current && requestId === entryRequest.current) Taro.showToast({ title: error?.message || '流水详情加载失败', icon: 'none' });
     });
     return () => { active = false; entryRequest.current += 1; };
-  }, [entryId, ledger, selected?.id]);
+  }, [entryId]);
   useEffect(() => {
-    if (!selected) return;
-    const updated = ledger.find(item => item.id === selected.id);
-    if (!updated || updated === selected) return;
-    // A ledger refresh may arrive before the attachment list is re-fetched.
-    // Keep photos already confirmed by the upload response so the open sheet
-    // never drops them while the background refresh is in flight.
-    const known = new Set((updated.attachments || []).map(item => item.id));
-    const pending = (selected.attachments || []).filter(item => !known.has(item.id));
-    setSelected(pending.length ? { ...updated, attachments: [...(updated.attachments || []), ...pending] } : updated);
-  }, [ledger, selected]);
+    setSelected(current => {
+      if (!current) return current;
+      const updated = ledger.find(item => item.id === current.id);
+      if (!updated || updated === current) return current;
+      // Preserve confirmed uploads until a background refresh includes them.
+      const known = new Set((updated.attachments || []).map(item => item.id));
+      const pending = (current.attachments || []).filter(item => !known.has(item.id));
+      return pending.length ? { ...updated, attachments: [...(updated.attachments || []), ...pending] } : updated;
+    });
+  }, [ledger]);
 
+  const openEntry = useCallback((entry: LedgerEntry | null) => {
+    entryRequest.current += 1;
+    setSelected(entry);
+  }, []);
   const selectedType: PartyType | '' = partyFilter?.type || '';
   const selectedId = partyFilter?.id || 0;
   const partyDates = useMemo(() => partyRange, [partyRange]);
@@ -170,7 +176,7 @@ export default function FinanceCenter({
   const supplierRows = useMemo(() => suppliers.filter(party => !party.deleted_at && (!selectedId || selectedType !== 'supplier' || party.id === selectedId) &&
     (!partySearch.trim() || `${party.name} ${party.contact || ''} ${party.phone || ''}`.toLowerCase().includes(partySearch.trim().toLowerCase()))), [partySearch, selectedId, selectedType, suppliers]);
 
-  const changeView = (next: FinanceView) => { setView(next); setSelected(null); setPartySearch(''); };
+  const changeView = (next: FinanceView) => { setView(next); openEntry(null); setPartySearch(''); };
   const choosePeriod = (value: string) => {
     setPeriod(value);
     setRange(value === '全部时间' ? { from: '', to: '' } : monthRange(value === '上月' ? -1 : 0));
@@ -209,7 +215,7 @@ export default function FinanceCenter({
       const result = await Taro.showModal({ title: '作废这笔流水？', content: '作废后保留历史记录，不再计入汇总。' + (entry.party_id ? '作废后将同步恢复对应客户/供货商的往来余额。' : '') + '此操作不能撤销。', confirmText: '确认作废', confirmColor: '#b74949' });
       if (!result.confirm) return;
       await deleteLedger(entry.id);
-      setSelected(null);
+      openEntry(null);
       Taro.showToast({ title: '流水已作废', icon: 'success' });
       await onReload();
     } catch (error) { Taro.showToast({ title: error?.message || '流水作废失败', icon: 'none' }); }
@@ -230,7 +236,6 @@ export default function FinanceCenter({
     } catch (error) { Taro.showToast({ title: error?.message || '导出失败', icon: 'none' }); }
     finally { exportLock.current = false; setExporting(false); }
   };
-  const openEntry = useCallback((entry: LedgerEntry) => setSelected(entry), []);
   const changePhotoDrafts = useCallback((id: number, update: (items: PhotoDraft[]) => PhotoDraft[]) => {
     setPhotoDrafts(current => ({ ...current, [id]: update(current[id] || []) }));
   }, []);
@@ -306,7 +311,7 @@ export default function FinanceCenter({
                 {group.entries.map(entry => <LedgerListRow key={entry.id} entry={entry} onOpen={openEntry} />)}
               </View>)}
       </View>
-      <View className={styles.ledgerActions}><FinanceButton className={styles.primary} data-testid='finance-add-entry' onClick={() => { setSelected(null); setShow(true); }}>＋ 记一笔</FinanceButton></View>
+      <View className={styles.ledgerActions}><FinanceButton className={styles.primary} data-testid='finance-add-entry' onClick={() => { openEntry(null); setShow(true); }}>＋ 记一笔</FinanceButton></View>
     </View>}
 
     {(view === 'customer' || view === 'supplier') && <View className={styles.partyView} data-testid={`finance-${view}-view`}>
@@ -346,7 +351,7 @@ export default function FinanceCenter({
             </View>)}
             {!notes.count && <Text className={styles.muted}>该日期范围内暂无客户自产入库</Text>}
             <Text className={styles.detailSectionTitle}>出库应收与收款记录</Text>
-            {rows.map(entry => <FinanceButton key={entry.id} className={styles.partyLedgerRow} onClick={() => { setView('ledger'); setSelected(entry); }}>
+            {rows.map(entry => <FinanceButton key={entry.id} className={styles.partyLedgerRow} onClick={() => { setView('ledger'); openEntry(entry); }}>
               <Text>{entry.type === 'settlement' ? (entry.party_type === 'supplier' ? '付款' : '收款') : entryCategory(entry)} · {formatTime(entry.created_at)}</Text>
               <strong>{formatMoney(entry.amount)}</strong><Text>{entry.remark || entryCategory(entry)}</Text>
             </FinanceButton>)}
@@ -366,7 +371,7 @@ export default function FinanceCenter({
           </View></View>
           <View className={styles.metrics}><View><Text>{partyPeriodLabel(partyPeriod)}纸板入库与应付</Text><strong>{formatMoney(summary.sales)}</strong></View><View><Text>{partyPeriodLabel(partyPeriod)}已付款</Text><strong>{formatMoney(summary.settled)}</strong></View></View>
           <FinanceButton className={styles.expandButton} aria-expanded={Boolean(expanded[key])} aria-label={`查看供货商账单明细 ${supplier.name}`} onClick={() => setExpanded(current => ({ ...current, [key]: !current[key] }))}>{expanded[key] ? '收起' : '展开'}供货商账单明细 · {rows.length} 笔</FinanceButton>
-          {expanded[key] && <View className={styles.partyDetails}>{rows.map(entry => <FinanceButton key={entry.id} className={styles.partyLedgerRow} onClick={() => { setView('ledger'); setSelected(entry); }}>
+          {expanded[key] && <View className={styles.partyDetails}>{rows.map(entry => <FinanceButton key={entry.id} className={styles.partyLedgerRow} onClick={() => { setView('ledger'); openEntry(entry); }}>
             <Text>{entryCategory(entry)} · {formatTime(entry.created_at)}</Text><strong>{formatMoney(entry.amount)}</strong><Text>{entry.remark || entryCategory(entry)}</Text>
           </FinanceButton>)}{!rows.length && <Text className={styles.muted}>暂无供货商应付或付款流水</Text>}</View>}
         </View>;
@@ -402,8 +407,8 @@ export default function FinanceCenter({
       <FinanceButton className={styles.primary} data-testid={`finance-confirm-${settling.type}-${settling.id}`} onClick={() => void settle()}>{settling.type === 'customer' ? '确认收款' : '确认付款'}</FinanceButton>
     </View></View>}
 
-    {selected && <View className={styles.overlay}><View className={styles.backdrop} aria-hidden='true' onClick={() => { if (!removing && !photoBusy) setSelected(null); }} /><View className={styles.sheet} role='dialog' aria-modal='true' aria-label='流水详情'>
-      <View className={styles.sheetHeader}><Text>流水详情</Text><FinanceButton aria-label='关闭流水详情' disabled={removing || photoBusy} onClick={() => setSelected(null)}>×</FinanceButton></View>
+    {selected && <View className={styles.overlay}><View className={styles.backdrop} aria-hidden='true' onClick={() => { if (!removing && !photoBusy) openEntry(null); }} /><View className={styles.sheet} role='dialog' aria-modal='true' aria-label='流水详情'>
+      <View className={styles.sheetHeader}><Text>流水详情</Text><FinanceButton aria-label='关闭流水详情' disabled={removing || photoBusy} onClick={() => openEntry(null)}>×</FinanceButton></View>
       <View className={styles.detailHero}><View className={`${styles.entryIcon} ${styles[selected.type]}`}><Icon name={appearance[selected.type].icon} color={appearance[selected.type].color} /></View><Text>{entryCategory(selected)} · {selected.party_current_name || selected.party_name || '日常记账'}</Text><strong className={styles.detailAmount}>{amountPrefix(selected.type)}{formatMoney(selected.amount)}</strong></View>
       <View className={styles.detailRows}>
         <View><Text>流水编号</Text><Text>LS-{String(selected.id).padStart(6, '0')}</Text></View>

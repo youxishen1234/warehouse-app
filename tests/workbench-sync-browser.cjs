@@ -94,10 +94,10 @@ async function main() {
     assert.equal(db.listLedger()[0].attachments.length, 1);
     await go(first);
     await button(workbench(first), '收付款').click();
-    await button(workbench(first), '供货商账单').click(); await expect(first.getByText('待付款 ¥176.00', { exact: true })).toBeVisible();
-    await button(workbench(first), '付款').click(); await first.locator('[aria-label="本次金额"] input').fill('50'); await button(workbench(first), '确认保存').click();
-    await expect(first.getByText('待付款 ¥126.00', { exact: true })).toBeVisible();
-    await go(first); await button(first.getByTestId('workbench-actions'), '入库').click(); await button(workbench(first), '纸箱入库').click(); await expect(first.getByText('纸箱入库', { exact: true })).toBeVisible();
+    await button(workbench(first), '供货商账单').click(); await expect(first.getByText('当前待付款 ¥176.00', { exact: true })).toBeVisible();
+    await button(workbench(first), '付款').click(); await first.locator('[aria-label="供货商付款金额"] input').fill('50'); await button(workbench(first), '确认付款').click();
+    await expect(first.getByText('当前待付款 ¥126.00', { exact: true })).toBeVisible();
+    await go(first); await button(first.getByTestId('workbench-actions'), '入库').click(); await button(workbench(first), '纸箱入库').click(); await expect(first.getByText('纸箱生产入库', { exact: true })).toBeVisible();
     await go(first); await button(first.getByTestId('workbench-actions'), '入库').click(); await button(workbench(first), '纸板入库').click();
     await first.locator('taro-button-core').filter({ hasText: '选择已有规格' }).click();
     await expect(first.getByText('两套规格分别带入，未保存的尺寸需自行填写。', { exact: true })).toBeVisible();

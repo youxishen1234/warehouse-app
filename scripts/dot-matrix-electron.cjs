@@ -1,28 +1,27 @@
-// A hidden, one-job renderer. Only trusted local code and validated document data enter it.
+// A hidden renderer. Only trusted local code and validated document data enter it.
+// It runs one job per process by default. With `--resident` the receiver reuses
+// it, but every job still gets its own hidden window and isolated session.
 const { app, BrowserWindow, session } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const Module = require('node:module');
 const ts = require('typescript');
+const crypto = require('node:crypto');
+const http = require('node:http');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { validatePrintJob, printOptions, fail } = require('./dot-matrix-native.cjs');
 const inputFile = process.argv[2];
-app.setPath('userData', path.join(path.dirname(inputFile), 'profile'));
+const resident = inputFile === '--resident';
+if (!resident) app.setPath('userData', path.join(path.dirname(inputFile), 'profile'));
 app.commandLine.appendSwitch('disable-gpu');
 
-function reply(result) {
-  process.stdout.write(`WAREHOUSE_PRINT_RESULT:${JSON.stringify(result)}\n`, () => app.quit());
-}
-
-app.whenReady().then(async () => {
+async function run(input) {
   let window;
   let submitted = false;
   try {
-    if (fs.statSync(inputFile).size > 1024 * 1024) throw fail('打印资料过大');
-    const input = JSON.parse(fs.readFileSync(inputFile, 'utf8'));
     if (!['list', 'print', 'verify'].includes(input.action)) throw fail('无效打印操作');
-    const isolated = session.fromPartition('dot-matrix-local');
+    const isolated = session.fromPartition('dot-matrix-local-' + Math.random().toString(36).slice(2));
     isolated.setPermissionRequestHandler((_, __, callback) => callback(false));
     isolated.webRequest.onBeforeRequest((details, callback) => callback({ cancel: !details.url.startsWith('data:text/html') }));
     window = new BrowserWindow({ show: false, width: 1280, height: 1000,
@@ -49,7 +48,7 @@ app.whenReady().then(async () => {
       isPdf: printer.name === 'Microsoft Print to PDF',
       };
     });
-    if (input.action === 'list') return reply({ ok: true, data: printers });
+    if (input.action === 'list') return { ok: true, data: printers };
     const job = validatePrintJob(input.job);
     const printer = printers.find(item => item.name === job.printerName);
     if (!printer) throw fail('所选打印机已移除，请刷新打印机列表重新选择', 'PRINTER_MISSING');
@@ -79,15 +78,65 @@ app.whenReady().then(async () => {
       // Verification and the PDF card never call the physical printer API.
       const pdf = await contents.printToPDF({ preferCSSPageSize: true, printBackground: false, displayHeaderFooter: false,
         margins: { top: 0, bottom: 0, left: 0, right: 0 }, scale: 1 });
-      return reply({ ok: true, data: { printerName: printer.name, pages: layout.pages, options, kind: 'pdf', pdf: pdf.toString('base64') } });
+      return { ok: true, data: { printerName: printer.name, pages: layout.pages, options, kind: 'pdf', pdf: pdf.toString('base64') } };
     }
     submitted = true;
     await new Promise((resolve, reject) => contents.print(options, (success, reason) => {
       if (success) resolve();
       else reject(fail(`打印机未接受任务：${reason || '请检查打印机连接和队列'}`, 'PRINT_REJECTED', false));
     }));
-    reply({ ok: true, data: { printerName: printer.name, pages: layout.pages, kind: 'queued' } });
+    return { ok: true, data: { printerName: printer.name, pages: layout.pages, kind: 'queued' } };
   } catch (error) {
-    reply({ ok: false, message: error.message || '本机打印失败', code: error.code || 'PRINT_ERROR', safeToRetry: error.safeToRetry ?? !submitted });
+    return { ok: false, message: error.message || '本机打印失败', code: error.code || 'PRINT_ERROR', safeToRetry: error.safeToRetry ?? !submitted };
+  } finally {
+    if (window && !window.isDestroyed()) window.destroy();
   }
-}).catch(error => reply({ ok: false, message: error.message, code: 'NATIVE_START', safeToRetry: true }));
+}
+
+if (resident) {
+  // Electron consumes stdin on Windows, so the parent talks to a loopback-only
+  // server instead. The port and capability come back on stdout once; the
+  // parent enforces each job's timeout and replaces this process if it hangs.
+  const capability = crypto.randomBytes(32).toString('hex');
+  let queue = Promise.resolve();
+  // Electron quits once the last window closes unless the app keeps itself
+  // alive; this process must outlive each one-job window.
+  app.on('window-all-closed', () => {});
+  const server = http.createServer((request, response) => {
+    if (request.method !== 'POST' || request.headers['x-render-token'] !== capability) {
+      response.writeHead(403).end(); return;
+    }
+    let body = '';
+    request.setEncoding('utf8');
+    request.on('data', chunk => { body += chunk; if (body.length > 8 * 1024 * 1024) request.destroy(); });
+    request.on('end', () => {
+      let message;
+      try { message = JSON.parse(body); } catch { response.writeHead(400).end(); return; }
+      queue = queue.then(async () => {
+        let result;
+        try { result = await run(message.request || {}); }
+        catch (error) { result = { ok: false, message: error.message || '本机打印失败', code: 'NATIVE_START', safeToRetry: true }; }
+        response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(result));
+      });
+    });
+  });
+  app.whenReady().then(() => new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => resolve(`WAREHOUSE_PRINT_READY:${server.address().port}:${capability}`));
+  })).then(line => process.stdout.write(line + '\n')).catch(error => {
+    process.stdout.write(`WAREHOUSE_PRINT_RESULT:${JSON.stringify({ ok: false, message: error.message, code: 'NATIVE_START', safeToRetry: true })}\n`, () => process.exit(1));
+  });
+} else {
+  app.whenReady().then(async () => {
+    let result;
+    try {
+      if (fs.statSync(inputFile).size > 1024 * 1024) throw fail('打印资料过大');
+      result = await run(JSON.parse(fs.readFileSync(inputFile, 'utf8')));
+    } catch (error) {
+      result = { ok: false, message: error.message || '本机打印失败', code: error.code || 'NATIVE_START', safeToRetry: true };
+    }
+    process.stdout.write(`WAREHOUSE_PRINT_RESULT:${JSON.stringify(result)}\n`, () => app.quit());
+  }).catch(error => {
+    process.stdout.write(`WAREHOUSE_PRINT_RESULT:${JSON.stringify({ ok: false, message: error.message, code: 'NATIVE_START', safeToRetry: true })}\n`, () => app.quit());
+  });
+}

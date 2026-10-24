@@ -8,7 +8,7 @@ const { chromium, webkit } = require('@playwright/test');
 const filename = path.resolve('src/utils/dot-matrix-print.ts');
 const source = ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
 const loaded = new Module(filename, module); loaded._compile(source, filename);
-const { buildDotMatrixHtml, normalizePrintSettings } = loaded.exports;
+const { buildDotMatrixHtml, mountDotMatrixPrintDocument, normalizePrintSettings } = loaded.exports;
 
 async function main() {
   const engine = process.env.PRINT_BROWSER || 'chromium';
@@ -20,21 +20,41 @@ async function main() {
     const doc = { key: 'layout-test', number: 'SH-DEMO', title: '送货单', party: '华兴包装（演示）', address: '河北省沧州市东光县工业园', phone: '13800000000', receiver: '王先生', operator: '张师傅', orderNumber: '', date: '2026-10-09',
       lines: Array.from({ length: 12 }, (_, i) => ({ id: i + 1, product_id: 0, type: 'out', created_at: 0, product_name: '五层瓦楞纸箱 ' + (i + 1), specification: '400mm x 300mm * 200mm', unit: '个', quantity: 100, unit_price: 1.23456, amount: 123.46, remark: '轻拿轻放', operator: '' })) };
     for (const paper of ['241-93', '241-140', 'a4']) {
+      // Keep Chromium's print-media/page-size state isolated for each stock
+      // size; reusing a page after page.pdf() can create synthetic blank pages.
+      const paperPage = await browser.newPage({ viewport: { width: 1100, height: 850 } });
       const settings = normalizePrintSettings({ template: 'delivery-note', paper });
-      await page.setContent(buildDotMatrixHtml(doc, settings));
-      const layout = await page.evaluate(async ({ code, documentData, printSettings }) => {
-        const exports = {}; new Function('exports', code)(exports);
-        await document.fonts.ready;
-        return exports.paginateDotMatrixDocument(document, documentData, printSettings);
-      }, { code: source, documentData: doc, printSettings: settings });
-      assert.equal(await page.locator('tr[data-line]').count(), 12);
-      assert.equal(layout.pages, paper === '241-93' ? 3 : paper === '241-140' ? 2 : 1);
-      assert.equal(await page.locator('.spec').first().textContent(), '400×300×200');
-      assert.equal(await page.evaluate(() => [...document.querySelectorAll('.delivery-content')].every(content => content.getBoundingClientRect().right <= content.parentElement.getBoundingClientRect().right)), true);
-      await page.locator('.sheet').first().screenshot({ path: path.join(artifactDir, paper + '.png') });
-      if (engine === 'chromium') {
-        const pdf = await page.pdf({ path: path.join(artifactDir, paper + '.pdf'), preferCSSPageSize: true, printBackground: false });
-        assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, layout.pages);
+      try {
+        await paperPage.setContent(buildDotMatrixHtml(doc, settings));
+        const layout = await paperPage.evaluate(async ({ code, documentData, printSettings }) => {
+          const exports = {}; new Function('exports', code)(exports);
+          await document.fonts.ready;
+          return exports.paginateDotMatrixDocument(document, documentData, printSettings);
+        }, { code: source, documentData: doc, printSettings: settings });
+        assert.equal(await paperPage.locator('tr[data-line]').count(), 12);
+        assert.equal(layout.pages, paper === '241-93' ? 3 : paper === '241-140' ? 2 : 1);
+        assert.equal(await paperPage.locator('.spec').first().textContent(), '400×300×200');
+        assert.equal(await paperPage.evaluate(() => [...document.querySelectorAll('.delivery-content')].every(content => content.getBoundingClientRect().right <= content.parentElement.getBoundingClientRect().right)), true);
+        await paperPage.locator('.sheet').first().screenshot({ path: path.join(artifactDir, paper + '.png') });
+        if (engine === 'chromium') {
+          const pdf = await paperPage.pdf({ path: path.join(artifactDir, paper + '.pdf'), preferCSSPageSize: true, printBackground: false });
+          assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, layout.pages);
+          await paperPage.evaluate(({ code, printSettings }) => {
+            const exports = {}; new Function('exports', code)(exports);
+            window.__disposeDotMatrixPrint = exports.mountDotMatrixPrintDocument(document, printSettings, document);
+          }, { code: source, printSettings: settings });
+          await paperPage.emulateMedia({ media: 'print' });
+          const mountedPdf = await paperPage.pdf({ path: path.join(artifactDir, paper + '-mounted.pdf'), preferCSSPageSize: true, printBackground: false });
+          assert.equal(
+            (mountedPdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length,
+            layout.pages,
+            `${paper} mounted print output should stay within ${layout.pages} pages`
+          );
+          await paperPage.emulateMedia({ media: 'screen' });
+          await paperPage.evaluate(() => { window.__disposeDotMatrixPrint(); delete window.__disposeDotMatrixPrint; });
+        }
+      } finally {
+        await paperPage.close();
       }
     }
     // Long text must move intact to another page, or give an explicit layout error.
@@ -52,7 +72,20 @@ async function main() {
       const exports = {}; new Function('exports', code)(exports); await document.fonts.ready;
       exports.paginateDotMatrixDocument(document, documentData, printSettings);
     }, { code: source, documentData: oversized, printSettings: settings }), /放不下/);
-    console.log(JSON.stringify({ engine, papers: 3, twelveLinesPreserved: true, longRemarks: true, artifacts: artifactDir }));
+
+    // A five-row note is the normal 241x93 delivery note: it must stay on one
+    // sheet. Reserving page-number space used to spill its last row onto page 2.
+    const fiveRows = { ...doc, lines: doc.lines.slice(0, 5) };
+    await page.setContent(buildDotMatrixHtml(fiveRows, settings));
+    const fiveLayout = await page.evaluate(async ({ code, documentData, printSettings }) => {
+      const exports = {}; new Function('exports', code)(exports); await document.fonts.ready;
+      return exports.paginateDotMatrixDocument(document, documentData, printSettings);
+    }, { code: source, documentData: fiveRows, printSettings: settings });
+    assert.equal(fiveLayout.pages, 1);
+    assert.equal(await page.locator('.sheet').count(), 1);
+    assert.equal(await page.locator('tr[data-line]').count(), 5);
+    assert.equal(await page.evaluate((_) => [...document.querySelectorAll('.delivery-content')].every(content => content.getBoundingClientRect().bottom <= content.parentElement.getBoundingClientRect().bottom)), true);
+    console.log(JSON.stringify({ engine, papers: 3, twelveLinesPreserved: true, fiveRowsOneSheet: true, longRemarks: true, artifacts: artifactDir }));
   } finally { await browser.close(); }
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

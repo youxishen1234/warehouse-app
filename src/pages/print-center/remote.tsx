@@ -3,11 +3,14 @@ import { useEffect, useRef, useState } from 'react';
 import { getRemoteDevice, getRemotePrintJob, newRemotePrintId, readPrintAttempt, readPrintPair, resolveRemotePrintJob, savePrintAttempt, savePrintPair, submitRemotePrint } from '@/services/remote-print';
 import type { RemoteDevice, RemoteJob } from '@/services/remote-print';
 import type { SavedPrintNote } from '@/services/print-notes';
+import { refreshPrintNotices, reportPrintNoticeError, trackPrintNotice, updatePrintNotice } from '@/services/print-notifications';
+import { useMobilePrintNotifications } from '@/services/mobile-print-notifications';
 import styles from './index.module.scss';
 
 const messageOf = (issue: unknown) => issue instanceof Error ? issue.message : '打印连接失败，请刷新状态重试';
 
 export default function RemotePrint({ saved, paper }: { saved?: SavedPrintNote; paper: string }) {
+  const mobileNotices = useMobilePrintNotifications();
   const [code, setCode] = useState(() => new URLSearchParams(location.hash.split('?')[1] || '').get('print_pair') || '');
   const [token, setToken] = useState(readPrintPair);
   const [device, setDevice] = useState<RemoteDevice>();
@@ -33,42 +36,57 @@ export default function RemotePrint({ saved, paper }: { saved?: SavedPrintNote; 
     setAttemptId(id); setChecking(!!id);
   }, [fingerprint, token]);
 
+  const recoveredId = fingerprint ? readPrintAttempt(fingerprint) : '';
+  useEffect(() => {
+    if (!mobileNotices || !recoveredId || !saved || !device) return;
+    trackPrintNotice({ id: recoveredId, noteId: saved.id, noteNumber: saved.number, printer: device.printer, deviceId: device.id, createdAt: Date.now() });
+  }, [mobileNotices, recoveredId, saved, device]);
+
   useEffect(() => {
     if (!token) return;
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
+      if (mobileNotices && document.visibilityState === 'hidden') return;
       try {
         const result = await getRemoteDevice(token);
         if (active) { setDevice(result); setDeviceError(''); setNow(Date.now()); }
       } catch (issue) { if (active) setDeviceError(messageOf(issue)); }
-      finally { if (active) timer = setTimeout(() => void poll(), 5000); }
+      finally { if (active && (!mobileNotices || document.visibilityState !== 'hidden')) timer = setTimeout(() => void poll(), 5000); }
     };
     void poll();
     return () => { active = false; clearTimeout(timer); };
-  }, [token, refresh]);
+  }, [token, refresh, mobileNotices]);
 
   useEffect(() => {
     if (!attemptId || busy || !token) return;
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
+      if (mobileNotices && document.visibilityState === 'hidden') return;
       let complete = false;
       try {
         const result = await getRemotePrintJob(attemptId, token);
-        if (active) { setJob(result); setJobError(''); setMessage(''); setNow(Date.now()); }
+        if (active) {
+          setJob(result); setJobError(''); setMessage(''); setNow(Date.now());
+          if (mobileNotices && readPrintPair() === token) updatePrintNotice(result);
+        }
         complete = ['queued', 'failed', 'expired'].includes(result.status);
       } catch (issue) {
-        if (active) setJobError((issue as { statusCode?: number })?.statusCode === 404
-          ? '服务器尚未收到该任务，可点发送重试，将沿用原任务编号'
-          : messageOf(issue));
+        if (active) {
+          const error = (issue as { statusCode?: number })?.statusCode === 404
+            ? '服务器尚未收到该任务，可点发送重试，将沿用原任务编号'
+            : messageOf(issue);
+          setJobError(error);
+          if (mobileNotices && readPrintPair() === token) reportPrintNoticeError(attemptId, error);
+        }
       } finally {
-        if (active) { setChecking(false); if (!complete) timer = setTimeout(() => void poll(), 2000); }
+        if (active) { setChecking(false); if (!complete && (!mobileNotices || document.visibilityState !== 'hidden')) timer = setTimeout(() => void poll(), 2000); }
       }
     };
     void poll();
     return () => { active = false; clearTimeout(timer); };
-  }, [attemptId, busy, token, fingerprint, refresh]);
+  }, [attemptId, busy, token, fingerprint, refresh, mobileNotices]);
 
   useEffect(() => {
     const resume = () => { if (document.visibilityState !== 'hidden') setRefresh(value => value + 1); };
@@ -85,6 +103,7 @@ export default function RemotePrint({ saved, paper }: { saved?: SavedPrintNote; 
       if (!/^[a-f0-9]{64}$/.test(candidate)) throw new Error('请粘贴电脑提供的完整配对码');
       const result = await getRemoteDevice(candidate);
       savePrintPair(candidate); setDevice(result); setDeviceError(''); setToken(candidate); setCode('');
+      if (mobileNotices) void refreshPrintNotices();
     } catch (issue) { setMessage(messageOf(issue)); }
     finally { sending.current = false; setBusy(false); }
   };
@@ -92,15 +111,24 @@ export default function RemotePrint({ saved, paper }: { saved?: SavedPrintNote; 
   const send = async (newCopy = false) => {
     if (!saved || !fingerprint || sending.current) return;
     const scope = currentScope.current;
+    let noticeId = '';
     sending.current = true; setBusy(true); setMessage(''); setJobError(''); setConfirmCopy(false);
     try {
       const id = newCopy ? newRemotePrintId() : attemptId || readPrintAttempt(fingerprint) || newRemotePrintId();
       // Save before sending so a lost response or closing the preview is safe.
       savePrintAttempt(fingerprint, id); setAttemptId(id);
+      noticeId = id;
+      if (mobileNotices && device) {
+        trackPrintNotice({ id, noteId: saved.id, noteNumber: saved.number, printer: device.printer, deviceId: device.id, createdAt: Date.now() });
+      }
       if (newCopy) setJob(undefined);
       const result = await submitRemotePrint({ id, note_id: saved.id, version: saved.version, paper }, token);
+      if (mobileNotices && readPrintPair() === token) updatePrintNotice(result);
       if (currentScope.current === scope) { setJob(result); setNow(Date.now()); }
-    } catch (issue) { if (currentScope.current === scope) setMessage(messageOf(issue)); }
+    } catch (issue) {
+      if (mobileNotices && noticeId && readPrintPair() === token) reportPrintNoticeError(noticeId, messageOf(issue));
+      if (currentScope.current === scope) setMessage(messageOf(issue));
+    }
     finally { sending.current = false; setBusy(false); }
   };
 
@@ -110,6 +138,7 @@ export default function RemotePrint({ saved, paper }: { saved?: SavedPrintNote; 
     sending.current = true; setResolving(outcome); setMessage(''); setJobError('');
     try {
       const result = await resolveRemotePrintJob(job.id, outcome, token);
+      if (mobileNotices && readPrintPair() === token) updatePrintNotice(result);
       if (currentScope.current === scope) { setJob(result); setNow(Date.now()); }
     } catch (issue) { if (currentScope.current === scope) setMessage(messageOf(issue)); }
     finally { sending.current = false; setResolving(''); }
@@ -148,7 +177,10 @@ export default function RemotePrint({ saved, paper }: { saved?: SavedPrintNote; 
           <button type='button' className={styles.primary} disabled={!!resolving} onClick={() => void resolve('printed')}>{resolving === 'printed' ? '正在确认…' : '已经出纸了'}</button>
           <button type='button' className={styles.secondary} disabled={!!resolving} onClick={() => void resolve('missing')}>{resolving === 'missing' ? '正在确认…' : '没有出纸'}</button>
         </div>}
-        <button type='button' className={styles.textButton} disabled={busy} onClick={() => { savePrintPair(''); setToken(''); setDevice(undefined); setDeviceError(''); }}>更换打印电脑</button>
+        <button type='button' className={styles.textButton} disabled={busy} onClick={() => {
+          savePrintPair(''); setToken(''); setDevice(undefined); setDeviceError('');
+          if (mobileNotices) void refreshPrintNotices();
+        }}>更换打印电脑</button>
       </>}
       {job && <p role='status' aria-live='polite' className={styles.notice}>{progress}</p>}
       {deviceError && <p role='alert' className={styles.error}>{deviceError}</p>}

@@ -34,7 +34,10 @@ function Write-SupervisorLog([string]$message) {
 function Read-RecentRestarts {
   $entries = @()
   if (Test-Path -LiteralPath $restartFile) {
-    try { $entries = @(Get-Content -LiteralPath $restartFile -Raw | ConvertFrom-Json) } catch { $entries = @() }
+    try {
+      $parsed = Get-Content -LiteralPath $restartFile -Raw | ConvertFrom-Json
+      if ($null -ne $parsed) { $entries = @($parsed) }
+    } catch { $entries = @() }
   }
   $cutoff = (Get-Date).AddMinutes(-$restartWindowMinutes)
   @($entries | Where-Object { $_ -and $_.at } | Where-Object {
@@ -82,25 +85,14 @@ function Wait-AdoptedReceiver($Process) {
 }
 
 try {
-  # Stop thrashing before starting anything: repeated watchdog kills mean the
-  # fault is not transient, so a person has to look at the machine.
+  # The every-minute scheduled task is the real recovery supervisor. Keep
+  # retrying even after a burst of hangs; the restart log is diagnostic only.
+  # Never delete the job journal or a printer queue to force a restart.
   $recent = Read-RecentRestarts
-  if ($recent.Count -ge $restartBudget) {
-    if (-not (Test-Path -LiteralPath $attentionFile)) {
-      Set-Content -LiteralPath $attentionFile -Encoding UTF8 -Value (@(
-        'Remote print receiver kept hanging and was restarted ' + $recent.Count + ' times in ' + $restartWindowMinutes + ' minutes.'
-        'Last restart: ' + [DateTimeOffset]::FromUnixTimeMilliseconds([int64]($recent[-1].at)).LocalDateTime
-        'Check the printer driver, USB connection and Windows print spooler on this computer.'
-        'Delete this file to let automatic recovery start the receiver again.'
-      ) -join [Environment]::NewLine)
-    }
-    Write-SupervisorLog ('restart budget exhausted (' + $recent.Count + ' in ' + $restartWindowMinutes + 'min); not starting a receiver until this file is deleted: ' + $attentionFile)
-    exit 3
-  }
+  Write-SupervisorLog ('prior automatic restarts in the last 30 minutes: ' + $recent.Count)
   if (Test-Path -LiteralPath $attentionFile) {
-    # The window has passed with no new hangs, so the fault cleared itself.
     Remove-Item -LiteralPath $attentionFile -Force
-    Write-SupervisorLog 'restart budget recovered; clearing the needs-attention marker'
+    Write-SupervisorLog 'clearing a stale needs-attention marker'
   }
 
   # A stopped scheduler launcher can leave a detached Node process behind.
@@ -131,6 +123,13 @@ try {
   $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss-fff')
   foreach ($log in @($outputLog, $errorLog)) {
     if (Test-Path -LiteralPath $log) { Move-Item -LiteralPath $log -Destination ($log + '.' + $stamp) }
+  }
+  # Keep a bounded number of rotated logs so a long-running receiver cannot fill
+  # the disk just by recovering itself.
+  foreach ($pattern in @('receiver.log.*', 'receiver-error.log.*')) {
+    @(Get-ChildItem -LiteralPath $receiverRoot -Filter $pattern -File -ErrorAction SilentlyContinue |
+      Sort-Object LastWriteTime -Descending | Select-Object -Skip 5) |
+      ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue }
   }
   # A stale stall marker from a previous run must not be mistaken for this one.
   if (Test-Path -LiteralPath $stallFile) { Remove-Item -LiteralPath $stallFile -Force }

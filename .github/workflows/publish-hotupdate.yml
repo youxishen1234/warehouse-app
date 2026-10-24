@@ -25,16 +25,21 @@ jobs:
       HOTUPDATE_BASE_MANIFEST: release/base-manifest.json
       HOTUPDATE_LOCAL_ZIP: release/www.zip
       HOTUPDATE_LOCAL_MANIFEST: release/manifest.json
+      BACKEND_LOCAL_BUNDLE: release/backend-bundle-${{ github.run_id }}-${{ github.run_attempt }}.json
+      BACKEND_PREFLIGHT_DIR: release/backend-preflight-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
       - name: Configure actual source revision
-        run: echo "HOTUPDATE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+        run: |
+          echo "HOTUPDATE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "RELEASE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - name: Install dependencies
         run: |
           npm ci --legacy-peer-deps
+          npm ci --prefix backend --omit=dev
           sudo apt-get install -y -qq sshpass
       - name: Capture publication baseline before building
         continue-on-error: true
@@ -44,12 +49,12 @@ jobs:
             echo '{}' > "$HOTUPDATE_BASE_MANIFEST"
             echo "::warning::Hot-update server credentials are not configured; build will continue without publishing"
           else
+            mkdir -p ~/.ssh
+            ssh-keyscan -H "$HOTUPDATE_HOST" >> ~/.ssh/known_hosts 2>/dev/null
             if [ -n "$SSH_PRIVATE_KEY" ]; then
               export HOTUPDATE_PASSWORD=''
-              mkdir -p ~/.ssh
               echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
               chmod 600 ~/.ssh/id_rsa
-              ssh-keyscan -H "$HOTUPDATE_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
             fi
             if ! node scripts/upload-hotupdate.cjs --capture-baseline "$HOTUPDATE_BASE_MANIFEST"; then
               echo '{}' > "$HOTUPDATE_BASE_MANIFEST"
@@ -62,6 +67,7 @@ jobs:
         run: |
           npm run typecheck
           npm run lint
+          npx eslint scripts/upload-backend.cjs scripts/verify-backend-billing.cjs
       - name: Build complete current source
         run: |
           rm -rf dist
@@ -112,6 +118,11 @@ jobs:
         env:
           REMOTE_PRINT_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
         run: node tests/remote-print-recovery-browser.cjs
+      - name: Validate mobile print status notifications
+        env:
+          PRINT_NOTICE_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          PRINT_NOTICE_QA_DIR: release/print-notifications-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/print-notifications-browser.cjs
       - name: Validate print specification search and quick add
         env:
           PRINT_SOURCE_PREVIEW: '0'
@@ -149,8 +160,30 @@ jobs:
           DAILY_BACKUP_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
           DAILY_BACKUP_BROWSER_OUTPUT: release/daily-backup-ui-${{ github.run_id }}-${{ github.run_attempt }}
         run: node tests/daily-backup-built-browser.cjs
+      - name: Validate customer production billing and unified finance
+        env:
+          CUSTOMER_BILLING_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          CUSTOMER_BILLING_EVIDENCE_DIR: release/customer-billing-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/customer-inbound-billing-browser.cjs
+      - name: Validate factory carton receipts
+        env:
+          CARTON_PRODUCTION_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          CARTON_PRODUCTION_EVIDENCE_DIR: release/carton-production-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/carton-production-inbound-browser.cjs
+      - name: Validate paperboard specifications and amounts
+        env:
+          BOARD_SPEC_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          BOARD_SPEC_EVIDENCE_DIR: release/board-spec-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/board-specification-input-browser.cjs
       - name: Run complete backend test suite
         run: node --test backend/*.test.cjs
+      - name: Bundle and preflight the exact backend revision
+        run: |
+          node deploy/backend-release/collect.js > "$BACKEND_LOCAL_BUNDLE"
+          node scripts/verify-backend-release.js "$BACKEND_LOCAL_BUNDLE" "$RELEASE_COMMIT"
+          node deploy/backend-release/materialize.js "$BACKEND_LOCAL_BUNDLE" "$BACKEND_PREFLIGHT_DIR"
+          node deploy/backend-release/preflight.js "$BACKEND_PREFLIGHT_DIR"
+          (cd "$BACKEND_PREFLIGHT_DIR" && node "$GITHUB_WORKSPACE/scripts/verify-backend-billing.cjs")
       - name: Publish through shared server lock and stale-source gate
         if: ${{ env.HOTUPDATE_HOST != '' && env.HOTUPDATE_USER != '' }}
         run: |
@@ -158,11 +191,12 @@ jobs:
             echo "::warning::Neither SSH_PRIVATE_KEY nor SHUGUANG_SERVER_PASSWORD configured, skipping publish"
             exit 0
           fi
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "$HOTUPDATE_HOST" >> ~/.ssh/known_hosts 2>/dev/null
           if [ -n "$SSH_PRIVATE_KEY" ]; then
             export HOTUPDATE_PASSWORD=''
-            mkdir -p ~/.ssh
             echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
             chmod 600 ~/.ssh/id_rsa
-            ssh-keyscan -H "$HOTUPDATE_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
           fi
+          node scripts/upload-backend.cjs
           node scripts/upload-hotupdate.cjs

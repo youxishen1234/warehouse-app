@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
-const { createPrintService, runNative } = require('./dot-matrix-native.cjs');
+const { createPrintService, runNative, startResidentNative, repairSpooler } = require('./dot-matrix-native.cjs');
 const { acquireAgentLock } = require('./remote-print-lock.cjs');
 function printPayload(job) {
   const n = job.note, paper = job.paper;
@@ -24,21 +24,61 @@ function createJournal(file) {
     },
   };
 }
-function createReceiver({ service, journal, call, printerName, now = Date.now, heartbeatMs = 8000, report = () => {} }) {
+function createReceiver({ service, journal, call, printerName, now = Date.now, heartbeatMs = 8000, report = () => {}, started = false }) {
   let printers = [], checkedAt = -Infinity, retryAfter = 30000, active;
+  let startupReported = !started;
+  // A failed enumeration may mean the Windows spooler, not the cable, is down.
+  // Starting the service preserves queued work; it does not resubmit a job.
+  let enumerationFailures = 0, lastRepairAt = -Infinity;
   const acknowledge = async row => {
     const result = row.result || { status: 'uncertain', message: '接收程序中断，请检查实际出纸，勿重复发送' };
     await call('agent/jobs/' + row.id, { lease: row.lease, ...result });
     journal.ack(row.id);
   };
   const cycle = async () => {
+    if (!startupReported) {
+      startupReported = true;
+      try { await call('agent/recovery', { kind: 'receiver', repaired: true }); }
+      catch (error) { report(error); }
+    }
     // Never claim new work until previous receipts have been reconciled.
     try { for (const row of journal.entries()) await acknowledge(row); }
     catch (error) { await call('agent/poll', { ready: false }); throw error; }
     if (now() - checkedAt >= retryAfter) {
-      try { printers = await service.list(); retryAfter = 30000; }
-      catch (error) { printers = []; retryAfter = 5000; report(error); }
+      try { printers = await service.list(); retryAfter = 30000; enumerationFailures = 0; }
+      catch (error) {
+        printers = [];
+        retryAfter = 5000;
+        enumerationFailures++;
+        report(error);
+      }
       checkedAt = now();
+    }
+    // Only an enumeration exception is evidence of a spooler fault. A printer
+    // that is merely offline must wait for its cable; restarting the service
+    // repeatedly would not fix that and could interrupt another user's job.
+    if (enumerationFailures >= 3 && service.repair && now() - lastRepairAt >= 60000) {
+      lastRepairAt = now();
+      let outcome;
+      try { outcome = await service.repair(); } catch (repairError) { report(repairError); }
+      // Report only a service that was actually started. Finding Spooler
+      // already running means the fault is elsewhere (driver or device).
+      if (outcome && outcome.repaired === true) {
+        try { await call('agent/recovery', { kind: 'spooler', repaired: true }); }
+        catch (error) { report(error); }
+      }
+      retryAfter = 0;
+      checkedAt = -Infinity;
+      try {
+        printers = await service.list();
+        retryAfter = 30000;
+        enumerationFailures = 0;
+      } catch (error) {
+        printers = [];
+        retryAfter = 5000;
+        enumerationFailures++;
+        report(error);
+      }
     }
     const printer = printers.find(item => item.name === printerName && !item.unavailable && !item.isPdf);
     const poll = await call('agent/poll', { ready: !!printer });
@@ -57,7 +97,29 @@ function createReceiver({ service, journal, call, printerName, now = Date.now, h
       return row;
     } finally { clearInterval(timer); if (heartbeat) await heartbeat; }
   };
-  return { tick() { if (!active) active = cycle().finally(() => { active = undefined; }); return active; } };
+  return { tick() { if (!active) active = cycle().finally(() => { active = undefined; }); return active; }, idle: () => checkedAt !== -Infinity && now() - checkedAt < retryAfter };
+}
+
+// Warm Electron hides the per-note startup cost (~500 ms) behind the print
+// cycle. It is respawned lazily after a crash, and the persistent journal still
+// supplies the deduplication that the old one-process-per-job design relied on.
+function createPersistentPrintService() {
+  let resident, used = 0;
+  const native = () => {
+    // Recycle long-lived renderers between notes so a leak in Chromium cannot
+    // grow forever; this never interrupts an in-flight print.
+    if (!resident || !resident.ready() || used >= 200) { resident?.stop(); resident = startResidentNative(); used = 0; }
+    return resident;
+  };
+  // One service instance keeps the replay memory: a timeout followed by a
+  // retry of the same id must not print the note twice.
+  const printer = createPrintService(request => native().request(request));
+  return {
+    list: () => native().request({ action: 'list' }),
+    submit: async input => { used++; return printer.submit(input); },
+    repair: repairSpooler,
+    stop: () => resident?.stop(),
+  };
 }
 
 async function main(){
@@ -65,13 +127,13 @@ async function main(){
   const config=JSON.parse(fs.readFileSync(configFile,'utf8'));
   if(config.origin!=='https://youxishen.online'||!/^[a-f0-9]{64}$/.test(config.agent))throw new Error('打印电脑配置无效');
   const journal=createJournal(path.join(path.dirname(configFile),'jobs.json'));
-  // The persistent journal provides deduplication. A fresh native service per
-  // job avoids hitting the preview service's 500-job in-memory session limit.
-  const service={list:()=>runNative({action:'list'}),submit:input=>createPrintService().submit(input)};
+  const service = createPersistentPrintService();
   const call=async(url,body)=>{const response=await fetch(config.origin+'/api/remote-print/'+url,{method:'POST',headers:{'Content-Type':'application/json','X-Print-Agent':config.agent},body:JSON.stringify(body),signal:AbortSignal.timeout(12000)});const result=await response.json();if(!response.ok||!result.success)throw new Error(result.message||'连接失败');return result.data;};
   let stopping=false;process.on('SIGTERM',()=>{stopping=true;});process.on('SIGINT',()=>{stopping=true;});
   const report=error=>console.error(new Date().toISOString(),error.message);
-  const receiver=createReceiver({service,journal,call,printerName:config.printer,report});
+  // Every receiver start is an automatic recovery event. A watchdog restart
+  // after a hang would otherwise look like a healthy machine with no history.
+  const receiver=createReceiver({service,journal,call,printerName:config.printer,report,started:true});
   const releaseLock = await acquireAgentLock(configFile);
   // A hung receiver still looks "running" to Windows, so the launcher's watchdog
   // reads this file instead: `at` proves the event loop turns, `progress`
@@ -86,9 +148,11 @@ async function main(){
       try { const row=await receiver.tick(); if(row)console.log(new Date().toISOString(),row.id,row.result.status); }
       catch(error){report(error);}
       progress=Date.now();
-      if(!stopping)await new Promise(r=>setTimeout(r,1000));
+      // Idle polling only costs one small HTTPS request, so waiting a full
+      // second after every empty cycle just delayed a newly queued note.
+      if(!stopping)await new Promise(r=>setTimeout(r,receiver.idle()?1000:250));
     }
-  } finally { clearInterval(beatTimer); try{fs.unlinkSync(heartbeatFile);}catch{ /* already gone */ } releaseLock(); }
+  } finally { clearInterval(beatTimer); service.stop(); try{fs.unlinkSync(heartbeatFile);}catch{ /* already gone */ } releaseLock(); }
 }
 if(require.main===module)main().catch(e=>{console.error(e.message);process.exitCode=1;});
-module.exports={printPayload,createJournal,createReceiver,runNative};
+module.exports={printPayload,createJournal,createReceiver,createPersistentPrintService,runNative};

@@ -2,6 +2,12 @@ import Taro from '@tarojs/taro';
 import { getBaseUrl } from './request';
 
 export type RemoteDevice = { id: string; name: string; printer: string; online: boolean; ready: boolean; last_seen?: number };
+export type RemotePrintRecovery = {
+  count: number;
+  last_at?: number;
+  last_kind: 'receiver' | 'spooler';
+  repaired: boolean;
+};
 export type RemoteJob = { id: string; status: 'waiting' | 'processing' | 'queued' | 'failed' | 'uncertain' | 'expired'; message: string; created_at?: number; updated_at?: number };
 const key = 'warehouse_remote_print_pair_v1';
 export const readPrintPair = (): string => { try { return Taro.getStorageSync(key) || ''; } catch { return ''; } };
@@ -58,3 +64,4 @@ export const getRemotePrintJob = (id: string, token = readPrintPair()) => remote
 // place the app asks instead of guessing. It clears the device queue block.
 export const resolveRemotePrintJob = (id: string, outcome: 'printed' | 'missing', token = readPrintPair()) =>
   remoteRequest<RemoteJob>('jobs/' + encodeURIComponent(id) + '/resolve', token, { outcome });
+export const getRemotePrintRecovery = (token = readPrintPair()) => remoteRequest<RemotePrintRecovery>('recovery', token);

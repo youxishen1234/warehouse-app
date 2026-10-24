@@ -6,12 +6,19 @@ import { isOffline, onOfflineChange, autoBestBase } from '@/services/request';
 import './app.scss';
 import TeamAccess from '@/components/TeamAccess';
 import { installTabNavigation } from '@/services/tab-navigation';
+import PrintNotifications, { PrintNotificationMonitor } from '@/components/PrintNotifications';
 
 // 离线模式提示条：后端不可达且在使用本地缓存时展示，点击「重试」恢复在线
 // 启动及离线期间每 15 秒自动在「局域网 → 隧道」候选地址间探测，
 // 发现可达地址立即切换并自动消失
 function OfflineBar() {
   const [offline, setOffline] = useState(isOffline());
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    document.documentElement.style.setProperty('--sg-offline-offset', offline ? '52PX' : '0PX');
+    return () => { document.documentElement.style.removeProperty('--sg-offline-offset'); };
+  }, [offline]);
 
   useEffect(() => {
     try { Taro.removeStorageSync('sg_api___offline'); } catch (e) { /* ignore */ }
@@ -67,6 +74,8 @@ function App(props) {
       {props.children}
       <TabSwipeNavigator />
       <OfflineBar />
+      <PrintNotificationMonitor />
+      <PrintNotifications global />
     </TeamAccess>
   );
 }

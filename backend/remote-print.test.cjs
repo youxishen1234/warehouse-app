@@ -23,6 +23,27 @@ test('paired print jobs persist, claim once, deduplicate, and never resend uncer
   const raw=fs.readFileSync(file,'utf8');assert.ok(!raw.includes(pair.client));assert.ok(!raw.includes(pair.agent));
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+test('heartbeat polls do not rewrite the queue file and old finished jobs are pruned',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'remote-print-poll-'));let now=100000;const file=path.join(dir,'queue.json');
+ try{
+  const store=createStore(file,()=>now),pair=store.register('店里电脑','630K');
+  const note={id:1,version:1,number:'SH-001',items:[]};
+  store.enqueue(pair.client,{id:'remote-print-task-poll-01',paper:'241-93'},note);
+  store.claim(pair.agent,false);
+  const before=fs.readFileSync(file,'utf8');
+  for(let i=0;i<10;i++){now+=1000;store.claim(pair.agent,false);}
+  assert.equal(fs.readFileSync(file,'utf8'),before,'idle polls must not write or fsync the queue');
+  // Heartbeats still refresh readiness for the phone after the flush interval.
+  now+=16000;store.claim(pair.agent,true);
+  assert.equal(JSON.parse(fs.readFileSync(file,'utf8')).devices[0].ready,true);
+  // A month of finished history is dropped instead of growing forever.
+  const job=JSON.parse(fs.readFileSync(file,'utf8')).jobs[0];
+  assert.equal(job.status,'processing');
+  now+=31*24*60*60*1000;store.claim(pair.agent,false);
+  assert.equal(JSON.parse(fs.readFileSync(file,'utf8')).jobs.length,1,'unfinished work is never pruned');
+  assert.equal(JSON.parse(fs.readFileSync(file,'utf8')).devices.length,1,'devices are retained');
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
 test('remote routes require pairing and print immutable saved snapshots without stock mutations',async()=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'remote-print-api-'));const file=path.join(dir,'queue.json');const store=createStore(file),pair=store.register('店里电脑','630K');
  const express=require('express'),app=express();app.use(express.json());const router=express.Router();
@@ -74,5 +95,39 @@ test('confirming no paper fails the job and still releases the queue',()=>{
   const resolved=store.resolve(pair.client,job.id,{outcome:'missing'});
   assert.equal(resolved.status,'failed');assert.match(resolved.message,/重新发送/);
   assert.equal(store.history(pair.client).length,0,'a job that never printed is not print history');
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('receiver recovery is authenticated, persisted, bounded and visible to the paired phone',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'remote-print-recovery-'));let now=100000;const file=path.join(dir,'queue.json');
+ try{
+  const store=createStore(file,()=>now),pair=store.register('店里电脑','EPSON LQ-630K ESC/P2');
+  assert.deepEqual(store.recovery(pair.client),{count:0,repaired:false,last_kind:'receiver'});
+  assert.throws(()=>store.recovery(pair.agent),/配对/);
+  assert.throws(()=>store.recover(pair.client,{kind:'receiver'}),/配对/);
+  assert.throws(()=>store.recover(pair.agent,{kind:'script'}),/恢复记录/);
+  store.recover(pair.agent,{kind:'receiver',repaired:true});
+  now+=7000;
+  const recovery=store.recover(pair.agent,{kind:'spooler',repaired:true});
+  assert.deepEqual(recovery,{acknowledged:true});
+  const visible=createStore(file,()=>now).recovery(pair.client);
+  assert.equal(visible.count,2);
+  assert.equal(visible.last_kind,'spooler');
+  assert.equal(visible.repaired,true);
+  assert.equal(visible.last_at,now);
+  const raw=fs.readFileSync(file,'utf8');
+  assert.ok(!raw.includes(pair.agent));
+  assert.ok(!raw.includes(pair.client));
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('label pairing can still resolve the public device without exposing credentials',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'remote-print-agent-device-'));const file=path.join(dir,'queue.json');
+ try{
+  const store=createStore(file),pair=store.register('店里电脑','EPSON LQ-630K ESC/P2');
+  assert.equal(store.agentDevice(pair.agent).id,pair.device.id);
+  assert.throws(()=>store.agentDevice(pair.client),/配对/);
+  const installed=install({get(){},post(){}},{} ,{file});
+  assert.equal(typeof installed.agentDevice,'function','the installed store is available to label registration');
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });

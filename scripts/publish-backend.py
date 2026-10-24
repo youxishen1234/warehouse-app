@@ -23,6 +23,7 @@ import time
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DAILY_STATUS_VERIFIER = SCRIPT_DIR / 'verify-backend-daily-status.js'
+BILLING_VERIFIER = SCRIPT_DIR / 'verify-backend-billing.cjs'
 
 
 REQUIRED = {
@@ -155,14 +156,27 @@ def service_properties():
 def run_healthcheck(working, token, request_id):
     if not DAILY_STATUS_VERIFIER.is_file():
         error('daily status verifier is missing')
+    if not BILLING_VERIFIER.is_file():
+        error('billing verifier is missing')
     environment = dict(os.environ, BACKEND_ACCEPTANCE_TOKEN=token, BACKEND_ACCEPTANCE_REQUEST=request_id)
     try:
-        return subprocess.check_output(
+        daily = subprocess.check_output(
             ['node', str(DAILY_STATUS_VERIFIER)], cwd=working, text=True, timeout=30,
             env=environment, stderr=subprocess.STDOUT
         ).strip()
     except subprocess.CalledProcessError as exception:
         error('daily status verification failed: ' + (exception.output or 'no output').strip())
+    try:
+        billing = subprocess.check_output(
+            ['node', str(BILLING_VERIFIER)], cwd=working, text=True, timeout=60,
+            env=environment, stderr=subprocess.STDOUT
+        ).strip()
+    except subprocess.CalledProcessError as exception:
+        error('billing verification failed: ' + (exception.output or 'no output').strip())
+    try:
+        return json.dumps({'dailyStatus': json.loads(daily), 'billing': json.loads(billing)}, separators=(',', ':'))
+    except json.JSONDecodeError as exception:
+        error('backend acceptance verifier returned invalid JSON: ' + str(exception))
 
 
 def service_environment(properties):
@@ -196,15 +210,28 @@ def healthcheck(working, service_environment):
         error('BACKEND_ACCEPTANCE_ORIGIN must be loopback HTTP')
     if not DAILY_STATUS_VERIFIER.is_file():
         error('daily status verifier is missing')
+    if not BILLING_VERIFIER.is_file():
+        error('billing verifier is missing')
     port = origin.rsplit(':', 1)[1]
     try:
-        return subprocess.check_output(
+        daily = subprocess.check_output(
             ['node', str(DAILY_STATUS_VERIFIER)], cwd=working, text=True, timeout=30,
             env=dict(os.environ, BACKEND_ACCEPTANCE_PORT=port, BACKEND_ACCEPTANCE_REQUEST=request_id),
             stderr=subprocess.STDOUT
         ).strip()
     except subprocess.CalledProcessError as exception:
         error('daily status verification failed: ' + (exception.output or 'no output').strip())
+    try:
+        billing = subprocess.check_output(
+            ['node', str(BILLING_VERIFIER)], cwd=working, text=True, timeout=60,
+            stderr=subprocess.STDOUT
+        ).strip()
+    except subprocess.CalledProcessError as exception:
+        error('billing verification failed: ' + (exception.output or 'no output').strip())
+    try:
+        return json.dumps({'dailyStatus': json.loads(daily), 'billing': json.loads(billing)}, separators=(',', ':'))
+    except json.JSONDecodeError as exception:
+        error('backend acceptance verifier returned invalid JSON: ' + str(exception))
 
 
 @contextmanager
@@ -288,7 +315,7 @@ def publish(bundle_file, backup_root, acceptance_file, restart=False):
                 if not target.exists() or target.read_bytes() != content:
                     changed.append(name)
             acceptance = Path(acceptance_file).resolve()
-            if not changed:
+            if not changed and not restart:
                 acceptance.write_text(healthcheck(working, service_env), encoding='utf-8')
                 return
             # Replace files atomically one at a time and record the old set for rollback.
@@ -299,6 +326,8 @@ def publish(bundle_file, backup_root, acceptance_file, restart=False):
                     shutil.copy2(staged / name, temporary)
                     os.replace(temporary, target)
                 if restart:
+                    # --restart means activate the verified files even when bytes match
+                    # disk: the currently running process may still have stale code loaded.
                     restart_service()
                 acceptance.write_text(healthcheck(working, service_env), encoding='utf-8')
             except BaseException:
@@ -311,7 +340,7 @@ def publish(bundle_file, backup_root, acceptance_file, restart=False):
             shutil.rmtree(staged, ignore_errors=True)
     print(json.dumps({
         'commit': commit,
-        'restartRequired': bool(changed),
+        'restartRequired': bool(restart),
         'changedFiles': changed,
         'backup': str(backup),
         'acceptance': str(acceptance),

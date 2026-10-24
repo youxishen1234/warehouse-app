@@ -90,3 +90,10 @@ test('an uncertain native failure is remembered and cannot silently resend or fa
   for (let i = 0; i < 2; i++) await assert.rejects(service.submit(makeJob()), error => error.safeToRetry === false);
   assert.equal(calls, 1);
 });
+
+test('a resident runner still replays one job id without submitting twice', async () => {
+  let calls = 0;
+  const service = createPrintService(async request => { calls++; return { kind: 'queued', printerName: request.job.printerName }; });
+  assert.deepEqual(await service.submit(makeJob()), await service.submit(makeJob()));
+  assert.equal(calls, 1);
+});

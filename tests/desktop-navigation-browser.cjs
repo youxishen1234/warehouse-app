@@ -37,7 +37,7 @@ async function main() {
       await current(route);
     }
     assert.equal(await page.locator('.sg-glass-items').evaluate(el => getComputedStyle(el).maskImage), 'none');
-    for (const name of ['board-stock', 'customers', 'orders', 'ledger', 'print-center']) {
+    for (const name of ['board-stock', 'customers', 'orders', 'print-center']) {
       await page.locator(`button[data-nav="/pages/${name}/index"]`).click();
       if (name === 'customers') {
         await current('customers');
@@ -46,18 +46,30 @@ async function main() {
       await page.goto(origin);
       await current('home');
     }
+    await page.locator('button[data-nav]').filter({ hasText: '收付款' }).click();
+    await current('business-center');
+    await page.getByTestId('finance-center').waitFor();
+    await page.getByTestId('finance-ledger-view').waitFor();
+    await page.goto(origin);
+    await current('home');
+    // Retired ledger deep links remain compatible and land in the unified finance tab.
+    await page.goto(origin + '/#/pages/ledger/index');
+    await current('business-center');
+    await page.getByTestId('finance-center').waitFor();
+    await page.getByTestId('finance-ledger-view').waitFor();
     // Resizing restores the mobile lens and preserves its drag-to-select behavior.
+    // Workbench routes intentionally hide the legacy mobile dock.
+    await page.goto(origin + '/#/pages/mine/index');
+    await current('mine');
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForFunction(() => getComputedStyle(document.querySelector('.sg-glass-lens')).display !== 'none');
-    await tab(2).click();
-    await current('inventory');
-    await tab(0).click();
-    await current('home');
+    await tab(3).click();
+    await current('print-center');
     const first = await tab(0).boundingBox(), last = await tab(4).boundingBox();
     await page.mouse.move(first.x + first.width / 2, first.y + first.height / 2);
     await page.mouse.down();
     await page.mouse.move(last.x + last.width / 2, last.y + last.height / 2, { steps: 12 });
-    assert.match(page.url(), /home/);
+    assert.match(page.url(), /print-center/);
     await page.mouse.up();
     await current('mine');
     assert.deepEqual(errors, []);

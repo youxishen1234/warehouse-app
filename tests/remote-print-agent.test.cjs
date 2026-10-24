@@ -24,6 +24,57 @@ test('offline printers and enumeration failures remain visible and recover witho
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
 
+test('a continuously failing printer enumeration triggers a bounded spooler repair and then recovers',async()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'remote-spooler-'));let now=0,listCalls=0,repairs=0,printed=0;const ready=[];
+ try{
+  const receiver=createReceiver({printerName:'630K',now:()=>now,journal:createJournal(path.join(dir,'jobs.json')),
+   service:{
+    list:async()=>{listCalls++;if(listCalls<=3)throw new Error('spooler stopped');return[{name:'630K'}];},
+    repair:async()=>{repairs++;return{kind:'spooler-repaired',repaired:true};},
+    submit:async()=>{printed++;return{kind:'queued'};}
+   },
+   call:async(url,body)=>{if(url==='agent/poll'){ready.push({ready:body.ready,failure:body.failure});return{job:body.ready?job():null};}return{};}});
+  await receiver.tick();assert.equal(repairs,0);
+  now=5001;await receiver.tick();assert.equal(repairs,0);
+  now=10002;await receiver.tick();assert.equal(repairs,1,'the third consecutive enumeration failure repairs the service');
+  assert.deepEqual(ready.map(item=>item.ready),[false,false,true]);
+  assert.ok(ready.every(item=>item.failure===undefined),'health details must not leak into the print API contract');
+  assert.equal(printed,1);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('a merely offline printer does not restart the spooler or drop its queued work',async()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'remote-offline-spooler-'));let now=0,repairs=0;const ready=[];
+ try{
+  const receiver=createReceiver({printerName:'630K',now:()=>now,journal:createJournal(path.join(dir,'jobs.json')),
+   service:{
+    list:async()=>[{name:'630K',unavailable:true}],
+    repair:async()=>{repairs++;},
+    submit:async()=>{throw new Error('must not print while offline');}
+   },
+   call:async(url,body)=>{if(url==='agent/poll'){ready.push(body.ready);return{job:null};}return{};}});
+  for(let index=0;index<5;index++){now=index*20000;await receiver.tick();}
+  assert.equal(repairs,0);
+  assert.deepEqual(ready,[false,false,false,false,false]);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('a running spooler is not reported as an automatic recovery',async()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'remote-spooler-running-'));let now=0,listCalls=0,recoveries=0;const ready=[];
+ try{
+  const receiver=createReceiver({printerName:'630K',now:()=>now,journal:createJournal(path.join(dir,'jobs.json')),
+   service:{
+    list:async()=>{listCalls++;if(listCalls<=3)throw new Error('driver unreadable');return[{name:'630K'}];},
+    repair:async()=>({kind:'spooler-repaired',repaired:false}),
+    submit:async()=>{throw new Error('must not print');}
+   },
+   call:async(url,body)=>{if(url==='agent/recovery')recoveries++;if(url==='agent/poll'){ready.push(body.ready);return{job:null};}return{};}});
+  for(let index=0;index<3;index++){now=index*5001;await receiver.tick();}
+  assert.equal(recoveries,0,'a service that was already running is not a repair');
+  assert.deepEqual(ready,[false,false,true]);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
 test('a lost acknowledgement retries the durable receipt after restart without reprinting',async()=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'remote-receipt-'));const file=path.join(dir,'jobs.json');let printed=0,ackFails=true,claims=0,acks=0;
  try{

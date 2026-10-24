@@ -228,65 +228,90 @@ h1,h2{margin:0;text-align:center;font-weight:700;overflow-wrap:anywhere}h1{font-
 .document{border:1.5pt solid #000}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:.5pt solid #000;padding:.35mm .4mm;height:5.5mm;text-align:center;overflow-wrap:anywhere}th{font-weight:700}thead th{border-top:0}th:first-child,td:first-child{border-left:0}th:last-child,td:last-child{border-right:0}tbody tr:last-child td{border-bottom:0}tr{break-inside:avoid;page-break-inside:avoid}
 .spec span{display:block;white-space:nowrap;overflow-wrap:normal}.num{font-family:Consolas,"Courier New",monospace;text-align:right;padding-right:1.5mm;font-variant-numeric:tabular-nums;white-space:nowrap}.remark{text-align:left}
 .total{display:flex;justify-content:space-between;align-items:baseline;gap:2mm;border-top:1.5pt solid #000;min-height:6mm;padding:.7mm 1mm}.upper{min-width:0;overflow-wrap:anywhere}.amount{white-space:nowrap;flex-shrink:0}.sign{display:grid;grid-template-columns:1fr 1fr;gap:2mm;border-top:.5pt solid #000;padding:1mm .5mm 2.5mm;min-height:8.5mm;font-size:10pt}.sign>div{display:flex;min-width:0}.sign b{font-weight:400;white-space:nowrap}.signature{flex:1;min-width:0;min-height:5mm;border-bottom:.5pt solid #000;overflow-wrap:anywhere}.page-number{font-size:8pt;text-align:right;margin-top:1mm}.page-number:empty{display:none}
+.sheet>.page-number{position:absolute;left:${(a4 ? 10 : 6) + settings.offsetX}mm;right:${settings.width - ((a4 ? 10 : 6) + width + settings.offsetX)}mm;bottom:0;height:4mm;min-height:0;margin:0;padding:0;line-height:3.4mm}
 @media print{html,body{background:white}.sheet{margin:0}}
 </style></head><body><section class="sheet"><div class="delivery-content"><header><h1>${e(settings.company)}</h1><h2>送 货 单</h2><div class="meta"><span class="party">收货单位：${e(doc.party)}</span><span class="date">送货日期：${e(preprintedDate(doc.date))}</span></div><div class="address">收货地址：${e(doc.address || '')}</div></header>
 <div class="document"><table aria-label="送货明细"><colgroup>${[6, 22, 18, 6, 9, 10, 14, 15].map(n => `<col style="width:${n}%">`).join('')}</colgroup><thead><tr>${['编号', '产品名称', '规格尺寸', '单位', '数量', '单价', '金额', '备注'].map((name, i) => `<th${i >= 4 && i <= 6 ? ' class="num"' : ''}>${name}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>
-<footer><div class="total"><span class="upper"><span data-total-label>合计：人民币大写</span> <span data-upper>${settings.showPrices && total !== null ? e(moneyUpper(total)) : ''}</span></span><span class="amount">合计：<span data-total>${settings.showPrices ? money(total) : ''}</span></span></div><div class="sign"><div><b>收货人：</b><span class="signature">${e(doc.receiver || '')}</span></div><div><b>送货人：</b><span class="signature">${e(doc.operator)}</span></div></div></footer></div><div class="page-number"></div></div></section></body></html>`;
+<footer><div class="total"><span class="upper"><span data-total-label>合计：人民币大写</span> <span data-upper>${settings.showPrices && total !== null ? e(moneyUpper(total)) : ''}</span></span><span class="amount">合计：<span data-total>${settings.showPrices ? money(total) : ''}</span></span></div><div class="sign"><div><b>收货人：</b><span class="signature">${e(doc.receiver || '')}</span></div><div><b>送货人：</b><span class="signature">${e(doc.operator)}</span></div></div></footer></div></div><div class="page-number"></div></section></body></html>`;
 }
 function paginateDeliveryNote(document: Document, doc: PrintDocument, settings: DotMatrixSettings) {
   const original = document.querySelector<HTMLElement>('.sheet');
   if (!original) throw new Error('打印预览未加载');
   const lines = doc.lines.filter(line => !line.blank);
-  const rows = Array.from(original.querySelectorAll<HTMLTableRowElement>('tbody tr[data-line]'));
-  rows.forEach(row => row.remove());
-  const template = original.cloneNode(true) as HTMLElement;
-  const sheets = [original];
-  let sheet = original;
-  const updateTotal = () => {
-    const pageLines = Array.from(sheet.querySelectorAll<HTMLElement>('tbody [data-line]')).map(row => lines[Number(row.dataset.line)]);
-    const total = totalMoney(pageLines);
-    sheet.querySelector('[data-total-label]')!.textContent = '本页合计：人民币大写';
-    if (settings.showPrices) { sheet.querySelector('[data-upper]')!.textContent = total === null ? '金额未完整记录' : moneyUpper(total); sheet.querySelector('[data-total]')!.textContent = money(total); }
-    // Reserve page-number space before measuring rows; the final page count can add a page.
-    sheet.querySelector<HTMLElement>('.page-number')!.style.minHeight = '4mm';
-    sheet.querySelector<HTMLElement>('.page-number')!.style.display = 'block';
-  };
-  const fits = () => { updateTotal(); return sheet.querySelector('.delivery-content')!.getBoundingClientRect().bottom <= sheet.getBoundingClientRect().bottom - 5 * 96 / 25.4; };
-  const fitSpec = (row: HTMLElement) => row.querySelectorAll<HTMLElement>('.spec span').forEach(span => {
-    const range = document.createRange(); range.selectNodeContents(span);
-    const width = range.getBoundingClientRect().width;
-    if (width > span.clientWidth) span.style.fontSize = `${Math.max(6, 11 * span.clientWidth / width)}pt`;
-    if (span.scrollWidth > span.clientWidth + 1) throw new Error('规格文字过长，请缩短后打印');
-  });
-  for (const [index, row] of rows.entries()) {
-    const body = () => sheet.querySelector('tbody')!;
-    if (body().children.length >= settings.rowsPerPage) { sheet = template.cloneNode(true) as HTMLElement; document.body.appendChild(sheet); sheets.push(sheet); }
-    body().appendChild(row); fitSpec(row);
-    if (!fits() && body().children.length > 1) { row.remove(); updateTotal(); sheet = template.cloneNode(true) as HTMLElement; document.body.appendChild(sheet); sheets.push(sheet); body().appendChild(row); fitSpec(row); }
-    if (!fits()) throw new Error(`第 ${index + 1} 行内容放不下，请选择更大的纸张或缩短备注`);
-  }
-  for (const [index, current] of sheets.entries()) {
-    sheet = current;
-    sheet.querySelectorAll<HTMLElement>('td.num').forEach(cell => {
-      if (cell.scrollWidth > cell.clientWidth + 1) throw new Error('数量或金额过长，无法在纸张列内完整显示，请核对数值');
-    });
-    const body = sheet.querySelector('tbody')!;
-    const pageLines = Array.from(body.querySelectorAll<HTMLElement>('[data-line]')).map(row => lines[Number(row.dataset.line)]);
-    const total = totalMoney(pageLines);
-    if (settings.showPrices) { sheet.querySelector('[data-upper]')!.textContent = total === null ? '金额未完整记录' : moneyUpper(total); sheet.querySelector('[data-total]')!.textContent = money(total); }
-    if (sheets.length > 1) {
+  // A pristine copy is the layout source for every pass below.
+  const pristine = original.cloneNode(true) as HTMLElement;
+
+  // `reservePageNumber` costs about 4 mm of paper at the bottom. Reserving it
+  // for a one-page note used to push the fifth row onto a second sheet, so the
+  // caller lays out without it first and only retries when pagination is real.
+  const layout = (reservePageNumber: boolean) => {
+    document.querySelectorAll('.sheet').forEach(node => node.remove());
+    let sheet = pristine.cloneNode(true) as HTMLElement;
+    document.body.appendChild(sheet);
+    const sheets: HTMLElement[] = [sheet];
+    const rows = Array.from(sheet.querySelectorAll<HTMLTableRowElement>('tbody tr[data-line]'));
+    rows.forEach(row => row.remove());
+    const template = sheet.cloneNode(true) as HTMLElement;
+    const updateTotal = () => {
+      const pageLines = Array.from(sheet.querySelectorAll<HTMLElement>('tbody [data-line]')).map(row => lines[Number(row.dataset.line)]);
+      const total = totalMoney(pageLines);
       sheet.querySelector('[data-total-label]')!.textContent = '本页合计：人民币大写';
-      sheet.querySelector('.page-number')!.textContent = `第 ${index + 1} / ${sheets.length} 页 · 整单合计 ${money(totalMoney(lines))} 元`;
+      if (settings.showPrices) { sheet.querySelector('[data-upper]')!.textContent = total === null ? '金额未完整记录' : moneyUpper(total); sheet.querySelector('[data-total]')!.textContent = money(total); }
+      if (reservePageNumber) {
+        sheet.querySelector<HTMLElement>('.page-number')!.style.minHeight = '3.4mm';
+        sheet.querySelector<HTMLElement>('.page-number')!.style.display = 'block';
+      }
+    };
+    // The page number sits in the bottom margin below the signatures. Measure
+    // the printed form against the 5 mm safety margin and the page number only
+    // against the physical paper edge, so it cannot reject an otherwise valid
+    // five-row page.
+    const fits = () => {
+      updateTotal();
+      const bottom = sheet.getBoundingClientRect().bottom - 5 * 96 / 25.4;
+      const content = sheet.querySelector('.delivery-content')!;
+      const printed = content.querySelector('.document')!.getBoundingClientRect().bottom;
+      return printed <= bottom;
+    };
+    const fitSpec = (row: HTMLElement) => row.querySelectorAll<HTMLElement>('.spec span').forEach(span => {
+      const range = document.createRange(); range.selectNodeContents(span);
+      const width = range.getBoundingClientRect().width;
+      if (width > span.clientWidth) span.style.fontSize = `${Math.max(6, 11 * span.clientWidth / width)}pt`;
+      if (span.scrollWidth > span.clientWidth + 1) throw new Error('规格文字过长，请缩短后打印');
+    });
+    for (const [index, row] of rows.entries()) {
+      const body = () => sheet.querySelector('tbody')!;
+      if (body().children.length >= settings.rowsPerPage) { sheet = template.cloneNode(true) as HTMLElement; document.body.appendChild(sheet); sheets.push(sheet); }
+      body().appendChild(row); fitSpec(row);
+      if (!fits() && body().children.length > 1) { row.remove(); updateTotal(); sheet = template.cloneNode(true) as HTMLElement; document.body.appendChild(sheet); sheets.push(sheet); body().appendChild(row); fitSpec(row); }
+      if (!fits()) throw new Error(`第 ${index + 1} 行内容放不下，请选择更大的纸张或缩短备注`);
     }
-    if (!fits()) throw new Error('合计或签字内容超出纸张，请选择更大的纸张');
-    while (body.children.length < Math.min(5, settings.rowsPerPage)) {
-      const row = document.createElement('tr');
-      for (let i = 0; i < 8; i++) row.appendChild(document.createElement('td'));
-      body.appendChild(row); if (!fits()) { row.remove(); break; }
+    for (const [index, current] of sheets.entries()) {
+      sheet = current;
+      sheet.querySelectorAll<HTMLElement>('td.num').forEach(cell => {
+        if (cell.scrollWidth > cell.clientWidth + 1) throw new Error('数量或金额过长，无法在纸张列内完整显示，请核对数值');
+      });
+      const body = sheet.querySelector('tbody')!;
+      const pageLines = Array.from(body.querySelectorAll<HTMLElement>('[data-line]')).map(row => lines[Number(row.dataset.line)]);
+      const total = totalMoney(pageLines);
+      if (settings.showPrices) { sheet.querySelector('[data-upper]')!.textContent = total === null ? '金额未完整记录' : moneyUpper(total); sheet.querySelector('[data-total]')!.textContent = money(total); }
+      if (sheets.length > 1) {
+        sheet.querySelector('[data-total-label]')!.textContent = '本页合计：人民币大写';
+        sheet.querySelector('.page-number')!.textContent = `第 ${index + 1} / ${sheets.length} 页 · 整单合计 ${money(totalMoney(lines))} 元`;
+      }
+      if (!fits()) throw new Error('合计或签字内容超出纸张，请选择更大的纸张');
+      while (body.children.length < Math.min(5, settings.rowsPerPage)) {
+        const row = document.createElement('tr');
+        for (let i = 0; i < 8; i++) row.appendChild(document.createElement('td'));
+        body.appendChild(row); if (!fits()) { row.remove(); break; }
+      }
+      if (sheets.length === 1) sheet.querySelector('[data-total-label]')!.textContent = '合计：人民币大写';
     }
-    if (sheets.length === 1) sheet.querySelector('[data-total-label]')!.textContent = '合计：人民币大写';
-  }
-  return { pages: sheets.length, height: document.body.scrollHeight + 12 };
+    return { pages: sheets.length, height: document.body.scrollHeight + 12 };
+  };
+
+  const single = layout(false);
+  return single.pages === 1 ? single : layout(true);
 }
 
 /** A script-free, isolated document. Physical dimensions never pass through Taro's px transform. */
