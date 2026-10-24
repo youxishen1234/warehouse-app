@@ -198,4 +198,11 @@ async function main() {
   }
 }
 
-main().catch(error => { console.error(error); process.exitCode = 1; });
+main().catch(error => {
+  console.error(error);
+  if (process.env.GITHUB_ACTIONS === 'true') {
+    const detail = String(error?.stack || error).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+    console.error(`::error file=tests/customer-inbound-billing-browser.cjs,title=Customer billing browser acceptance::${detail}`);
+  }
+  process.exitCode = 1;
+});
