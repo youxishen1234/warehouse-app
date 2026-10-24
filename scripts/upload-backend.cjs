@@ -11,6 +11,33 @@ const PUBLISHER = path.join(root, 'scripts', 'publish-backend.py');
 const DAILY_STATUS_VERIFIER = path.join(root, 'scripts', 'verify-backend-daily-status.js');
 const BILLING_VERIFIER = path.join(root, 'scripts', 'verify-backend-billing.cjs');
 const BACKUP_ROOT = '/opt/shuguang/backups/backend-release';
+const PUBLISHER_FAILURE_MARKER = 'BACKEND_PUBLISH_FAILURE ';
+const PUBLISHER_FAILURE_ENUMS = {
+  phase: new Set([
+    'startup', 'argument_validation', 'load_bundle', 'materialize_preflight',
+    'service_properties', 'backup_create_staging', 'acquire_lock',
+    'backup_stage_files', 'activate_files', 'restart_service',
+    'daily_status_acceptance', 'billing_acceptance', 'write_acceptance',
+    'rollback_files', 'rollback_restart', 'cleanup'
+  ]),
+  exception: new Set([
+    'OSError', 'ValueError', 'RuntimeError', 'TimeoutExpired',
+    'CalledProcessError', 'JSONDecodeError', 'Exception'
+  ]),
+  reason: new Set([
+    'backend_bundle_invalid', 'backend_bundle_incomplete',
+    'backend_bundle_content_invalid', 'backend_bundle_dependency_missing',
+    'staged_preflight_failed', 'staged_preflight_timeout',
+    'service_configuration_invalid', 'backup_failed', 'lock_failed',
+    'staging_failed', 'file_activation_failed', 'service_restart_failed',
+    'service_inactive', 'daily_status_failed', 'billing_failed',
+    'acceptance_write_failed', 'permission_denied', 'operation_timeout',
+    'storage_io_failed', 'unexpected_error'
+  ]),
+  rollback: new Set([
+    'not_attempted', 'restored', 'file_restore_failed', 'service_restart_failed'
+  ])
+};
 const SOURCE_PATHS = [
   'backend',
   'deploy/backend-release',
@@ -238,6 +265,32 @@ function classifyRemoteFailure(error) {
   return classifications.find(([pattern]) => pattern.test(diagnostic))?.[1] || 'remote command returned an unclassified error';
 }
 
+function validatedPublisherFailure(error) {
+  const stderr = Buffer.isBuffer(error?.stderr) ? error.stderr.toString('utf8') : String(error?.stderr || '');
+  for (const line of stderr.split(/\r?\n/).slice(-100)) {
+    if (!line.startsWith(PUBLISHER_FAILURE_MARKER) || line.length > 2048) continue;
+    let marker;
+    try { marker = JSON.parse(line.slice(PUBLISHER_FAILURE_MARKER.length)); }
+    catch { continue; }
+    if (!marker || typeof marker !== 'object' || Array.isArray(marker)) continue;
+    if (Object.keys(marker).sort().join(',') !== 'errno,exception,phase,reason,rollback') continue;
+    if (!PUBLISHER_FAILURE_ENUMS.phase.has(marker.phase)
+      || !PUBLISHER_FAILURE_ENUMS.exception.has(marker.exception)
+      || !PUBLISHER_FAILURE_ENUMS.reason.has(marker.reason)
+      || !PUBLISHER_FAILURE_ENUMS.rollback.has(marker.rollback)) continue;
+    if (marker.errno !== null && (!Number.isSafeInteger(marker.errno) || marker.errno <= 0)) continue;
+    return {
+      phase: marker.phase,
+      exception: marker.exception,
+      errno: marker.errno,
+      reason: marker.reason,
+      rollback: marker.rollback
+    };
+  }
+  return null;
+}
+
+
 
 function executeRemote(phase, command, args, options = {}, authEnv, usePassword = false, execute = execFileSync) {
   const executable = usePassword ? 'sshpass' : command;
@@ -253,7 +306,16 @@ function executeRemote(phase, command, args, options = {}, authEnv, usePassword 
   } catch (error) {
     const details = [];
     if (Number.isInteger(error?.status) && error.status >= 0) details.push(`exit=${error.status}`);
-    details.push(`reason=${classifyRemoteFailure(error)}`);
+    const publisherFailure = validatedPublisherFailure(error);
+    if (publisherFailure) {
+      details.push(`publisherPhase=${publisherFailure.phase}`);
+      details.push(`publisherReason=${publisherFailure.reason}`);
+      details.push(`publisherException=${publisherFailure.exception}`);
+      details.push(`publisherRollback=${publisherFailure.rollback}`);
+      if (publisherFailure.errno !== null) details.push(`publisherErrno=${publisherFailure.errno}`);
+    } else {
+      details.push(`reason=${classifyRemoteFailure(error)}`);
+    }
     const safeCodes = new Set([
       'EACCES', 'ECONNREFUSED', 'ECONNRESET', 'EHOSTUNREACH',
       'ENOENT', 'ENETUNREACH', 'EPIPE', 'ETIMEDOUT'
@@ -388,6 +450,7 @@ module.exports = {
   connection,
   createRemotePlan,
   executeRemote,
+  validatedPublisherFailure,
   validateRemoteSummary,
   sanitizedChildEnv,
   withAuth,

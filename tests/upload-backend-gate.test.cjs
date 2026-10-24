@@ -256,6 +256,38 @@ test('remote failure diagnostics classify known publisher errors without exposin
   });
 });
 
+test('invalid or malicious publisher markers are ignored and never echoed', () => {
+  const privateKey = '-----BEGIN OPENSSH PRIVATE KEY-----\nmalicious-key-material\n-----END OPENSSH PRIVATE KEY-----';
+  const customerData = 'customer=Alice, debt=800';
+  const invalidMarkers = [
+    { phase: `service_properties ${customerData}`, exception: 'ValueError', errno: 1, reason: 'permission_denied', rollback: 'not_attempted' },
+    { phase: 'service_properties', exception: privateKey, errno: 1, reason: 'permission_denied', rollback: 'not_attempted' },
+    { phase: 'service_properties', exception: 'ValueError', errno: -1, reason: 'permission_denied', rollback: 'not_attempted' },
+    { phase: 'service_properties', exception: 'ValueError', errno: 1, reason: customerData, rollback: 'not_attempted' },
+    { phase: 'service_properties', exception: 'ValueError', errno: 1, reason: 'permission_denied', rollback: 'not_attempted', extra: privateKey }
+  ];
+  for (const marker of invalidMarkers) {
+    const password = 'password-do-not-echo';
+    const failure = Object.assign(new Error('remote command failed'), {
+      status: 1,
+      stderr: Buffer.from(`BACKEND_PUBLISH_FAILURE ${JSON.stringify(marker)}\n${password}\n${privateKey}\n${customerData}`)
+    });
+    assert.equal(uploader.validatedPublisherFailure(failure), null);
+    assert.throws(() => uploader.executeRemote('publish backend revision and run acceptance', 'ssh', [], {}, {}, false, () => { throw failure; }), error => {
+      assert.match(error.message, /reason=remote command returned an unclassified error/);
+      for (const secret of [password, privateKey, 'malicious-key-material', customerData, 'BACKEND_PUBLISH_FAILURE']) {
+        assert.equal(error.message.includes(secret), false);
+      }
+      return true;
+    });
+  }
+  const markerOnStdout = Object.assign(new Error('remote command failed'), {
+    status: 1,
+    stdout: `BACKEND_PUBLISH_FAILURE ${JSON.stringify({ phase: 'service_properties', exception: 'ValueError', errno: null, reason: 'service_configuration_invalid', rollback: 'not_attempted' })}`
+  });
+  assert.equal(uploader.validatedPublisherFailure(markerOnStdout), null, 'only stderr markers are parsed');
+});
+
 test('remote transport and publisher diagnostics use fixed categories only', () => {
   const cases = [
     ['ssh: connect to host server port 22: Connection timed out', 'SSH connection timed out'],
@@ -278,6 +310,34 @@ test('remote transport and publisher diagnostics use fixed categories only', () 
 });
 
 
+test('validated backend publisher failure marker reports enum fields without raw output', () => {
+  const password = 'publisher-password-do-not-log';
+  const privateKey = '-----BEGIN OPENSSH PRIVATE KEY-----\nprivate-key-material-do-not-log\n-----END OPENSSH PRIVATE KEY-----';
+  const customerData = 'customer=Private Customer, debt=12345';
+  const marker = {
+    phase: 'service_properties',
+    exception: 'ValueError',
+    errno: null,
+    reason: 'service_configuration_invalid',
+    rollback: 'not_attempted'
+  };
+  const failure = Object.assign(new Error('remote command failed'), {
+    status: 1,
+    stderr: Buffer.from(`BACKEND_PUBLISH_PHASE {"phase":"service_properties"}\nBACKEND_PUBLISH_FAILURE ${JSON.stringify(marker)}\n${password}\n${privateKey}\n${customerData}`),
+    stdout: Buffer.from(`${password}\n${customerData}`)
+  });
+  assert.deepEqual(uploader.validatedPublisherFailure(failure), marker);
+  assert.throws(() => uploader.executeRemote('publish backend revision and run acceptance', 'ssh', [], {}, {}, false, () => { throw failure; }), error => {
+    assert.match(error.message, /publisherPhase=service_properties/);
+    assert.match(error.message, /publisherReason=service_configuration_invalid/);
+    assert.match(error.message, /publisherException=ValueError/);
+    assert.match(error.message, /publisherRollback=not_attempted/);
+    for (const secret of [password, privateKey, 'private-key-material-do-not-log', customerData, 'BACKEND_PUBLISH_PHASE']) {
+      assert.equal(error.message.includes(secret), false);
+    }
+    return true;
+  });
+});
 test('billing verifier runs as a subprocess from the backend directory against isolated storage', () => {
   const verifier = path.resolve(__dirname, '../scripts/verify-backend-billing.cjs');
   const backendDirectory = path.resolve(__dirname, '../backend');
@@ -298,12 +358,12 @@ test('publisher acceptance failure restores files and restarts the prior service
   const transactionStart = publisher.indexOf('            # Replace files atomically');
   assert.notEqual(transactionStart, -1, 'publication transaction should be present');
   const transaction = publisher.slice(transactionStart);
-  const acceptanceIndex = transaction.indexOf('acceptance.write_text(healthcheck(working, service_env)');
-  const rollbackIndex = transaction.indexOf('except BaseException:');
+  const acceptanceIndex = transaction.indexOf('acceptance_result = healthcheck(working, service_env)');
+  const rollbackIndex = transaction.indexOf('except BaseException as primary:');
   assert.ok(acceptanceIndex >= 0);
   assert.ok(rollbackIndex > acceptanceIndex);
   assert.match(transaction, /for name in reversed\(changed\):\s+restore_file\(backup, working, name\)/);
-  assert.match(transaction, /if restart:\s+restart_service\(\)/);
+  assert.match(transaction, /if restart:\s+try:\s+begin_phase\('rollback_restart'\)\s+restart_service\('rollback_restart'\)/);
 });
 
 test('backend provenance detects untracked server files but excludes user-uploaded product images', () => {

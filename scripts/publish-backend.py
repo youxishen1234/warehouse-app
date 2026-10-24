@@ -24,6 +24,90 @@ import time
 SCRIPT_DIR = Path(__file__).resolve().parent
 DAILY_STATUS_VERIFIER = SCRIPT_DIR / 'verify-backend-daily-status.js'
 BILLING_VERIFIER = SCRIPT_DIR / 'verify-backend-billing.cjs'
+PUBLISH_PHASES = {
+    'startup', 'argument_validation', 'load_bundle', 'materialize_preflight',
+    'service_properties', 'backup_create_staging', 'acquire_lock',
+    'backup_stage_files', 'activate_files', 'restart_service',
+    'daily_status_acceptance', 'billing_acceptance', 'write_acceptance',
+    'rollback_files', 'rollback_restart', 'cleanup'
+}
+PUBLISH_REASONS = {
+    'startup': 'unexpected_error',
+    'argument_validation': 'backend_bundle_invalid',
+    'load_bundle': 'backend_bundle_invalid',
+    'materialize_preflight': 'staged_preflight_failed',
+    'service_properties': 'service_configuration_invalid',
+    'backup_create_staging': 'backup_failed',
+    'acquire_lock': 'lock_failed',
+    'backup_stage_files': 'staging_failed',
+    'activate_files': 'file_activation_failed',
+    'restart_service': 'service_restart_failed',
+    'daily_status_acceptance': 'daily_status_failed',
+    'billing_acceptance': 'billing_failed',
+    'write_acceptance': 'acceptance_write_failed',
+    'rollback_files': 'file_activation_failed',
+    'rollback_restart': 'service_restart_failed',
+    'cleanup': 'unexpected_error'
+}
+SAFE_EXCEPTION_CLASSES = {
+    'OSError', 'ValueError', 'RuntimeError', 'TimeoutExpired',
+    'CalledProcessError', 'JSONDecodeError', 'Exception'
+}
+_active_phase = 'startup'
+
+
+class PublishFailure(Exception):
+    def __init__(self, phase, cause, rollback):
+        super().__init__()
+        self.phase = phase
+        self.cause = cause
+        self.rollback = rollback
+
+
+def begin_phase(phase):
+    """Emit fixed progress information only; never include user/server values."""
+    global _active_phase
+    if phase not in PUBLISH_PHASES:
+        phase = 'startup'
+    _active_phase = phase
+    print('BACKEND_PUBLISH_PHASE ' + json.dumps({'phase': phase}, separators=(',', ':')), file=sys.stderr, flush=True)
+
+
+def failure_record(phase, exception, rollback='not_attempted'):
+    """Return a schema-bounded diagnostic without exception messages or output."""
+    if phase not in PUBLISH_PHASES:
+        phase = 'startup'
+    if rollback not in {'not_attempted', 'restored', 'file_restore_failed', 'service_restart_failed'}:
+        rollback = 'file_restore_failed'
+    exception_name = type(exception).__name__
+    if exception_name == 'TimeoutExpired':
+        safe_name = 'TimeoutExpired'
+    elif exception_name == 'CalledProcessError':
+        safe_name = 'CalledProcessError'
+    elif exception_name == 'JSONDecodeError':
+        safe_name = 'JSONDecodeError'
+    elif exception_name in SAFE_EXCEPTION_CLASSES:
+        safe_name = exception_name
+    elif isinstance(exception, OSError):
+        safe_name = 'OSError'
+    else:
+        safe_name = 'Exception'
+    errno = getattr(exception, 'errno', None)
+    if not isinstance(errno, int) or isinstance(errno, bool) or errno <= 0:
+        errno = None
+    return {
+        'phase': phase,
+        'exception': safe_name,
+        'errno': errno,
+        'reason': PUBLISH_REASONS[phase],
+        'rollback': rollback
+    }
+
+
+def emit_failure(phase, exception, rollback='not_attempted'):
+    """Emit exactly one compact, allowlisted machine-readable failure marker."""
+    safe = failure_record(phase, exception, rollback)
+    print('BACKEND_PUBLISH_FAILURE ' + json.dumps(safe, separators=(',', ':')), file=sys.stderr, flush=True)
 
 
 REQUIRED = {
@@ -102,6 +186,7 @@ def load_bundle(path, expected_commit=None):
 
 
 def materialize_and_preflight(files):
+    begin_phase('materialize_preflight')
     with tempfile.TemporaryDirectory(prefix='warehouse-backend-preflight-') as directory:
         root = Path(directory)
         for name, content in files.items():
@@ -134,6 +219,7 @@ def materialize_and_preflight(files):
 
 
 def service_properties():
+    begin_phase('service_properties')
     output = subprocess.check_output(
         ['systemctl', 'show', 'shuguang.service', '--property=User',
          '--property=WorkingDirectory', '--property=Environment', '--property=EnvironmentFiles',
@@ -154,6 +240,7 @@ def service_properties():
 
 
 def run_healthcheck(working, token, request_id):
+    begin_phase('daily_status_acceptance')
     if not DAILY_STATUS_VERIFIER.is_file():
         error('daily status verifier is missing')
     if not BILLING_VERIFIER.is_file():
@@ -166,6 +253,7 @@ def run_healthcheck(working, token, request_id):
         ).strip()
     except subprocess.CalledProcessError as exception:
         error('daily status verification failed: ' + (exception.output or 'no output').strip())
+    begin_phase('billing_acceptance')
     try:
         billing = subprocess.check_output(
             ['node', str(BILLING_VERIFIER)], cwd=working, text=True, timeout=60,
@@ -213,6 +301,7 @@ def healthcheck(working, service_environment):
     if not BILLING_VERIFIER.is_file():
         error('billing verifier is missing')
     port = origin.rsplit(':', 1)[1]
+    begin_phase('daily_status_acceptance')
     try:
         daily = subprocess.check_output(
             ['node', str(DAILY_STATUS_VERIFIER)], cwd=working, text=True, timeout=30,
@@ -221,6 +310,7 @@ def healthcheck(working, service_environment):
         ).strip()
     except subprocess.CalledProcessError as exception:
         error('daily status verification failed: ' + (exception.output or 'no output').strip())
+    begin_phase('billing_acceptance')
     try:
         billing = subprocess.check_output(
             ['node', str(BILLING_VERIFIER)], cwd=working, text=True, timeout=60,
@@ -238,6 +328,7 @@ def healthcheck(working, service_environment):
 def release_lock(root):
     path = root / '.backend-release.lock'
     with path.open('a+b') as stream:
+        begin_phase('acquire_lock')
         fcntl.flock(stream, fcntl.LOCK_EX)
         try:
             yield
@@ -245,7 +336,8 @@ def release_lock(root):
             fcntl.flock(stream, fcntl.LOCK_UN)
 
 
-def restart_service():
+def restart_service(phase='restart_service'):
+    begin_phase(phase)
     sudo = [] if os.geteuid() == 0 else ['sudo', '-n']
     result = subprocess.run([*sudo, 'systemctl', 'restart', 'shuguang.service'], text=True, capture_output=True)
     if result.returncode:
@@ -271,10 +363,12 @@ def restore_file(backup, working, name):
 
 
 def publish(bundle_file, backup_root, acceptance_file, restart=False):
+    begin_phase('load_bundle')
     commit, metadata, decoded = load_bundle(bundle_file, os.environ.get('RELEASE_COMMIT'))
     materialize_and_preflight(decoded)
     properties, working = service_properties()
     service_env = service_environment(properties)
+    begin_phase('backup_create_staging')
     backup_root = Path(backup_root).resolve()
     backup_root.mkdir(parents=True, exist_ok=True, mode=0o700)
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
@@ -285,10 +379,11 @@ def publish(bundle_file, backup_root, acceptance_file, restart=False):
     changed = []
     started = time.monotonic()
     with release_lock(working.parent):
-        # Re-read the service so a configuration or working directory change
-        # cannot be silently bypassed between plan and publication.
-        _, working = service_properties()
         try:
+            # Re-read the service so a configuration or working directory change
+            # cannot be silently bypassed between plan and publication.
+            _, working = service_properties()
+            begin_phase('backup_stage_files')
             (backup / 'release.json').write_text(json.dumps({
                 'commit': commit, 'service': 'shuguang.service',
                 'user': properties.get('User'), 'workingDirectory': str(working),
@@ -316,10 +411,13 @@ def publish(bundle_file, backup_root, acceptance_file, restart=False):
                     changed.append(name)
             acceptance = Path(acceptance_file).resolve()
             if not changed and not restart:
-                acceptance.write_text(healthcheck(working, service_env), encoding='utf-8')
+                acceptance_result = healthcheck(working, service_env)
+                begin_phase('write_acceptance')
+                acceptance.write_text(acceptance_result, encoding='utf-8')
                 return
             # Replace files atomically one at a time and record the old set for rollback.
             try:
+                begin_phase('activate_files')
                 for name in sorted(changed):
                     target = safe_path(working, name)
                     temporary = target.with_name('.' + target.name + '.tmp-' + str(os.getpid()))
@@ -329,14 +427,33 @@ def publish(bundle_file, backup_root, acceptance_file, restart=False):
                     # --restart means activate the verified files even when bytes match
                     # disk: the currently running process may still have stale code loaded.
                     restart_service()
-                acceptance.write_text(healthcheck(working, service_env), encoding='utf-8')
-            except BaseException:
-                for name in reversed(changed):
-                    restore_file(backup, working, name)
+                acceptance_result = healthcheck(working, service_env)
+                begin_phase('write_acceptance')
+                acceptance.write_text(acceptance_result, encoding='utf-8')
+            except BaseException as primary:
+                primary_phase = _active_phase
+                rollback = 'restored'
+                try:
+                    begin_phase('rollback_files')
+                    for name in reversed(changed):
+                        restore_file(backup, working, name)
+                except BaseException:
+                    rollback = 'file_restore_failed'
+                    raise PublishFailure(primary_phase, primary, rollback) from None
                 if restart:
-                    restart_service()
-                raise
+                    try:
+                        begin_phase('rollback_restart')
+                        restart_service('rollback_restart')
+                    except BaseException:
+                        rollback = 'service_restart_failed'
+                raise PublishFailure(primary_phase, primary, rollback) from None
+        except PublishFailure:
+            raise
+        except BaseException as exception:
+            # Capture the originating phase before cleanup changes the visible phase.
+            raise PublishFailure(_active_phase, exception, 'not_attempted') from None
         finally:
+            begin_phase('cleanup')
             shutil.rmtree(staged, ignore_errors=True)
     print(json.dumps({
         'commit': commit,
@@ -350,10 +467,14 @@ def publish(bundle_file, backup_root, acceptance_file, restart=False):
 
 if __name__ == '__main__':
     try:
+        begin_phase('argument_validation')
         arguments = [argument for argument in sys.argv[1:] if argument != '--restart']
         if len(arguments) != 3:
             error('usage: publish-backend.py bundle.json backup-root acceptance.json [--restart]')
         publish(arguments[0], arguments[1], arguments[2], restart='--restart' in sys.argv)
     except Exception as exception:
-        print(str(exception), file=sys.stderr)
+        if isinstance(exception, PublishFailure):
+            emit_failure(exception.phase, exception.cause, exception.rollback)
+        else:
+            emit_failure(_active_phase, exception)
         sys.exit(1)
