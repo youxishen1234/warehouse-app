@@ -191,6 +191,7 @@ async function main() {
     fs.writeFileSync(path.join(evidence, 'failure.html'), await page.content().catch(() => ''));
     throw error;
   } finally {
+    await context.unrouteAll({ behavior: 'wait' });
     await context.close(); await browser.close(); server.closeAllConnections();
     await new Promise(resolve => server.close(resolve));
     assert.ok(path.resolve(temporary).startsWith(path.resolve(os.tmpdir()) + path.sep));

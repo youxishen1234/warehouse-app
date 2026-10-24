@@ -193,6 +193,91 @@ test('password authentication passes only sanitized child environment and restor
   assert.equal(Object.hasOwn(scrubbed, 'SSHPASS'), false);
 });
 
+test('remote failures name the deployment phase and expose no credential or command output', () => {
+  const password = 'acceptance-password-do-not-log';
+  const privateKey = '-----BEGIN OPENSSH PRIVATE KEY-----\nprivate-key-material-do-not-log\n-----END OPENSSH PRIVATE KEY-----';
+  const privateKeyLine = 'private-key-material-do-not-log';
+  const businessData = 'customer=Private Customer, debt=12345';
+  const failure = Object.assign(new Error(`remote command failed: ${password}\n${privateKey}`), {
+    status: 255,
+    code: 'ECONNRESET',
+    signal: 'SIGTERM',
+    stdout: Buffer.from(businessData),
+    stderr: Buffer.from(`${password}\n${privateKey}\n${businessData}`)
+  });
+  let invocation;
+  assert.throws(() => uploader.executeRemote(
+    'publish backend revision and run acceptance',
+    'ssh',
+    ['-p', '22', 'deploy@example.invalid', 'remote command'],
+    { cwd: '/workspace' },
+    { SSHPASS: password },
+    true,
+    (executable, args, options) => {
+      invocation = { executable, args, options };
+      throw failure;
+    }
+  ), error => {
+    assert.match(error.message, /publish backend revision and run acceptance/);
+    assert.match(error.message, /exit=255/);
+    assert.match(error.message, /code=ECONNRESET/);
+    assert.match(error.message, /signal=SIGTERM/);
+    for (const secret of [password, privateKey, privateKeyLine, businessData]) {
+      assert.equal(error.message.includes(secret), false);
+    }
+    return true;
+  });
+  assert.equal(invocation.executable, 'sshpass');
+  assert.deepEqual(invocation.args.slice(0, 2), ['-e', 'ssh']);
+  assert.equal(invocation.options.env.SSHPASS, password);
+  assert.equal(invocation.options.encoding, 'utf8');
+});
+
+test('remote failure diagnostics classify known publisher errors without exposing multiline output', () => {
+  const password = 'secret-password-do-not-log';
+  const privateKey = '-----BEGIN OPENSSH PRIVATE KEY-----\nsecret-key-material-do-not-log\n-----END OPENSSH PRIVATE KEY-----';
+  const customerRecord = 'customer=Private Customer, debt=12345';
+  const failure = Object.assign(new Error('remote command failed'), {
+    status: 1,
+    stderr: Buffer.from(`service must run as a non-root user\n${password}\n${privateKey}\n${customerRecord}`),
+    stdout: Buffer.from(`${password}\n${customerRecord}`)
+  });
+  assert.throws(() => uploader.executeRemote(
+    'publish backend revision and run acceptance', 'ssh', [], {}, {}, false,
+    () => { throw failure; }
+  ), error => {
+    assert.match(error.message, /publish backend revision and run acceptance/);
+    assert.match(error.message, /reason=service account must be non-root/);
+    for (const secret of [password, privateKey, 'secret-key-material-do-not-log', customerRecord]) {
+      assert.equal(error.message.includes(secret), false);
+    }
+    assert.equal(error.message.includes('service must run as a non-root user'), false);
+    return true;
+  });
+});
+
+test('remote transport and publisher diagnostics use fixed categories only', () => {
+  const cases = [
+    ['ssh: connect to host server port 22: Connection timed out', 'SSH connection timed out'],
+    ['ssh: connect to host server port 22: Connection refused', 'SSH connection refused'],
+    ['Host key verification failed.', 'SSH host-key verification failed'],
+    ['Permission denied (publickey,password).', 'SSH authentication failed'],
+    ['staged backend preflight failed: guest preflight contract failed', 'staged backend preflight failed'],
+    ['service working directory is invalid', 'service working-directory configuration is invalid'],
+    ['service restart failed: systemctl exit status 1', 'backend service restart or activation failed'],
+    ['daily status verification failed: unavailable', 'daily-status acceptance failed'],
+    ['billing verification failed: acceptance mismatch', 'billing acceptance failed'],
+    ['backend release has a missing or unsafe local dependency', 'backend bundle is incomplete or has a missing dependency'],
+    ['deployed backend source hash mismatch: team.js', 'deployed backend service or source-hash check failed']
+  ];
+  for (const [stderr, reason] of cases) {
+    const failure = Object.assign(new Error('remote command failed'), { status: 1, stderr });
+    assert.throws(() => uploader.executeRemote('publish stage', 'ssh', [], {}, {}, false, () => { throw failure; }),
+      error => error.message.includes(`reason=${reason}`));
+  }
+});
+
+
 test('billing verifier runs as a subprocess from the backend directory against isolated storage', () => {
   const verifier = path.resolve(__dirname, '../scripts/verify-backend-billing.cjs');
   const backendDirectory = path.resolve(__dirname, '../backend');

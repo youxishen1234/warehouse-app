@@ -211,19 +211,58 @@ function withAuth(run, env = process.env, execute = execFileSync) {
   return run(childEnv, true);
 }
 
-function executeRemote(command, args, options = {}, authEnv, usePassword = false) {
+function classifyRemoteFailure(error) {
+  const diagnostic = [error?.stderr, error?.stdout]
+    .map(value => Buffer.isBuffer(value) ? value.toString('utf8') : String(value || ''))
+    .join('\n')
+    .toLowerCase();
+  const classifications = [
+    [/connection timed out|connect timed out|operation timed out|etimedout/, 'SSH connection timed out'],
+    [/connection refused|econnrefused/, 'SSH connection refused'],
+    [/connection reset|reset by peer|econnreset/, 'SSH connection reset'],
+    [/could not resolve hostname|name or service not known|temporary failure in name resolution|no route to host|network is unreachable|ehostunreach|enetunreach/, 'SSH host or network unreachable'],
+    [/host key verification failed|remote host identification has changed|no matching host key type/, 'SSH host-key verification failed'],
+    [/permission denied \(publickey|permission denied \(password|permission denied \(publickey,password|authentication failed|too many authentication failures|no supported authentication methods/, 'SSH authentication failed'],
+    [/could not open remote file|failed to upload|scp:.*permission denied|permission denied.*(?:bundle\.json|publish-backend\.py|verify-backend)/, 'remote staging upload was denied'],
+    [/staged backend preflight failed|preflight (?:contract|failed)/, 'staged backend preflight failed'],
+    [/service must run as a non-root user/, 'service account must be non-root'],
+    [/service working directory is invalid/, 'service working-directory configuration is invalid'],
+    [/service restart failed|service did not become active after restart/, 'backend service restart or activation failed'],
+    [/daily status verification failed|daily-status acceptance failed/, 'daily-status acceptance failed'],
+    [/billing verification failed|production billing acceptance failed/, 'billing acceptance failed'],
+    [/backend release has a missing or unsafe local dependency|backend release is incomplete|backend release is missing express runtime content/, 'backend bundle is incomplete or has a missing dependency'],
+    [/invalid backend release format|backend release commit mismatch|backend release is incomplete|backend release content mismatch|backend release contains unexpected binary data/, 'backend bundle validation failed'],
+    [/backend service is not active|deployed backend source hash(?: set)? mismatch|deployed backend source hash set does not match the bundle/, 'deployed backend service or source-hash check failed'],
+    [/backend acceptance summary is invalid|remote backend acceptance summary is invalid/, 'deployed backend acceptance summary is invalid']
+  ];
+  return classifications.find(([pattern]) => pattern.test(diagnostic))?.[1] || 'remote command returned an unclassified error';
+}
+
+
+function executeRemote(phase, command, args, options = {}, authEnv, usePassword = false, execute = execFileSync) {
   const executable = usePassword ? 'sshpass' : command;
   const commandArgs = usePassword ? ['-e', command, ...args] : args;
   try {
-    return execFileSync(executable, commandArgs, {
+    return execute(executable, commandArgs, {
       ...options,
       env: authEnv,
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
       maxBuffer: 32 * 1024 * 1024
     });
-  } catch {
-    throw new Error('remote backend release operation failed');
+  } catch (error) {
+    const details = [];
+    if (Number.isInteger(error?.status) && error.status >= 0) details.push(`exit=${error.status}`);
+    details.push(`reason=${classifyRemoteFailure(error)}`);
+    const safeCodes = new Set([
+      'EACCES', 'ECONNREFUSED', 'ECONNRESET', 'EHOSTUNREACH',
+      'ENOENT', 'ENETUNREACH', 'EPIPE', 'ETIMEDOUT'
+    ]);
+    if (safeCodes.has(error?.code)) details.push(`code=${error.code}`);
+    const safeSignals = new Set(['SIGHUP', 'SIGINT', 'SIGKILL', 'SIGTERM']);
+    if (safeSignals.has(error?.signal)) details.push(`signal=${error.signal}`);
+    const suffix = details.length ? ` (${details.join(', ')})` : '';
+    throw new Error(`remote backend release failed during ${phase}${suffix}`);
   }
 }
 
@@ -286,21 +325,21 @@ function upload(options = {}) {
   }
   const c = connection(env);
   const plan = createRemotePlan(release.bundleFile, releaseCommit, options.stagingId || crypto.randomUUID());
-  const remote = (command, args, input, authEnv, password) => executeRemote(command, args, {
+  const remote = (phase, command, args, input, authEnv, password) => executeRemote(phase, command, args, {
     cwd: root,
     input,
     maxBuffer: 32 * 1024 * 1024
-  }, authEnv, password);
+  }, authEnv, password, execute);
 
   return withAuth((authEnv, password) => {
     let staged = false;
-    const ssh = command => remote('ssh', [
+    const ssh = (phase, command) => remote(phase, 'ssh', [
       '-p', c.port,
       '-o', 'ConnectTimeout=15',
       c.target,
       command
     ], undefined, authEnv, password);
-    const scp = (source, destination) => remote('scp', [
+    const scp = (phase, source, destination) => remote(phase, 'scp', [
       '-P', c.port,
       '-o', 'ConnectTimeout=15',
       path.resolve(source),
@@ -308,14 +347,14 @@ function upload(options = {}) {
     ], undefined, authEnv, password);
 
     try {
-      ssh(plan.mkdir);
+      ssh('create remote staging directory', plan.mkdir);
       staged = true;
-      scp(release.bundleFile, `${plan.stage}/${plan.names.bundle}`);
-      scp(PUBLISHER, `${plan.stage}/${plan.names.publisher}`);
-      scp(DAILY_STATUS_VERIFIER, `${plan.stage}/${plan.names.verifier}`);
-      scp(BILLING_VERIFIER, `${plan.stage}/${plan.names.billingVerifier}`);
-      ssh(plan.publish);
-      const raw = ssh(plan.summary);
+      scp('upload backend bundle', release.bundleFile, `${plan.stage}/${plan.names.bundle}`);
+      scp('upload backend publisher', PUBLISHER, `${plan.stage}/${plan.names.publisher}`);
+      scp('upload daily-status verifier', DAILY_STATUS_VERIFIER, `${plan.stage}/${plan.names.verifier}`);
+      scp('upload billing verifier', BILLING_VERIFIER, `${plan.stage}/${plan.names.billingVerifier}`);
+      ssh('publish backend revision and run acceptance', plan.publish);
+      const raw = ssh('read deployed backend acceptance', plan.summary);
       const summary = validateRemoteSummary(raw, release.sourceHashes);
       const output = {
         commit: release.commit,
@@ -327,7 +366,7 @@ function upload(options = {}) {
       return output;
     } finally {
       if (staged) {
-        try { ssh(plan.cleanup); } catch {}
+        try { ssh('clean temporary staging files', plan.cleanup); } catch {}
       }
     }
   }, env, execute);
@@ -348,6 +387,7 @@ module.exports = {
   validateProvenance,
   connection,
   createRemotePlan,
+  executeRemote,
   validateRemoteSummary,
   sanitizedChildEnv,
   withAuth,
