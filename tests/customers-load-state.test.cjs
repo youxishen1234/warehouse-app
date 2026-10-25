@@ -10,5 +10,8 @@ test('legacy customer and supplier routes render the current workbench', () => {
   assert.doesNotMatch(source, /quickLinks|customerPhotoQuickAction|LegacyCustomersPage|SwipeRow/);
   assert.match(workbench, /remote\.loadError/);
   assert.match(workbench, /remote\.loading/);
-  assert.match(workbench, /remote\.ready/);
+  assert.match(workbench, /const hasSnapshot = data !== empty/);
+  assert.match(workbench, /hasSnapshot \|\| panel === 'finance'/);
+  assert.match(workbench, /data-testid='workbench-initial-loading'/);
+  assert.match(workbench, /data-testid='workbench-sync-status'/);
 });

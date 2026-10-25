@@ -56,8 +56,9 @@ export function dailyRecords(data: { boards: BoardBatch[]; production: Productio
   for (const t of data.transactions) {
     if (t.voided_at || t.production_id) continue;
     const out = t.type === 'out', count = t.type === 'adjustment';
+    const partyName = out ? t.customer_name : t.billing_source === 'production_inbound' ? t.customer_name : t.supplier_name;
     const linked = data.ledger.find(l => !l.voided_at && l.transaction_id === t.id);
-    rows.push({ id: 'transaction-' + t.id, title: `${(out ? t.customer_name : t.supplier_name) || t.product_name || '商品'} · ${count ? '盘点单' : out ? '出库单' : '入库单'}`, detail: t.specification || t.product_name || t.remark, value: typeof t.amount === 'number' && !count ? t.amount : t.quantity, unit: t.unit, money: typeof t.amount === 'number' && !count, status: count ? '已盘点' : out ? '已出库' : '已入库', icon: out ? 'truck' : 'package-plus', time: t.created_at, target: linked ? { ledger: linked.id } : { records: true } });
+    rows.push({ id: 'transaction-' + t.id, title: `${partyName || t.product_name || '商品'} · ${count ? '盘点单' : out ? '出库单' : '入库单'}`, detail: t.specification || t.product_name || t.remark, value: typeof t.amount === 'number' && !count ? t.amount : t.quantity, unit: t.unit, money: typeof t.amount === 'number' && !count, status: count ? '已盘点' : out ? '已出库' : '已入库', icon: out ? 'truck' : 'package-plus', time: t.created_at, target: linked ? { ledger: linked.id } : { records: true } });
   }
   for (const l of data.ledger) {
     if (l.voided_at || !['income', 'expense', 'settlement'].includes(l.type)) continue;

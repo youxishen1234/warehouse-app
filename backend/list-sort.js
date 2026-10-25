@@ -11,7 +11,7 @@ const SORT_FIELDS = {
   order_events: { id: 'number', created_at: 'number', from: 'text', to: 'text' }
 };
 const DEFAULT_SORT = { products: 'profile_updated_at', customers: 'profile_updated_at', suppliers: 'profile_updated_at' };
-const ORDER_STATUSES = Object.freeze(['待生产', '生产中', '已发货', '已完成', '已取消']);
+const ORDER_STATUSES = Object.freeze(['待生产', '生产中', '已发货', '已完成', '已取消', '待发货']);
 
 function validateSortQuery(query, collection) {
   const fields = SORT_FIELDS[collection];

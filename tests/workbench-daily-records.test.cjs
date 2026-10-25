@@ -53,6 +53,38 @@ test('missing amount stays a quantity instead of an invented price', () => {
   assert.equal(row.money, false); assert.equal(row.value, 4); assert.equal(row.unit, '个');
 });
 
+test('customer-billed production receipts show the customer on each daily row and link to its own ledger entry', () => {
+  const data = blank();
+  data.transactions = [
+    { id: 10, type: 'in', billing_source: 'production_inbound', customer_id: 7, customer_name: '示例客户', product_name: '礼盒箱', specification: '30×20×15 cm', quantity: 10, unit: '个', amount: 300, created_at: now },
+    { id: 11, type: 'in', billing_source: 'production_inbound', customer_id: 7, customer_name: '示例客户', product_name: '礼盒箱', specification: '30×20×15 cm', quantity: 8, unit: '个', amount: 200, created_at: now - 1000 }
+  ];
+  data.ledger = [
+    { id: 70, type: 'receivable', transaction_id: 10, party_type: 'customer', party_id: 7, amount: 300, created_at: now },
+    { id: 71, type: 'receivable', transaction_id: 11, party_type: 'customer', party_id: 7, amount: 200, created_at: now - 1000 }
+  ];
+
+  const rows = dailyRecords(data, localDay(now));
+  assert.equal(rows.length, 2);
+  assert.equal(Array.from(rows, row => row.title).join('|'), '示例客户 · 入库单|示例客户 · 入库单');
+  assert.equal(Array.from(rows, row => row.detail).join('|'), '30×20×15 cm|30×20×15 cm');
+  assert.equal(Array.from(rows, row => row.value).join('|'), '300|200');
+  assert.equal(Array.from(rows, row => row.target.ledger).join('|'), '70|71');
+});
+
+test('supplier receipts keep supplier names and unassociated receipts keep product fallback', () => {
+  const data = blank();
+  data.transactions = [
+    { id: 20, type: 'in', supplier_id: 8, supplier_name: '纸板供应商', product_name: '瓦楞纸板', specification: '160×110 cm', quantity: 100, unit: '张', amount: 500, created_at: now },
+    { id: 21, type: 'in', supplier_name: '', customer_name: '', product_name: '库存纸箱', specification: '40×30×20 cm', quantity: 12, unit: '个', created_at: now - 1000 }
+  ];
+
+  const rows = dailyRecords(data, localDay(now));
+  assert.equal(rows.find(row => row.id === 'transaction-20').title, '纸板供应商 · 入库单');
+  assert.equal(rows.find(row => row.id === 'transaction-21').title, '库存纸箱 · 入库单');
+  assert.equal(rows.find(row => row.id === 'transaction-21').target.records, true);
+});
+
 test('party month summary separates billing, settlements and voided rows', () => {
   const current = new Date(2026, 9, 19, 12).getTime();
   const previous = new Date(2026, 8, 30, 23, 59).getTime();

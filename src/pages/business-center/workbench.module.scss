@@ -19,12 +19,17 @@
 .headingText { display: flex; flex-direction: column; min-width: 0; gap: 2PX; }
 .brandName { display: block; color: #a6dcb8; font-size: 13PX; font-weight: 500; line-height: 1.35; letter-spacing: 0; }
 .title { display: block; font-size: 26PX; font-weight: 500; line-height: 1.25; letter-spacing: 0; overflow-wrap: anywhere; }
-.page .refresh, .page .textAction { padding: 8PX 0 8PX 10PX; background: transparent; border: 0; border-radius: 4PX; color: #a6dcb8; }
+.page .refresh, .page .textAction { min-height: 44PX; padding: 8PX 0 8PX 10PX; background: transparent; border: 0; border-radius: 4PX; color: #a6dcb8; }
 .page .refresh { font-size: 14PX; flex-shrink: 0; }
 .status { margin-top: 18PX; font-size: 15PX; color: #b5c0b9; font-variant-numeric: tabular-nums; }
 .status > :last-child { color: #eef3ef; }
 .content { flex: 1; padding: 30PX 30PX 38PX; }
 .sectionTitle { display: block; font-size: 19PX; font-weight: 500; }
+.workflow { display: flex; flex-direction: column; align-items: flex-start; gap: 9PX; padding: 16PX; margin-bottom: 24PX; border: 1PX solid #414e44; border-radius: 8PX; background: #28332b; }
+.workflowTitle { color: #a6dcb8; font-size: 14PX; font-weight: 600; }
+.workflowSteps { font-size: 15PX; line-height: 1.8; overflow-wrap: anywhere; }
+.workflowHint { color: #b5c0b9; font-size: 12PX; overflow-wrap: anywhere; }
+.page .workflow .button { min-height: 44PX; max-width: 100%; margin-top: 3PX; text-align: left; overflow-wrap: anywhere; }
 .entries { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13PX; margin-top: 17PX; }
 .summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1PX; margin-bottom: 26PX; border: 1PX solid #414e44; border-radius: 8PX; overflow: hidden; background: #414e44; }
 .summaryItem { display: flex; flex-direction: column; gap: 4PX; padding: 14PX 15PX; background: #222924; color: #b5c0b9; font-size: 13PX; }
@@ -35,8 +40,8 @@
 .entryTop > taro-image-core:first-child { flex-shrink: 0; }
 .entryTop > taro-image-core:last-child { flex-shrink: 0; }
 .entryTitle { flex: 1; min-width: 0; font-size: 19PX; line-height: 1.3; overflow-wrap: anywhere; }
-.entryGuide { display: flex; align-items: center; flex-wrap: nowrap; gap: 5PX; color: #b5c0b9; font-size: 12PX; line-height: 1.5; white-space: nowrap; }
-.entryGuide taro-text-core:last-child { min-width: 0; overflow-wrap: anywhere; }
+.entryGuide { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 5PX; color: #b5c0b9; font-size: 12PX; line-height: 1.5; white-space: normal; }
+.entryGuide taro-text-core:last-child { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; white-space: normal; }
 .entryBadge { display: inline-flex; flex-shrink: 0; padding: 0 5PX; border: 1PX solid #526357; border-radius: 3PX; color: #a6dcb8; font-size: 11PX; line-height: 18PX; }
 .page .entry:hover, .page .choice:hover, .page .activity:hover { background: #2a342d; }
 .recentHeading { margin: 32PX 0 16PX; }
@@ -54,7 +59,7 @@
 .nav :is(button, taro-button-core) { width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5PX; min-height: 58PX; padding: 4PX; border: 0; border-radius: 6PX; background: transparent; color: #b5c0b9; font-size: 15PX; }
 .nav :is(button, taro-button-core)[aria-pressed=true] { color: #a6dcb8; }
 .footer { display: flex; flex-wrap: wrap; gap: 8PX 16PX; padding: 12PX 30PX; border-top: 1PX solid #414e44; background: #2b332d; color: #afbeb4; font-size: 12PX; }
-.page .back { min-width: 34PX; padding: 0 8PX 0 0; background: transparent; border: 0; color: #a6dcb8; font-size: 32PX; }
+.page .back { min-width: 44PX; min-height: 44PX; padding: 0 8PX 0 0; background: transparent; border: 0; color: #a6dcb8; font-size: 32PX; }
 .page .button, .page .primary, .page .selected { border-radius: 6PX; padding: 10PX 14PX; border: 1PX solid #46584b; background: #2b382f; color: #d5eadb; }
 .page .primary, .page .selected { background: #a6dcb8; color: #1c3325; border-color: #a6dcb8; }
 .tools { justify-content: flex-start; flex-wrap: wrap; padding: 16PX 0; gap: 10PX; }
@@ -96,8 +101,8 @@
 .noticeDetail { display: block; margin-top: 5PX; color: #b5c0b9; font-size: 13PX; overflow-wrap: anywhere; }
 .noticeAction { display: flex; align-items: center; flex-shrink: 0; color: #a6dcb8; font-size: 14PX; }
 .page .photoRow { display: block; width: 100%; text-align: left; background: transparent; border: 0; border-bottom: 1PX solid #414e44; border-radius: 0; }
-.overlay { position: fixed; z-index: 100; inset: 0; background: #0008; display: flex; align-items: center; justify-content: center; padding: 18PX; }
-.dialog { width: 100%; max-width: 420PX; background: #222e26; border: 1PX solid #526357; color: #eef3ef; border-radius: 10PX; padding: 22PX; display: flex; flex-direction: column; gap: 12PX; }
+.overlay { position: fixed; z-index: 100; inset: 0; overflow-y: auto; background: #0008; display: flex; align-items: flex-start; justify-content: center; padding: 18PX; }
+.dialog { width: 100%; max-width: 420PX; max-height: calc(100vh - 36PX); max-height: calc(100dvh - 36PX); overflow-y: auto; margin: auto 0; background: #222e26; border: 1PX solid #526357; color: #eef3ef; border-radius: 10PX; padding: 22PX; display: flex; flex-direction: column; gap: 12PX; }
 @media (max-width: 700PX) {
   .page { padding: 0; background: #222924; }
   .page.embedded { padding-bottom: calc(132PX + env(safe-area-inset-bottom)); }

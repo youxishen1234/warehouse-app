@@ -154,6 +154,11 @@ jobs:
         env:
           BUSINESS_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
         run: node tests/business-center-browser.cjs
+      - name: Validate produce-to-stock customer order fulfillment
+        env:
+          PRODUCE_TO_STOCK_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          PRODUCE_TO_STOCK_EVIDENCE_DIR: release/produce-to-stock-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/produce-to-stock-browser.cjs
       - name: Validate workbench reference UI and shared revisions
         env:
           WORKBENCH_REFERENCE_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
@@ -164,6 +169,16 @@ jobs:
           WORKBENCH_SYNC_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
           WORKBENCH_SYNC_EVIDENCE_DIR: release/workbench-sync-${{ github.run_id }}-${{ github.run_attempt }}
         run: node tests/workbench-sync-browser.cjs
+      - name: Validate workbench refresh recovery and draft continuity
+        env:
+          WORKBENCH_REFRESH_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          WORKBENCH_REFRESH_EVIDENCE_DIR: release/workbench-refresh-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/workbench-refresh-browser.cjs
+      - name: Validate workbench mobile guidance and short-screen dialogs
+        env:
+          WORKBENCH_POLISH_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          WORKBENCH_LAYOUT_EVIDENCE_DIR: release/workbench-layout-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/workbench-layout-browser.cjs
       - name: Validate daily backup page against the built H5 bundle
         env:
           DAILY_BACKUP_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}

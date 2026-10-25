@@ -6,13 +6,14 @@ import { addOrder, getCustomers, getOrderEvents, getOrders, updateOrder } from '
 import type { Customer, CustomerOrder } from '@/types';
 import type { OrderStatusEvent } from '@/services/api';
 import styles from './index.module.scss';
-import { sanitizeDecimalInput } from '@/utils/stock-math';
+import { previewAmount, sanitizeDecimalInput } from '@/utils/stock-math';
 import { formatMoney, formatShortTime } from '@/utils/format';
 import { useRemoteData } from '@/hooks/useRemoteData';
 
 const nextStatusMap: Record<CustomerOrder['status'], CustomerOrder['status'][]> = {
-  '待生产': ['待生产', '生产中', '已取消'],
-  '生产中': ['生产中', '已发货', '已取消'],
+  '待生产': ['待生产', '生产中', '待发货', '已取消'],
+  '生产中': ['生产中', '待发货', '已发货', '已取消'],
+  '待发货': ['待发货', '已取消'],
   '已发货': ['已发货', '已完成'],
   '已完成': ['已完成'],
   '已取消': ['已取消']
@@ -36,7 +37,7 @@ const OrderListRow = React.memo(function OrderListRow({ order, history, onStatus
       {history.length > 0 && <View className={styles.events}><Text className={styles.eventsTitle}>状态记录</Text>{history.map(event => <Text key={event.id}>{event.from} → {event.to} · {formatShortTime(event.created_at)}</Text>)}</View>}
     </View>
     <Picker range={nextStatusMap[order.status] || [order.status]} value={0} onChange={event => onStatusChange(order, Number(event.detail.value))}><Text className={styles.status}>{order.status}</Text></Picker>
-    {order.status === '生产中' && <Text className={styles.status} onClick={() => { Taro.setStorageSync('sg_outbound_order', order.id); void Taro.switchTab({ url: '/pages/outbound/index' }); }}>出库</Text>}
+    {(order.status === '待发货' || order.status === '生产中') && <Text className={styles.shipAction} onClick={() => { Taro.setStorageSync('sg_outbound_order', order.id); void Taro.navigateTo({ url: '/pages/outbound/index' }); }}>出库</Text>}
   </View>;
 });
 
@@ -57,6 +58,7 @@ export default function Orders() {
   const [unitIndex, setUnitIndex] = useState(0);
   const [saving, setSaving] = useState(false);
   const orderUnits = ['件', '箱', '个', '千克'];
+  const orderAmount = previewAmount(qty, price);
 
   // A stable loader prevents every state update from starting another request.
   const loadOrders = useCallback(async () => {
@@ -91,7 +93,7 @@ export default function Orders() {
     setSaving(true);
     try {
       const c = customers.find(item => item.id === customer);
-      await addOrder({ order_no: orderNo.trim(), customer_id: customer, customer_name: c?.name || '', specification: spec, material, quantity, unit, unit_price: unitPrice, delivery_date: delivery, status: '待生产', remark });
+      await addOrder({ order_no: orderNo.trim(), customer_id: customer, customer_name: c?.name || '', specification: spec, material, quantity, unit, unit_price: unitPrice, delivery_date: delivery, status: '待发货', remark });
       Taro.showToast({ title: '订单保存成功', icon: 'success' });
       resetForm(); setShow(false); await load();
     } catch (error) {
@@ -112,16 +114,18 @@ export default function Orders() {
 
   return <ScrollView scrollY className={styles.page} onRefresherRefresh={load} refresherEnabled>
     <View className={styles.header}><Text>客户订单</Text><View onClick={() => setShow(!show)}>{show ? '关闭' : '＋新增订单'}</View></View>
+    <View className={styles.guide} data-testid='order-stock-flow'>客户接单后从已入库纸箱库存发货，不重复生产入库；待发货订单可在出库页直接选择。旧订单仍保留原状态流程。</View>
     {remote.loading && <View className={styles.empty}>正在加载订单资料…</View>}
     {remote.loadError && <View className={styles.empty} onClick={load}>{remote.loadError} · 点击重试</View>}
     {!remote.loading && !remote.loadError && show && <View className={styles.form}>
       <Input maxlength={50} placeholder="订单号" value={orderNo} onInput={e => setOrderNo(e.detail.value)} />
-      <Picker range={customers.map(c => c.name)} onChange={e => setCustomer(customers[Number(e.detail.value)]?.id || null)}><View>选择客户（可选）</View></Picker>
+      <Picker aria-label='选择订单客户' range={['不关联客户', ...customers.map(c => c.name)]} value={Math.max(0, customers.findIndex(item => item.id === customer) + 1)} onChange={e => { const index = Number(e.detail.value); setCustomer(index ? customers[index - 1]?.id || null : null); }}><View>客户：{customers.find(item => item.id === customer)?.name || '选择客户（可选）'}</View></Picker>
       <Input placeholder="规格（可选，如 300×200×150mm）" value={spec} onInput={e => setSpec(e.detail.value)} />
       <Input placeholder="材质（可选，如五层AB楞）" value={material} onInput={e => setMaterial(e.detail.value)} />
-      <Picker mode="selector" range={orderUnits} value={unitIndex} onChange={e => { const idx = Number(e.detail.value); setUnitIndex(idx); setUnit(orderUnits[idx]); }}><View>单位：{unit}</View></Picker>
+      <Picker aria-label='订单单位' mode="selector" range={orderUnits} value={unitIndex} onChange={e => { const idx = Number(e.detail.value); setUnitIndex(idx); setUnit(orderUnits[idx]); }}><View>单位：{unit}</View></Picker>
       <Input type="number" placeholder="数量" value={qty} onInput={e => setQty(sanitizeDecimalInput(e.detail.value, 6))} />
       <Input type="digit" placeholder="单价" value={price} onInput={e => setPrice(sanitizeDecimalInput(e.detail.value, 2))} />
+      <View className={styles.amountPreview} data-testid='order-amount-preview'><Text>订单金额（自动）</Text><Text>{Number.isFinite(orderAmount) ? formatMoney(orderAmount) : '金额超出支持范围'}</Text></View>
       <Picker mode="date" value={delivery} onChange={e => setDelivery(e.detail.value)}><View>交货日期：{delivery || '未设置'}</View></Picker>
       <Input placeholder="备注（可选）" value={remark} onInput={e => setRemark(e.detail.value)} />
       <View className={styles.save} onClick={save}>{saving ? '保存中…' : '保存订单'}</View>

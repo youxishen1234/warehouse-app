@@ -14,14 +14,17 @@ async function main() {
   const pageErrors = [], requests = [];
   let page;
   try {
-    const statuses = ['待生产', '生产中', '已发货', '已完成', '已取消'];
+    const statuses = ['待生产', '生产中', '已发货', '已完成', '已取消', '待发货'];
     for (const [index, status] of statuses.entries()) db.addOrder({ order_no: `状态回归-${index}`, quantity: index + 1, unit_price: 2, status });
     const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    await context.addInitScript(() => {
+      if (/^https?:$/.test(location.protocol)) localStorage.setItem('sg_getting_started_seen_v1', JSON.stringify({ data: true }));
+    });
     await context.route('**/*', async route => {
       const request = route.request();
       const url = new URL(request.url());
-      if (url.origin === base || ['data:', 'blob:'].includes(url.protocol)) return route.continue();
-      if (['http://152.136.100.200', 'https://youxishen.online'].includes(url.origin) && url.pathname.startsWith('/api/')) {
+      if (!url.pathname.startsWith('/api/') && (url.origin === base || ['data:', 'blob:'].includes(url.protocol))) return route.continue();
+      if (url.pathname.startsWith('/api/')) {
         if (url.pathname === '/api/orders') requests.push({ method: request.method(), query: url.search });
         const headers = { ...request.headers() };
         delete headers['if-none-match'];
@@ -49,21 +52,28 @@ async function main() {
     await visible('BROWSER-QUERY-ORDER · 未关联客户').waitFor();
     await expect.poll(() => db.listOrders().find(order => order.order_no === 'BROWSER-QUERY-ORDER')?.amount).toBe(7.5);
     const card = page.locator('[class*="item___"]:visible').filter({ has: visible('BROWSER-QUERY-ORDER · 未关联客户') });
-    await card.getByText('待生产', { exact: true }).click();
+    await expect(card.getByText('待发货', { exact: true })).toBeVisible();
+    const legacyCard = page.locator('[class*="item___"]:visible').filter({ has: visible('状态回归-0 · 未关联客户') });
+    await legacyCard.getByText('待生产', { exact: true }).click();
     const wheel = page.locator('.weui-picker__group:visible');
+    await expect.poll(async () => {
+      const bounds = await wheel.boundingBox();
+      return Math.round(bounds.y + bounds.height);
+    }).toBe(page.viewportSize().height);
     // The wheel's mask receives pointer input; select one row below its center.
     await wheel.click({ position: { x: 100, y: 153 } });
     await page.getByText('确定', { exact: true }).filter({ visible: true }).click();
-    await expect(card.getByText('生产中', { exact: true })).toBeVisible();
-    await expect(card.getByText(/待生产 → 生产中/)).toBeVisible();
-    assert.equal(db.listOrders({ status: '生产中' }).filter(order => order.order_no === 'BROWSER-QUERY-ORDER').length, 1);
+    await expect(legacyCard.getByText('生产中', { exact: true })).toBeVisible();
+    await expect(legacyCard.getByText(/待生产 → 生产中/)).toBeVisible();
+    assert.equal(db.listOrders({ status: '生产中' }).filter(order => order.order_no === '状态回归-0').length, 1);
+    assert.equal(db.listOrders({ status: '待发货' }).filter(order => order.order_no === 'BROWSER-QUERY-ORDER').length, 1);
     assert.equal(db.listOrders({ status: '待生产' }).filter(order => order.order_no === 'BROWSER-QUERY-ORDER').length, 0);
     await page.screenshot({ path: path.join(dir, 'orders-mobile.png'), fullPage: true });
     await page.setViewportSize({ width: 1280, height: 900 });
     await expect(card).toBeVisible();
     await page.screenshot({ path: path.join(dir, 'orders-desktop.png'), fullPage: true });
     assert.deepEqual(pageErrors, []);
-    console.log(JSON.stringify({ engine, statuses: 5, createdAmount: 7.5, changedStatus: '生产中', widths: [390, 1280], pageErrors }));
+    console.log(JSON.stringify({ engine, statuses: 6, createdStatus: '待发货', createdAmount: 7.5, changedStatus: '生产中', widths: [390, 1280], pageErrors }));
   } catch (error) {
     if (page) {
       await page.screenshot({ path: path.join(dir, 'failure.png'), fullPage: true }).catch(() => {});

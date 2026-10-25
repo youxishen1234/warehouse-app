@@ -80,7 +80,7 @@ export default function OutboundPage() {
     // Keep a hand-edited specification; only a fresh product selection replaces it.
     setSpecification(current => current.trim() || product.specification || '');
   }, [product]);
-  const candidates = useMemo(() => orders.filter(item => item.status === '生产中' && `${item.order_no} ${item.customer_name} ${item.specification}`.toLowerCase().includes(query.toLowerCase())), [orders, query]);
+  const candidates = useMemo(() => orders.filter(item => (item.status === '待发货' || item.status === '生产中') && `${item.order_no} ${item.customer_name} ${item.specification}`.toLowerCase().includes(query.toLowerCase())), [orders, query]);
   const notes = useMemo(() => {
     const groups = new Map<string, Transaction[]>();
     recent.forEach(tx => { const key = tx.outbound_no || `历史-${tx.id}`; const rows = groups.get(key); if (rows) rows.push(tx); else groups.set(key, [tx]); });
@@ -90,7 +90,7 @@ export default function OutboundPage() {
   if (order && quantity.trim()) {
     try { totalAmount = lineAmount(numberValue(quantity, '出库数量', true), order.unit_price); } catch { /* Keep invalid input visible until corrected. */ }
   }
-  const valid = ready && !!order && order.status === '生产中' && !!product && !!specification.trim() && Number.isFinite(totalAmount) && Number(quantity) > 0 && Number(quantity) <= remaining && Number(quantity) <= Number(product.stock) && product.unit === order.unit;
+  const valid = ready && !!order && (order.status === '待发货' || order.status === '生产中') && !!product && !!specification.trim() && Number.isFinite(totalAmount) && Number(quantity) > 0 && Number(quantity) <= remaining && Number(quantity) <= Number(product.stock) && product.unit === order.unit;
   const submit = async () => {
     if (!Number.isFinite(totalAmount)) { Taro.showToast({ title: '金额超出支持范围，请减少数量或单价', icon: 'none' }); return; }
     if (lock.current || !valid || !order || !product) return;
@@ -106,14 +106,15 @@ export default function OutboundPage() {
   const unit = product?.unit || order?.unit || '单位';
   return <StockEntryLayout title='出库' subtitle='选货物，填数量，确认保存。' onRefresh={() => void reload()} busy={busy}>
     <View className={styles.page}>
+      <Text className={styles.hint}>可选待发货订单（成品已入库）或旧流程的生产中订单；出库时扣减纸箱库存并记入对应客户账单。</Text>
       {error && <View role='alert' className={styles.error}>{error}<Button disabled={busy} className={styles.textButton} onClick={() => { void reload(); }}>重新读取</Button></View>}
       <View className={styles.field}>
         <View className={styles.row}><Text className={styles.fieldLabel}>客户 / 订单</Text><Button disabled={busy} className={styles.textButton} aria-expanded={searchOpen} onClick={() => setSearchOpen(!searchOpen)}>{searchOpen ? '收起搜索' : '查找订单'}</Button></View>
         {searchOpen && <Input aria-label='搜索客户、订单号或规格' disabled={busy} className={styles.input} placeholder='搜索客户、订单号或规格' value={query} onInput={e => setQuery(e.detail.value)} />}
-        <Picker disabled={busy || !ready} range={['选择客户 / 订单', ...candidates.map(item => `${item.customer_name || '未关联客户'} · ${item.order_no} · ${item.specification || '未填规格'}`)]} value={Math.max(0, candidates.findIndex(item => item.id === orderId) + 1)} onChange={e => { if (!lock.current) setOrderId(candidates[Number(e.detail.value) - 1]?.id || null); }}>
+        <Picker disabled={busy || !ready} range={['选择客户 / 订单', ...candidates.map(item => `${item.customer_name || '未关联客户'} · ${item.order_no} · ${item.specification || '未填规格'} · ${item.status}`)]} value={Math.max(0, candidates.findIndex(item => item.id === orderId) + 1)} onChange={e => { if (!lock.current) setOrderId(candidates[Number(e.detail.value) - 1]?.id || null); }}>
           <View className={styles.picker} aria-label='客户 / 订单'>{order ? `${order.customer_name || '未关联客户'} · ${order.order_no}` : ready ? '选择客户 / 订单' : '正在读取订单…'}<Text>⌄</Text></View>
         </Picker>
-        {!candidates.length && <Text className={styles.hint}>{ready ? '暂无匹配的生产中订单' : '正在加载订单…'}</Text>}
+        {!candidates.length && <Text className={styles.hint}>{ready ? '暂无匹配的可出库订单' : '正在加载订单…'}</Text>}
       </View>
       <View className={styles.field}><Text className={styles.fieldLabel}>货物名称</Text><StockProductPicker products={products} value={productId} disabled={busy || !ready || !order} onSelect={item => { if (!lock.current) { setProductId(item.id); setSpecification(item.specification || order?.specification || ''); } }} /></View>
       <View className={styles.field}><Text className={styles.fieldLabel}>规格尺寸</Text><Input aria-label='出库规格尺寸' disabled={busy} className={styles.input} value={specification} placeholder='选择订单和货物后自动带入' onInput={e => setSpecification(formatSpecificationInput(e.detail.value, specification))} /></View>

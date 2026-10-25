@@ -281,7 +281,7 @@ export default function InboundPage() {
     try { await downloadCsv(deliveryNoteCsvUrl(note.id), `delivery-note-${note.id}.csv`); }
     catch (error) { Taro.showToast({ title: message(error), icon: 'none' }); }
   };
-  return <StockEntryLayout title={cartonOnly ? '纸箱生产入库' : '入库'} subtitle={cartonOnly ? '纸箱由本厂生产完工入库，不是采购入库；关联客户时计入客户账单，已入账出库不重复计款。' : '选货物，填数量，确认保存。'} onRefresh={() => { void load(true); }} busy={saving}>
+  return <StockEntryLayout title={cartonOnly ? '纸箱生产入库' : '入库'} subtitle={cartonOnly ? '自产纸箱补录入库，不是采购；已在“生产”登记完工的同批纸箱不再重复录入。先备货可不关联客户，之后接单出库。' : '选货物，填数量，确认保存。'} onRefresh={() => { void load(true); }} busy={saving}>
     <View className={styles.page}>
       {loadError && <View role='alert' className={styles.error}>{loadError}<Button disabled={saving} className={styles.textButton} onClick={() => { void load(true); }}>重新读取</Button></View>}
       {cartonOnly && <>

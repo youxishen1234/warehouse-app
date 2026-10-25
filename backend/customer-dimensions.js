@@ -59,7 +59,7 @@ function install(router, db) {
       const matches = db.listCustomers().filter(c => c.name === customer.name && !c.deleted_at);
       if (matches.length > 1) throw fail('同名客户有多个，请先在客户资料中核对');
       const party = matches[0] || db.addCustomer({ name: customer.name });
-      return db.addOrder({ order_no: 'KH' + Date.now() + '-' + crypto.randomBytes(3).toString('hex'), customer_id: party.id, customer_name: party.name, specification: spec.size + ' ' + spec.sizeUnit, material: spec.material, quantity, unit: spec.unit, unit_price, status: '生产中', remark: spec.goods });
+      return db.addOrder({ order_no: 'KH' + Date.now() + '-' + crypto.randomBytes(3).toString('hex'), customer_id: party.id, customer_name: party.name, specification: spec.size + ' ' + spec.sizeUnit, material: spec.material, quantity, unit: spec.unit, unit_price, status: '待发货', remark: spec.goods });
     });
     res.set('X-Warehouse-Revision', String(result.revision)); res.json({ success: true, data: result.data });
   });

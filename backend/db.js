@@ -558,7 +558,14 @@ function addOrder(d){
 function orderShippedQuantity(orderId) {
   return roundDecimal(cache.transactions.filter(tx => tx.order_id === Number(orderId) && tx.type === 'out' && !tx.voided_at).reduce((sum, tx) => sum + Number(tx.quantity || 0), 0), 6);
 }
-const ORDER_TRANSITIONS = { '待生产': ['生产中', '已取消'], '生产中': ['已发货', '已取消'], '已发货': ['已完成'], '已完成': [] };
+const ORDER_TRANSITIONS = {
+  '待生产': ['生产中', '待发货', '已取消'],
+  '生产中': ['生产中', '待发货', '已发货', '已取消'],
+  '待发货': ['待发货', '已发货', '已取消'],
+  '已发货': ['已完成'],
+  '已完成': [],
+  '已取消': []
+};
 function updateOrder(id,d){
   const x=cache.orders.find(o=>o.id===Number(id));
   if(!x)throw new Error('订单不存在');
@@ -1272,12 +1279,37 @@ function reverseTransaction(tx) {
   cache.ledger.forEach(entry => { if (entry.transaction_id === tx.id) entry.voided_at = tx.voided_at; });
   return { id: tx.id, product_id: tx.product_id, type: tx.type, quantity: tx.quantity, voided_at: tx.voided_at };
 }
+function orderFulfillmentStatus(order) {
+  // The transition into 已发货 records whether this was a ready-stock order
+  // or the legacy production-order flow. Reuse that history instead of adding
+  // another persisted field that old backups and peers would not understand.
+  const shippedEvents = cache.order_events
+    .filter(event => event.order_id === order.id && event.to === '已发货')
+    .sort((a, b) => b.created_at - a.created_at || b.id - a.id);
+  return shippedEvents[0]?.from === '待发货' ? '待发货' : '生产中';
+}
 function deleteTransaction(id) {
   const tx = cache.transactions.find(t => t.id === Number(id));
   if (!tx) throw new Error('交易记录不存在');
   if (tx.delivery_note_id) throw new Error('送货单明细请从入库页面整单作废，不能单独删除');
   if (tx.production_id) throw new Error('生产完工同时关联纸板领料，不能单独作废纸箱入库');
-  return atomicMutation(() => { const result = reverseTransaction(tx); const order = cache.orders.find(item => item.id === tx.order_id); if (order && (order.status === '已发货' || order.status === '已完成')) { const remaining = orderShippedQuantity(order.id); const next = remaining >= roundDecimal(Number(order.quantity || 0), 6) ? '已发货' : '生产中'; if (order.status !== next) { const before = order.status; order.status = next; cache.order_events.push({ id: cache._meta.nextOrderEventId++, order_id: order.id, from: before, to: order.status, created_at: Date.now() }); } } persist(); return result; });
+  return atomicMutation(() => {
+    const result = reverseTransaction(tx);
+    const order = cache.orders.find(item => item.id === tx.order_id);
+    if (order && (order.status === '已发货' || order.status === '已完成')) {
+      const remaining = orderShippedQuantity(order.id);
+      const next = remaining >= roundDecimal(Number(order.quantity || 0), 6)
+        ? '已发货'
+        : orderFulfillmentStatus(order);
+      if (order.status !== next) {
+        const before = order.status;
+        order.status = next;
+        cache.order_events.push({ id: cache._meta.nextOrderEventId++, order_id: order.id, from: before, to: order.status, created_at: Date.now() });
+      }
+    }
+    persist();
+    return result;
+  });
 }
 // Edit a posted stock movement in place: stock, party balance and the linked
 // ledger row move together inside one atomic mutation, so an edited record can
@@ -1429,7 +1461,7 @@ function stockOutBatch(lines, op='', rmk='', customerId=null) {
 function orderToOutbound(orderId, lines, op='', rmk='') {
   const order = cache.orders.find(item => item.id === Number(orderId));
   if (!order) throw new Error('订单不存在');
-  if (order.status !== '生产中') throw new Error('仅生产中的订单可以出库');
+  if (order.status !== '待发货' && order.status !== '生产中') throw new Error('仅待发货或生产中的订单可以出库');
   if (!Array.isArray(lines) || !lines.length) throw new Error('至少添加一项出库商品');
   const shipped = cache.transactions.filter(tx => tx.order_id === order.id && tx.type === 'out' && !tx.voided_at).reduce((sum, tx) => sum + tx.quantity, 0);
   const quantity = roundDecimal(lines.reduce((sum, line) => sum + numberValue(line.quantity, '出库数量', true), 0), 6);
