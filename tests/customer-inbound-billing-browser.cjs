@@ -44,14 +44,61 @@ async function main() {
     if (location.protocol === 'http:' || location.protocol === 'https:') localStorage.setItem('sg_getting_started_seen_v1', JSON.stringify({ data: true }));
   });
   const cors = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS', 'access-control-allow-headers': 'Content-Type,Authorization,If-Match,Idempotency-Key,X-Warehouse-Device', 'access-control-expose-headers': 'X-Warehouse-Revision,Content-Disposition' };
-  await context.route('**/*', async route => {
-    const request = route.request(); const url = new URL(request.url());
-    if (url.pathname.startsWith('/api/')) {
-      if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
-      const response = await route.fetch({ url: origin + url.pathname + url.search });
-      return route.fulfill({ response, headers: { ...response.headers(), ...cors } });
+  const pendingRoutes = new Set();
+  const routeErrors = [];
+  const routeErrorSummary = () => {
+    const details = routeErrors.map(({ url, error }) => `${url}: ${error.stack || error}`).join('\n');
+    return new Error(`Intercepted browser request failed:\n${details}`);
+  };
+  const waitForRoutesToSettle = async ({ throwOnError = true } = {}) => {
+    let quietUntil = Date.now() + 500;
+    const deadline = Date.now() + 20000;
+    while (true) {
+      const active = [...pendingRoutes];
+      if (active.length) {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) throw new Error(`Timed out waiting for ${pendingRoutes.size} intercepted browser request(s) to settle`);
+        let timeout;
+        try {
+          await Promise.race([
+            Promise.allSettled(active),
+            new Promise((_, reject) => {
+              timeout = setTimeout(() => reject(new Error(`Timed out waiting for ${pendingRoutes.size} intercepted browser request(s) to settle`)), remaining);
+            })
+          ]);
+        } finally {
+          clearTimeout(timeout);
+        }
+        quietUntil = Date.now() + 500;
+        continue;
+      }
+      if (Date.now() >= quietUntil) {
+        if (throwOnError && routeErrors.length) throw routeErrorSummary();
+        return;
+      }
+      if (Date.now() >= deadline) throw new Error(`Timed out waiting for ${pendingRoutes.size} intercepted browser request(s) to settle`);
+      await new Promise(resolve => setTimeout(resolve, Math.min(25, quietUntil - Date.now())));
     }
-    return url.origin === origin || ['data:', 'blob:'].includes(url.protocol) ? route.continue() : route.abort();
+  };
+  await context.route('**/*', route => {
+    const request = route.request();
+    const requestUrl = request.url();
+    const task = (async () => {
+      const url = new URL(requestUrl);
+      if (url.pathname.startsWith('/api/')) {
+        if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+        const response = await route.fetch({ url: origin + url.pathname + url.search });
+        return route.fulfill({ response, headers: { ...response.headers(), ...cors } });
+      }
+      return url.origin === origin || ['data:', 'blob:'].includes(url.protocol) ? route.continue() : route.abort();
+    })().catch(error => {
+      routeErrors.push({ url: requestUrl, error });
+      return route.abort().catch(abortError => {
+        routeErrors.push({ url: requestUrl, error: abortError });
+      });
+    });
+    pendingRoutes.add(task);
+    return task.finally(() => pendingRoutes.delete(task));
   });
   const input = label => page.locator(`[aria-label=${JSON.stringify(label)}] input, input[aria-label=${JSON.stringify(label)}]`).first();
   const click = label => page.locator('taro-button-core, button, [role="button"]').filter({ has: page.getByText(label, { exact: true }) }).last().click();
@@ -78,6 +125,9 @@ async function main() {
     await page.setViewportSize({ width, height: 900 });
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1 && document.body.scrollWidth <= innerWidth + 1)).toBe(true);
   };
+  let primaryError;
+  let cleanupError;
+  let successMessage;
   const openCarton = async () => {
     await go('/pages/inbound/index?kind=carton');
     await expect(page.getByText('纸箱生产入库', { exact: true })).toBeVisible();
@@ -184,19 +234,34 @@ async function main() {
     assert.doesNotThrow(() => db.validateBackup(db.backupData()));
     assert.deepEqual(errors, []);
     assert.equal(requests.filter(row => row.method === 'POST' && row.path === '/delivery-notes').length, 2);
-    console.log(`PASS: customer inbound 300+200=500, price snapshots, customer separation, settlement 100 leaves400, no double billing on shipment, unified finance tabs, legacy route and responsive layouts. Evidence: ${evidence}`);
+    successMessage = `PASS: customer inbound 300+200=500, price snapshots, customer separation, settlement 100 leaves400, no double billing on shipment, unified finance tabs, legacy route and responsive layouts. Evidence: ${evidence}`;
   } catch (error) {
+    primaryError = error;
     await page.screenshot({ path: path.join(evidence, 'failure.png'), fullPage: true }).catch(() => {});
     fs.writeFileSync(path.join(evidence, 'failure-text.txt'), await page.locator('body').innerText().catch(() => ''));
     fs.writeFileSync(path.join(evidence, 'failure.html'), await page.content().catch(() => ''));
-    throw error;
   } finally {
-    await context.unrouteAll({ behavior: 'wait' });
-    await context.close(); await browser.close(); server.closeAllConnections();
-    await new Promise(resolve => server.close(resolve));
+    try {
+      // Keep interception installed until every in-flight route.fetch has
+      // fulfilled. unrouteAll during an async route callback can auto-handle
+      // that request, leaving the callback to reject on its later fulfill.
+      await waitForRoutesToSettle({ throwOnError: !primaryError });
+    } catch (error) {
+      cleanupError = error;
+    }
+    try { await context.unrouteAll({ behavior: 'wait' }); } catch (error) { cleanupError ||= error; }
+    try { await context.close(); } catch (error) { cleanupError ||= error; }
+    try { await browser.close(); } catch (error) { cleanupError ||= error; }
+    server.closeAllConnections();
+    try { await new Promise(resolve => server.close(resolve)); } catch (error) { cleanupError ||= error; }
+    if (!primaryError && routeErrors.length) cleanupError ||= routeErrorSummary();
+    if (!primaryError && errors.length) cleanupError ||= new Error(`Browser page error(s): ${errors.join('; ')}`);
     assert.ok(path.resolve(temporary).startsWith(path.resolve(os.tmpdir()) + path.sep));
     fs.rmSync(temporary, { recursive: true, force: true });
   }
+  if (primaryError) throw primaryError;
+  if (cleanupError) throw cleanupError;
+  console.log(successMessage);
 }
 
 main().catch(error => {
