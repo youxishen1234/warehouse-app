@@ -1,0 +1,173 @@
+.customerCenter {
+  width: 100%;
+  min-width: 0;
+  color: #eef3ef;
+  overflow-wrap: anywhere;
+}
+
+.customerCenter, .customerCenter * { box-sizing: border-box; }
+.customerCenter taro-text-core { min-width: 0; }
+.customerCenter :is(button, taro-button-core) {
+  width: auto;
+  min-width: 0;
+  height: auto;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  line-height: 1.45;
+  white-space: normal;
+  box-shadow: none;
+}
+.customerCenter :is(button, taro-button-core)::after { border: 0; }
+.customerCenter :is(button, taro-button-core):focus-visible { outline: 2PX solid #b2e8c3; outline-offset: 2PX; }
+
+.intro {
+  display: flex;
+  flex-direction: column;
+  gap: 5PX;
+  padding: 0 0 18PX;
+  border-bottom: 1PX solid #414e44;
+}
+.eyebrow { display: block; color: #a6dcb8; font-size: 12PX; letter-spacing: .04em; }
+.introTitle { display: block; font-size: 19PX; font-weight: 600; }
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 15PX 0;
+  border-top: 1PX solid #414e44;
+  border-bottom: 1PX solid #414e44;
+}
+.summaryItem {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4PX;
+  padding: 10PX 12PX;
+  color: #a8b6ad;
+  font-size: 11PX;
+}
+.summaryItem + .summaryItem { border-left: 1PX solid #414e44; }
+.summaryItem strong {
+  color: #eef3ef;
+  font-size: 21PX;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 8PX; }
+.primaryAction, .ordersAction, .secondaryAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 39PX;
+  padding: 8PX 12PX;
+  border: 1PX solid #526357;
+  border-radius: 5PX;
+  font-size: 12PX;
+  font-weight: 600;
+}
+.customerCenter .primaryAction { border-color: #a6dcb8; background: #a6dcb8; color: #1c3325; }
+.ordersAction, .secondaryAction { background: #2b332d; color: #d5eadb; }
+.search {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 42PX;
+  margin: 12PX 0 9PX;
+  padding: 10PX 11PX;
+  border: 1PX solid #526357;
+  border-radius: 5PX;
+  background: #1b231e;
+  color: #eef3ef;
+}
+.search input { width: 100%; min-width: 0; height: 22PX; padding: 0; color: #eef3ef; font: inherit; }
+.search input::placeholder { color: #8c9b91; }
+
+.filters { display: flex; gap: 5PX; padding: 3PX; border-bottom: 1PX solid #414e44; }
+.customerCenter .filter, .customerCenter .filterActive {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 35PX;
+  padding: 6PX 4PX;
+  border: 1PX solid transparent;
+  border-radius: 4PX;
+  background: transparent;
+  color: #b5c0b9;
+  font-size: 11PX;
+  text-align: center;
+}
+.customerCenter .filterActive { border-color: #526357; background: #2b382f; color: #bce8c9; font-weight: 600; }
+
+.list { min-width: 0; }
+.card {
+  min-width: 0;
+  margin-top: 12PX;
+  padding: 13PX 0 14PX;
+  border-bottom: 1PX solid #46584b;
+}
+.cardHeading { display: flex; align-items: flex-start; justify-content: space-between; gap: 9PX; min-width: 0; }
+.customerIdentity { display: flex; min-width: 0; flex-direction: column; gap: 3PX; }
+.customerName { display: block; color: #eef3ef; font-size: 17PX; font-weight: 650; line-height: 1.35; }
+.accountStatus, .draftStatus { color: #9eada2; font-size: 11PX; }
+.draftStatus { color: #e0b27c; }
+.cardActions { display: flex; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; gap: 5PX; }
+.customerCenter .cardActions .primaryAction, .customerCenter .cardActions .secondaryAction,
+.customerCenter .cardHeading > .primaryAction {
+  min-height: 34PX;
+  padding: 6PX 8PX;
+  font-size: 11PX;
+}
+.contactLine { display: flex; flex-wrap: wrap; gap: 3PX 13PX; margin-top: 9PX; color: #a8b6ad; font-size: 11PX; }
+.remark { display: block; margin-top: 6PX; color: #8fa096; font-size: 11PX; }
+
+.specs { min-width: 0; margin-top: 10PX; padding-top: 8PX; border-top: 1PX solid #35423a; }
+.specsHeading { display: flex; align-items: center; justify-content: space-between; gap: 8PX; padding-bottom: 3PX; }
+.specsTitle { color: #bce8c9; font-size: 12PX; font-weight: 600; }
+.specsCount { color: #8fa096; font-size: 10PX; white-space: nowrap; }
+.specRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(76PX, auto);
+  align-items: start;
+  gap: 4PX 10PX;
+  min-width: 0;
+  padding: 8PX 0;
+  border-bottom: 1PX solid #35423a;
+}
+.specMain { min-width: 0; }
+.specName { display: flex; align-items: center; flex-wrap: wrap; gap: 5PX; color: #eef3ef; font-size: 12PX; font-weight: 500; }
+.specKind { padding: 1PX 4PX; border: 1PX solid #80613e; border-radius: 3PX; color: #e0b27c; font-size: 9PX; font-weight: 400; }
+.specSize { display: block; margin-top: 3PX; color: #bce8c9; font-size: 13PX; font-variant-numeric: tabular-nums; }
+.specMeta { display: block; margin-top: 3PX; color: #8fa096; font-size: 10PX; }
+.specPrice { max-width: 125PX; color: #d5eadb; font-size: 11PX; line-height: 1.5; text-align: right; overflow-wrap: anywhere; }
+.specsEmpty { display: block; padding: 8PX 0; color: #8fa096; font-size: 11PX; }
+.customerCenter .specToggle {
+  width: 100%;
+  min-height: 33PX;
+  margin-top: 6PX;
+  padding: 6PX 8PX;
+  border: 1PX solid #46584b;
+  border-radius: 4PX;
+  background: #2b332d;
+  color: #bce8c9;
+  font-size: 11PX;
+  text-align: left;
+}
+.empty { display: flex; flex-direction: column; gap: 6PX; padding: 30PX 8PX; color: #c0cbc3; font-size: 13PX; text-align: center; }
+.empty taro-text-core + taro-text-core { color: #8fa096; font-size: 11PX; }
+
+@media (min-width: 760PX) {
+  .intro { flex-direction: row; align-items: flex-end; justify-content: space-between; }
+  .card { padding-top: 16PX; padding-bottom: 18PX; }
+  .specRow { padding: 10PX 0; }
+}
+
+@media (max-width: 359PX) {
+  .summaryItem { padding: 9PX 7PX; }
+  .summaryItem strong { font-size: 19PX; }
+  .customerName { font-size: 16PX; }
+  .customerCenter .cardActions .primaryAction, .customerCenter .cardActions .secondaryAction,
+  .customerCenter .cardHeading > .primaryAction { padding: 5PX 6PX; font-size: 10PX; }
+  .specRow { grid-template-columns: minmax(0, 1fr); }
+  .specPrice { max-width: none; text-align: left; }
+}
