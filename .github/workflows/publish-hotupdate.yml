@@ -154,6 +154,11 @@ jobs:
         env:
           BUSINESS_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
         run: node tests/business-center-browser.cjs
+      - name: Validate customer entry and order draft continuity
+        env:
+          CUSTOMER_ENTRY_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          CUSTOMER_ENTRY_EVIDENCE_DIR: release/customer-entry-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/customer-entry-browser.cjs
       - name: Validate produce-to-stock customer order fulfillment
         env:
           PRODUCE_TO_STOCK_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}

@@ -30,6 +30,12 @@
 .workflowSteps { font-size: 15PX; line-height: 1.8; overflow-wrap: anywhere; }
 .workflowHint { color: #b5c0b9; font-size: 12PX; overflow-wrap: anywhere; }
 .page .workflow .button { min-height: 44PX; max-width: 100%; margin-top: 3PX; text-align: left; overflow-wrap: anywhere; }
+.customerToolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12PX 18PX; margin: 0 0 24PX; }
+.customerToolbarCopy { display: flex; flex-direction: column; gap: 3PX; min-width: 0; }
+.customerToolbarTitle { font-size: 16PX; font-weight: 500; }
+.customerToolbarActions { display: flex; flex-wrap: wrap; align-items: center; gap: 8PX 14PX; }
+.page .customerToolbarButton { display: inline-flex; align-items: center; justify-content: center; gap: 7PX; min-height: 44PX; padding: 8PX 2PX; border: 0; border-radius: 4PX; background: transparent; color: #a6dcb8; font-size: 14PX; text-align: left; }
+.page .customerToolbarButton:hover { color: #d5eadb; background: transparent; }
 .entries { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13PX; margin-top: 17PX; }
 .summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1PX; margin-bottom: 26PX; border: 1PX solid #414e44; border-radius: 8PX; overflow: hidden; background: #414e44; }
 .summaryItem { display: flex; flex-direction: column; gap: 4PX; padding: 14PX 15PX; background: #222924; color: #b5c0b9; font-size: 13PX; }
@@ -121,6 +127,8 @@
   .activityValue { max-width: 105PX; font-size: 16PX; }
   .footer { padding: 12PX 20PX; font-size: 11PX; }
   .page.embedded .summary { margin-bottom: 22PX; }
+  .customerToolbar { align-items: flex-start; flex-direction: column; gap: 8PX; margin-bottom: 21PX; }
+  .customerToolbarActions { width: 100%; gap: 8PX 20PX; }
 }
 @media (max-width: 360PX) {
   .masthead { padding-left: 16PX; padding-right: 16PX; }
@@ -139,5 +147,7 @@
   .dialog .tools { display: grid; grid-template-columns: 1fr 1fr; }
   .dialog .tools :is(button, taro-button-core) { width: 100%; }
   .status { font-size: 13PX; }
+  .customerToolbarActions { gap: 6PX 14PX; }
+  .page .customerToolbarButton { font-size: 13PX; gap: 5PX; }
   .row { gap: 10PX; }
 }
