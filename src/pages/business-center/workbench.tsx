@@ -6,6 +6,8 @@ import CustomerEditor from '@/components/CustomerEditor';
 import { addStocktake, getCustomers, getSuppliers, getProducts, getTransactions, getLedger, getDeliveryNotes, getOrders, getStats } from '@/services/api';
 import { getBoards, boardSpec, cartonSpec, today as currentDate } from '@/services/boards';
 import { completeProduction, getProduction } from '@/services/business-workflow';
+import { getCustomerDimensions } from '@/services/customer-dimensions';
+import type { DimensionDocument } from '@/services/customer-dimensions';
 import { useRemoteData } from '@/hooks/useRemoteData';
 import { useSharedRefresh } from '@/services/shared-refresh';
 import { invalidateProducts, loadProducts } from '@/services/product-store';
@@ -22,11 +24,31 @@ type WorkbenchProps = {
   embedded?: boolean;
   initial?: Panel;
 };
-const load = async () => {
-  const [boards, products, customers, suppliers, transactions, ledger, deliveryNotes, production, orders] = await Promise.all([getBoards(), getProducts(), getCustomers(), getSuppliers(), getTransactions(), getLedger(), getDeliveryNotes(), getProduction(), getOrders()]);
-  return { boards, products, customers, suppliers, transactions, ledger, deliveryNotes, production, orders };
+const emptyCustomerDimensions: DimensionDocument = {
+  schemaVersion: 1,
+  revision: 0,
+  customers: [],
+  inactiveCustomerNames: [],
+  theme: { title: '客户尺寸本', accent: '#468cfb', bg: '#101319', card: '#202630' }
 };
-const empty = { boards: [], products: [], customers: [], suppliers: [], transactions: [], ledger: [], deliveryNotes: [], production: [], orders: [] } as Awaited<ReturnType<typeof load>>;
+const loadCustomerDimensions = async () => {
+  try {
+    const dimensions = await getCustomerDimensions();
+    if (!Array.isArray(dimensions?.customers)) return emptyCustomerDimensions;
+    return {
+      ...dimensions,
+      inactiveCustomerNames: Array.isArray(dimensions.inactiveCustomerNames) ? dimensions.inactiveCustomerNames : []
+    };
+  } catch (error) {
+    console.error('[Workbench] customer dimensions load failed', error);
+    return emptyCustomerDimensions;
+  }
+};
+const load = async () => {
+  const [boards, products, customers, suppliers, transactions, ledger, deliveryNotes, production, orders, customerDimensions] = await Promise.all([getBoards(), getProducts(), getCustomers(), getSuppliers(), getTransactions(), getLedger(), getDeliveryNotes(), getProduction(), getOrders(), loadCustomerDimensions()]);
+  return { boards, products, customers, suppliers, transactions, ledger, deliveryNotes, production, orders, customerDimensions };
+};
+const empty = { boards: [], products: [], customers: [], suppliers: [], transactions: [], ledger: [], deliveryNotes: [], production: [], orders: [], customerDimensions: emptyCustomerDimensions } as Awaited<ReturnType<typeof load>>;
 const open = (url: string) => void (url === '/pages/print-center/index' ? Taro.switchTab({ url }) : Taro.navigateTo({ url }));
 const cartonProduct = (p: Product) => p.category !== '纸板' && (p.category === '纸箱' || /\d\s*[×xX*]\s*\d.*[×xX*]/.test(p.specification || ''));
 const routeFinanceView = (params: Record<string, string | undefined>): FinanceView =>
@@ -62,7 +84,7 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
   const [quantity, setQuantity] = useState('');
   const [remark, setRemark] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const [editor, setEditor] = useState<{ id?: number; supplier: boolean } | null>(null);
+  const [editor, setEditor] = useState<{ id?: number; supplier: boolean; initialName?: string; lockName?: boolean } | null>(null);
   const [recordView, setRecordView] = useState<'activity' | 'orders'>(() => params.detail === '1' ? 'orders' : 'activity');
   const [orderStatus, setOrderStatus] = useState<'全部' | CustomerOrder['status']>('全部');
   const [stocktake, setStocktake] = useState<{ product: Product } | null>(null);
@@ -230,12 +252,14 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
         ledger={data.ledger}
         customers={data.customers}
         suppliers={data.suppliers}
+        dimensionCustomers={data.customerDimensions.customers}
+        inactiveCustomerNames={data.customerDimensions.inactiveCustomerNames}
         deliveryNotes={data.deliveryNotes}
         loading={remote.loading}
         loadError={remote.loadError}
         onReload={reload}
         onViewChange={setFinanceView}
-        onEditParty={(type, id) => setEditor({ id, supplier: type === 'supplier' })}
+        onEditParty={(type, id, initialName) => setEditor({ id, supplier: type === 'supplier', initialName, lockName: Boolean(initialName) })}
       />}
       {panel === 'records' && <View><View className={styles.segment}><Button aria-pressed={recordView === 'activity'} className={recordView === 'activity' ? styles.selected : styles.button} onClick={() => setRecordView('activity')}>出入库 / 生产</Button><Button aria-pressed={recordView === 'orders'} className={recordView === 'orders' ? styles.selected : styles.button} onClick={() => setRecordView('orders')}>规格与订单</Button></View>
         {recordView === 'activity' && <View><View className={styles.tools}>{action('打印存根', () => open('/pages/print-center/index'))}{action('收款 / 付款记录', () => openFinance('ledger'))}</View>{data.production.map(p => <View className={styles.record} key={p.id}><strong>生产完工 · {p.product_name}</strong><Text>纸板 {p.specification_snapshot.board.join(' × ')} cm → 纸箱 {p.specification_snapshot.carton.join(' × ')} cm</Text><Text>领用 {p.consumed_quantity} 张 · 完工 {p.quantity} {p.unit}</Text><Text>{formatTime(p.created_at)} · {p.operator}</Text><Text>{p.id}</Text></View>)}{data.boards.map(b => <View className={styles.record} key={b.id}><strong>纸板入库 · {boardSpec(b)} cm</strong><Text>对应纸箱 {cartonSpec(b)} cm · 实收 {b.receivedQty} 张</Text><Text>送货日期 {b.date} · {b.supplier}</Text><Text>登记时间 {formatTime(b.createdAt)}</Text>{action('批次存根', () => open('/pages/board-detail/index?id=' + b.id))}</View>)}{data.transactions.filter(t => !t.production_id && !t.voided_at).slice(0, 30).map(t => <View className={styles.record} key={t.id}><strong>{t.type === 'in' ? '入库' : t.type === 'out' ? '出库' : '盘点'} · {t.product_name}</strong><Text>{t.specification} · {t.quantity} {t.unit}</Text><Text>{formatTime(t.created_at)}</Text></View>)}{action('全部出入库记录', () => open('/pages/records/index'))}</View>}
@@ -247,6 +271,6 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
     {!embedded && <View className={styles.nav}>{([{ key: 'home', text: '总台', icon: 'home' }, { key: 'stock', text: '库存', icon: 'boxes' }, { key: 'records', text: '记录', icon: 'notebook' }, { key: 'photos', text: '票据', icon: 'photos' }] as const).map(n => <Button key={n.key} aria-pressed={panel === n.key} onClick={() => changePanel(n.key)}><Icon name={n.icon} color={panel === n.key ? '#a6dcb8' : '#a8b6ad'} strokeWidth={1.5} style={{ width: 21, height: 21 }} /><Text>{n.text}</Text></Button>)}</View>}
     <View className={styles.footer} role='status' data-testid='workbench-sync-status'><Text>{status}</Text>{lastSyncedAt !== null && <Text>上次同步 {new Date(lastSyncedAt).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}</Text>}<Text>{editor ? '资料编辑中' : '照片上传需确认保存'}</Text></View>
     {stocktake && <View className={styles.overlay}><View className={styles.dialog} role='dialog' aria-label='库存盘点'><strong>{stocktake.product.name}</strong><View className={styles.stocktakeSummary}><Text>{stocktake.product.specification || '规格未填写'}</Text><Text>当前 {stocktake.product.stock} {stocktake.product.unit}</Text></View><Text className={styles.label}>新库存</Text><Input aria-label='实盘库存' className={styles.input} type='digit' placeholder='填写实际盘点数量' value={stocktakeValue} onInput={e => setStocktakeValue(e.detail.value)} /><Text className={styles.label}>盘点日期</Text><Picker mode='date' end={currentDate()} value={stocktakeDate} onChange={e => setStocktakeDate(e.detail.value)}><View aria-label='盘点日期' className={styles.input}>{stocktakeDate || '请选择日期'}</View></Picker><Input aria-label='盘点备注' className={styles.input} placeholder='备注（选填，如盘亏原因）' value={stocktakeRemark} onInput={e => setStocktakeRemark(e.detail.value)} />{stocktakeValue.trim() && /^\d+(?:\.\d{1,6})?$/.test(stocktakeValue.trim()) && <Text className={styles.note}>调整后库存 {stocktakeValue.trim()} {stocktake.product.unit}，盘点流水会同步保存。</Text>}{error && <View role='alert' className={styles.error}>{error}</View>}<View className={styles.tools}>{action('取消', () => { setStocktake(null); setError(''); })}{action(busy ? '保存中…' : '确认盘点', () => void submitStocktake(), true)}</View></View></View>}
-    {editor && <CustomerEditor id={editor.id} supplier={editor.supplier} onClose={() => setEditor(null)} onSaved={async () => { setEditor(null); await reload(); }} />}
+    {editor && <CustomerEditor id={editor.id} supplier={editor.supplier} initialName={editor.initialName} lockName={editor.lockName} onClose={() => setEditor(null)} onSaved={async () => { setEditor(null); await reload(); }} />}
   </View></View>;
 }

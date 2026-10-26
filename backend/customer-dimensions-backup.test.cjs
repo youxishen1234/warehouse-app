@@ -56,6 +56,14 @@ test('customer dimensions migrate, commit, back up and restore with the warehous
     assert.equal(exported.customer_dimensions.customers[0].name, '备份客户');
     assert.equal(exported.customer_dimensions.schemaVersion, 1);
   });
+  await t.test('customer management receives names of inactive accounts', async () => {
+    const inactive = db.addCustomer({ name: '已停用尺寸客户' });
+    db.deleteCustomer(inactive.id);
+    const result = await call('/customer-dimensions');
+    assert.equal(result.status, 200);
+    assert.ok(result.body.data.inactiveCustomerNames.includes('已停用尺寸客户'));
+    assert.equal(Object.prototype.hasOwnProperty.call(db.getCustomerDimensions(), 'inactiveCustomerNames'), false);
+  });
   await t.test('failed persistence rolls back dimensions, revision, audit and receipt', async () => {
     const before = disk();
     const revision = db.revision();

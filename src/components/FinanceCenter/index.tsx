@@ -4,6 +4,7 @@ import Taro from '@tarojs/taro';
 import Icon, { IconName } from '@/components/Icon';
 import { addLedger, deleteLedger, getLedger, settleCustomer, settleSupplier } from '@/services/api';
 import type { Customer, DeliveryNote, LedgerAttachment, LedgerEntry, LedgerType, Supplier } from '@/types';
+import type { DimensionCustomer } from '@/services/customer-dimensions';
 import { formatMoney, formatTime } from '@/utils/format';
 import { downloadCsv } from '@/services/download';
 import { parseMoneyInput, previewMoneyInput, sanitizeNonNegativeMoneyInput } from '@/utils/form-input';
@@ -31,13 +32,177 @@ type FinanceCenterProps = {
   ledger: LedgerEntry[];
   customers: Customer[];
   suppliers: Supplier[];
+  dimensionCustomers?: DimensionCustomer[];
+  inactiveCustomerNames?: string[];
   deliveryNotes: DeliveryNote[];
   loading: boolean;
   loadError: string;
   onReload: () => Promise<void>;
   onViewChange?: (view: FinanceView) => void;
-  onEditParty?: (type: PartyType, id?: number) => void;
+  onEditParty?: (type: PartyType, id?: number, initialName?: string) => void;
 };
+
+type CustomerSpecView = {
+  key: string;
+  goods: string;
+  specification: string;
+  material: string;
+  unit: string;
+  price: number | null;
+  kind: '成品' | '纸板';
+};
+
+type CustomerManagementRow = {
+  key: string;
+  name: string;
+  account: Customer | null;
+  specs: CustomerSpecView[];
+  searchText: string;
+};
+
+const MAX_VISIBLE_CUSTOMER_SPECS = 3;
+const specText = (value: unknown) => String(value ?? '').trim();
+const specComparable = (value: unknown) => specText(value).replace(/\s+/g, ' ').toLocaleLowerCase();
+const nameComparable = (value: unknown) => specText(value).replace(/\s+/g, ' ').toLocaleLowerCase();
+const normalizeSpecification = (value: unknown) => specText(value)
+  .replace(/\s*(?:[×xX*＊✕]|乘)\s*/g, '×');
+const specificationSearchText = (value: unknown) => normalizeSpecification(value).toLocaleLowerCase().replace(/\s+/g, '');
+const specBaseKey = (spec: Pick<CustomerSpecView, 'goods' | 'specification' | 'material' | 'unit' | 'kind'>) =>
+  JSON.stringify([specComparable(spec.goods), specificationSearchText(spec.specification), specComparable(spec.material), specComparable(spec.unit), spec.kind]);
+const fallbackGoods = (kind: CustomerSpecView['kind']) => kind === '纸板' ? '纸板规格' : '纸箱规格';
+
+function customerSpecs(account: Customer | null, dimension: DimensionCustomer | undefined): CustomerSpecView[] {
+  const rows: CustomerSpecView[] = [];
+  const dimensionBases = new Set<string>();
+  const quoteKeys = new Set<string>();
+  for (const spec of account?.specs || []) {
+    if (!spec || !specText(spec.specification)) continue;
+    const row: CustomerSpecView = {
+      key: `quote:${account!.id}:${spec.id}`,
+      goods: specText(spec.goods) || fallbackGoods('成品'),
+      specification: normalizeSpecification(spec.specification),
+      material: specText(spec.material),
+      unit: specText(spec.unit) || '个',
+      price: Number.isFinite(Number(spec.price)) && Number(spec.price) >= 0 ? Number(spec.price) : null,
+      kind: '成品'
+    };
+    const base = specBaseKey(row);
+    const key = `${base}:${row.price ?? 'none'}`;
+    dimensionBases.add(base);
+    if (quoteKeys.has(key)) continue;
+    quoteKeys.add(key);
+    rows.push(row);
+  }
+  const dimensionKeys = new Set<string>();
+  for (const spec of dimension?.specs || []) {
+    if (!spec || !specText(spec.size)) continue;
+    const unit = specText(spec.sizeUnit);
+    const specification = normalizeSpecification(specText(spec.size).toLocaleLowerCase().endsWith(unit.toLocaleLowerCase())
+      ? spec.size
+      : `${spec.size}${unit ? ` ${unit}` : ''}`);
+    const kind = spec.kind === '纸板' ? '纸板' : '成品';
+    const row: CustomerSpecView = {
+      key: `dimension:${dimension!.id}:${spec.id}`,
+      goods: specText(spec.goods) || fallbackGoods(kind),
+      specification,
+      material: specText(spec.material),
+      unit: specText(spec.unit) || '个',
+      price: null,
+      kind
+    };
+    const base = specBaseKey(row);
+    if (dimensionBases.has(base) || dimensionKeys.has(base)) continue;
+    dimensionKeys.add(base);
+    rows.push(row);
+  }
+  return rows;
+}
+
+function buildCustomerManagementRows(customers: Customer[], dimensions: DimensionCustomer[], knownInactiveNames: string[] = []): CustomerManagementRow[] {
+  const dimensionGroups = new Map<string, { name: string; customers: DimensionCustomer[] }>();
+  for (const dimension of dimensions) {
+    const key = nameComparable(dimension.name);
+    if (!key) continue;
+    const group = dimensionGroups.get(key) || { name: specText(dimension.name), customers: [] };
+    group.customers.push(dimension);
+    dimensionGroups.set(key, group);
+  }
+  const activeNameCounts = new Map<string, number>();
+  const inactiveNames = new Set(knownInactiveNames.map(nameComparable).filter(Boolean));
+  for (const account of customers) {
+    const key = nameComparable(account.name);
+    if (!key) continue;
+    if (account.deleted_at) inactiveNames.add(key);
+    else activeNameCounts.set(key, (activeNameCounts.get(key) || 0) + 1);
+  }
+  const usedDimensions = new Set<string>();
+  const rows: CustomerManagementRow[] = [];
+  for (const account of customers.filter(customer => !customer.deleted_at)) {
+    const key = nameComparable(account.name);
+    const dimensionGroup = dimensionGroups.get(key);
+    if (dimensionGroup) usedDimensions.add(key);
+    const canLinkDimensions = activeNameCounts.get(key) === 1;
+    const specs = customerSpecs(account, canLinkDimensions && dimensionGroup?.customers.length === 1 ? dimensionGroup.customers[0] : undefined);
+    if (canLinkDimensions && dimensionGroup?.customers.length !== 1) {
+      const extraSpecs = dimensionGroup?.customers.flatMap(dimension => customerSpecs(null, dimension)) || [];
+      const existing = new Set(specs.map(specBaseKey));
+      for (const spec of extraSpecs) if (!existing.has(specBaseKey(spec))) { specs.push(spec); existing.add(specBaseKey(spec)); }
+    }
+    rows.push({
+      key: `customer:${account.id}`,
+      name: account.name,
+      account,
+      specs,
+      searchText: specificationSearchText([account.name, account.contact, account.phone, ...specs.flatMap(spec => [spec.goods, spec.specification, spec.material, spec.unit])].join(' '))
+    });
+  }
+  let virtualIndex = 0;
+  for (const [key, group] of dimensionGroups) {
+    if (inactiveNames.has(key) || usedDimensions.has(key)) continue;
+    const merged: CustomerSpecView[] = [];
+    const seen = new Set<string>();
+    for (const dimension of group.customers) {
+      for (const spec of customerSpecs(null, dimension)) {
+        const base = specBaseKey(spec);
+        if (seen.has(base)) continue;
+        seen.add(base);
+        merged.push(spec);
+      }
+    }
+    rows.push({
+      key: `dimension:${++virtualIndex}`,
+      name: group.name,
+      account: null,
+      specs: merged,
+      searchText: specificationSearchText([group.name, ...merged.flatMap(spec => [spec.goods, spec.specification, spec.material, spec.unit])].join(' '))
+    });
+  }
+  return rows;
+}
+
+function CustomerSpecs({ customer, specs, expanded, onToggle }: {
+  customer: string;
+  specs: CustomerSpecView[];
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const visible = expanded ? specs : specs.slice(0, MAX_VISIBLE_CUSTOMER_SPECS);
+  return <View className={styles.customerSpecs} data-testid={`customer-specs-${customer}`}>
+    <View className={styles.customerSpecsHeading}><Text>常用规格</Text><Text className={styles.customerSpecsCount}>{specs.length} 种</Text></View>
+    {visible.map(spec => <View className={styles.customerSpecRow} key={spec.key} data-testid={`customer-spec-${customer}-${spec.key}`}>
+      <View className={styles.customerSpecBody}>
+        <View className={styles.customerSpecTitle}><Text>{spec.goods}</Text>{spec.kind === '纸板' && <Text className={styles.customerSpecKind}>纸板</Text>}</View>
+        <Text className={styles.customerSpecSize}>{spec.specification}</Text>
+        <Text className={styles.customerSpecMeta}>材质：{spec.material || '未记录'} · 单位：{spec.unit}</Text>
+      </View>
+      <Text className={styles.customerSpecPrice}>{spec.price == null ? '价格未记录' : `${formatMoney(spec.price)}/${spec.unit}`}</Text>
+    </View>)}
+    {!specs.length && <Text className={styles.customerSpecsEmpty}>暂无规格资料</Text>}
+    {specs.length > MAX_VISIBLE_CUSTOMER_SPECS && <FinanceButton className={styles.customerSpecsToggle} aria-expanded={expanded} data-testid={`customer-specs-toggle-${customer}`} onClick={onToggle}>
+      {expanded ? '收起规格' : `查看全部 ${specs.length} 种规格`}
+    </FinanceButton>}
+  </View>;
+}
 
 const appearance: Record<LedgerType, { icon: IconName; color: string; title: string }> = {
   income: { icon: 'inbound', color: '#a6dcb8', title: '收入入账' },
@@ -83,7 +248,7 @@ const LedgerListRow = React.memo(function LedgerListRow({ entry, onOpen }: Ledge
 });
 
 export default function FinanceCenter({
-  initialView = 'ledger', partyType, partyId, entryId, ledger, customers, suppliers, deliveryNotes,
+  initialView = 'ledger', partyType, partyId, entryId, ledger, customers, suppliers, dimensionCustomers = [], inactiveCustomerNames = [], deliveryNotes,
   loading, loadError, onReload, onViewChange, onEditParty
 }: FinanceCenterProps) {
   const [view, setView] = useState<FinanceView>(initialView);
@@ -107,6 +272,7 @@ export default function FinanceCenter({
   const [exporting, setExporting] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [expandedSpecs, setExpandedSpecs] = useState<Record<string, boolean>>({});
   const [partySearch, setPartySearch] = useState('');
   const [partyPeriod, setPartyPeriod] = useState<PartyPeriod>('全部时间');
   const [partyRange, setPartyRange] = useState({ from: '', to: '' });
@@ -171,8 +337,15 @@ export default function FinanceCenter({
   const groups = useMemo(() => groupLedger(filtered), [filtered]);
   const amountPreview = useMemo(() => previewMoneyInput(amount), [amount]);
   const partyRangeText = partyPeriod === '全部时间' ? { from: '', to: '' } : partyDates;
-  const customerRows = useMemo(() => customers.filter(party => !party.deleted_at && (!selectedId || selectedType !== 'customer' || party.id === selectedId) &&
-    (!partySearch.trim() || `${party.name} ${party.contact || ''} ${party.phone || ''}`.toLowerCase().includes(partySearch.trim().toLowerCase()))), [customers, partySearch, selectedId, selectedType]);
+  const allCustomerRows = useMemo(() => buildCustomerManagementRows(customers, dimensionCustomers, inactiveCustomerNames), [customers, dimensionCustomers, inactiveCustomerNames]);
+  const customerReceivable = useMemo(() => allCustomerRows.reduce((sum, row) => sum + Number(row.account?.debt || 0), 0), [allCustomerRows]);
+  const customerRows = useMemo(() => {
+    const query = specificationSearchText(partySearch);
+    return allCustomerRows.filter(row =>
+      (!selectedId || selectedType !== 'customer' || row.account?.id === selectedId) &&
+      (!query || row.searchText.includes(query))
+    );
+  }, [allCustomerRows, partySearch, selectedId, selectedType]);
   const supplierRows = useMemo(() => suppliers.filter(party => !party.deleted_at && (!selectedId || selectedType !== 'supplier' || party.id === selectedId) &&
     (!partySearch.trim() || `${party.name} ${party.contact || ''} ${party.phone || ''}`.toLowerCase().includes(partySearch.trim().toLowerCase()))), [partySearch, selectedId, selectedType, suppliers]);
 
@@ -317,14 +490,22 @@ export default function FinanceCenter({
     {(view === 'customer' || view === 'supplier') && <View className={styles.partyView} data-testid={`finance-${view}-view`}>
       <View className={styles.partyToolbar}>
         <FinanceButton className={`${styles.primary} ${styles.partyAddButton}`} data-testid={`finance-add-${view}`} onClick={() => onEditParty?.(view)}><Icon name='plus' color='#1c3325' /><Text>{`新增${view === 'customer' ? '客户' : '供货商'}`}</Text></FinanceButton>
-        <Input className={styles.partySearch} aria-label={`搜索${partyTitle}`} placeholder={`搜索${partyTitle}对象`} value={partySearch} onInput={e => setPartySearch(e.detail.value)} />
+        <Input className={styles.partySearch} data-testid='finance-party-search' aria-label={view === 'customer' ? '搜索客户、规格或联系方式' : `搜索${partyTitle}`} placeholder={view === 'customer' ? '搜索客户、规格或联系方式' : `搜索${partyTitle}对象`} value={partySearch} onInput={e => setPartySearch(e.detail.value)} />
         <View className={styles.periodTabs}>{(['本月', '上月', '全部时间'] as PartyPeriod[]).map(value => <FinanceButton key={value} aria-pressed={partyPeriod === value} className={`${styles.periodTab} ${partyPeriod === value ? styles.periodActive : ''}`} onClick={() => choosePartyPeriod(value)}>{value}</FinanceButton>)}</View>
       </View>
-      <View className={styles.partySummary}>
-        <View><Text>{view === 'customer' ? '当前待收款合计' : '当前待付款合计'}</Text><strong>{formatMoney((view === 'customer' ? customerRows : supplierRows).reduce((sum, party) => sum + Number(view === 'customer' ? party.debt || 0 : party.payable || 0), 0))}</strong></View>
+      <View className={styles.partySummary} data-testid='finance-party-summary'>
+        <View><Text>{view === 'customer' ? '当前待收款合计' : '当前待付款合计'}</Text><strong>{formatMoney(view === 'customer' ? customerReceivable : supplierRows.reduce((sum, supplier) => sum + Number(supplier.payable || 0), 0))}</strong></View>
         <Text>{partyPeriod === '全部时间' ? '按全部业务日期汇总 · 当前余额为实时数' : `${partyRange.from} 至 ${partyRange.to} · 当前余额为实时数`}</Text>
       </View>
-      {view === 'customer' && customerRows.map(customer => {
+      {view === 'customer' && customerRows.map(row => {
+        if (!row.account) return <View key={row.key} className={styles.partyCard} data-testid={`customer-specs-only-${row.key}`}>
+          <View className={styles.partyCardHead}><View><Text className={styles.partyName}>{row.name}</Text><Text className={styles.dimensionOnlyStatus}>规格客户 · 未建立客户资料</Text></View><View className={styles.partyButtons}>
+            <FinanceButton className={styles.primary} aria-label={`建立客户资料 ${row.name}`} data-testid={`customer-create-from-dimension-${row.key}`} onClick={() => onEditParty?.('customer', undefined, row.name)}>建立客户资料</FinanceButton>
+          </View></View>
+          <CustomerSpecs customer={row.key} specs={row.specs} expanded={Boolean(expandedSpecs[row.key])} onToggle={() => setExpandedSpecs(current => ({ ...current, [row.key]: !current[row.key] }))} />
+          <Text className={styles.dimensionOnlyNote}>建立客户资料后，可登记应收、收款和自产入库账单。</Text>
+        </View>;
+        const customer = row.account;
         const notes = summarizeProductionInbound(deliveryNotes, customer.id, partyRangeText.from, partyRangeText.to);
         const balance = Number(customer.debt || 0);
         const expandedKey = `customer-${customer.id}`;
@@ -338,6 +519,7 @@ export default function FinanceCenter({
             <FinanceButton className={styles.primary} aria-label={`收款客户 ${customer.name}`} data-testid={`finance-settle-customer-${customer.id}`} onClick={() => { setSettling({ id: customer.id, name: customer.name, type: 'customer', balance }); setSettlementAmount(''); setSettlementError(''); }}>收款</FinanceButton>
             <FinanceButton aria-label={`编辑客户 ${customer.name}`} onClick={() => onEditParty?.('customer', customer.id)}>编辑</FinanceButton>
           </View></View>
+          <CustomerSpecs customer={String(customer.id)} specs={row.specs} expanded={Boolean(expandedSpecs[expandedKey])} onToggle={() => setExpandedSpecs(current => ({ ...current, [expandedKey]: !current[expandedKey] }))} />
           <View className={styles.metrics}>
             <View><Text>{partyPeriodLabel(partyPeriod)}自产入库金额</Text><strong>{formatMoney(notes.total)}</strong></View>
             <View><Text>{partyPeriodLabel(partyPeriod)}已收款</Text><strong>{formatMoney(summary.settled)}</strong></View>
