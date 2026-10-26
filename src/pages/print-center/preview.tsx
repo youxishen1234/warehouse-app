@@ -58,8 +58,14 @@ export default function PrintPreview({ note, saved, reprintIntent = false, autoS
     if (native && (remote.token || remote.pending)) setRemoteOpen(true);
   }, [native, remote.token, remote.pending]);
 
-  // Automatic dispatch is opt-in and starts only after layout and task recovery.
-  // An existing task is observed, never replaced by an automatic second copy.
+  useEffect(() => {
+    if (native && autoSend && (remote.message || remote.jobError)) setRemoteOpen(true);
+  }, [native, autoSend, remote.message, remote.jobError]);
+
+  // Automatic dispatch is limited to explicit direct-print and opted-in outbound
+  // intents. It starts only after layout and task recovery. Existing tasks are
+  // observed, never replaced by an automatic second copy; one failed attempt is
+  // left for the user to retry, retaining its persisted task id.
   useEffect(() => {
     if (!native || !autoSend || !ready || !canSend || remoteJob || autoSubmitted.current) return;
     autoSubmitted.current = true;
@@ -154,7 +160,8 @@ export default function PrintPreview({ note, saved, reprintIntent = false, autoS
     if (remote.busy) return { label: '正在发送…', disabled: true, run: () => {} };
     if (remote.job?.status === 'uncertain') return { label: '待核对出纸', disabled: false, run: () => setRemoteOpen(true) };
     if (remote.pending) return { label: '任务处理中…', disabled: true, run: () => {} };
-    if (!remote.device) return { label: remote.deviceError ? '连接状态待确认' : '正在连接电脑…', disabled: true, run: () => {} };
+    if (remote.deviceError) return { label: '重试连接', disabled: false, run: () => remote.requestRefresh() };
+    if (!remote.device) return { label: '正在连接电脑…', disabled: true, run: () => {} };
     if (remote.checking) return { label: '正在查询上次打印…', disabled: true, run: () => {} };
     if (remote.terminal) return reprintIntent
       ? { label: '再打印一份', disabled: !remote.canSend, run: () => void remote.send(true) }

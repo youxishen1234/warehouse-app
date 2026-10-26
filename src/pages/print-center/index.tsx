@@ -43,7 +43,7 @@ export default function PrintCenterPage() {
   const [tab, setTab] = useState<PrintTab>(() => params.transaction_id || params.mode === 'edit' ? 'edit' : 'home');
   const [printerStatus, setPrinterStatus] = useState<{ label: string; ready: boolean }>(() => ({ label: readPrintPair() ? '正在检查打印电脑' : '电脑打印未连接', ready: false }));
   const [preview, setPreview] = useState<PrintNoteInput>();
-  const [previewIntent, setPreviewIntent] = useState<'print' | 'reprint' | 'auto'>('print');
+  const [previewIntent, setPreviewIntent] = useState<'preview' | 'direct' | 'reprint' | 'auto'>('preview');
   const [paired, setPaired] = useState(() => !!readPrintPair());
   const [printAfterOutbound, setPrintAfterOutbound] = useState(readPrintAfterOutbound);
   const closePreview = useCallback(() => {
@@ -200,7 +200,7 @@ export default function PrintCenterPage() {
       setNotice(`已按 ${note.number} 带入客户和明细，核对后保存为新单`);
     }).catch(issue => setError(messageOf(issue))).finally(() => { busyRef.current = false; setBusy(false); });
   });
-  const save = async (thenPreview = false) => {
+  const save = async (thenPreview?: 'direct') => {
     if (busyRef.current) return;
     let data: PrintNoteInput;
     try { data = validateDraft(draft); } catch (issue) { setError(messageOf(issue)); return; }
@@ -208,24 +208,24 @@ export default function PrintCenterPage() {
     try {
       const note = await savePrintNote(data, saved);
       setSaved(note); setDraft(noteDraft(note)); setDirty(false);
-      if (thenPreview) { setPreviewIntent('print'); setPreview(note); setNotice(''); }
+      if (thenPreview) { setPreviewIntent(thenPreview); setPreview(note); setNotice(''); }
       else setNotice(saved ? '修改已保存' : '送货单已保存');
     } catch (issue) { setError(messageOf(issue)); }
     finally { busyRef.current = false; setBusy(false); }
   };
   const saveAndPrint = () => {
     if (busyRef.current) return;
-    if (saved && !dirty) { setPreviewIntent('print'); setPreview(saved); return; }
-    void save(true);
+    if (saved && !dirty) { setPreviewIntent('direct'); setPreview(saved); return; }
+    void save('direct');
   };
-  const showPreview = () => { try { setPreviewIntent('print'); setPreview(validateDraft(draft)); setError(''); } catch (issue) { setError(messageOf(issue)); } };
+  const showPreview = () => { try { setPreviewIntent('preview'); setPreview(validateDraft(draft)); setError(''); } catch (issue) { setError(messageOf(issue)); } };
   const shipAndPrint = async () => {
     if (!saved || shipping.current || busyRef.current || dirty) { if (dirty) setError('请先保存送货单，再确认出库'); return; }
     shipping.current = true; setShipBusy(true); setError('');
     try {
       const note = await shipPrintNote(saved.id);
       setSaved(note); setDraft(noteDraft(note)); setNotice('已出库，库存和客户应收已更新；现在打开打印预览');
-      setPreviewIntent(native && paired && printAfterOutbound ? 'auto' : 'print'); setPreview(note);
+      setPreviewIntent(native && paired && printAfterOutbound ? 'auto' : 'preview'); setPreview(note);
     } catch (issue) { setError(messageOf(issue)); }
     finally { shipping.current = false; setShipBusy(false); }
   };
@@ -320,7 +320,7 @@ export default function PrintCenterPage() {
           }} />
           <span>出库后自动打印</span>
         </label>}
-        <footer className={styles.actions}><button type='button' className={styles.secondary} onClick={() => { setTab('edit'); setNotice(''); }} disabled={!!saved.outbound_at || shipBusy}>编辑单据</button>{saved.outbound_at ? <button type='button' className={styles.primary} onClick={() => { setPreviewIntent('reprint'); setPreview(saved); }}>再次打印</button> : <button type='button' className={styles.primary} onClick={shipAndPrint} disabled={shipBusy || dirty}>{shipBusy ? '出库中…' : '确认出库并打印'}</button>}</footer>
+        <footer className={styles.actions}><button type='button' className={styles.secondary} onClick={() => { setTab('edit'); setNotice(''); }} disabled={!!saved.outbound_at || shipBusy}>编辑单据</button>{saved.outbound_at ? <button type='button' className={styles.primary} onClick={() => { setPreviewIntent('reprint'); setPreview(saved); }}>再次打印</button> : <button type='button' className={styles.primary} onClick={shipAndPrint} disabled={shipBusy || dirty}>{shipBusy ? '出库中…' : native ? paired && printAfterOutbound ? '确认出库并打印' : '确认出库' : '确认出库并打印'}</button>}</footer>
       </> : <>
         <div className={styles.documentStatus}><span>{saved?.number || '新送货单'}</span><span>{busy ? '正在处理…' : dirty ? '待保存' : saved ? '已保存' : '填写后保存'}</span></div>
         <fieldset disabled={busy} className={styles.form}>
@@ -353,7 +353,7 @@ export default function PrintCenterPage() {
     {specificationOpen && <SpecificationPicker customerId={draft.customer_id} customerName={draft.customer_name} items={draft.items} onAdd={addSpecifications} onClose={() => setSpecificationOpen(false)} />}
     {customerOpen && <div className={styles.backdrop} onClick={() => setCustomerOpen(false)}><section role='dialog' aria-modal='true' aria-label='搜索客户' className={styles.dialog} onClick={event => event.stopPropagation()}><div className={styles.sectionHeading}><h2>选择客户</h2><button type='button' className={styles.textButton} onClick={() => setCustomerOpen(false)}>关闭</button></div><input autoFocus type='search' aria-label='搜索客户名称或电话' placeholder='客户名称 / 联系人 / 电话' value={customerQuery} onChange={event => setCustomerQuery(event.target.value)} /><div className={styles.customerResults}>{customerLoading ? <p className={styles.muted}>正在查找…</p> : customerError ? <div className={styles.error} role='alert'>{customerError}<button type='button' onClick={() => setCustomerRetry(value => value + 1)}>重试</button></div> : customers.length ? customers.map(customer => <button type='button' className={styles.customer} key={customer.id} onClick={() => chooseCustomer(customer)}><strong>{customer.name}</strong><span>{[customer.contact, customer.phone].filter(Boolean).join(' · ') || '暂无联系人'}</span>{customer.address && <small>{customer.address}</small>}</button>) : <p className={styles.muted}>没有找到客户，可关闭后直接填写收货单位</p>}</div></section></div>}
     {confirmDiscard && <div className={styles.backdrop}><section role='dialog' aria-modal='true' aria-label='保留未保存内容' className={styles.dialog}><h2>当前内容还没有保存</h2><p>离开后，本次修改将不会保留。</p><div className={styles.confirmActions}><button type='button' className={styles.secondary} onClick={() => { setConfirmDiscard(false); pendingNavigation.current = null; }}>继续编辑</button><button type='button' className={styles.primary} onClick={() => { const action = pendingNavigation.current; pendingNavigation.current = null; setConfirmDiscard(false); setDirty(false); setDraft(saved ? noteDraft(saved) : newNote()); setNotice(''); action?.(); }}>放弃并继续</button></div></section></div>}
-    {preview && <PrintPreview key={`${saved?.id || 'draft'}:${saved?.version || 0}:${previewIntent}`} note={preview} saved={saved} reprintIntent={previewIntent === 'reprint'} autoSend={previewIntent === 'auto'} onClose={closePreview} />}
+    {preview && <PrintPreview key={`${saved?.id || 'draft'}:${saved?.version || 0}:${previewIntent}`} note={preview} saved={saved} reprintIntent={previewIntent === 'reprint'} autoSend={previewIntent === 'auto' || previewIntent === 'direct'} onClose={closePreview} />}
   </main>;
 }
 

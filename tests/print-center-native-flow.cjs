@@ -77,6 +77,8 @@ async function main() {
   const submissionAttempts = [];
   const droppedSubmissionIds = new Set();
   let retryNoteId;
+  let failNextDeviceQuery = false;
+  let deviceQueryCount = 0;
   const physicalPrints = 0;
   let page;
 
@@ -131,6 +133,13 @@ async function main() {
       if (url.origin === origin || !/^https?:$/.test(url.protocol)) return route.continue();
       if (!url.pathname.startsWith('/api/')) return route.abort();
       const isSubmission = url.pathname === '/api/remote-print/jobs' && request.method() === 'POST';
+      if (url.pathname === '/api/remote-print/device' && request.method() === 'GET') {
+        deviceQueryCount++;
+        if (failNextDeviceQuery) {
+          failNextDeviceQuery = false;
+          return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ success: false, message: '测试设备状态查询暂时失败' }) });
+        }
+      }
       const submitted = isSubmission ? request.postDataJSON() : undefined;
       if (submitted) {
         submissionAttempts.push(submitted);
@@ -177,6 +186,8 @@ async function main() {
     await expect(remotePanel()).toHaveAttribute('open', '');
     await expect(preview().getByRole('button', { name: '发送到630K', exact: true })).toBeEnabled();
     await expect(remotePanel()).toContainText('店里电脑');
+    await wait(1200);
+    assert.equal(postedJobs.length, 0, 'ordinary preview stays manual after pairing and never auto-sends');
     await page.screenshot({ path: path.join(artifacts, 'native-preview-paired.png'), fullPage: true });
     await button('返回单据').click();
 
@@ -191,30 +202,36 @@ async function main() {
     await page.getByLabel('送货人', { exact: true }).fill('李师傅');
     await expect(footerButton('仅保存')).toBeEnabled();
     await expect(footerButton('保存并打印')).toBeEnabled();
-    await footerButton('仅保存').click();
-    await expect(footerButton('已保存')).toBeDisabled();
-
-    // The native editor's paired footer opens the preview, whose primary
-    // action sends the saved note to the connected shop computer.
-    await footerButton('打印到630K').click();
+    // Save-and-print is a single explicit action: saving opens preview and
+    // automatically sends exactly once without requiring another tap.
+    await footerButton('保存并打印').click();
+    await expect.poll(() => db.listPrintNotes().find(note => note.id === saved.id)?.sender).toBe('李师傅');
     await expect(preview()).toBeVisible();
-    await expect(preview().getByRole('button', { name: '发送到630K', exact: true })).toBeEnabled();
     const remoteDetails = remotePanel();
-    if (await remoteDetails.locator('summary').evaluate(element => element.parentElement.open)) {
-      await remoteDetails.locator('summary').click();
-      await expect(remoteDetails).not.toHaveAttribute('open', '');
-    }
-    await preview().getByRole('button', { name: '发送到630K', exact: true }).click();
-    await expect(remoteDetails).toHaveAttribute('open', '');
+    await expect.poll(() => postedJobs.filter(job => job.note_id === saved.id).length).toBe(1);
     await expect(remoteDetails.getByRole('status')).toContainText('等待打印电脑接收');
-    await expect(preview().getByRole('button', { name: '任务处理中…', exact: true })).toBeDisabled();
+    await expect.poll(() => agentJobs.filter(job => job.phase === 'acknowledged').length).toBe(1);
     await expect(preview()).toBeHidden({ timeout: 15000 });
     await expect(printNotice()).toBeVisible();
     await expect(printNotice()).toContainText('送入打印队列');
-    await expect.poll(() => agentJobs.filter(job => job.phase === 'acknowledged').length).toBe(1);
     assert.deepEqual(agentErrors, []);
     assert.equal(agentJobs[0].noteId, saved.id);
     assert.equal(agentJobs[1].status, 'queued');
+
+    // Opening direct print again for an already queued, same-version note only
+    // recovers the existing task. It must not silently create a second copy.
+    await button('当前单据').click();
+    await expect(page.getByRole('heading', { name: '单据详情' })).toBeVisible();
+    await button('编辑单据').click();
+    await expect(footerButton('打印到630K')).toBeEnabled();
+    await footerButton('打印到630K').click();
+    await expect(preview()).toBeVisible();
+    await expect(preview().getByRole('button', { name: '再打印一份', exact: true })).toBeEnabled({ timeout: 12000 });
+    await expect(page.getByRole('group', { name: '确认重新打印' })).toHaveCount(0);
+    await wait(1200);
+    assert.equal(postedJobs.filter(job => job.note_id === saved.id).length, 1, 'direct reopen of an already printed version must not submit a new copy');
+    assert.equal(submissionAttempts.filter(job => job.note_id === saved.id).length, 1, 'existing same-version job is only recovered');
+    await button('返回单据').click();
 
     await button('历史单据').click();
     await expect(page.locator('main[data-print-view="history"]')).toBeVisible();
@@ -264,11 +281,13 @@ async function main() {
     await page.getByRole('button', { name: new RegExp(saved.number) }).first().click();
     await expect(page.getByRole('heading', { name: '单据详情' })).toBeVisible();
     await expect(autoPrint).not.toBeChecked();
-    await button('确认出库并打印').click();
+    await expect(button('确认出库')).toBeVisible();
+    await expect(button('确认出库并打印')).toHaveCount(0);
+    await button('确认出库').click();
     await expect(preview()).toBeVisible();
     await wait(1200);
     assert.equal(postedJobs.length, 2, 'default-off outbound flow must not auto-submit a third print job');
-    await expect(preview().getByRole('button', { name: '发送到630K', exact: true })).toBeEnabled();
+    await expect(preview().getByRole('button', { name: /发送到630K|再打印一份/, exact: true })).toBeEnabled();
     await button('返回单据').click();
     const shipped = db.listPrintNotes().find(note => note.id === saved.id);
     assert.ok(shipped.outbound_at, 'the test shipped the original linked note');
@@ -284,11 +303,25 @@ async function main() {
     await page.getByRole('button', { name: new RegExp(copied.number) }).first().click();
     await expect(page.getByRole('heading', { name: '单据详情' })).toBeVisible();
     await button('编辑单据').click();
+    const deviceQueriesBeforeRetry = deviceQueryCount;
+    failNextDeviceQuery = true;
     await footerButton('打印到630K').click();
     await expect(preview()).toBeVisible();
-    await preview().getByRole('button', { name: '发送到630K', exact: true }).click();
+    await expect(preview().getByRole('button', { name: '重试连接', exact: true })).toBeEnabled();
+    await expect.poll(() => deviceQueryCount).toBe(deviceQueriesBeforeRetry + 1);
+    assert.equal(submissionAttempts.filter(job => job.note_id === copied.id).length, 0, 'a failed read-only connection check must not create a print job');
+    const deviceQueriesAtRetryClick = deviceQueryCount;
+    await preview().getByRole('button', { name: '重试连接', exact: true }).click();
+    await expect.poll(() => deviceQueryCount, { timeout: 2000 }).toBeGreaterThan(deviceQueriesAtRetryClick);
+    await expect(remotePanel()).toContainText('店里电脑');
+    // Direct-print automatically makes the first attempt; this fixture drops
+    // it before the server receives it, and the user retries once only after
+    // status recovery confirms the original id was never accepted.
+    await expect.poll(() => submissionAttempts.filter(job => job.note_id === copied.id).length).toBe(1);
     await expect(remotePanel().getByRole('alert').filter({ hasText: '服务器尚未收到该任务' })).toBeVisible();
     await expect(preview().getByRole('button', { name: '发送到630K', exact: true })).toBeEnabled();
+    await wait(1000);
+    assert.equal(submissionAttempts.filter(job => job.note_id === copied.id).length, 1, 'a failed direct attempt is not retried in a background loop');
     const retryAttempts = submissionAttempts.filter(job => job.note_id === copied.id);
     assert.equal(retryAttempts.length, 1, 'the first retry-fixture request was sent once before connection loss');
     await preview().getByRole('button', { name: '发送到630K', exact: true }).click();
@@ -330,6 +363,8 @@ async function main() {
     await expect(autoPrint).not.toBeChecked();
     await autoPrint.check();
     await expect(autoPrint).toBeChecked();
+    await expect(button('确认出库并打印')).toBeVisible();
+    await expect(button('确认出库')).toHaveCount(0);
     await page.screenshot({ path: path.join(artifacts, 'outbound-auto-print-enabled.png'), fullPage: true });
     await button('确认出库并打印').click();
     await expect(preview()).toBeVisible();
