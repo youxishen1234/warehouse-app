@@ -26,7 +26,8 @@ export default defineConfig<'webpack5'>(async (merge, { mode }) => {
       patterns: [
         { from: 'www/js/home-search.js', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/js/home-search.js' },
         { from: 'www/css/polish.css', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/css/polish.css' }
-        ,{ from: 'src/assets/favicon.svg', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/assets/favicon.svg' }
+        ,{ from: 'src/assets/favicon.svg', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/assets/favicon.svg' },
+        { from: 'src/assets/label-fonts/OFL.txt', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/static/fonts/assets/label-fonts/OFL.txt' }
       ],
       options: {},
     },

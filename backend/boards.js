@@ -14,6 +14,14 @@ const number = (value, label, positive = false, integer = false) => {
   if (!Number.isFinite(result) || result < 0 || result > 100000000 || (positive && result === 0) || (integer && !Number.isSafeInteger(result))) fail(`${label}必须为${positive ? '正' : '非负'}${integer ? '整数' : '数'}，且不超过一亿`);
   return result;
 };
+const batchLabelText = (value, label, max = 120) => {
+  if (value == null) return '';
+  if (typeof value !== 'string') fail(`${label}格式不正确`);
+  const result = value.trim();
+  if (result.length > max) fail(`${label}不能超过${max}个字符`);
+  if (/[\u0000-\u001f\u007f\ufffd]/.test(result)) fail(`${label}不能包含控制字符`);
+  return result;
+};
 const round = (value, digits = 2) => roundDecimal(value, digits);
 function validateSpec(raw) {
   const spec = {};
@@ -53,7 +61,7 @@ function receive(data, raw) {
   const now = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   if (date > today) fail('送货日期不能晚于今天');
-  const batch = { ...spec, id: `BOARD-${date.replace(/-/g, '')}-${crypto.randomBytes(6).toString('hex').toUpperCase()}`, specKey: specKey(spec), supplier, orderedQty, receivedQty, remainingQty: receivedQty, giftQty: Math.max(0, receivedQty - orderedQty), shortageQty: Math.max(0, orderedQty - receivedQty), billedArea, unitPrice, amount, date, deliveryNo: text(raw.deliveryNo, '送货单号'), location: text(raw.location, '库位'), remark: text(raw.remark, '备注', false, 500), warningQty: number(raw.warningQty ?? 0, '预警数量', false, true), createdAt: Date.now() };
+  const batch = { ...spec, id: `BOARD-${date.replace(/-/g, '')}-${crypto.randomBytes(6).toString('hex').toUpperCase()}`, specKey: specKey(spec), supplier, customerName: batchLabelText(raw.customerName, '客户'), material: batchLabelText(raw.material, '材质 / 配纸'), printPlate: batchLabelText(raw.printPlate, '印刷版名'), printColor: batchLabelText(raw.printColor, '印刷颜色'), orderedQty, receivedQty, remainingQty: receivedQty, giftQty: Math.max(0, receivedQty - orderedQty), shortageQty: Math.max(0, orderedQty - receivedQty), billedArea, unitPrice, amount, date, deliveryNo: text(raw.deliveryNo, '送货单号'), location: text(raw.location, '库位'), remark: text(raw.remark, '备注', false, 500), warningQty: number(raw.warningQty ?? 0, '预警数量', false, true), createdAt: Date.now() };
   data.board_batches ||= []; data.board_movements ||= [];
   data.board_batches.push(batch);
   data.board_movements.push({ id: crypto.randomUUID(), batchId: batch.id, type: 'in', quantity: receivedQty, balance: receivedQty, date, remark: batch.remark, createdAt: batch.createdAt });
@@ -89,6 +97,9 @@ function validate(data) {
     ids.add(b.id); validateSpec(b);
     if (b.specKey !== specKey(b)) fail('纸板规格索引不一致');
     text(b.supplier, '板厂', true); number(b.remainingQty, '批次库存', false, true); number(b.receivedQty, '实收数', true, true); number(b.orderedQty, '订购数', true, true);
+    for (const [field, label] of [['customerName', '客户'], ['material', '材质 / 配纸'], ['printPlate', '印刷版名'], ['printColor', '印刷颜色']]) {
+      if (b[field] !== undefined) batchLabelText(b[field], label);
+    }
     number(b.billedArea, '计费平米', true); number(b.unitPrice, '每平米单价'); number(b.warningQty, '预警数量', false, true);
     if (b.amount !== round(b.billedArea * b.unitPrice) || b.giftQty !== Math.max(0, b.receivedQty - b.orderedQty) || b.shortageQty !== Math.max(0, b.orderedQty - b.receivedQty)) fail('纸板金额或赠送数量不一致');
     if (typeof b.date !== 'string' || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(b.date) || !Number.isFinite(Date.parse(b.date)) || new Date(b.date).toISOString().slice(0, 10) !== b.date) fail('纸板批次日期无效');
@@ -112,6 +123,9 @@ function update(data, id, raw) {
   if (movements.some(m => m.type !== 'in')) fail('已有领料或盘点记录，不能编辑入库单，请使用盘点功能调整库存');
   const draft = {};
   const next = receive(draft, raw);
+  for (const field of ['customerName', 'material', 'printPlate', 'printColor']) {
+    if (!Object.prototype.hasOwnProperty.call(raw, field) && batch[field] !== undefined) next[field] = batch[field];
+  }
   Object.assign(batch, next, { id, createdAt: batch.createdAt });
   Object.assign(movements[0], { quantity: next.receivedQty, balance: next.receivedQty, date: next.date, remark: next.remark });
   return list(data).find(b => b.id === id);

@@ -2,6 +2,7 @@
 const { app, BrowserWindow, session } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 const { PNG } = require('pngjs');
 const { buildLabelHtml, buildCalibrationHtml } = require('./k3-layout.cjs');
 
@@ -41,15 +42,32 @@ app.whenReady().then(async () => {
     const rendered = kind === 'calibration' ? await buildCalibrationHtml({ profile }) : await buildLabelHtml({ kind, data, profile });
     const isolated = session.fromPartition('k3-label-local');
     isolated.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
-    isolated.webRequest.onBeforeRequest((details, callback) => callback({ cancel: !details.url.startsWith('data:') }));
+    const htmlFile = path.join(path.dirname(inputFile), 'label.html');
+    fs.writeFileSync(htmlFile, rendered.html, { encoding: 'utf8', mode: 0o600 });
+    const allowedHtmlUrl = pathToFileURL(htmlFile).href;
+    isolated.webRequest.onBeforeRequest((details, callback) => callback({
+      cancel: !details.url.startsWith('data:') && details.url !== allowedHtmlUrl,
+    }));
     window = new BrowserWindow({
       show: false, width: Math.max(800, width + 40), height: Math.max(1000, height + 40),
       webPreferences: { session: isolated, contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false, deviceScaleFactor: 1 },
     });
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     window.webContents.on('will-navigate', event => event.preventDefault());
-    await window.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(rendered.html));
+    await window.loadFile(htmlFile);
     await window.webContents.executeJavaScript('document.fonts.ready.then(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))))');
+    const overflowFields = await window.webContents.executeJavaScript(`Array.from(document.querySelectorAll('[data-fit]'))
+      .filter(element => {
+        const maxHeight = parseFloat(getComputedStyle(element).maxHeight);
+        const verticalOverflow = element.classList.contains('paperboard-value')
+          ? Number.isFinite(maxHeight) && element.scrollHeight > maxHeight + 2
+          : element.scrollHeight > element.clientHeight + 2;
+        return element.scrollWidth > element.clientWidth + 2 || verticalOverflow;
+      })
+      .map(element => element.dataset.field || '纸板标签整体')`);
+    if (overflowFields.length) {
+      rendered.warnings = [...new Set([...(rendered.warnings || []), ...overflowFields.map(field => `标签字段「${field}」超出可打印范围；已停止打印`)])];
+    }
 
     const image = await window.webContents.capturePage({ x: 0, y: 0, width, height });
     const png = PNG.sync.read(image.toPNG());

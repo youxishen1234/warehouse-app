@@ -43,7 +43,15 @@ const openIOSDownload = () => {
   void Taro.switchTab({ url: '/pages/mine/index' });
 };
 function snapshotOf(record: RecordChoice, finished: FinishedLabelOptions, board: BoardLabelOptions, at: string): LabelSnapshot {
-  return record.kind === 'finished-product' ? buildFinishedLabelSnapshot(record.data, finished, at) : buildBoardLabelSnapshot(record.data, board);
+  if (record.kind === 'finished-product') return buildFinishedLabelSnapshot(record.data, finished, at);
+  // Existing installed native binaries have a strict v1 field whitelist.
+  // The business template is a USB/PC feature; preserve the Bluetooth DTO.
+  const snapshot = { ...buildBoardLabelSnapshot(record.data, board) };
+  delete snapshot.customerName;
+  delete snapshot.material;
+  delete snapshot.printPlate;
+  delete snapshot.printColor;
+  return Object.freeze(snapshot);
 }
 function fieldValue(key: string, value: unknown, data: LabelSnapshot): string {
   if (['boardLength', 'boardWidth', 'cartonLength', 'cartonWidth', 'cartonHeight'].includes(key)) return `${value} cm`;

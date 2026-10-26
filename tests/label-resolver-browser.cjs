@@ -12,7 +12,7 @@ const batchId = 'BOARD-20261016-A1B2C3D4E5F6';
 const cors = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET,POST,OPTIONS', 'access-control-allow-headers': 'Content-Type,Authorization,X-Warehouse-Device' };
 const guest = { token: 'label-resolver-fixture', user: { id: 'label-reader', username: 'anonymous-reader', role: 'viewer' } };
 const product = () => ({ id: 7, name: '标签成品样例', specification: '', length: 420.5, width: 260, unit: '箱', stock: 0, category: '纸箱', price: 91234.56, safety_stock: 4, created_at: 1, updated_at: 2, phone: 'SECRET-PRODUCT-PHONE', remark: 'SECRET-PRODUCT-REMARK' });
-const board = () => ({ id: batchId, supplier: '标签板厂样例', boardLength: 120.5, boardWidth: 80, fluteType: 'AB', layers: 5, faceGsm: 180, linerGsm: 150, flutingGsm: 120, cartonLength: 42, cartonWidth: 26, cartonHeight: 18, date: '2026-10-16', location: 'A-1', receivedQty: 30, remainingQty: 0, unitPrice: 91234.56, amount: 93456.78, recipient: 'SECRET-BATCH-RECIPIENT', remark: 'SECRET-BATCH-REMARK', movements: [{ id: 'internal-movement-id', batchId, type: 'count', quantity: -3, balance: 0, createdAt: 1792137600000, date: '2026-10-16', recipient: 'SECRET-MOVEMENT-RECIPIENT', remark: 'SECRET-MOVEMENT-REMARK', phone: 'SECRET-MOVEMENT-PHONE' }] });
+const board = () => ({ id: batchId, customerName:'客户甲', material:'牛卡高瓦', printPlate:'包装A', printColor:'红黑', supplier: '标签板厂样例', boardLength: 120.5, boardWidth: 80, fluteType: 'AB', layers: 5, faceGsm: 180, linerGsm: 150, flutingGsm: 120, cartonLength: 42, cartonWidth: 26, cartonHeight: 18, date: '2026-10-16', location: 'A-1', receivedQty: 30, remainingQty: 0, unitPrice: 91234.56, amount: 93456.78, recipient: 'SECRET-BATCH-RECIPIENT', remark: 'SECRET-BATCH-REMARK', movements: [{ id: 'internal-movement-id', batchId, type: 'count', quantity: -3, balance: 0, createdAt: 1792137600000, date: '2026-10-16', recipient: 'SECRET-MOVEMENT-RECIPIENT', remark: 'SECRET-MOVEMENT-REMARK', phone: 'SECRET-MOVEMENT-PHONE' }] });
 const reply = (route, data, status = 200, message = '') => route.fulfill({ status, contentType: 'application/json', headers: cors, body: JSON.stringify({ success: status >= 200 && status < 300, data, message }) });
 const target = (kind, id) => `/#/pages/label-resolver/index?v=1&kind=${kind}&id=${id}`;
 
@@ -95,6 +95,7 @@ async function paperboard(browser, origin) {
   try {
     await f.page.goto(origin + target('paperboard-batch', batchId));
     await expect(row(f.page, '批次 ID')).toContainText(batchId);
+    for (const [label,value] of [['客户','客户甲'],['材质/配纸','牛卡高瓦'],['印刷版名','包装A'],['颜色','红黑']]) await expect(row(f.page,label)).toContainText(value);
     await expect(row(f.page, '纸板规格')).toContainText('120.5 × 80 cm');
     await expect(row(f.page, '当前余量')).toContainText('0 张');
     await expect(row(f.page, '实收数量')).toContainText('30 张');

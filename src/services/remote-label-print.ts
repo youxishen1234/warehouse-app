@@ -62,8 +62,9 @@ export function readRemoteLabelAttempt(): RemoteLabelAttempt | null {
   } catch { return null; }
 }
 
-export function saveRemoteLabelAttempt(attempt: RemoteLabelAttempt): void {
-  Taro.setStorageSync(attemptKey, attempt);
+export function saveRemoteLabelAttempt(attempt: RemoteLabelAttempt | null): void {
+  if (attempt) Taro.setStorageSync(attemptKey, attempt);
+  else Taro.removeStorageSync(attemptKey);
 }
 
 export function newRemoteLabelJobId(): string {

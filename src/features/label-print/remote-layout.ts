@@ -2,6 +2,8 @@ import QRCode from 'qrcode';
 import type { MediaProfile } from './native';
 import type { LabelKind } from './links';
 import type { LabelSnapshot } from './model';
+import sourceHanHeavy from '../../assets/label-fonts/SourceHanSansSC-Heavy.woff2';
+import sourceHanMedium from '../../assets/label-fonts/SourceHanSansSC-Medium.woff2';
 
 const DOTS_PER_MM = 8;
 const mm = (value: number) => `${value}mm`;
@@ -58,6 +60,77 @@ function boardRows(data: LabelSnapshot): LabelRow[] {
   return rows;
 }
 
+const PAPERBOARD_LABEL_STYLE = `
+@font-face{font-family:PaperboardSourceHan;src:url("${sourceHanHeavy}") format("woff2");font-style:normal;font-weight:900;font-display:block}
+@font-face{font-family:PaperboardSourceHan;src:url("${sourceHanMedium}") format("woff2");font-style:normal;font-weight:500;font-display:block}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#fff}
+body{font-family:PaperboardSourceHan,sans-serif;color:#000;-webkit-font-smoothing:antialiased}
+.warehouse-label{position:relative;overflow:hidden;background:#fff;transform-origin:top left}
+.paperboard-label{display:flex;flex-direction:column;overflow:hidden;padding:2.5mm 3mm}
+.paperboard-header{height:6mm;flex:0 0 auto;display:flex;align-items:flex-start;justify-content:space-between;border-bottom:.5mm solid #000;font-size:3.5mm;font-weight:900;letter-spacing:0}
+.paperboard-tag{font-size:2mm;letter-spacing:0;padding-top:.6mm;font-weight:500}
+.paperboard-major{flex:0 0 auto;padding:.8mm 0 .8mm;border-bottom:.25mm solid #000}
+.paperboard-key{font-size:3mm;font-weight:500;line-height:1.2;margin-bottom:.55mm}
+.paperboard-value{font-size:7.25mm;font-weight:900;letter-spacing:0;line-height:1.15;max-height:2.5em;overflow:visible;overflow-wrap:anywhere;word-break:break-word}
+.paperboard-spec .paperboard-value{font-size:7.75mm}
+.paperboard-plate{border-bottom:.5mm solid #000}
+.paperboard-bottom{display:flex;gap:1.75mm;align-items:center;margin-top:auto;padding-top:0.5mm;min-height:24.5mm}
+.paperboard-details{flex:1;min-width:0;font-size:3.375mm;font-weight:500;line-height:1.55;overflow:hidden}
+.paperboard-batch{font-size:2.375mm;line-height:1.4;overflow-wrap:anywhere;word-break:break-word}
+.paperboard-qr{width:24mm;height:24mm;flex:0 0 24mm;display:flex;align-items:center;justify-content:center}
+.paperboard-qr img{display:block;width:24mm;height:24mm;image-rendering:pixelated}
+`;
+
+async function buildLargePaperboardLabel(profile: MediaProfile, data: LabelSnapshot): Promise<{ html: string; warnings: string[] }> {
+  if (!('batchId' in data) || !('boardLength' in data)) throw new Error('纸板批次资料无效');
+  const customer = text(data.customerName) || '未填写';
+  const material = text(data.material) || '未填写';
+  const plate = [text(data.printPlate), text(data.printColor)].filter(Boolean).join(' · ') || '未填写';
+  const length = decimal(data.boardLength), width = decimal(data.boardWidth);
+  const quantity = num(data.remainingQtySnapshot) ?? num(data.receivedQty);
+  const date = text(data.receivedDate) || '未填写';
+  const url = text(data.batchUrl);
+  const warnings: string[] = [];
+  if (!url.startsWith('https://youxishen.online/#/pages/label-resolver/index?v=1&kind=paperboard-batch&id=')) {
+    warnings.push('二维码链接与当前纸板批次不一致，已停止打印');
+  }
+  const qr = !warnings.length
+    ? await QRCode.toDataURL(url, {
+      errorCorrectionLevel: 'M', margin: 4, width: 336,
+      color: { dark: '#000000ff', light: '#ffffffff' }
+    })
+    : '';
+  const values: LabelRow[] = [
+    ['客户', customer, 'customer'],
+    ['规格 · 长 × 宽（cm）', `${length} × ${width}`, 'spec'],
+    ['材质 / 配纸', material, 'material'],
+    ['印刷版 · 版名 / 颜色', plate, 'plate']
+  ];
+  const fields = values.map(([label, value, key]) =>
+    `<div class="paperboard-major${key === 'spec' ? ' paperboard-spec' : ''}${key === 'plate' ? ' paperboard-plate' : ''}">` +
+    `<div class="paperboard-key">${esc(label)}</div>` +
+    `<div class="paperboard-value" data-fit data-field="${key}">${esc(value)}</div></div>`
+  ).join('');
+  const qtyText = quantity === null ? '未填写' : decimal(quantity);
+  const batch = text(data.batchId);
+  const widthMm = profile.widthMm, heightMm = profile.heightMm;
+  const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src 'self' data:; base-uri 'none'">
+<style>${PAPERBOARD_LABEL_STYLE}
+.warehouse-label{width:${mm(widthMm)};height:${mm(heightMm)}}
+.paperboard-label{width:${mm(widthMm)};height:${mm(heightMm)};padding:${mm(profile.marginMm.top + 2.5)} ${mm(profile.marginMm.right + 3)} ${mm(profile.marginMm.bottom + 2.5)} ${mm(profile.marginMm.left + 3)}}
+</style></head><body><div class="warehouse-label paperboard-label" data-page data-fit>
+  <div class="paperboard-header"><span>纸板标签</span><span class="paperboard-tag">客户专用 · 生产识别</span></div>
+  ${fields}
+  <div class="paperboard-bottom">
+    <div class="paperboard-details">数量：${esc(qtyText)} 张<br>日期：${esc(date)}<br><span class="paperboard-batch">批次：${esc(batch)}</span></div>
+    ${qr ? `<div class="paperboard-qr" data-qr><img src="${qr}" alt="批次二维码"></div>` : ''}
+  </div>
+</div></body></html>`;
+  return { html, warnings };
+}
+
 const STYLE = `
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{background:#fff}
@@ -94,6 +167,9 @@ export async function buildRemoteLabelHtml(input: {
   if (usableWidth < 15 || usableHeight < 25) throw new Error('标签可用区域过小，无法排版');
 
   const board = kind === 'paperboard-batch';
+  if (board && Math.abs(profile.widthMm - 70) < 0.001 && Math.abs(profile.heightMm - 100) < 0.001) {
+    return buildLargePaperboardLabel(profile, data);
+  }
   const rows = board ? boardRows(data) : finishedRows(data);
   if (!rows.length) throw new Error('标签资料为空');
   const url = text(board ? ('batchUrl' in data ? data.batchUrl : '') : ('productUrl' in data ? data.productUrl : ''));

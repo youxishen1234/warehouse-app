@@ -17,6 +17,7 @@ export type FinishedLabelSnapshot = Readonly<{
   material?: string; corrugation?: string; layers?: number; weight?: number; stockSnapshot?: number; printedAt?: string;
 }>;
 export type BoardLabelSnapshot = Readonly<{
+  customerName?: string; material?: string; printPlate?: string; printColor?: string;
   batchId: string; boardLength: number; boardWidth: number; fluteType: string; supplier: string; batchUrl: string;
   layers?: number; faceGsm?: number; linerGsm?: number; flutingGsm?: number;
   cartonLength?: number; cartonWidth?: number; cartonHeight?: number;
@@ -90,6 +91,10 @@ export function buildBoardLabelSnapshot(batch: BoardBatch, options: BoardLabelOp
     fluteType: text(batch.fluteType, 'fluteType', '楞型', true, 12),
     supplier: text(batch.supplier, 'supplier', '板厂'), batchUrl: buildLabelUrl('paperboard-batch', id)
   };
+  for (const [field, title] of [['customerName', '客户'], ['material', '材质/配纸'], ['printPlate', '印刷版名'], ['printColor', '颜色']] as const) {
+    const value = optionalText(batch[field], field, title);
+    if (value !== undefined) snapshot[field] = value;
+  }
   for (const [field, title] of [['layers', '层数'], ['faceGsm', '面纸克重（g/m²）'], ['linerGsm', '里纸克重（g/m²）'], ['flutingGsm', '楞纸克重（g/m²）']] as const) {
     if (options[field] === true) { const value = optionalPositive(batch[field], field, title, field === 'layers'); if (value !== undefined) snapshot[field] = value; }
   }

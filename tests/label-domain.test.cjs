@@ -142,3 +142,16 @@ test('fresh reads always bypass earlier requests and reject missing/mismatched r
   await assert.rejects(mismatch.fetchLatestLabelRecord('finished-product', '7'), /不存在/);
   await assert.rejects(mismatch.fetchLatestLabelRecord('paperboard-batch', batchId), /不存在/);
 });
+
+test('paperboard business label carries saved customer material plate and color only', () => {
+ const input = board({customerName:'客户甲', material:'牛卡/高瓦', printPlate:'包装A', printColor:'红黑'});
+ const before = JSON.stringify(input);
+ const snapshot = domain.buildBoardLabelSnapshot(input, {receivedDate:true, receivedQty:true});
+ for (const key of ['customerName','material','printPlate','printColor']) assert.equal(snapshot[key],input[key]);
+ assert.equal(snapshot.receivedQty,0);
+ assert.equal(snapshot.receivedDate,input.date);
+ assert.equal(JSON.stringify(input),before);
+ assert.equal(domain.buildBoardLabelSnapshot(board()).customerName,undefined);
+ problem(()=>domain.buildBoardLabelSnapshot(board({printColor:'红\u0000黑'})), 'printColor');
+ assert.ok(!('amount' in snapshot));
+});

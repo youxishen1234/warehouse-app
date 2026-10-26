@@ -164,6 +164,10 @@ async function main() {
     // actual keyboard input so the auto-inserted separator behavior is covered.
     await openBoardEntry();
     await fieldInput('板厂名称').fill('演示纸板入库板厂');
+    await fieldInput('客户').fill('青禾纸品');
+    await fieldInput('材质 / 配纸').fill('牛卡 / 120g高强瓦楞 / 140g芯纸');
+    await fieldInput('印刷版名').fill('青禾正面版');
+    await fieldInput('颜色').fill('红 + 黑');
     await fieldInput('实收数').fill('8');
     await fieldInput('计费平米').fill('50');
     await fieldInput('每平米单价').fill('2.4');
@@ -242,6 +246,11 @@ async function main() {
     const saved = db.listBoards().find(batch => batch.supplier === '演示纸板入库板厂');
     assert.ok(saved, '确认入库后后端应保存新纸板批次');
     assert.deepEqual(
+      [saved.customerName, saved.material, saved.printPlate, saved.printColor],
+      ['青禾纸品', '牛卡 / 120g高强瓦楞 / 140g芯纸', '青禾正面版', '红 + 黑'],
+      '新批次应保存实际输入的客户、材质/配纸、印刷版名和颜色'
+    );
+    assert.deepEqual(
       [saved.boardLength, saved.boardWidth, saved.cartonLength, saved.cartonWidth, saved.cartonHeight],
       [30, 20, 30, 20, 15],
       'API 应收到实际解析出的2维纸板尺寸和3维纸箱尺寸'
@@ -267,12 +276,20 @@ async function main() {
     await expect(boardSpec).toHaveValue('30×20');
     await expect(cartonSpec).toHaveValue('30×20×15');
     await expect(fieldInput('板厂名称')).toHaveValue('演示纸板入库板厂');
+    await expect(fieldInput('客户')).toHaveValue('青禾纸品');
+    await expect(fieldInput('材质 / 配纸')).toHaveValue('牛卡 / 120g高强瓦楞 / 140g芯纸');
+    await expect(fieldInput('印刷版名')).toHaveValue('青禾正面版');
+    await expect(fieldInput('颜色')).toHaveValue('红 + 黑');
     await expect(fieldInput('实收数')).toHaveValue('8');
     await page.reload();
     await expect(page.locator('.team-boot')).toBeHidden();
     await expect(boardSpec).toHaveValue('30×20');
     await expect(cartonSpec).toHaveValue('30×20×15');
     await expect(fieldInput('板厂名称')).toHaveValue('演示纸板入库板厂');
+    await expect(fieldInput('客户')).toHaveValue('青禾纸品');
+    await expect(fieldInput('材质 / 配纸')).toHaveValue('牛卡 / 120g高强瓦楞 / 140g芯纸');
+    await expect(fieldInput('印刷版名')).toHaveValue('青禾正面版');
+    await expect(fieldInput('颜色')).toHaveValue('红 + 黑');
     await expect(fieldInput('实收数')).toHaveValue('8');
     await expect(fieldInput('计费平米')).toHaveValue('50');
     await expect(fieldInput('每平米单价')).toHaveValue('2.4');

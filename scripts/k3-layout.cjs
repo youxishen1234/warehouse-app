@@ -1,6 +1,8 @@
 // K3 label layout. Produces self-contained HTML sized in printer pixels
 // (203 dpi => 8 px per millimetre) so the rendered bitmap maps 1:1 to the head.
 const QRCode = require('qrcode');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const PX_PER_MM = 8;
 const px = mm => Math.round(mm * PX_PER_MM);
@@ -15,6 +17,81 @@ const fmt = value => {
   return Number.isInteger(parsed) ? String(parsed) : String(Number(parsed.toFixed(3)));
 };
 const when = value => text(value);
+
+function boardLabelFonts() {
+  const fontDirectory = path.resolve(__dirname, '../src/assets/label-fonts');
+  const heavy = fs.readFileSync(path.join(fontDirectory, 'SourceHanSansSC-Heavy.woff2')).toString('base64');
+  const medium = fs.readFileSync(path.join(fontDirectory, 'SourceHanSansSC-Medium.woff2')).toString('base64');
+  return `
+@font-face{font-family:PaperboardSourceHan;src:url(data:font/woff2;base64,${heavy}) format("woff2");font-style:normal;font-weight:900;font-display:block}
+@font-face{font-family:PaperboardSourceHan;src:url(data:font/woff2;base64,${medium}) format("woff2");font-style:normal;font-weight:500;font-display:block}
+`;
+}
+
+async function buildLargePaperboardLabel({ data, profile, width, height, margin }) {
+  const customer = when(data.customerName) || '未填写';
+  const material = when(data.material) || '未填写';
+  const plate = [when(data.printPlate), when(data.printColor)].filter(Boolean).join(' · ') || '未填写';
+  const quantity = number(data.remainingQtySnapshot) ?? number(data.receivedQty);
+  const date = when(data.receivedDate) || '未填写';
+  const batch = when(data.batchId);
+  const url = when(data.batchUrl);
+  const warnings = [];
+  if (!/^https:\/\/youxishen\.online\/#\/pages\/label-resolver\/index\?v=1&kind=paperboard-batch&id=BOARD-[0-9]{8}-[A-F0-9]{12}$/.test(url)) {
+    warnings.push('二维码链接与当前纸板批次不一致，已停止打印');
+  }
+  let qr = '';
+  if (!warnings.length) {
+    const dataUrl = await QRCode.toDataURL(url, {
+      errorCorrectionLevel: 'M', margin: 4, width: px(24),
+      color: { dark: '#000000ff', light: '#ffffffff' },
+    });
+    qr = `<div class="paperboard-qr" data-qr><img src="${dataUrl}" alt="批次二维码"></div>`;
+  }
+  const fields = [
+    ['客户', customer, 'customer', ''],
+    ['规格 · 长 × 宽（cm）', `${fmt(data.boardLength)} × ${fmt(data.boardWidth)}`, 'spec', 'paperboard-spec'],
+    ['材质 / 配纸', material, 'material', ''],
+    ['印刷版 · 版名 / 颜色', plate, 'plate', 'paperboard-plate'],
+  ].map(([label, value, key, className]) =>
+    `<div class="paperboard-major ${className}"><div class="paperboard-key">${esc(label)}</div>` +
+    `<div class="paperboard-value" data-fit data-field="${key}">${esc(value)}</div></div>`
+  ).join('');
+  const qtyText = quantity === null ? '未填写' : fmt(quantity);
+  const fontCss = boardLabelFonts();
+  const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#fff}
+${fontCss}
+body{font-family:PaperboardSourceHan,sans-serif;color:#000;-webkit-font-smoothing:antialiased}
+.warehouse-label{position:relative;overflow:hidden;background:#fff}
+.paperboard-label{display:flex;flex-direction:column;overflow:hidden;padding:${px(2.5)}px ${px(3)}px}
+.paperboard-header{height:${px(6)}px;flex:0 0 auto;display:flex;align-items:flex-start;justify-content:space-between;border-bottom:${px(.5)}px solid #000;font-size:${px(3.5)}px;font-weight:900;letter-spacing:0}
+.paperboard-tag{font-size:${px(2)}px;letter-spacing:0;padding-top:${px(.6)}px;font-weight:500}
+.paperboard-major{flex:0 0 auto;padding:${px(.8)}px 0 ${px(.8)}px;border-bottom:${px(.25)}px solid #000}
+.paperboard-key{font-size:${px(3)}px;font-weight:500;line-height:1.2;margin-bottom:${px(.55)}px}
+.paperboard-value{font-size:${px(7.25)}px;font-weight:900;letter-spacing:0;line-height:1.15;max-height:2.5em;overflow:visible;overflow-wrap:anywhere;word-break:break-word}
+.paperboard-spec .paperboard-value{font-size:${px(7.75)}px}
+.paperboard-plate{border-bottom:${px(.5)}px solid #000}
+.paperboard-bottom{display:flex;gap:${px(1.75)}px;align-items:center;margin-top:auto;padding-top:${px(.5)}px;min-height:${px(24.5)}px}
+.paperboard-details{flex:1;min-width:0;font-size:${px(3.375)}px;font-weight:500;line-height:1.55;overflow:hidden}
+.paperboard-batch{font-size:${px(2.375)}px;line-height:1.4;overflow-wrap:anywhere;word-break:break-word}
+.paperboard-qr{width:${px(24)}px;height:${px(24)}px;flex:0 0 ${px(24)}px;display:flex;align-items:center;justify-content:center}
+.paperboard-qr img{display:block;width:${px(24)}px;height:${px(24)}px;image-rendering:pixelated}
+.warehouse-label{width:${width}px;height:${height}px}
+.paperboard-label{width:${width}px;height:${height}px;padding:${margin.top + px(2.5)}px ${margin.right + px(3)}px ${margin.bottom + px(2.5)}px ${margin.left + px(3)}px}
+</style></head><body><div class="warehouse-label paperboard-label" data-page data-fit>
+  <div class="paperboard-header"><span>纸板标签</span><span class="paperboard-tag">客户专用 · 生产识别</span></div>
+  ${fields}
+  <div class="paperboard-bottom">
+    <div class="paperboard-details">数量：${esc(qtyText)} 张<br>日期：${esc(date)}<br><span class="paperboard-batch">批次：${esc(batch)}</span></div>
+    ${qr}
+  </div>
+</div></body></html>`;
+  return { html, warnings };
+}
 
 function finishedFields(data) {
   const rows = [];
@@ -96,6 +173,9 @@ async function buildLabelHtml({ kind, data, profile }) {
 
   const warnings = [];
   const isBoard = kind === 'paperboard-batch';
+  if (isBoard && Math.abs(profile.widthMm - 70) < 0.001 && Math.abs(profile.heightMm - 100) < 0.001) {
+    return buildLargePaperboardLabel({ data: data || {}, profile, width, height, margin });
+  }
   const rows = isBoard ? boardFields(data || {}) : finishedFields(data || {});
   const url = text(isBoard ? data?.batchUrl : data?.productUrl);
   const headline = isBoard

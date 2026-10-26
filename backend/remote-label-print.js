@@ -10,7 +10,7 @@ const labelOrigin = 'https://youxishen.online';
 const resolverPath = '/pages/label-resolver/index';
 const profileFields = ['profileId', 'printerName', 'widthMm', 'heightMm', 'paperStyle', 'density', 'marginMm', 'calibrated'];
 const finishedFields = ['productId', 'name', 'specification', 'unit', 'productUrl', 'material', 'corrugation', 'layers', 'weight', 'stockSnapshot', 'printedAt'];
-const boardFields = ['batchId', 'boardLength', 'boardWidth', 'fluteType', 'supplier', 'batchUrl', 'layers', 'faceGsm', 'linerGsm', 'flutingGsm', 'cartonLength', 'cartonWidth', 'cartonHeight', 'receivedDate', 'location', 'receivedQty', 'remainingQtySnapshot'];
+const boardFields = ['customerName', 'material', 'printPlate', 'printColor', 'batchId', 'boardLength', 'boardWidth', 'fluteType', 'supplier', 'batchUrl', 'layers', 'faceGsm', 'linerGsm', 'flutingGsm', 'cartonLength', 'cartonWidth', 'cartonHeight', 'receivedDate', 'location', 'receivedQty', 'remainingQtySnapshot'];
 
 const isObject = value => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const has = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
@@ -119,6 +119,12 @@ function boardSnapshot(batch, submitted) {
     supplier: valueText(batch.supplier, '板厂'),
     batchUrl: labelUrl('paperboard-batch', id)
   };
+  for (const [field, label] of [['customerName', '客户'], ['material', '材质/配纸'], ['printPlate', '印刷版名'], ['printColor', '颜色']]) {
+    if (has(submitted, field)) {
+      const value = optionalText(batch[field], label);
+      if (value !== undefined) snapshot[field] = value;
+    }
+  }
   for (const [field, label, integer] of [['layers', '层数', true], ['faceGsm', '面纸克重', false], ['linerGsm', '里纸克重', false], ['flutingGsm', '楞纸克重', false]]) {
     if (has(submitted, field)) {
       const value = optionalPositive(batch[field], label, integer);

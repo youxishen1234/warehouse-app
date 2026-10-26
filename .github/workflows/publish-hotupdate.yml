@@ -199,6 +199,10 @@ jobs:
           BOARD_SPEC_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
           BOARD_SPEC_EVIDENCE_DIR: release/board-spec-${{ github.run_id }}-${{ github.run_attempt }}
         run: node tests/board-specification-input-browser.cjs
+      - name: Validate paperboard business label entry points
+        env:
+          BOARD_LABEL_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/board-label-entry-browser.cjs
       - name: Run complete backend test suite
         run: node --test backend/*.test.cjs
       - name: Bundle and preflight the exact backend revision

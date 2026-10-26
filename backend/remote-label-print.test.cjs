@@ -124,6 +124,36 @@ test('calibration, profile signature, copies, queue expiry, leases, and device o
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('density 4 paperboard profiles require their own calibration without changing the density 3 profile', () => {
+  const dir = mkdir('remote-label-density-');
+  try {
+    const store = createStore(path.join(dir, 'labels.json'), () => 100000);
+    const registered = store.register('delivery-device-1', '店里电脑', 'K3 USB');
+    const productProfile = store.saveProfile(registered.device.id, makeProfile());
+    const calibration = store.enqueue(registered.device.id, {
+      id: 'density-three-calibration-01', kind: 'calibration', profileId: productProfile.profileId, copies: 1
+    });
+    const claimed = store.claim(registered.agent, true).job;
+    store.acknowledge(registered.agent, calibration.id, { lease: claimed.lease, status: 'queued' });
+    store.confirm(registered.device.id, productProfile.profileId, calibration.id);
+
+    const boardProfile = store.saveProfile(registered.device.id, makeProfile({ profileId: 'board-density-four', density: 4 }));
+    assert.equal(boardProfile.calibrated, false);
+    assert.throws(() => store.confirm(registered.device.id, boardProfile.profileId, calibration.id), /不匹配/);
+    const data = { batchId: 'BOARD-20261025-ABCDEF123456' };
+    assert.throws(() => store.enqueue(registered.device.id, {
+      id: 'board-before-density-four-calibration', kind: 'paperboard-batch', profileId: boardProfile.profileId, copies: 1, data
+    }, data), /校准/);
+    const profiles = store.device(registered.device.id).profiles;
+    assert.equal(profiles.find(item => item.profileId === productProfile.profileId).calibrated, true);
+    assert.equal(profiles.find(item => item.profileId === productProfile.profileId).density, 3);
+
+    const edited = store.saveProfile(registered.device.id, makeProfile({ density: 4 }));
+    assert.equal(edited.calibrated, false, 'changing only density still resets calibration');
+    assert.throws(() => store.confirm(registered.device.id, edited.profileId, calibration.id), /不匹配/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('canonical snapshots are rebuilt from current product and board records, rejecting forged, stale, deleted, and private fields', () => {
   const product = productFixture();
   const batch = {
@@ -148,6 +178,11 @@ test('canonical snapshots are rebuilt from current product and board records, re
     receivedDate: '2026-10-23', location: 'A-01', receivedQty: 80, remainingQtySnapshot: 72
   };
   assert.deepEqual(canonicalSnapshot(db, 'paperboard-batch', board), board);
+  const withoutBusinessFields = Object.fromEntries(Object.entries(board).filter(([key]) => !['customerName', 'material', 'printPlate', 'printColor'].includes(key)));
+  assert.deepEqual(canonicalSnapshot(db, 'paperboard-batch', withoutBusinessFields), withoutBusinessFields, 'pre-existing clients can still print legacy fields');
+  for (const field of ['customerName', 'material', 'printPlate', 'printColor']) {
+    assert.throws(() => canonicalSnapshot(db, 'paperboard-batch', { ...board, [field]: '伪造内容' }), /已更新/);
+  }
   assert.throws(() => canonicalSnapshot(db, 'paperboard-batch', { ...board, remainingQtySnapshot: 71 }), /已更新/);
   assert.throws(() => canonicalSnapshot({ ...db, listBoards: () => [] }, 'paperboard-batch', board), /已删除/);
 });
@@ -265,4 +300,16 @@ test('HTTP routes reuse X-Print-Client pairing, separate label jobs from the leg
     await close(server);
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('business board fields are canonical, reject stale or forged values without inventory writes', () => {
+ const batch={id:'BOARD-20261023-ABCDEF123456',boardLength:100,boardWidth:70,fluteType:'B',supplier:'纸板厂',customerName:'客户甲',material:'牛卡',printPlate:'包装A',printColor:'红黑',remainingQty:0};
+ const db={listBoards:()=>[batch]};
+ const base={batchId:batch.id,boardLength:100,boardWidth:70,fluteType:'B',supplier:'纸板厂',batchUrl:'https://youxishen.online/#/pages/label-resolver/index?v=1&kind=paperboard-batch&id='+batch.id};
+ const snapshot={...base,customerName:batch.customerName,material:batch.material,printPlate:batch.printPlate,printColor:batch.printColor,remainingQtySnapshot:0};
+ const before=JSON.stringify(batch);
+ assert.deepEqual(canonicalSnapshot(db,'paperboard-batch',snapshot),snapshot);
+ for(const field of ['customerName','material','printPlate','printColor']) assert.throws(()=>canonicalSnapshot(db,'paperboard-batch',{...snapshot,[field]:'伪造'}),/已更新/);
+ assert.deepEqual(canonicalSnapshot(db,'paperboard-batch',base),base,'old clients remain compatible');
+ assert.equal(JSON.stringify(batch),before);
 });

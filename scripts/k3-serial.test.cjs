@@ -128,6 +128,7 @@ async function printOnce(options = {}) {
   const width = options.width || 80, height = options.height || 4;
   const result = await client.print({
     width, height, copies: options.copies ?? 1,
+    density: options.density ?? 3,
     rowsBase64: options.rows ? options.rows.toString('base64') : blankRows(width, height).toString('base64'),
   });
   return { printer, result, client };
@@ -145,7 +146,17 @@ test('V4 print sequence is sent in the documented order', async () => {
     COMMAND.PRINT_CHECK_LINE, COMMAND.PAGE_END, COMMAND.PRINT_END,
   ];
   assert.deepEqual(order.slice(0, expected.length), expected);
+  assert.equal(printer.commands.find(item => item.command === COMMAND.SET_DENSITY).payload, '03');
   assert.ok(!order.includes(COMMAND.PRINT_CLEAR), 'PrintClear must never be sent to K3');
+});
+
+test('paperboard density 4 is set before PrintStart while default jobs remain at density 3', async () => {
+  const { printer, result } = await printOnce({ density: 4 });
+  assert.equal(result.status, 'printed');
+  const densityIndex = printer.commands.findIndex(item => item.command === COMMAND.SET_DENSITY);
+  const startIndex = printer.commands.findIndex(item => item.command === COMMAND.PRINT_START);
+  assert.equal(printer.commands[densityIndex].payload, '04');
+  assert.ok(densityIndex >= 0 && densityIndex < startIndex, 'density 4 is acknowledged before PrintStart');
 });
 
 test('PrintStart carries the 7-byte B1 layout used by K3 firmware', async () => {

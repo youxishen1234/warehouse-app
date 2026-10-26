@@ -71,6 +71,10 @@ export default function LabelResolver() {
           {row('商品 ID', detail.data.productId)}
           {row('当前库存', `${detail.data.stockSnapshot} ${detail.data.unit}`)}
         </> : <>
+          {detail.data.customerName && row('客户', detail.data.customerName)}
+          {detail.data.material && row('材质/配纸', detail.data.material)}
+          {detail.data.printPlate && row('印刷版名', detail.data.printPlate)}
+          {detail.data.printColor && row('颜色', detail.data.printColor)}
           {row('纸板规格', `${detail.data.boardLength} × ${detail.data.boardWidth} cm`)}
           {row('楞型', detail.data.fluteType)}
           {row('批次 ID', detail.data.batchId)}

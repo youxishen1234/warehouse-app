@@ -63,6 +63,17 @@ test('printed serial outcome becomes queued with page evidence and is acknowledg
   } finally { fs.rmSync(h.dir, { recursive: true, force: true }); }
 });
 
+test('density 4 from the saved paper profile is passed through to the K3 client', async () => {
+  const paperboardProfile = { ...job().profile, density: 4 };
+  const h = harness({ jobs: [job({ id: 'label-test-density-0001', profile: paperboardProfile })] });
+  try {
+    await h.agent.tick();
+    assert.equal(h.prints.length, 1);
+    assert.equal(h.prints[0].density, 4);
+    assert.equal(h.calls.find(item => item.url.startsWith('agent/jobs/')).body.status, 'queued');
+  } finally { fs.rmSync(h.dir, { recursive: true, force: true }); }
+});
+
 test('a finished label re-probes readiness before accepting the next label', async () => {
   let probes = 0;
   const h = harness({

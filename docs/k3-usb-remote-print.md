@@ -57,3 +57,13 @@ No valid finished-product or paperboard record was available for a business
 label acceptance run: the only product had no dimensions and no board batches
 were present. Create or select a valid record and confirm the correct calibrated
 paper profile before the first production label.
+
+## Paperboard business template (70 × 100 mm portrait)
+
+The paperboard receipt stores optional batch fields customerName, material, printPlate and printColor. These are batch text snapshots, not an inferred customer/order foreign key. Existing payable and production links are unchanged. Receipt create/edit and history reuse keep these fields; old batches may omit them.
+
+Stock batch rows and batch details open the USB label page with the exact batch ID. The large-type template shows customer, board dimensions in cm, material/paper, plate name and color, then received quantity, receipt date, batch ID and a live batch QR. The phone fresh-reads before submitting, and the server rebuilds the allowed snapshot from saved batch data. Printing does not mutate stock or billing. The QR page exposes only label details and quantity movements.
+
+The 70 x 100 mm paperboard template uses density 4, with a separate profile and calibration from the existing density 3 finished-product and other-size profiles. Saving a new density 4 profile never copies an earlier calibration. Its own calibration label must complete and be physically confirmed before production printing. The receiver passes the saved density to the printer before PrintStart.
+
+For local receiver upgrades deploy scripts/k3-layout.cjs and scripts/k3-render.cjs together with the matching src/assets/label-fonts assets and license from the released commit. Keep the relative directory structure. Stop only the idle K3 receiver and preserve its config/journal; do not disturb the independent 630K delivery channel. Fonts are embedded locally into the label HTML without third-party font requests. Existing installed Bluetooth native binaries retain their original v1 snapshot whitelist; this business template is the PC/USB path.

@@ -10,7 +10,7 @@ import { watchSession } from '../../services/session';
 import { formatSpecificationInput } from '../print-center/specification-input';
 import { parseDimensionSpecification, preserveDimensionGrouping, shouldPreserveDimensionGrouping, specificationFromDimensions } from './specification-input';
 import './simple-entry.scss';
-const initial = { supplier: '', date: today(), boardLength: '', boardWidth: '', cartonLength: '', cartonWidth: '', cartonHeight: '', fluteType: 'B', layers: '3', faceGsm: '', linerGsm: '', flutingGsm: '', orderedQty: '', receivedQty: '', billedArea: '', unitPrice: '', warningQty: '0', location: '', deliveryNo: '', remark: '' };
+const initial = { supplier: '', customerName: '', material: '', printPlate: '', printColor: '', date: today(), boardLength: '', boardWidth: '', cartonLength: '', cartonWidth: '', cartonHeight: '', fluteType: 'B', layers: '3', faceGsm: '', linerGsm: '', flutingGsm: '', orderedQty: '', receivedQty: '', billedArea: '', unitPrice: '', warningQty: '0', location: '', deliveryNo: '', remark: '' };
 export default function BoardReceive() {
   const [form, setForm] = useState(() => ({ ...initial, date: today() })); const [selected, setSelected] = useState<BoardBatch | null>(null); const [templates, setTemplates] = useState<BoardBatch[]>([]); const [error, setError] = useState(''); const [busy, setBusy] = useState(false); const saving = useRef(false);
   const [boardSpecification, setBoardSpecification] = useState('');
@@ -71,7 +71,7 @@ export default function BoardReceive() {
     if (key === 'orderedQty') orderedQuantityEdited.current = true;
     setForm(f => ({ ...f, [key]: value, ...(key === 'receivedQty' && !orderedQuantityEdited.current ? { orderedQty: value } : {}) }));
   };
-  const fill = useCallback((b: BoardBatch) => { if (saving.current) return; draftChanged.current = true; orderedQuantityEdited.current = false; setSelected(b); setSpecsOpen(false); setError(''); setBoardSpecification(specificationFromDimensions([b.boardLength, b.boardWidth])); setCartonSpecification(specificationFromDimensions([b.cartonLength, b.cartonWidth, b.cartonHeight])); setForm(() => { const next = { ...initial, date: today() }; for (const k of ['supplier', 'boardLength', 'boardWidth', 'cartonLength', 'cartonWidth', 'cartonHeight', 'fluteType', 'layers', 'faceGsm', 'linerGsm', 'flutingGsm', 'unitPrice', 'warningQty', 'location']) next[k] = String(b[k] ?? ''); return next; }); }, []);
+  const fill = useCallback((b: BoardBatch) => { if (saving.current) return; draftChanged.current = true; orderedQuantityEdited.current = false; setSelected(b); setSpecsOpen(false); setError(''); setBoardSpecification(specificationFromDimensions([b.boardLength, b.boardWidth])); setCartonSpecification(specificationFromDimensions([b.cartonLength, b.cartonWidth, b.cartonHeight])); setForm(() => { const next = { ...initial, date: today() }; for (const k of ['supplier', 'customerName', 'material', 'printPlate', 'printColor', 'boardLength', 'boardWidth', 'cartonLength', 'cartonWidth', 'cartonHeight', 'fluteType', 'layers', 'faceGsm', 'linerGsm', 'flutingGsm', 'unitPrice', 'warningQty', 'location']) next[k] = String(b[k] ?? ''); return next; }); }, []);
   const loadBoards = useCallback(async () => {
     const params = routeParams.current;
     if (!params) return;
@@ -132,6 +132,11 @@ export default function BoardReceive() {
       {selected && <Text className='stock-entry-note'>已带入历史规格，本次另建新批次；确认保存后才增加库存。</Text>}
       <View className='stock-entry-section'>
         <View className='stock-entry-field'><View className='stock-entry-row'><Text className='stock-entry-label'>供货商</Text>{options('supplier').length > 0 && <Picker disabled={fieldsDisabled} range={['选择已有供货商', ...options('supplier')]} onChange={e => { const supplier = options('supplier')[Number(e.detail.value) - 1]; if (supplier) change('supplier', supplier); }}><Text className='board-entry-picker-link'>选择已有 ›</Text></Picker>}</View><Input disabled={fieldsDisabled} aria-label='板厂名称' className='stock-entry-input' value={form.supplier} onInput={e => change('supplier', e.detail.value)} /></View>
+        <Text className='stock-entry-label'>印刷标签资料</Text>
+        <Text className='stock-entry-note'>以下内容保存在本纸板批次，客户名称为批次记录，不自动关联订单。</Text>
+        {field('customerName', '客户')}
+        {field('material', '材质 / 配纸')}
+        <View className='stock-entry-grid'>{field('printPlate', '印刷版名')}{field('printColor', '颜色')}</View>
         {specificationField('board', '纸板规格尺寸', boardSpecification)}
         {specificationField('carton', '成箱规格尺寸', cartonSpecification)}
         {field('receivedQty', '实收数', true, '张')}
