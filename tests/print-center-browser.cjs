@@ -140,6 +140,7 @@ async function main() {
     let saved = db.listPrintNotes()[0]; assert.equal(saved.total, 350);
     assert.equal(saved.items[0].name, '');
     await button('历史单据').click();
+    await expect(page.getByLabel('搜索历史单据')).toBeVisible();
     await page.getByLabel('搜索历史单据').fill('华兴');
     await page.getByRole('button', { name: /查看详情/ }).click();
     await expect(page.getByRole('heading', { name: '单据详情' })).toBeVisible();

@@ -7,9 +7,17 @@ import { downloadPrintPdf, getLocalPrintBridge } from '@/utils/local-print';
 import type { LocalPrinter } from '@/utils/local-print';
 import { printDocument, printSettings } from './model';
 import styles from './index.module.scss';
-import RemotePrint from './remote';
+import RemotePrint, { useRemotePrint } from './remote';
+import { refreshPrintNotices } from '@/services/print-notifications';
+import { useMobilePrintNotifications } from '@/services/mobile-print-notifications';
 
-export default function PrintPreview({ note, saved, onClose }: { note: PrintNoteInput; saved?: SavedPrintNote; onClose: () => void }) {
+export default function PrintPreview({ note, saved, reprintIntent = false, autoSend = false, onClose }: {
+  note: PrintNoteInput;
+  saved?: SavedPrintNote;
+  reprintIntent?: boolean;
+  autoSend?: boolean;
+  onClose: () => void;
+}) {
   const [paper] = useState(note.paper);
   const settings = useMemo(() => printSettings({ ...note, paper }), [note, paper]);
   const doc = useMemo(() => printDocument(note, saved), [note, saved]);
@@ -37,6 +45,35 @@ export default function PrintPreview({ note, saved, onClose }: { note: PrintNote
   const width = settings.width * 96 / 25.4 + 24;
   const scale = zoomed ? 1 : Math.min(1, Math.max(.1, availableWidth / width));
   const selectedPrinter = printers.find(printer => printer.name === printerName);
+  const mobileNotices = useMobilePrintNotifications();
+  const savedMatch = useMemo(() => saved && JSON.stringify(printDocument(saved, saved)) === JSON.stringify(doc) ? saved : undefined, [doc, saved]);
+  const remote = useRemotePrint(savedMatch, paper);
+  const [remoteOpen, setRemoteOpen] = useState(false);
+  const autoSubmitted = useRef(false);
+  const close = useRef(onClose);
+  const { canSend, job: remoteJob, send: sendRemote } = remote;
+  close.current = onClose;
+
+  useEffect(() => {
+    if (native && (remote.token || remote.pending)) setRemoteOpen(true);
+  }, [native, remote.token, remote.pending]);
+
+  // Automatic dispatch is opt-in and starts only after layout and task recovery.
+  // An existing task is observed, never replaced by an automatic second copy.
+  useEffect(() => {
+    if (!native || !autoSend || !ready || !canSend || remoteJob || autoSubmitted.current) return;
+    autoSubmitted.current = true;
+    void sendRemote();
+  }, [native, autoSend, ready, canSend, remoteJob, sendRemote]);
+
+  const autoCloseId = native && remote.job?.id === remote.lastSentId
+    && ['processing', 'queued'].includes(remote.job.status) ? remote.job.id : '';
+  useEffect(() => {
+    if (!autoCloseId) return;
+    if (mobileNotices) void refreshPrintNotices();
+    const timer = setTimeout(() => close.current(), 1500);
+    return () => clearTimeout(timer);
+  }, [autoCloseId, mobileNotices]);
 
   useEffect(() => {
     const container = stage.current;
@@ -105,15 +142,34 @@ export default function PrintPreview({ note, saved, onClose }: { note: PrintNote
     } finally { busy.current = false; setPrinting(false); }
   };
 
-  return createPortal(<div className={styles.backdrop}><section role='dialog' aria-modal='true' aria-label='送货单预览' className={styles.previewDialog}>
+  const mobileAction = (() => {
+    if (!remote.token) return {
+      label: '连接打印电脑', disabled: false,
+      run: () => {
+        setRemoteOpen(true);
+        setTimeout(() => document.querySelector<HTMLInputElement>('[aria-label="打印电脑配对码"]')?.focus(), 60);
+      }
+    };
+    if (!savedMatch) return { label: '保存后才能打印', disabled: true, run: () => {} };
+    if (remote.busy) return { label: '正在发送…', disabled: true, run: () => {} };
+    if (remote.job?.status === 'uncertain') return { label: '待核对出纸', disabled: false, run: () => setRemoteOpen(true) };
+    if (remote.pending) return { label: '任务处理中…', disabled: true, run: () => {} };
+    if (!remote.device) return { label: remote.deviceError ? '连接状态待确认' : '正在连接电脑…', disabled: true, run: () => {} };
+    if (remote.checking) return { label: '正在查询上次打印…', disabled: true, run: () => {} };
+    if (remote.terminal) return reprintIntent
+      ? { label: '再打印一份', disabled: !remote.canSend, run: () => void remote.send(true) }
+      : { label: '再打印一份', disabled: !remote.canSend, run: () => { setRemoteOpen(true); remote.setConfirmCopy(true); } };
+    return { label: '发送到630K', disabled: !remote.canSend, run: () => void remote.send() };
+  })();
+
+  return createPortal(<div className={styles.backdrop}><section role='dialog' aria-modal='true' aria-label='送货单预览' className={styles.previewDialog} data-mobile={native ? 'true' : undefined}>
     <div className={styles.previewHeader}><h2>送货单预览</h2><button type='button' className={styles.textButton} disabled={printing} onClick={onClose}>关闭</button></div>
     {bridge && <div className={styles.previewControls}><select aria-label='打印机' value={printerName} disabled={printerLoading || printing} onChange={event => setPrinterName(event.target.value)}><option value=''>{printerLoading ? '正在读取打印机…' : '请选择打印机'}</option>{printers.map(printer => <option key={printer.name} value={printer.name} disabled={printer.unavailable}>{printer.displayName}{printer.unavailable ? '（不可用）' : ''}</option>)}</select><button type='button' disabled={printerLoading || printing} onClick={() => setPrinterRetry(value => value + 1)}>刷新</button></div>}
     {printerError && <p role='alert' className={styles.error}>{printerError}</p>}{error && <p role='alert' className={styles.error}>{error}</p>}
     <div className={styles.previewStage} ref={stage}><button type='button' className={styles.previewTrigger} aria-label={zoomed ? '缩小送货单预览' : '放大送货单预览'} aria-pressed={zoomed} disabled={!ready} onClick={() => setZoomed(value => !value)}><span className={styles.frameShell} style={{ width: width * scale, height: layout.height * scale }}><iframe key={html} ref={frame} title='送货单纸张预览' tabIndex={-1} sandbox='allow-same-origin allow-modals' srcDoc={html} onLoad={load} style={{ width, height: layout.height, transform: `scale(${scale})` }} /></span></button></div>
-    <RemotePrint saved={saved && JSON.stringify(printDocument(saved, saved)) === JSON.stringify(doc) ? saved : undefined} paper={paper} />
+    <RemotePrint remote={remote} open={remoteOpen} onOpenChange={setRemoteOpen} showSendAction={!native} />
     <p className={styles.muted}>{ready ? `共 ${layout.pages} 页 · 规格使用 × · 单位为个` : '正在排版…'}</p>
-    {native && <p className={styles.muted}>手机可编辑和保存；在电脑打开历史单据，即可连接打印机打印。</p>}
     {message && <p role='status' className={styles.notice}>{message}</p>}
-    <div className={styles.previewActions}><button type='button' className={styles.secondary} disabled={printing} onClick={zoomed ? () => setZoomed(false) : onClose}>{zoomed ? '缩小预览' : '返回单据'}</button><button type='button' className={styles.primary} disabled={!ready || printing || native || (!!bridge && (printerLoading || !!printerError || !selectedPrinter || selectedPrinter.unavailable))} onClick={() => void print()}>{printing ? '正在发送…' : selectedPrinter?.isPdf ? '保存 PDF' : '打印送货单'}</button></div>
+    <div className={styles.previewActions}><button type='button' className={styles.secondary} disabled={printing} onClick={zoomed ? () => setZoomed(false) : onClose}>{zoomed ? '缩小预览' : '返回单据'}</button>{native ? <button type='button' className={styles.primary} disabled={!ready || mobileAction.disabled} onClick={mobileAction.run}>{mobileAction.label}</button> : <button type='button' className={styles.primary} disabled={!ready || printing || (!!bridge && (printerLoading || !!printerError || !selectedPrinter || selectedPrinter.unavailable))} onClick={() => void print()}>{printing ? '正在发送…' : selectedPrinter?.isPdf ? '保存 PDF' : '打印送货单'}</button>}</div>
   </section></div>, document.body);
 }

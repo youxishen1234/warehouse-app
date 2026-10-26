@@ -146,6 +146,12 @@ jobs:
         run: |
           node tests/print-center-browser.cjs
           node tests/print-modes-browser.cjs
+      - name: Validate native phone delivery print shortcuts and outbound dispatch
+        env:
+          PRINT_SOURCE_PREVIEW: '0'
+          PRINT_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          PRINT_ARTIFACTS: release/print-native-flow-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/print-center-native-flow.cjs
       - name: Validate desktop navigation
         env:
           NAV_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}

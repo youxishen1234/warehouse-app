@@ -30,7 +30,11 @@ function createStore(file, clock = Date.now) {
     return device;
   };
   const publicDevice = device => ({ id: device.id, name: device.name, printer: device.printer, online: clock() - device.last_seen < 25000, ready: device.ready, last_seen: device.last_seen });
-  const publicJob = job => ({ id: job.id, note_id: job.note_id, note_number: job.note_number, status: job.status, message: job.message, created_at: job.created_at, updated_at: job.updated_at });
+  const publicJob = job => ({
+    id: job.id, note_id: job.note_id, note_number: job.note_number, status: job.status,
+    message: job.message, created_at: job.created_at, updated_at: job.updated_at,
+    ...(Number.isFinite(job.confirmed_printed_at) ? { confirmed_printed_at: job.confirmed_printed_at } : {})
+  });
   const expire = state => {
     let changed = false;
     for (const job of state.jobs) {
@@ -125,19 +129,31 @@ function createStore(file, clock = Date.now) {
       write(state);
       return { acknowledged: true };
     },
-    // An uncertain job blocks the whole device queue by design (never reprint a
-    // job that may already have left the printer). Only a person standing at the
-    // printer can say what happened, so this resolves it into a terminal state.
+    // A person standing at the printer can confirm real paper output. An already
+    // queued job remains queued and keeps its original print-history timestamp;
+    // an uncertain job still needs terminal resolution to unblock the device.
     resolve(token, id, input) {
       const state = read(), device = authenticate(state, token, 'client');
       const job = state.jobs.find(row => row.id === id && row.device_id === device.id);
       if (!job) throw fail('打印任务不存在', 404);
-      if (job.status !== 'uncertain') throw fail('只有结果未确认的任务需要人工核对', 409);
+      if (job.status === 'queued') {
+        if (input.outcome !== 'printed') throw fail('已进入打印队列；仅结果未确认的任务可确认未出纸，本任务只能确认已经出纸', 409);
+        // Repeated confirmations are safe and do not rewrite the queue file.
+        if (Number.isFinite(job.confirmed_printed_at)) return publicJob(job);
+        job.confirmed_printed_at = clock();
+        job.message = '经人工核对，出纸正常';
+        // Keep updated_at as the time the receiver accepted the job, which is
+        // what the print-history list reports.
+        write(state);
+        return publicJob(job);
+      }
+      if (job.status !== 'uncertain') throw fail('只有结果未确认或已入队的任务可以确认出纸', 409);
+      if (input.outcome !== 'printed' && input.outcome !== 'missing') throw fail('请说明实际是否出纸');
       const printed = input.outcome === 'printed';
-      if (!printed && input.outcome !== 'missing') throw fail('请说明实际是否出纸');
       job.status = printed ? 'queued' : 'failed';
       job.message = printed ? '经人工核对，出纸正常' : '经人工核对未出纸，请重新发送打印';
       job.updated_at = clock(); delete job.note;
+      if (printed) job.confirmed_printed_at = job.updated_at;
       write(state); return publicJob(job);
     },
   };

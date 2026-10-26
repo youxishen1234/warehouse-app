@@ -57,9 +57,14 @@ function setup(options = {}) {
   };
   const remote = {
     readPrintPair() { return storage.get(pairKey) || ''; },
-    resolveRemotePrintJob: options.resolveJob || (async (id, outcome, token) => ({
-      id, status: outcome === 'printed' ? 'queued' : 'failed', message: '已人工核对', token
-    })),
+    resolveRemotePrintJob: async (id, outcome, token) => {
+      calls.push({ method: 'POST', kind: 'resolve', id, outcome, token });
+      if (options.resolveJob) return options.resolveJob(id, outcome, token);
+      return {
+        id, status: outcome === 'printed' ? 'queued' : 'failed',
+        message: outcome === 'printed' ? '经人工确认实际出纸' : '经人工核对未出纸', token
+      };
+    },
     getRemoteDevice: options.getDevice || (async token => {
       calls.push({ method: 'GET', kind: 'device', token });
       return { id: 'device-1', name: '测试打印电脑', printer: '630K', online: true, ready: true };
@@ -292,13 +297,54 @@ test('descriptions distinguish pending, offline, unavailable, stalled, uncertain
   assert.equal(queued.title, '已送入打印队列');
   assert.equal(queued.tone, 'info');
   assert.match(queued.message, /不代表纸张已实际打印出来/);
-  assert.equal(describe(record('verified', { job: job('verified', 'queued', '已人工确认实际出纸') })).tone, 'success');
+  const verifiedJob = job('verified', 'queued', '人工确认完成', { confirmed_printed_at: 1_800_000_000_000 });
+  assert.equal(api.isPrintConfirmed(verifiedJob), true);
+  const verified = describe(record('verified', { job: verifiedJob }));
+  assert.equal(verified.title, '已确认实际出纸');
+  assert.equal(verified.tone, 'success');
+  assert.equal(describe(record('legacy-verified', { job: job('legacy-verified', 'queued', '经人工确认实际出纸') })).tone, 'success');
 
   assert.equal(describe(record('failed', { job: job('failed', 'failed', '打印机错误') })).tone, 'danger');
   assert.equal(describe(record('expired', { job: job('expired', 'expired') })).tone, 'warning');
   const unknown = describe(record('unknown', { job: job('unknown', 'processing'), error: '查询超时' }));
   assert.equal(unknown.title, '打印状态暂未确认');
   assert.match(unknown.message, /不会自动重复发送/);
+});
+
+test('queued paper confirmation persists its timestamp and never submits another job', async () => {
+  const confirmedAt = 1_800_000_123_456;
+  const { api, storage, calls } = setup({
+    resolveJob: async (id, outcome, token) => ({
+      id, status: 'queued', message: '已确认实际出纸', confirmed_printed_at: confirmedAt, updated_at: confirmedAt, token
+    })
+  });
+  api.trackPrintNotice(record('task-queued-paper', {
+    job: job('task-queued-paper', 'queued', '已送入630K打印队列，请以实际出纸为准')
+  }));
+
+  await api.resolvePrintNotice('task-queued-paper', 'printed');
+  assert.deepEqual(calls.map(call => [call.kind, call.outcome]), [['resolve', 'printed']]);
+  assert.equal(calls[0].token, tokenA);
+  assert.equal(api.readPrintNotices().records[0].job.confirmed_printed_at, confirmedAt);
+  assert.equal(api.describePrintNotice(api.readPrintNotices().records[0], {
+    records: [], deviceError: '', now: confirmedAt, checking: false
+  }).tone, 'success');
+  await assert.rejects(api.resolvePrintNotice('task-queued-paper', 'missing'), /可以确认未出纸/);
+
+  const restored = setup({ storage });
+  const restoredJob = restored.api.readPrintNotices().records[0].job;
+  assert.equal(restoredJob.confirmed_printed_at, confirmedAt, 'the server confirmation survives app restart');
+  assert.equal(restored.api.isPrintConfirmed(restoredJob), true);
+});
+
+test('resolving notices synchronizes pairing first and cannot use a stale printer token', async () => {
+  const { api, storage, calls } = setup();
+  api.trackPrintNotice(record('task-old-pair', { job: job('task-old-pair', 'uncertain') }));
+  storage.set(pairKey, tokenB);
+
+  await assert.rejects(api.resolvePrintNotice('task-old-pair', 'printed'), /找不到待确认/);
+  assert.equal(calls.filter(call => call.kind === 'resolve').length, 0, 'stale notices must not call the old printer');
+  assert.equal(api.readPrintNotices().records.length, 0);
 });
 
 test('device and task query failures preserve the prior job and subscriber snapshots remain stable', async () => {

@@ -98,6 +98,71 @@ test('confirming no paper fails the job and still releases the queue',()=>{
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
 
+test('queued jobs can confirm physical output without changing queue status or print history',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'remote-print-printed-confirm-'));let now=100000;const file=path.join(dir,'queue.json');
+ try{
+  const store=createStore(file,()=>now),pair=store.register('店里电脑','630K');
+  const note={id:11,version:1,number:'SH-011',items:[]};
+  const queued=store.enqueue(pair.client,{id:'remote-print-confirm-001',paper:'241-93'},note);
+  const claim=store.claim(pair.agent,true).job;
+  now+=250;
+  const accepted=store.acknowledge(pair.agent,queued.id,{lease:claim.lease,status:'queued'});
+  const printedAt=accepted.updated_at;
+  assert.deepEqual(store.history(pair.client),[{note_id:note.id,printed_at:printedAt}]);
+  assert.throws(()=>store.resolve(pair.client,queued.id,{outcome:'missing'}),/只能确认已经出纸/);
+
+  now+=500;
+  const confirmed=store.resolve(pair.client,queued.id,{outcome:'printed'});
+  assert.equal(confirmed.id,queued.id);
+  assert.equal(confirmed.status,'queued','confirming paper does not change the queued task status');
+  assert.equal(confirmed.updated_at,printedAt,'confirmation keeps the receiver-accepted timestamp');
+  assert.equal(confirmed.confirmed_printed_at,now);
+  assert.equal(confirmed.message,'经人工核对，出纸正常');
+  assert.deepEqual(store.history(pair.client),[{note_id:note.id,printed_at:printedAt}],'confirmation preserves the original print-history time');
+
+  const persistedAfterFirstConfirmation=fs.readFileSync(file,'utf8');
+  const persistedConfirmation=JSON.parse(persistedAfterFirstConfirmation).jobs[0].confirmed_printed_at;
+  now+=5000;
+  assert.deepEqual(store.resolve(pair.client,queued.id,{outcome:'printed'}),confirmed,'repeated confirmation returns the original receipt');
+  assert.equal(fs.readFileSync(file,'utf8'),persistedAfterFirstConfirmation,'idempotent confirmation does not rewrite storage');
+  const reloaded=createStore(file,()=>now);
+  assert.equal(reloaded.status(pair.client,queued.id).confirmed_printed_at,persistedConfirmation,'confirmation is durable across store reload');
+  assert.equal(reloaded.claim(pair.agent,true).job,null,'confirming an already queued job does not re-enqueue it');
+
+  const other=store.register('另一台电脑','630K');
+  assert.throws(()=>store.resolve(other.client,queued.id,{outcome:'printed'}),/不存在/,'a paired client cannot confirm another device task');
+  assert.throws(()=>store.resolve(pair.agent,queued.id,{outcome:'printed'}),/配对/,'the agent credential cannot use the client confirmation route');
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('only queued or uncertain tasks accept a printed confirmation',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'remote-print-printed-status-'));let now=100000;const file=path.join(dir,'queue.json');
+ try{
+  const store=createStore(file,()=>now),pair=store.register('店里电脑','630K');
+  const note={id:12,version:1,number:'SH-012',items:[]};
+  const waiting=store.enqueue(pair.client,{id:'remote-print-waiting-001',paper:'a4'},note);
+  assert.throws(()=>store.resolve(pair.client,waiting.id,{outcome:'printed'}),/未确认/);
+  const processing=store.claim(pair.agent,true).job;
+  assert.throws(()=>store.resolve(pair.client,processing.id,{outcome:'printed'}),/未确认/);
+
+  now+=180001;
+  assert.equal(store.status(pair.client,processing.id).status,'uncertain');
+  const resolvedUncertain=store.resolve(pair.client,processing.id,{outcome:'printed'});
+  assert.equal(resolvedUncertain.status,'queued','existing uncertain-job confirmation remains supported');
+  assert.equal(resolvedUncertain.confirmed_printed_at,now);
+
+  const failed=store.enqueue(pair.client,{id:'remote-print-failed-001',paper:'a4'},note);
+  const failedClaim=store.claim(pair.agent,true).job;
+  store.acknowledge(pair.agent,failed.id,{lease:failedClaim.lease,status:'failed'});
+  assert.throws(()=>store.resolve(pair.client,failed.id,{outcome:'printed'}),/未确认/);
+
+  const expired=store.enqueue(pair.client,{id:'remote-print-expired-001',paper:'a4'},note);
+  now+=86400001;
+  assert.equal(store.status(pair.client,expired.id).status,'expired');
+  assert.throws(()=>store.resolve(pair.client,expired.id,{outcome:'printed'}),/未确认/);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
 test('receiver recovery is authenticated, persisted, bounded and visible to the paired phone',()=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'remote-print-recovery-'));let now=100000;const file=path.join(dir,'queue.json');
  try{
