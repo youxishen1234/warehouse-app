@@ -12,6 +12,7 @@ function setup(fetch) {
   const timers = [];
   vm.runInNewContext(code, {
     exports: api, fetch, AbortController, crypto: {}, Date, Math,
+    URL, URLSearchParams,
     setTimeout: (fn, ms) => { timers.push(ms); return setTimeout(fn, 25); }, clearTimeout,
     require: id => {
       if (id === './request') return { getBaseUrl: () => 'https://print.example.test' };
@@ -49,6 +50,21 @@ test('pairing validation uses the candidate token without storing invalid pairin
   });
   await assert.rejects(api.getRemoteDevice(candidate), error => error.statusCode === 401 && /配对/.test(error.message));
   assert.equal(storage.get('warehouse_remote_print_pair_v1'), token);
+});
+test('connection links and raw QR payloads resolve the pairing token and can be cleaned', () => {
+  const { api } = setup(() => { throw new Error('unused'); });
+  const link = 'https://youxishen.online/#/pages/label-print/index?print_pair=' + token + '&kind=finished-product';
+  assert.equal(api.parsePrintPairToken(token), token);
+  assert.equal(api.parsePrintPairToken(link), token);
+  assert.equal(api.parsePrintPairToken('https://youxishen.online/?print_pair=bad'), '');
+  assert.equal(
+    api.cleanPrintPairUrl(link),
+    'https://youxishen.online/#/pages/label-print/index?kind=finished-product'
+  );
+  assert.equal(
+    api.cleanPrintPairUrl('https://youxishen.online/?print_pair=' + token + '&tab=stock'),
+    'https://youxishen.online/?tab=stock'
+  );
 });
 test('old WebViews can create distinct valid print IDs without crypto.randomUUID', () => {
   const { api } = setup(() => { throw new Error('unused'); });

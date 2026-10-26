@@ -1,7 +1,8 @@
 /* eslint-disable react/forbid-elements */
-import { useEffect, useRef, useState } from 'react';
-import { getRemoteDevice, getRemotePrintJob, newRemotePrintId, readPrintAttempt, readPrintPair, resolveRemotePrintJob, savePrintAttempt, savePrintPair, submitRemotePrint } from '@/services/remote-print';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { cleanPrintPairFromAddress, getRemoteDevice, getRemotePrintJob, newRemotePrintId, parsePrintPairToken, readPrintAttempt, readPrintPair, readPrintPairFromAddress, resolveRemotePrintJob, savePrintAttempt, savePrintPair, submitRemotePrint } from '@/services/remote-print';
 import type { RemoteDevice, RemoteJob } from '@/services/remote-print';
+import { scanPrintPairQr } from '@/services/print-pair-scan';
 import type { SavedPrintNote } from '@/services/print-notes';
 import { refreshPrintNotices, reportPrintNoticeError, trackPrintNotice, updatePrintNotice } from '@/services/print-notifications';
 import { useMobilePrintNotifications } from '@/services/mobile-print-notifications';
@@ -13,8 +14,6 @@ const pendingStatuses = new Set(['waiting', 'processing', 'uncertain']);
 
 export type RemotePrintController = {
   token: string;
-  code: string;
-  setCode: (value: string) => void;
   saved?: SavedPrintNote;
   device?: RemoteDevice;
   deviceError: string;
@@ -34,7 +33,7 @@ export type RemotePrintController = {
   // The id this screen submitted, so a caller can tell a job it started from
   // an older one it merely opened.
   lastSentId: string;
-  pair: () => Promise<void>;
+  pair: (value?: string) => Promise<void>;
   send: (newCopy?: boolean) => Promise<void>;
   resolve: (outcome: 'printed' | 'missing') => Promise<void>;
   requestRefresh: () => void;
@@ -43,7 +42,9 @@ export type RemotePrintController = {
 
 export function useRemotePrint(saved: SavedPrintNote | undefined, paper: string): RemotePrintController {
   const mobileNotices = useMobilePrintNotifications();
-  const [code, setCode] = useState(() => new URLSearchParams(location.hash.split('?')[1] || '').get('print_pair') || '');
+  const [linkedPair] = useState(readPrintPairFromAddress);
+  const [hadPairLink] = useState(() => typeof window !== 'undefined' && window.location.href.includes('print_pair='));
+  const linkHandled = useRef(false);
   const [token, setToken] = useState(readPrintPair);
   const [device, setDevice] = useState<RemoteDevice>();
   const [deviceError, setDeviceError] = useState('');
@@ -129,18 +130,28 @@ export function useRemotePrint(saved: SavedPrintNote | undefined, paper: string)
     return () => { window.removeEventListener('online', resume); window.removeEventListener('focus', resume); document.removeEventListener('visibilitychange', resume); };
   }, []);
 
-  const pair = async () => {
+  const pair = useCallback(async (raw?: string) => {
     if (sending.current) return;
     sending.current = true; setBusy(true); setMessage('');
     try {
-      const candidate = code.trim();
-      if (!/^[a-f0-9]{64}$/.test(candidate)) throw new Error('请粘贴电脑提供的完整配对码');
+      const scanned = raw === undefined ? await scanPrintPairQr() : raw;
+      if (!scanned) return;
+      const candidate = parsePrintPairToken(scanned);
+      if (!candidate) throw new Error('没有识别到有效的打印连接二维码，请重新扫码或打开连接链接');
       const result = await getRemoteDevice(candidate);
-      savePrintPair(candidate); setDevice(result); setDeviceError(''); setToken(candidate); setCode('');
+      cleanPrintPairFromAddress();
+      savePrintPair(candidate); setDevice(result); setDeviceError(''); setToken(candidate);
       if (mobileNotices) void refreshPrintNotices();
     } catch (issue) { setMessage(messageOf(issue)); }
     finally { sending.current = false; setBusy(false); }
-  };
+  }, [mobileNotices]);
+
+  useEffect(() => {
+    if (linkHandled.current) return;
+    linkHandled.current = true;
+    if (linkedPair) void pair(linkedPair);
+    else if (hadPairLink) setMessage('打印连接链接无效，请重新扫描电脑上的二维码');
+  }, [hadPairLink, linkedPair, pair]);
 
   const send = async (newCopy = false) => {
     if (!saved || !canSend || sending.current) return;
@@ -197,7 +208,7 @@ export function useRemotePrint(saved: SavedPrintNote | undefined, paper: string)
   if (job?.status === 'uncertain') progress = '打印结果尚未确认，已暂停重复发送。请核对电脑打印队列和实际出纸；状态会自动更新。';
 
   return {
-    token, code, setCode, saved, device, deviceError, job, jobError, message, busy, checking, canSend, resolving,
+    token, saved, device, deviceError, job, jobError, message, busy, checking, canSend, resolving,
     confirmCopy, setConfirmCopy, progress, deviceStatus, terminal, pending, lastSentId,
     pair, send, resolve, requestRefresh: () => setRefresh(value => value + 1), disconnect
   };
@@ -211,14 +222,13 @@ export default function RemotePrint({ remote, open, onOpenChange, showSendAction
   onOpenChange?: (open: boolean) => void;
   showSendAction?: boolean;
 }) {
-  const { token, code, setCode, device, deviceError, job, jobError, message, busy, checking, resolving, confirmCopy, setConfirmCopy, progress, deviceStatus, terminal, pending } = remote;
+  const { token, device, deviceError, job, jobError, message, busy, checking, resolving, confirmCopy, setConfirmCopy, progress, deviceStatus, terminal, pending } = remote;
   return <details className={styles.settings} open={open} onToggle={event => onOpenChange?.(event.currentTarget.open)}>
     <summary>远程打印到店里 · {deviceStatus}</summary>
     <div className={styles.settingsBody}>
       {!token ? <>
-        <p className={styles.muted}>粘贴打印电脑提供的配对码，即可用手机发送送货单。</p>
-        <input aria-label='打印电脑配对码' type='search' value={code} onChange={event => setCode(event.target.value)} placeholder='粘贴配对码' />
-        <button type='button' className={styles.secondary} disabled={busy} onClick={() => void remote.pair()}>{busy ? '正在连接…' : '连接打印电脑'}</button>
+        <p className={styles.muted}>扫描店里打印电脑上的连接二维码，即可完成连接；也可直接打开电脑提供的连接链接。</p>
+        <button type='button' className={styles.secondary} disabled={busy} onClick={() => void remote.pair()}>{busy ? '正在验证连接…' : '扫描连接二维码'}</button>
       </> : <>
         <p className={styles.muted}>{device?.name || '打印电脑'} · {device?.printer || '630K'}<br />电脑需开机、登录并联网，打印机需开机。仅发送打印，不自动出库。</p>
         {!remote.saved && <p className={styles.muted}>请先保存单据，再发送远程打印。</p>}

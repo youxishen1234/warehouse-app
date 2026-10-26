@@ -167,11 +167,11 @@ async function main() {
   page.setDefaultTimeout(15000);
   page.on('pageerror', error => errors.push(error.message));
   try {
-    await page.goto(`${origin}/#/pages/label-print/index`);
+    await page.goto(`${origin}/#/pages/label-print/index?print_pair=${token}`);
     await expect(page.getByText('电脑 USB 打印 K3', { exact: true })).toBeVisible();
-    assert.equal(new URL(page.url()).search, '', 'pair token is not placed in the page URL');
-    await page.getByLabel('打印电脑配对码').locator('input').fill(token);
-    await page.locator('taro-button-core').filter({ hasText: /^验证并连接打印电脑$/ }).click();
+    await expect(page.getByText('在线 · K3-I911020404', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('打印电脑配对码')).toHaveCount(0);
+    assert.ok(!page.url().includes(token), 'pair token is removed from the page URL after validation');
     await expect(page.getByText('在线 · K3-I911020404', { exact: true })).toBeVisible();
     assert.ok(requests.some(item => item.path === '/api/remote-print/labels/device' && item.method === 'GET'), 'pairing verifies the remote device');
     assert.ok(requests.filter(item => item.path.includes('/remote-print/labels/')).every(item => item.clientHeader === token), 'pair code is sent only in the X-Print-Client request header');
