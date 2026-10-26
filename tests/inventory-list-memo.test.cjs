@@ -8,6 +8,7 @@ test('legacy inventory route opens the current stock panel without legacy card a
   assert.match(source, /import Workbench from '\@\/pages\/business-center\/workbench'/);
   assert.match(source, /<Workbench embedded initial='stock' \/>/);
   assert.doesNotMatch(source, /编辑库存|SwipeRow|visibleList/);
-  assert.match(workbench, /route === '\/pages\/inventory\/index'/);
+  assert.match(workbench, /routePath === 'pages\/inventory\/index'/);
+  assert.match(workbench, /routePath === 'inventory\/index'/);
   assert.match(workbench, /data-testid='workbench-board'/);
 });

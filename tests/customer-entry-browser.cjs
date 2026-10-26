@@ -122,20 +122,23 @@ async function main() {
     }
     await page.setViewportSize({ width: 390, height: 900 });
 
-    await page.getByTestId('workbench-customer-bills').click();
-    await expect(page.getByTestId('finance-customer-view')).toBeVisible();
-    const financeAddCustomer = page.getByTestId('finance-add-customer');
-    await expect(financeAddCustomer).toBeVisible();
-    await expect(financeAddCustomer).toHaveCount(1);
-    await expect(financeAddCustomer).toBeInViewport();
-    await financeAddCustomer.click();
+    await page.getByTestId('workbench-customer-management').click();
+    await expect(page).toHaveURL(/#\/pages\/customers\/index/);
+    await expect(page.getByTestId('customer-center')).toBeVisible();
+    await expect(page.getByTestId('finance-center')).toHaveCount(0);
+    await expect(page.locator('[data-testid^="finance-tab-"]')).toHaveCount(0);
+    const customerCenterAdd = page.getByTestId('customer-center-add');
+    await expect(customerCenterAdd).toBeVisible();
+    await expect(customerCenterAdd).toHaveCount(1);
+    await expect(customerCenterAdd).toBeInViewport();
+    await customerCenterAdd.click();
     await expect(editor()).toBeVisible();
     await editor().getByLabel('公司名称').locator('input').fill('取消客户草稿');
     await editor().getByText('取消', { exact: true }).click();
     await expect(editor()).toHaveCount(0);
     assert.equal(db.listCustomers().length, startingCustomerCount, 'canceling customer creation must not write a customer');
 
-    await financeAddCustomer.click();
+    await customerCenterAdd.click();
     await expect(editor()).toBeVisible();
     await editor().getByLabel('公司名称').locator('input').fill('客户入口新增客户');
     await editor().getByLabel('联系人').locator('input').fill('陈经理');
@@ -146,10 +149,11 @@ async function main() {
     assert.ok(homeCustomer, 'customer creation from customer management should persist to the shared list');
     assert.equal(homeCustomer.contact, '陈经理');
     assert.equal(homeCustomer.phone, '13800001111');
-    await expect(page.getByTestId(`customer-bill-${homeCustomer.id}`)).toBeVisible();
-    assert.equal(await page.getByTestId(`customer-bill-${homeCustomer.id}`).count(), 1);
+    const customerCard = page.getByTestId(`customer-management-card-${homeCustomer.id}`);
+    await expect(customerCard).toBeVisible();
+    assert.equal(await customerCard.count(), 1);
 
-    await page.getByLabel(`编辑客户 ${homeCustomer.name}`).click();
+    await page.getByTestId(`customer-edit-${homeCustomer.id}`).click();
     await expect(editor()).toBeVisible();
     await editor().getByLabel('联系人').locator('input').fill('陈经理（更新）');
     await editor().getByText('保存客户', { exact: true }).click();
@@ -159,9 +163,9 @@ async function main() {
     assert.equal(db.listCustomers().filter(customer => customer.name === homeCustomer.name).length, 1, 'editing an existing customer must not create a duplicate');
     for (const width of [320, 390, 1280]) {
       await noOverflow(width);
-      await expect(financeAddCustomer).toBeInViewport();
-      assert.equal(await financeAddCustomer.evaluate(addButton => {
-        const firstCustomer = document.querySelector('[data-testid^="customer-bill-"]');
+      await expect(customerCenterAdd).toBeInViewport();
+      assert.equal(await customerCenterAdd.evaluate(addButton => {
+        const firstCustomer = document.querySelector('[data-testid^="customer-management-card-"]');
         return !!firstCustomer && addButton.getBoundingClientRect().bottom <= firstCustomer.getBoundingClientRect().top;
       }), true, 'customer creation stays above the populated customer list');
       await page.screenshot({ path: path.join(evidence, `customer-management-${width}.png`), fullPage: true });
@@ -169,7 +173,10 @@ async function main() {
     await page.setViewportSize({ width: 390, height: 900 });
 
     await page.getByLabel('返回总台').click();
-    await page.getByTestId('workbench-customer-orders').click();
+    await expect(page).toHaveURL(/#\/pages\/business-center\/index/);
+    await page.getByTestId('workbench-customer-management').click();
+    await expect(page.getByTestId('customer-center')).toBeVisible();
+    await page.getByTestId('customer-center-orders').click();
     await expect(page.getByTestId('order-stock-flow')).toBeVisible();
     await page.getByText('＋新增订单', { exact: true }).click();
     await input('订单号').fill('CUSTOMER-ENTRY-ORDER-01');

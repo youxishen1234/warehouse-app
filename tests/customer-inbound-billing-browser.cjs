@@ -210,13 +210,11 @@ async function main() {
     historical.ledger.find(row => row.party_type === 'supplier' && row.party_id === supplier.id).created_at = new Date(`${priorDate}T12:00:00+08:00`).getTime();
     db.restoreData(historical);
 
-    await go('/pages/business-center/index?section=finance&view=customer');
-    await expect(page.getByTestId('finance-center')).toBeVisible();
-    await page.getByTestId('finance-tab-customer').click();
-    const customerCard = page.getByTestId(`customer-bill-${customer.id}`);
-    await expect(customerCard).toContainText('500.00');
-    const partySummary = page.getByTestId('finance-party-summary');
-    await expect(partySummary).toContainText('500.00');
+    await go('/pages/customers/index');
+    await expect(page.getByTestId('customer-center')).toBeVisible();
+    await expect(page.getByTestId('finance-center')).toHaveCount(0);
+    const customerProfileCard = page.getByTestId(`customer-management-card-${customer.id}`);
+    await expect(customerProfileCard).toBeVisible();
     const customerSpecs = page.getByTestId(`customer-specs-${customer.id}`);
     await expect(customerSpecs).toContainText('常用规格');
     await expect(customerSpecs).toContainText('客户自产纸箱');
@@ -235,7 +233,7 @@ async function main() {
     const dimensionOnlyCard = page.getByTestId('customer-specs-only-dimension:1');
     await expect(dimensionOnlyCard).toContainText('尺寸本独立客户');
     await expect(dimensionOnlyCard).toContainText('51×36×28 cm');
-    await expect(dimensionOnlyCard).toContainText('未建立客户资料');
+    await expect(dimensionOnlyCard).toContainText('待建立客户资料');
     await expect(page.getByTestId('customer-create-from-dimension-dimension:1')).toBeVisible();
     await expect(page.getByText('已停用规格客户', { exact: true })).toHaveCount(0);
     const accountsBeforeDimensionConversion = db.listCustomers().length;
@@ -247,11 +245,10 @@ async function main() {
     await expect(dimensionEditor).toHaveCount(0);
     assert.equal(db.listCustomers().length, accountsBeforeDimensionConversion, 'canceling account setup must not create a customer');
     await dimensionOnlyCard.screenshot({ path: path.join(evidence, 'customer-specs-only-390.png') });
-    const partySearch = page.getByTestId('finance-party-search').locator('input');
+    const partySearch = page.getByTestId('customer-center-search').locator('input');
     await partySearch.fill('45x30x25');
-    await expect(customerCard).toBeVisible();
+    await expect(customerProfileCard).toBeVisible();
     await expect(dimensionOnlyCard).toHaveCount(0);
-    await expect(partySummary).toContainText('500.00');
     await partySearch.fill('');
     failDimensions = true;
     const failedDimensions = page.waitForResponse(response =>
@@ -259,7 +256,7 @@ async function main() {
     );
     await page.getByLabel('刷新服务器数据').click();
     await failedDimensions;
-    await expect(customerCard).toContainText('500.00');
+    await expect(customerProfileCard).toBeVisible();
     await expect(dimensionOnlyCard).toHaveCount(0);
     failDimensions = false;
     const restoredDimensions = page.waitForResponse(response =>
@@ -269,6 +266,35 @@ async function main() {
     await restoredDimensions;
     await expect(dimensionOnlyCard).toBeVisible();
     await expect(page.getByText(/测试.*规格服务/)).toBeHidden({ timeout: 5000 });
+
+    await page.getByTestId('customer-create-from-dimension-dimension:1').click();
+    const conversionEditor = page.getByTestId('customer-editor');
+    await expect(conversionEditor.getByLabel('公司名称').locator('input')).toHaveValue('尺寸本独立客户');
+    await conversionEditor.getByText('保存客户', { exact: true }).click();
+    await expect(conversionEditor).toHaveCount(0);
+    let convertedCustomer;
+    await expect.poll(() => {
+      convertedCustomer = db.listCustomers().find(row => row.name === '尺寸本独立客户');
+      return convertedCustomer?.id;
+    }).toBeTruthy();
+    await expect(page.getByTestId('customer-specs-only-dimension:1')).toHaveCount(0);
+    const convertedProfileCard = page.getByTestId(`customer-management-card-${convertedCustomer.id}`);
+    await expect(convertedProfileCard).toContainText('51×36×28 cm');
+    await expect(convertedProfileCard).toContainText('价格未记录');
+
+    await page.getByTestId(`customer-view-bills-${customer.id}`).click();
+    await expect(page).toHaveURL(new RegExp(`/pages/business-center/index\\?section=finance&view=customer&party_type=customer&party_id=${customer.id}`));
+    await expect(page.getByTestId('customer-center')).toHaveCount(0);
+    await expect(page.getByTestId('finance-center')).toBeVisible();
+    const customerCard = page.getByTestId(`customer-bill-${customer.id}`);
+    await expect(customerCard).toContainText('500.00');
+    const partySummary = page.getByTestId('finance-party-summary');
+    await expect(partySummary).toContainText('500.00');
+    const financeSearch = page.getByTestId('finance-party-search').locator('input');
+    await financeSearch.fill('45x30x25');
+    await expect(customerCard).toBeVisible();
+    await expect(partySummary).toContainText('500.00');
+    await financeSearch.fill('');
     await page.getByTestId(`customer-bill-details-${customer.id}`).click();
     await expect(page.getByTestId(`production-inbound-${first.id}`)).toContainText('300.00');
     await expect(page.getByTestId(`production-inbound-${second.id}`)).toContainText('200.00');
@@ -318,22 +344,6 @@ async function main() {
     await page.getByRole('button', { name: '全部时间', exact: true }).click();
     await assertNoOverflow(320); await assertNoOverflow(1440);
     await page.screenshot({ path: path.join(evidence, 'finance-three-views.png'), fullPage: true });
-    await page.getByTestId('finance-tab-customer').click();
-    await expect(page.getByTestId('customer-specs-only-dimension:1')).toBeVisible();
-    await page.getByTestId('customer-create-from-dimension-dimension:1').click();
-    const conversionEditor = page.getByTestId('customer-editor');
-    await expect(conversionEditor.getByLabel('公司名称').locator('input')).toHaveValue('尺寸本独立客户');
-    await conversionEditor.getByText('保存客户', { exact: true }).click();
-    await expect(conversionEditor).toHaveCount(0);
-    let convertedCustomer;
-    await expect.poll(() => {
-      convertedCustomer = db.listCustomers().find(row => row.name === '尺寸本独立客户');
-      return convertedCustomer?.id;
-    }).toBeTruthy();
-    await expect(page.getByTestId(`customer-specs-only-dimension:1`)).toHaveCount(0);
-    const convertedCard = page.getByTestId(`customer-bill-${convertedCustomer.id}`);
-    await expect(convertedCard).toContainText('51×36×28 cm');
-    await expect(convertedCard).toContainText('价格未记录');
     await go(`/pages/ledger/index?party_type=customer&party_id=${customer.id}`);
     await expect(page.getByTestId('finance-center')).toBeVisible();
     await expect(page).toHaveURL(/pages\/business-center\/index/);

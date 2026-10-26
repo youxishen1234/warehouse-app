@@ -53,6 +53,11 @@ function createHarness({ entryId, ledger, getLedger = async () => [] }) {
     '@tarojs/components': { View: 'div', Text: 'span', Input: 'input', Picker: 'div' },
     '@tarojs/taro': { __esModule: true, default: { showToast: noop, showModal: async () => ({ confirm: true }) } },
     '@/components/Icon': { __esModule: true, default: () => null },
+    '@/components/CustomerCenter/model': {
+      buildCustomerManagementRows: () => [],
+      MAX_VISIBLE_CUSTOMER_SPECS: 3,
+      specificationSearchText: value => String(value ?? '').toLocaleLowerCase().replace(/\s+/g, '')
+    },
     '@/services/api': { addLedger: noop, deleteLedger: noop, getLedger, settleCustomer: noop, settleSupplier: noop },
     '@/utils/format': { formatMoney: value => Number(value || 0).toFixed(2), formatTime: () => '2026-10-24 10:00' },
     '@/services/download': { downloadCsv: noop },
