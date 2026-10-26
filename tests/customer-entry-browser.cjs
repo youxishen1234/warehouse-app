@@ -112,36 +112,61 @@ async function main() {
     const startingCustomerCount = db.listCustomers().length;
     await go('/pages/business-center/index');
     await expect(page.getByTestId('workbench-actions').locator('taro-button-core')).toHaveCount(4);
+    const customerToolbar = page.getByTestId('workbench-customer-toolbar');
+    await expect(customerToolbar.locator('taro-button-core')).toHaveCount(1);
+    await expect(customerToolbar.getByText('客户管理', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('workbench-add-customer')).toHaveCount(0);
     for (const width of [320, 390, 1280]) {
       await noOverflow(width);
       await page.screenshot({ path: path.join(evidence, `customer-entry-home-${width}.png`), fullPage: true });
     }
     await page.setViewportSize({ width: 390, height: 900 });
 
-    await page.getByTestId('workbench-add-customer').click();
+    await page.getByTestId('workbench-customer-bills').click();
+    await expect(page.getByTestId('finance-customer-view')).toBeVisible();
+    const financeAddCustomer = page.getByTestId('finance-add-customer');
+    await expect(financeAddCustomer).toBeVisible();
+    await expect(financeAddCustomer).toHaveCount(1);
+    await expect(financeAddCustomer).toBeInViewport();
+    await financeAddCustomer.click();
     await expect(editor()).toBeVisible();
     await editor().getByLabel('公司名称').locator('input').fill('取消客户草稿');
     await editor().getByText('取消', { exact: true }).click();
     await expect(editor()).toHaveCount(0);
     assert.equal(db.listCustomers().length, startingCustomerCount, 'canceling customer creation must not write a customer');
 
-    await page.getByTestId('workbench-add-customer').click();
+    await financeAddCustomer.click();
     await expect(editor()).toBeVisible();
-    await editor().getByLabel('公司名称').locator('input').fill('总台新增客户');
+    await editor().getByLabel('公司名称').locator('input').fill('客户入口新增客户');
     await editor().getByLabel('联系人').locator('input').fill('陈经理');
     await editor().getByLabel('联系电话').locator('input').fill('13800001111');
     await editor().getByText('保存客户', { exact: true }).click();
     await expect(editor()).toHaveCount(0);
-    const homeCustomer = db.listCustomers().find(customer => customer.name === '总台新增客户');
-    assert.ok(homeCustomer, 'home customer should persist in the shared customer list');
+    const homeCustomer = db.listCustomers().find(customer => customer.name === '客户入口新增客户');
+    assert.ok(homeCustomer, 'customer creation from customer management should persist to the shared list');
     assert.equal(homeCustomer.contact, '陈经理');
     assert.equal(homeCustomer.phone, '13800001111');
-    await expect(page.getByTestId('finance-customer-view')).toBeVisible();
     await expect(page.getByTestId(`customer-bill-${homeCustomer.id}`)).toBeVisible();
-    await page.getByLabel('返回总台').click();
-    await page.getByTestId('workbench-customer-bills').click();
-    await expect(page.getByTestId('finance-customer-view')).toBeVisible();
-    await expect(page.getByTestId(`customer-bill-${homeCustomer.id}`)).toBeVisible();
+    assert.equal(await page.getByTestId(`customer-bill-${homeCustomer.id}`).count(), 1);
+
+    await page.getByLabel(`编辑客户 ${homeCustomer.name}`).click();
+    await expect(editor()).toBeVisible();
+    await editor().getByLabel('联系人').locator('input').fill('陈经理（更新）');
+    await editor().getByText('保存客户', { exact: true }).click();
+    await expect(editor()).toHaveCount(0);
+    const editedCustomer = db.listCustomers().find(customer => customer.id === homeCustomer.id);
+    assert.equal(editedCustomer.contact, '陈经理（更新）');
+    assert.equal(db.listCustomers().filter(customer => customer.name === homeCustomer.name).length, 1, 'editing an existing customer must not create a duplicate');
+    for (const width of [320, 390, 1280]) {
+      await noOverflow(width);
+      await expect(financeAddCustomer).toBeInViewport();
+      assert.equal(await financeAddCustomer.evaluate(addButton => {
+        const firstCustomer = document.querySelector('[data-testid^="customer-bill-"]');
+        return !!firstCustomer && addButton.getBoundingClientRect().bottom <= firstCustomer.getBoundingClientRect().top;
+      }), true, 'customer creation stays above the populated customer list');
+      await page.screenshot({ path: path.join(evidence, `customer-management-${width}.png`), fullPage: true });
+    }
+    await page.setViewportSize({ width: 390, height: 900 });
 
     await page.getByLabel('返回总台').click();
     await page.getByTestId('workbench-customer-orders').click();
@@ -165,42 +190,10 @@ async function main() {
     await expect(page.getByTestId('order-amount-preview')).toContainText('¥13.00');
     await choosePicker('选择订单客户', homeCustomer.name);
     await expect(page.getByTestId('order-selected-customer')).toContainText(homeCustomer.name);
-    await page.screenshot({ path: path.join(evidence, 'order-draft-before-add-customer-390.png'), fullPage: true });
-
-    await page.getByTestId('order-add-customer').click();
-    await expect(editor()).toBeVisible();
-    await editor().getByLabel('公司名称').locator('input').fill('订单取消客户草稿');
-    await editor().getByText('取消', { exact: true }).click();
+    await expect(page.getByTestId('order-add-customer')).toHaveCount(0);
     await expect(editor()).toHaveCount(0);
-    assert.equal(db.listCustomers().length, startingCustomerCount + 1, 'canceling from order entry must not write a customer');
-    await expect(input('订单号')).toHaveValue('CUSTOMER-ENTRY-ORDER-01');
-    await expect(input('规格（可选，如 300×200×150mm）')).toHaveValue('120×80×60mm');
-    await expect(input('材质（可选，如五层AB楞）')).toHaveValue('五层AB楞');
-    await expect(input('备注（可选）')).toHaveValue('先确认样品后送货');
-    await expect(input('数量')).toHaveValue('4');
-    await expect(input('单价')).toHaveValue('3.25');
-    await expect(page.getByTestId('order-selected-customer')).toContainText(homeCustomer.name);
-    await expect(page.getByText(`交货日期：${deliveryDate}`, { exact: true })).toBeVisible();
+    await page.screenshot({ path: path.join(evidence, 'order-draft-before-save-390.png'), fullPage: true });
 
-    await page.getByTestId('order-add-customer').click();
-    await expect(editor()).toBeVisible();
-    await editor().getByLabel('公司名称').locator('input').fill('订单中新增客户');
-    await editor().getByLabel('联系人').locator('input').fill('王女士');
-    await editor().getByLabel('联系电话').locator('input').fill('13900002222');
-    await editor().getByText('保存客户', { exact: true }).click();
-    await expect(editor()).toHaveCount(0);
-    const orderCustomer = db.listCustomers().find(customer => customer.name === '订单中新增客户');
-    assert.ok(orderCustomer, 'order customer should persist in the shared customer list');
-    assert.equal(orderCustomer.contact, '王女士');
-    assert.equal(orderCustomer.phone, '13900002222');
-    // Saving publishes a shared refresh. Wait until the remounted order form has
-    // completed its reload before asserting auto-selection and retained draft.
-    await expect(page.getByTestId('order-customer-picker')).toBeVisible();
-    await expect(page.getByTestId('order-selected-customer')).toContainText(orderCustomer.name);
-    await choosePicker('选择订单客户', homeCustomer.name);
-    await expect(page.getByTestId('order-selected-customer')).toContainText(homeCustomer.name);
-    await choosePicker('选择订单客户', orderCustomer.name);
-    await expect(page.getByTestId('order-selected-customer')).toContainText(orderCustomer.name);
     await expect(input('订单号')).toHaveValue('CUSTOMER-ENTRY-ORDER-01');
     await expect(input('规格（可选，如 300×200×150mm）')).toHaveValue('120×80×60mm');
     await expect(input('材质（可选，如五层AB楞）')).toHaveValue('五层AB楞');
@@ -210,17 +203,18 @@ async function main() {
     await expect(page.getByText(`交货日期：${deliveryDate}`, { exact: true })).toBeVisible();
     await expect(page.getByText('单位：个', { exact: true })).toBeVisible();
     await expect(page.getByTestId('order-amount-preview')).toContainText('¥13.00');
+    assert.equal(db.listCustomers().length, startingCustomerCount + 1, 'creating an order must not add another customer');
 
     await noOverflow(320);
-    await page.screenshot({ path: path.join(evidence, 'order-add-customer-320.png'), fullPage: true });
+    await page.screenshot({ path: path.join(evidence, 'order-create-320.png'), fullPage: true });
     await noOverflow(390);
     await page.getByText('保存订单', { exact: true }).click();
-    await expect(page.getByText('CUSTOMER-ENTRY-ORDER-01 · 订单中新增客户', { exact: true })).toBeVisible();
+    await expect(page.getByText('CUSTOMER-ENTRY-ORDER-01 · 客户入口新增客户', { exact: true })).toBeVisible();
 
     const createdOrder = db.listOrders().find(order => order.order_no === 'CUSTOMER-ENTRY-ORDER-01');
-    assert.ok(createdOrder, 'order with newly created customer should persist');
-    assert.equal(createdOrder.customer_id, orderCustomer.id);
-    assert.equal(createdOrder.customer_name, orderCustomer.name);
+    assert.ok(createdOrder, 'order for an existing customer should persist');
+    assert.equal(createdOrder.customer_id, homeCustomer.id);
+    assert.equal(createdOrder.customer_name, homeCustomer.name);
     assert.equal(createdOrder.specification, '120×80×60mm');
     assert.equal(createdOrder.material, '五层AB楞');
     assert.equal(createdOrder.quantity, 4);
@@ -229,14 +223,14 @@ async function main() {
     assert.equal(createdOrder.amount, 13);
     assert.equal(createdOrder.delivery_date, deliveryDate);
     assert.equal(createdOrder.remark, '先确认样品后送货');
-    assert.equal(db.listCustomers().filter(customer => customer.name === '订单中新增客户').length, 1, 'order save must not create a duplicate customer');
+    assert.equal(db.listCustomers().length, startingCustomerCount + 1, 'order save must not change the customer list');
     await noOverflow(1280);
     await page.screenshot({ path: path.join(evidence, 'orders-1280.png'), fullPage: true });
 
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({
-      result: 'PASS customer entry points and order draft preservation',
-      customerIds: [homeCustomer.id, orderCustomer.id],
+      result: 'PASS single customer entry and order customer selection',
+      customerIds: [homeCustomer.id],
       order: { id: createdOrder.id, customer_id: createdOrder.customer_id, amount: createdOrder.amount },
       widths: [320, 390, 1280],
       pageErrors: errors,

@@ -62,7 +62,7 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
   const [quantity, setQuantity] = useState('');
   const [remark, setRemark] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const [editor, setEditor] = useState<{ id?: number; supplier: boolean; returnToCustomerBills?: boolean } | null>(null);
+  const [editor, setEditor] = useState<{ id?: number; supplier: boolean } | null>(null);
   const [recordView, setRecordView] = useState<'activity' | 'orders'>(() => params.detail === '1' ? 'orders' : 'activity');
   const [orderStatus, setOrderStatus] = useState<'全部' | CustomerOrder['status']>('全部');
   const [stocktake, setStocktake] = useState<{ product: Product } | null>(null);
@@ -190,10 +190,8 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
           <View className={styles.summaryItem}><Text>库存预警</Text><strong className={lowStock.length ? styles.alertValue : undefined}>{stats ? stats.lowStock : '--'}</strong></View>
         </View>}
         <View className={styles.customerToolbar} data-testid='workbench-customer-toolbar'>
-          <View className={styles.customerToolbarCopy}><Text className={styles.customerToolbarTitle}>客户资料</Text></View>
           <View className={styles.customerToolbarActions}>
-            <Button className={styles.customerToolbarButton} data-testid='workbench-add-customer' onClick={() => setEditor({ supplier: false, returnToCustomerBills: true })}><Icon name='plus' color='#a6dcb8' strokeWidth={1.8} style={{ width: 19, height: 19 }} /><Text>新增客户</Text></Button>
-            <Button className={styles.customerToolbarButton} data-testid='workbench-customer-bills' onClick={() => openFinance('customer')}><Icon name='notebook' color='#a6dcb8' strokeWidth={1.6} style={{ width: 19, height: 19 }} /><Text>客户管理 / 账单</Text></Button>
+            <Button className={styles.customerToolbarButton} data-testid='workbench-customer-bills' onClick={() => openFinance('customer')}><Icon name='notebook' color='#a6dcb8' strokeWidth={1.6} style={{ width: 19, height: 19 }} /><Text>客户管理</Text></Button>
           </View>
         </View>
         <View className={styles.workflow} data-testid='workbench-factory-flow'>
@@ -249,15 +247,6 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
     {!embedded && <View className={styles.nav}>{([{ key: 'home', text: '总台', icon: 'home' }, { key: 'stock', text: '库存', icon: 'boxes' }, { key: 'records', text: '记录', icon: 'notebook' }, { key: 'photos', text: '票据', icon: 'photos' }] as const).map(n => <Button key={n.key} aria-pressed={panel === n.key} onClick={() => changePanel(n.key)}><Icon name={n.icon} color={panel === n.key ? '#a6dcb8' : '#a8b6ad'} strokeWidth={1.5} style={{ width: 21, height: 21 }} /><Text>{n.text}</Text></Button>)}</View>}
     <View className={styles.footer} role='status' data-testid='workbench-sync-status'><Text>{status}</Text>{lastSyncedAt !== null && <Text>上次同步 {new Date(lastSyncedAt).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}</Text>}<Text>{editor ? '资料编辑中' : '照片上传需确认保存'}</Text></View>
     {stocktake && <View className={styles.overlay}><View className={styles.dialog} role='dialog' aria-label='库存盘点'><strong>{stocktake.product.name}</strong><View className={styles.stocktakeSummary}><Text>{stocktake.product.specification || '规格未填写'}</Text><Text>当前 {stocktake.product.stock} {stocktake.product.unit}</Text></View><Text className={styles.label}>新库存</Text><Input aria-label='实盘库存' className={styles.input} type='digit' placeholder='填写实际盘点数量' value={stocktakeValue} onInput={e => setStocktakeValue(e.detail.value)} /><Text className={styles.label}>盘点日期</Text><Picker mode='date' end={currentDate()} value={stocktakeDate} onChange={e => setStocktakeDate(e.detail.value)}><View aria-label='盘点日期' className={styles.input}>{stocktakeDate || '请选择日期'}</View></Picker><Input aria-label='盘点备注' className={styles.input} placeholder='备注（选填，如盘亏原因）' value={stocktakeRemark} onInput={e => setStocktakeRemark(e.detail.value)} />{stocktakeValue.trim() && /^\d+(?:\.\d{1,6})?$/.test(stocktakeValue.trim()) && <Text className={styles.note}>调整后库存 {stocktakeValue.trim()} {stocktake.product.unit}，盘点流水会同步保存。</Text>}{error && <View role='alert' className={styles.error}>{error}</View>}<View className={styles.tools}>{action('取消', () => { setStocktake(null); setError(''); })}{action(busy ? '保存中…' : '确认盘点', () => void submitStocktake(), true)}</View></View></View>}
-    {editor && <CustomerEditor id={editor.id} supplier={editor.supplier} onClose={() => setEditor(null)} onSaved={async () => {
-      const returnToCustomerBills = editor.returnToCustomerBills;
-      setEditor(null);
-      await reload();
-      if (returnToCustomerBills) {
-        setFinanceEntryId(undefined);
-        setFinanceView('customer');
-        changePanel('finance');
-      }
-    }} />}
+    {editor && <CustomerEditor id={editor.id} supplier={editor.supplier} onClose={() => setEditor(null)} onSaved={async () => { setEditor(null); await reload(); }} />}
   </View></View>;
 }

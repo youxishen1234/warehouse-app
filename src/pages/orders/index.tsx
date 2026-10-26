@@ -1,12 +1,10 @@
 import { useSharedRefresh } from '@/services/shared-refresh';
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, Input, Picker, ScrollView, Button } from '@tarojs/components';
+import { View, Text, Input, Picker, ScrollView } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { addOrder, getCustomers, getOrderEvents, getOrders, updateOrder } from '@/services/api';
 import type { Customer, CustomerOrder } from '@/types';
 import type { OrderStatusEvent } from '@/services/api';
-import CustomerEditor from '@/components/CustomerEditor';
-import Icon from '@/components/Icon';
 import styles from './index.module.scss';
 import { previewAmount, sanitizeDecimalInput } from '@/utils/stock-math';
 import { formatMoney, formatShortTime } from '@/utils/format';
@@ -56,7 +54,6 @@ export default function Orders() {
   const [delivery, setDelivery] = useState('');
   const [remark, setRemark] = useState('');
   const [customer, setCustomer] = useState<number | null>(null);
-  const [showCustomerEditor, setShowCustomerEditor] = useState(false);
   const [unit, setUnit] = useState('件');
   const [unitIndex, setUnitIndex] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -122,10 +119,7 @@ export default function Orders() {
     {remote.loadError && <View className={styles.empty} onClick={load}>{remote.loadError} · 点击重试</View>}
     {!remote.loading && !remote.loadError && show && <View className={styles.form}>
       <Input maxlength={50} placeholder="订单号" value={orderNo} onInput={e => setOrderNo(e.detail.value)} />
-      <View className={styles.customerPickerRow}>
-        <Picker aria-label='选择订单客户' data-testid='order-customer-picker' range={['不关联客户', ...customers.map(c => c.name)]} value={Math.max(0, customers.findIndex(item => item.id === customer) + 1)} onChange={e => { const index = Number(e.detail.value); setCustomer(index ? customers[index - 1]?.id || null : null); }}><View data-testid='order-selected-customer'>客户：{customers.find(item => item.id === customer)?.name || '选择客户（可选）'} ›</View></Picker>
-        <Button className={styles.addCustomer} data-testid='order-add-customer' onClick={() => setShowCustomerEditor(true)}><Icon name='plus' color='#28623b' strokeWidth={1.8} style={{ width: 17, height: 17 }} /><Text>新增客户</Text></Button>
-      </View>
+      <Picker aria-label='选择订单客户' data-testid='order-customer-picker' range={['不关联客户', ...customers.map(c => c.name)]} value={Math.max(0, customers.findIndex(item => item.id === customer) + 1)} onChange={e => { const index = Number(e.detail.value); setCustomer(index ? customers[index - 1]?.id || null : null); }}><View data-testid='order-selected-customer'>客户：{customers.find(item => item.id === customer)?.name || '选择客户（可选）'}</View></Picker>
       <Input placeholder="规格（可选，如 300×200×150mm）" value={spec} onInput={e => setSpec(e.detail.value)} />
       <Input placeholder="材质（可选，如五层AB楞）" value={material} onInput={e => setMaterial(e.detail.value)} />
       <Picker aria-label='订单单位' mode="selector" range={orderUnits} value={unitIndex} onChange={e => { const idx = Number(e.detail.value); setUnitIndex(idx); setUnit(orderUnits[idx]); }}><View>单位：{unit}</View></Picker>
@@ -136,12 +130,6 @@ export default function Orders() {
       <Input placeholder="备注（可选）" value={remark} onInput={e => setRemark(e.detail.value)} />
       <View className={styles.save} onClick={save}>{saving ? '保存中…' : '保存订单'}</View>
     </View>}
-    {showCustomerEditor && <CustomerEditor supplier={false} onClose={() => setShowCustomerEditor(false)} onSaved={async party => {
-      setCustomers(current => current.some(item => item.id === party.id) ? current : [...current, party]);
-      setCustomer(party.id);
-      setShowCustomerEditor(false);
-      await load();
-    }} />}
     {!remote.loading && !remote.loadError && (list.length === 0 ? <View className={styles.empty}>暂无订单</View> : list.map(order => <OrderListRow
       key={order.id}
       order={order}

@@ -85,10 +85,12 @@
 .attachmentBadge taro-image-core { width: 11PX; height: 11PX; }
 .empty { display: flex; flex-direction: column; align-items: center; gap: 12PX; padding: 28PX 16PX; color: #b5c0b9; text-align: center; overflow-wrap: anywhere; }
 .finance .empty button { padding: 7PX 12PX; border: 1PX solid #526357; border-radius: 5PX; background: #2b382f; color: #bce8c9; }
-.ledgerActions, .partyActions { display: flex; justify-content: flex-end; margin-top: 13PX; }
+.ledgerActions { display: flex; justify-content: flex-end; margin-top: 13PX; }
 .finance .primary { min-height: 39PX; padding: 8PX 14PX; border: 1PX solid #a6dcb8; border-radius: 6PX; background: #a6dcb8; color: #1c3325; font-weight: 600; }
 
 .partyToolbar { align-items: stretch; flex-direction: column; margin-bottom: 12PX; }
+.finance .partyAddButton { display: inline-flex; align-items: center; justify-content: center; align-self: flex-start; gap: 7PX; min-height: 44PX; }
+.partyAddButton taro-image-core { width: 17PX; height: 17PX; flex-shrink: 0; }
 .partySearch { min-height: 40PX; margin: 0; }
 .partyToolbar .periodTabs { width: 100%; justify-content: space-between; }
 .partyToolbar .periodTabs .periodTab { flex: 1 0 auto; min-width: max-content; }
@@ -159,6 +161,7 @@
 @media (min-width: 760PX) {
   .toolbar { flex-wrap: nowrap; }
   .partyToolbar { flex-direction: row; align-items: center; justify-content: flex-start; flex-wrap: wrap; }
+  .finance .partyAddButton { flex-shrink: 0; }
   .partySearch { min-width: 220PX; max-width: 300PX; flex: 1 1 220PX; }
   .partyToolbar .periodTabs { width: auto; flex: 0 0 auto; }
   .partyToolbar .periodTabs .periodTab { flex: 0 0 auto; min-width: max-content; }

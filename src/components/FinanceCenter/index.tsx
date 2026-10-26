@@ -316,6 +316,7 @@ export default function FinanceCenter({
 
     {(view === 'customer' || view === 'supplier') && <View className={styles.partyView} data-testid={`finance-${view}-view`}>
       <View className={styles.partyToolbar}>
+        <FinanceButton className={`${styles.primary} ${styles.partyAddButton}`} data-testid={`finance-add-${view}`} onClick={() => onEditParty?.(view)}><Icon name='plus' color='#1c3325' /><Text>{`新增${view === 'customer' ? '客户' : '供货商'}`}</Text></FinanceButton>
         <Input className={styles.partySearch} aria-label={`搜索${partyTitle}`} placeholder={`搜索${partyTitle}对象`} value={partySearch} onInput={e => setPartySearch(e.detail.value)} />
         <View className={styles.periodTabs}>{(['本月', '上月', '全部时间'] as PartyPeriod[]).map(value => <FinanceButton key={value} aria-pressed={partyPeriod === value} className={`${styles.periodTab} ${partyPeriod === value ? styles.periodActive : ''}`} onClick={() => choosePartyPeriod(value)}>{value}</FinanceButton>)}</View>
       </View>
@@ -377,7 +378,6 @@ export default function FinanceCenter({
         </View>;
       })}
       {(view === 'customer' ? customerRows.length : supplierRows.length) === 0 && <View className={styles.empty}><Text>{partySearch ? '没有找到匹配对象' : `还没有${view === 'customer' ? '客户' : '供货商'}资料`}</Text></View>}
-      <View className={styles.partyActions}><FinanceButton className={styles.primary} data-testid={`finance-add-${view}`} onClick={() => onEditParty?.(view)}>{`＋ 新增${view === 'customer' ? '客户' : '供货商'}`}</FinanceButton></View>
     </View>}
 
     {rangeOpen && <View className={styles.overlay}><View className={styles.backdrop} aria-hidden='true' onClick={() => setRangeOpen(false)} /><View className={styles.sheet} role='dialog' aria-modal='true' aria-label='筛选账单日期'>
