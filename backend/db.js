@@ -739,7 +739,9 @@ cleanupResidualTemps();
 createAutoBackup('startup');
 let batching = false;
 let cache = load();
-if (migratedDimensions) persist();
+const duplicatePrintNotes = require('./print-notes').removeDuplicates(cache);
+if (duplicatePrintNotes.length) console.warn(`[print-notes] soft-deleted ${duplicatePrintNotes.length} duplicate drafts on startup`);
+if (migratedDimensions || duplicatePrintNotes.length) persist();
 function atomicMutation(action) {
   if (batching) return action();
   const before = JSON.stringify(cache);
@@ -1747,6 +1749,8 @@ function restoreData(value) {
   const next = JSON.parse(JSON.stringify(value));
   // Older backups must not erase documents created in the new print center.
   if (next.print_notes === undefined) next.print_notes = JSON.parse(JSON.stringify(cache.print_notes || []));
+  const duplicatePrintNotes = require('./print-notes').removeDuplicates(next);
+  if (duplicatePrintNotes.length) console.warn(`[print-notes] soft-deleted ${duplicatePrintNotes.length} duplicate drafts from restored backup`);
   next.print_notes.forEach(note => {
     const current = (cache.print_notes || []).find(row => row.id === note.id);
     note.version = Math.max(note.version, current?.version || 0) + 1;

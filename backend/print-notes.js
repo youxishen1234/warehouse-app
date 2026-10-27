@@ -6,6 +6,40 @@ function normalizeSpecification(value) {
   return String(value ?? '').replace(/(\d)\s*(?:mm|ｍｍ|毫米)(?=\s*(?:[×xX*＊✕]|乘|$))/gi, '$1')
     .replace(/\s*(?:[×xX*＊✕]|乘)\s*/g, '×').trim();
 }
+function noteFingerprint(raw) {
+  return JSON.stringify(validateNote(raw));
+}
+function olderNote(a, b) {
+  const createdA = Number.isSafeInteger(a.created_at) ? a.created_at : Number.MAX_SAFE_INTEGER;
+  const createdB = Number.isSafeInteger(b.created_at) ? b.created_at : Number.MAX_SAFE_INTEGER;
+  return createdA - createdB || Number(a.id || 0) - Number(b.id || 0);
+}
+// Keep the original visible draft for each exact payload and soft-delete later
+// copies. Shipped notes are never candidates because they are part of the audit
+// trail; deleted drafts remain in backups for recovery and review.
+function removeDuplicates(data) {
+  const notes = data.print_notes || (data.print_notes = []);
+  const groups = new Map();
+  for (const note of notes) {
+    if (note.deleted_at || note.outbound_at) continue;
+    const fingerprint = noteFingerprint(note);
+    const group = groups.get(fingerprint);
+    if (group) group.push(note); else groups.set(fingerprint, [note]);
+  }
+  const removed = [];
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const keep = group.reduce((current, candidate) => olderNote(candidate, current) < 0 ? candidate : current);
+    const deletedAt = Date.now();
+    for (const note of group) if (note !== keep) {
+      note.deleted_at = deletedAt;
+      note.updated_at = deletedAt;
+      note.version += 1;
+      removed.push(note.id);
+    }
+  }
+  return removed;
+}
 function validateNote(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw fail('送货单内容无效');
   const text = (value, label, limit, required = false) => {
@@ -42,12 +76,12 @@ function validateNote(raw) {
 }
 function list(data, keyword = '') {
   const query = String(keyword).trim().toLocaleLowerCase();
-  return (data.print_notes || []).filter(note => !query || [note.number, note.customer_name, note.date, note.address, note.phone, ...note.items.map(item => `${item.name} ${item.specification} ${item.remark}`)].join(' ').toLocaleLowerCase().includes(query))
+  return (data.print_notes || []).filter(note => !note.deleted_at && (!query || [note.number, note.customer_name, note.date, note.address, note.phone, ...note.items.map(item => `${item.name} ${item.specification} ${item.remark}`)].join(' ').toLocaleLowerCase().includes(query)))
     .slice().sort((a, b) => b.updated_at - a.updated_at || b.id - a.id);
 }
 function save(data, raw, id) {
   const notes = data.print_notes || (data.print_notes = []);
-  const previous = id == null ? null : notes.find(note => note.id === id);
+  const previous = id == null ? null : notes.find(note => note.id === id && !note.deleted_at);
   if (id != null && !previous) throw fail('送货单不存在', 404);
   if (previous?.outbound_at) throw fail('送货单已出库，不能再修改明细；可以直接重复打印');
   if (previous && raw?.version !== previous.version) throw fail('这张送货单已被修改，请重新打开后再编辑；当前内容仍保留', 409);
@@ -58,6 +92,12 @@ function save(data, raw, id) {
     const product = data.products.find(row => row.id === item.product_id && !row.deleted_at);
     if (!product) throw fail(`第 ${index + 1} 行库存商品不存在或已停用，请重新选择`);
     if (String(product.unit || '件') !== '个') throw fail(`第 ${index + 1} 行库存商品单位为「${product.unit || '件'}」，送货单出库要求单位为「个」`);
+  }
+  if (!previous) {
+    const fingerprint = noteFingerprint(note);
+    removeDuplicates(data);
+    const duplicate = notes.find(row => !row.deleted_at && !row.outbound_at && noteFingerprint(row) === fingerprint);
+    if (duplicate) return duplicate;
   }
   const nextId = previous?.id ?? notes.reduce((max, row) => Math.max(max, row.id), 0) + 1;
   const now = Date.now();
@@ -74,9 +114,9 @@ function validateBackup(data) {
     const normalized = validateNote(note);
     if (!Number.isSafeInteger(note.id) || note.id < 1 || ids.has(note.id) || typeof note.number !== 'string' || !note.number || note.number.length > 80
       || !Number.isSafeInteger(note.version) || note.version < 1 || !Number.isSafeInteger(note.created_at) || note.created_at < 0
-      || !Number.isSafeInteger(note.updated_at) || note.updated_at < 0 || normalized.total !== note.total
+      || !Number.isSafeInteger(note.updated_at) || note.updated_at < 0 || (note.deleted_at !== undefined && (!Number.isSafeInteger(note.deleted_at) || note.deleted_at < 0)) || normalized.total !== note.total
       || normalized.items.some((item, i) => item.amount !== note.items[i].amount || note.items[i].unit !== '个')) throw fail('送货单备份编号、版本或金额无效');
     ids.add(note.id);
   }
 }
-module.exports = { normalizeSpecification, validateNote, list, save, validateBackup };
+module.exports = { normalizeSpecification, validateNote, list, save, removeDuplicates, validateBackup };
