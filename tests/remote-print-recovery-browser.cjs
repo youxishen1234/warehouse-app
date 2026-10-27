@@ -89,6 +89,16 @@ async function main() {
     store.acknowledge(pair.agent, claim.id, { lease: claim.lease, status: 'queued' });
     await expect(button('再打印一份')).toBeEnabled();
     await expect(dialog().getByRole('status')).toContainText('已送入630K打印队列');
+    assert.equal(await page.evaluate(() => localStorage.getItem('warehouse_remote_print_pending_v1')), null, 'terminal remote status releases the global pending gate');
+    const originalAttemptPreserved = await page.evaluate(({ id, wrapped }) => Object.entries(localStorage).some(([key, value]) => {
+      if (!key.startsWith('warehouse_remote_print_pair_v1:')) return false;
+      try { const saved = JSON.parse(value); return (wrapped ? saved.data : saved) === id; }
+      catch { return false; }
+    }), { id: sentIds[0], wrapped: built });
+    assert.equal(originalAttemptPreserved, true, 'the released task keeps its same-ID recovery record');
+    await expect(button('正在查询上次打印…')).toHaveCount(0);
+    await expect(button('再打印一份')).toBeEnabled();
+    assert.equal(submissions, 1, 'releasing the terminal pending gate must not resubmit the recovered job');
 
     await button('返回单据').click(); await button('重新打印').click();
     await page.getByText(/远程打印到店里/).click();

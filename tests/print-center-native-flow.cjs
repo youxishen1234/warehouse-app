@@ -125,7 +125,9 @@ async function main() {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, locale: 'zh-CN' });
     page = await context.newPage();
     page.setDefaultTimeout(15000);
-    await page.addInitScript(() => { window.Capacitor = { isNativePlatform: () => true }; });
+    // Mimic the Android bridge exposed by an older native shell before Capacitor core initializes.
+    // This intentionally has no native BluetoothLe plugin header/implementation.
+    await page.addInitScript(() => { window.androidBridge = { postMessage() {} }; });
     page.on('pageerror', error => errors.push(error.message));
 
     await context.route('**/*', async route => {
@@ -163,6 +165,11 @@ async function main() {
     const printNotice = () => page.locator('main [data-print-notice]');
 
     await page.goto(origin + '/#/pages/print-center/index');
+    assert.deepEqual(await page.evaluate(() => ({
+      native: window.Capacitor?.isNativePlatform?.() ?? false,
+      platform: window.Capacitor?.getPlatform?.() ?? 'web',
+      bluetoothLe: window.Capacitor?.isPluginAvailable?.('BluetoothLe') ?? false
+    })), { native: true, platform: 'android', bluetoothLe: false }, 'the fixture represents a legacy native shell without the new BLE plugin');
     await expect(page.locator('main[data-print-view="home"]')).toBeVisible();
     await expect(page.getByRole('button', { name: new RegExp(saved.number) }).first()).toBeVisible();
     await page.getByRole('button', { name: new RegExp(saved.number) }).first().click();

@@ -157,6 +157,13 @@ jobs:
           PRINT_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
           PRINT_ARTIFACTS: release/print-native-flow-${{ github.run_id }}-${{ github.run_attempt }}
         run: node tests/print-center-native-flow.cjs
+      - name: Validate 630K Bluetooth original-job recovery and mobile layout
+        env:
+          PRINT_ARTIFACTS: release/bluetooth-630k-${{ github.run_id }}-${{ github.run_attempt }}
+          BLE630K_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          node tests/bluetooth-630k-browser.cjs
+          node tests/bluetooth-630k-built-browser.cjs
       - name: Validate desktop navigation
         env:
           NAV_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}

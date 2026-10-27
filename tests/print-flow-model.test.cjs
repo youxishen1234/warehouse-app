@@ -52,11 +52,14 @@ test('copy-as-new preserves business lines but drops old document and outbound i
 
 test('automatic outbound printing is opt-in and resets only when the printer pairing changes', () => {
   const storage = new Map();
-  const api = load('src/services/remote-print.ts', {
-    '@tarojs/taro': { default: {
+  const taro = { default: {
       getStorageSync: key => storage.get(key),
       setStorageSync: (key, value) => storage.set(key, value)
-    } },
+  } };
+  const pending = load('src/services/print-transport-pending.ts', { '@tarojs/taro': taro });
+  const api = load('src/services/remote-print.ts', {
+    '@tarojs/taro': taro,
+    './print-transport-pending': pending,
     './request': {}
   });
   assert.equal(api.readPrintAfterOutbound(), false);

@@ -13,6 +13,8 @@ android/local.properties
 __pycache__/
 /.swc/
 /test-results/
+/bluetooth-630k-relay.exe
+/scripts/bluetooth-630k-relay.exe
 /backend/data.json
 /backend/accounts.json
 /backend/update-log.jsonl

@@ -6,6 +6,7 @@ import { scanPrintPairQr } from '@/services/print-pair-scan';
 import type { SavedPrintNote } from '@/services/print-notes';
 import { refreshPrintNotices, reportPrintNoticeError, trackPrintNotice, updatePrintNotice } from '@/services/print-notifications';
 import { useMobilePrintNotifications } from '@/services/mobile-print-notifications';
+import { readBluetooth630KPending, readRemotePrintPending } from '@/services/print-transport-pending';
 import styles from './index.module.scss';
 
 const messageOf = (issue: unknown) => issue instanceof Error ? issue.message : '打印连接失败，请刷新状态重试';
@@ -40,7 +41,7 @@ export type RemotePrintController = {
   disconnect: () => void;
 };
 
-export function useRemotePrint(saved: SavedPrintNote | undefined, paper: string): RemotePrintController {
+export function useRemotePrint(saved: SavedPrintNote | undefined, paper: string, enabled = true): RemotePrintController {
   const mobileNotices = useMobilePrintNotifications();
   const [linkedPair] = useState(readPrintPairFromAddress);
   const [hadPairLink] = useState(() => typeof window !== 'undefined' && window.location.href.includes('print_pair='));
@@ -64,21 +65,28 @@ export function useRemotePrint(saved: SavedPrintNote | undefined, paper: string)
   const fingerprint = saved && device ? JSON.stringify({ device: device.id, id: saved.id, version: saved.version, paper }) : '';
   const currentScope = useRef('');
   currentScope.current = token + fingerprint;
+  const globalPending = readRemotePrintPending();
+  const globalPendingId = globalPending?.id || '';
+  const foreignPending = !!globalPending && globalPending.noteId !== saved?.id;
+  const bluetoothPending = readBluetooth630KPending();
 
   useEffect(() => {
-    setJob(undefined); setJobError(''); setMessage(''); setLastSentId(''); setConfirmCopy(false);
-    const id = fingerprint ? readPrintAttempt(fingerprint) : '';
-    setAttemptId(id); setChecking(!!id); setAttemptScope(token + fingerprint);
-  }, [fingerprint, token]);
+    const id = globalPendingId || (fingerprint ? readPrintAttempt(fingerprint) : '');
+    const scope = token + fingerprint;
+    setJob(previous => previous?.id === id ? previous : undefined); setJobError(''); setMessage(''); setConfirmCopy(false);
+    setAttemptId(id); setAttemptScope(scope);
+    if (id !== attemptId || attemptScope !== scope) setChecking(!!id);
+  }, [fingerprint, token, globalPendingId, attemptId, attemptScope]);
+  useEffect(() => { setLastSentId(''); }, [fingerprint, token]);
 
-  const recoveredId = fingerprint ? readPrintAttempt(fingerprint) : '';
+  const recoveredId = !foreignPending && fingerprint ? readPrintAttempt(fingerprint) : '';
   useEffect(() => {
     if (!mobileNotices || !recoveredId || !saved || !device) return;
     trackPrintNotice({ id: recoveredId, noteId: saved.id, noteNumber: saved.number, printer: device.printer, deviceId: device.id, createdAt: Date.now() });
   }, [mobileNotices, recoveredId, saved, device]);
 
   useEffect(() => {
-    if (!token) return;
+    if (!enabled || !token) return;
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
@@ -91,10 +99,10 @@ export function useRemotePrint(saved: SavedPrintNote | undefined, paper: string)
     };
     void poll();
     return () => { active = false; clearTimeout(timer); };
-  }, [token, refresh, mobileNotices]);
+  }, [enabled, token, refresh, mobileNotices]);
 
   useEffect(() => {
-    if (!attemptId || busy || resolving || !token) return;
+    if (!enabled || !attemptId || busy || resolving || !token) return;
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
@@ -121,7 +129,7 @@ export function useRemotePrint(saved: SavedPrintNote | undefined, paper: string)
     };
     void poll();
     return () => { active = false; clearTimeout(timer); };
-  }, [attemptId, busy, resolving, token, fingerprint, refresh, mobileNotices]);
+  }, [enabled, attemptId, busy, resolving, token, fingerprint, refresh, mobileNotices]);
 
   useEffect(() => {
     const resume = () => { if (document.visibilityState !== 'hidden') setRefresh(value => value + 1); };
@@ -147,11 +155,11 @@ export function useRemotePrint(saved: SavedPrintNote | undefined, paper: string)
   }, [mobileNotices]);
 
   useEffect(() => {
-    if (linkHandled.current) return;
+    if (!enabled || linkHandled.current) return;
     linkHandled.current = true;
     if (linkedPair) void pair(linkedPair);
     else if (hadPairLink) setMessage('打印连接链接无效，请重新扫描电脑上的二维码');
-  }, [hadPairLink, linkedPair, pair]);
+  }, [enabled, hadPairLink, linkedPair, pair]);
 
   const send = async (newCopy = false) => {
     if (!saved || !canSend || sending.current) return;
@@ -190,13 +198,15 @@ export function useRemotePrint(saved: SavedPrintNote | undefined, paper: string)
   };
 
   const disconnect = () => {
-    savePrintPair(''); setToken(''); setDevice(undefined); setDeviceError('');
-    if (mobileNotices) void refreshPrintNotices();
+    try {
+      savePrintPair(''); setToken(''); setDevice(undefined); setDeviceError('');
+      if (mobileNotices) void refreshPrintNotices();
+    } catch (issue) { setMessage(messageOf(issue)); }
   };
 
   const terminal = !!job && terminalStatuses.has(job.status);
   const pending = !!job && pendingStatuses.has(job.status);
-  const canSend = !!fingerprint && attemptScope === currentScope.current && !busy && !checking && !resolving && !pending && !deviceError;
+  const canSend = enabled && !bluetoothPending && !foreignPending && !!fingerprint && attemptScope === currentScope.current && !busy && !checking && !resolving && !pending && !deviceError;
   const deviceStatus = !token ? '未连接打印电脑' : deviceError ? '连接状态未确认' : !device ? '正在连接电脑' : !device.online ? '电脑离线' : job?.status === 'processing' ? '电脑正在打印' : !device.ready ? '打印机不可用' : '电脑在线';
   let progress = job?.message || '';
   if (job?.status === 'waiting') {
@@ -250,6 +260,8 @@ export default function RemotePrint({ remote, open, onOpenChange, showSendAction
       {deviceError && <p role='alert' className={styles.error}>{deviceError}</p>}
       {jobError && <p role='alert' className={styles.error}>{jobError}</p>}
       {message && <p role='alert' className={styles.error}>{message}</p>}
+      {readBluetooth630KPending() && <p role='alert' className={styles.error}>蓝牙原任务尚未确认，请切回蓝牙查询原任务，网络打印暂不发送新任务。</p>}
+      {readRemotePrintPending() && readRemotePrintPending()?.noteId !== remote.saved?.id && <p role='alert' className={styles.error}>正在查询其他单据的原打印任务，核对完成前不发送新的打印任务。</p>}
     </div>
   </details>;
 }

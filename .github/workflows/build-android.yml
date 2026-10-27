@@ -10,6 +10,10 @@ permissions: write-all
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      TARO_OUTPUT_DIR: release/android-${{ github.run_id }}-${{ github.run_attempt }}/web
+      WAREHOUSE_BUILD_STAGE: release/android-${{ github.run_id }}-${{ github.run_attempt }}/stage
+      TARO_PUBLIC_PATH: ./
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,7 +31,20 @@ jobs:
           cache: npm
 
       - name: Install npm dependencies
-        run: npm install --legacy-peer-deps
+        run: npm ci --legacy-peer-deps
+
+      - name: Validate current source
+        run: |
+          npm run typecheck
+          npm run lint
+          node --test tests/bluetooth-630k-protocol.test.cjs tests/bluetooth-630k-client.test.cjs tests/bluetooth-print-relay.test.cjs tests/remote-print-agent.test.cjs tests/remote-print-client.test.cjs
+
+      - name: Build complete current web assets
+        run: |
+          mkdir -p www
+          npm run build:h5
+          node scripts/release-provenance.cjs "$TARO_OUTPUT_DIR"
+          cp -R "$TARO_OUTPUT_DIR"/. www/
 
       - name: Sync Capacitor
         run: npx cap sync android
