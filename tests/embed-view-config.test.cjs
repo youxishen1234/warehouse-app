@@ -15,7 +15,8 @@ test('embedded label viewer has a narrow framing exception', () => {
   assert.doesNotThrow(() => validateConfig(nginx));
   assert.throws(() => validateConfig(nginx.replace("frame-ancestors 'self' app:", "frame-ancestors 'none'")), /Embedded browser policy/);
   assert.throws(() => validateConfig(nginx.replace('location ^~ /embed/ {', 'location ^~ /embedded/ {')), /location is missing/);
-  const remote = buildRemoteCommand('/tmp/shuguang-nginx-test', '/etc/nginx/sites-available/shuguang');
+  const remote = buildRemoteCommand('/tmp/shuguang-nginx-test', '/etc/nginx/sites-available/shuguang', 'a'.repeat(64));
+  assert.match(remote, /sha256sum/);
   assert.match(remote, /nginx -t/);
   assert.match(remote, /rollback/);
   assert.match(remote, /frame-ancestors .*app:/);

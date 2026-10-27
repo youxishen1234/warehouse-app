@@ -48,11 +48,7 @@ function upload() {
   if (dirty) throw new Error('Release source has uncommitted changes; publish committed main source through CI');
   const latest = execFileSync('git', ['ls-remote', 'origin', 'refs/heads/main'], { cwd: root, encoding: 'utf8' }).trim().split(/\s+/)[0];
   if (manifest.commit !== head || head !== latest) throw new Error('Source is no longer the latest main commit; rebuild through the publish workflow');
-  const changed = execFileSync('git', ['diff-tree', '--no-commit-id', '--name-only', '-r', `${head}^`, head], { cwd: root, encoding: 'utf8' })
-    .split(/\r?\n/).filter(Boolean);
-  if (changed.includes('deploy/nginx-production.conf')) {
-    process.stdout.write(require('./deploy-nginx-config.cjs').deploy());
-  }
+  process.stdout.write(require('./deploy-nginx-config.cjs').deploy());
   const c = connection(), staging = c.directory + '/.incoming-' + crypto.randomUUID();
   ssh(`mkdir -p ${shellQuote(staging)}`);
   try {

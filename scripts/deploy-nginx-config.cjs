@@ -51,10 +51,12 @@ function ssh(command) {
   return remoteCommand('ssh', ['-p', target.port, '-o', 'ConnectTimeout=15', target.target, command], { maxBuffer: 8 * 1024 * 1024 });
 }
 
-function buildRemoteCommand(stage, config) {
+function buildRemoteCommand(stage, config, digest) {
+  if (!/^[a-f0-9]{64}$/.test(digest || '')) throw new Error('Nginx config digest is invalid');
   return `set -eu
 stage=${shellQuote(stage)}
 config=${shellQuote(config)}
+config_digest=${shellQuote(digest)}
 backup="$(mktemp /tmp/shuguang-nginx-backup.XXXXXX)"
 headers="$(mktemp)"
 normal_headers="$(mktemp)"
@@ -69,7 +71,20 @@ rollback() {
     sudo -n rm -f -- "$config"
   fi
 }
+verify_headers() {
+  curl -fsSkI --resolve youxishen.online:443:127.0.0.1 https://youxishen.online/embed/pages/label-print/index > "$headers"
+  grep -qi '^content-security-policy:.*frame-ancestors .*app:' "$headers"
+  ! grep -qi '^x-frame-options:' "$headers"
+  curl -fsSkI --resolve youxishen.online:443:127.0.0.1 https://youxishen.online/pages/label-print/index > "$normal_headers"
+  grep -qi '^x-frame-options: DENY' "$normal_headers"
+  grep -qi '^content-security-policy:.*frame-ancestors .*none' "$normal_headers"
+}
 trap cleanup EXIT
+if [ "$(sudo -n sha256sum -- "$config" 2>/dev/null | awk '{print $1}' || true)" = "$config_digest" ]; then
+  echo "Nginx config already current"
+  verify_headers
+  exit 0
+fi
 if sudo -n test -f "$config"; then
   sudo -n cp -p -- "$config" "$backup"
   had_config=1
@@ -78,25 +93,22 @@ if ! sudo -n install -m 644 -- "$stage/nginx-production.conf" "$config"; then ro
 if ! sudo -n nginx -t; then rollback; exit 1; fi
 if ! sudo -n systemctl reload nginx; then rollback; exit 1; fi
 if ! sudo -n systemctl is-active --quiet nginx; then rollback; exit 1; fi
-if ! curl -fsSkI --resolve youxishen.online:443:127.0.0.1 https://youxishen.online/embed/pages/label-print/index > "$headers"; then rollback; exit 1; fi
-if ! grep -qi '^content-security-policy:.*frame-ancestors .*app:' "$headers"; then rollback; exit 1; fi
-if grep -qi '^x-frame-options:' "$headers"; then echo "Embedded view still carries X-Frame-Options" >&2; rollback; exit 1; fi
-if ! curl -fsSkI --resolve youxishen.online:443:127.0.0.1 https://youxishen.online/pages/label-print/index > "$normal_headers"; then rollback; exit 1; fi
-if ! grep -qi '^x-frame-options: DENY' "$normal_headers"; then rollback; exit 1; fi
-if ! grep -qi '^content-security-policy:.*frame-ancestors .*none' "$normal_headers"; then rollback; exit 1; fi`;
+if ! verify_headers; then echo "Published Nginx framing policy did not pass verification" >&2; rollback; exit 1; fi`;
 }
 
 function deploy() {
-  validateConfig(fs.readFileSync(localConfig));
+  const config = fs.readFileSync(localConfig);
+  validateConfig(config);
   if (!/^\/[A-Za-z0-9_.\/-]+$/.test(remoteConfig) || remoteConfig.includes('..')) throw new Error('Invalid remote Nginx config path');
   const target = connection();
   const stage = `/tmp/shuguang-nginx-${crypto.randomUUID()}`;
   try {
     ssh(`umask 077 && mkdir -m 700 -- ${shellQuote(stage)}`);
     remoteCommand('scp', ['-P', target.port, localConfig, `${target.target}:${stage}/nginx-production.conf`]);
-    return ssh(buildRemoteCommand(stage, remoteConfig));
+    const digest = crypto.createHash('sha256').update(config).digest('hex');
+    return ssh(buildRemoteCommand(stage, remoteConfig, digest));
   } catch (error) {
-    ssh(`rm -rf -- ${shellQuote(stage)}`);
+    try { ssh(`rm -rf -- ${shellQuote(stage)}`); } catch {}
     throw error;
   }
 }
