@@ -15,6 +15,7 @@ jobs:
     permissions:
       contents: read
     env:
+      TZ: Asia/Shanghai
       TARO_OUTPUT_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
       TARO_PUBLIC_PATH: ./
       WAREHOUSE_BUILD_STAGE: release/stage-${{ github.run_id }}-${{ github.run_attempt }}
