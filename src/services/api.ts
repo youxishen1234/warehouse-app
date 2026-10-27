@@ -41,8 +41,8 @@ export const getCartonInboundCustomers = () =>
   request<Customer[]>({ url: '/api/production-inbound/customers' });
 export const getCustomersPage = (params: PageQuery & SortQuery<'customers'> & { keyword?: string }) => getPage<Customer>('/api/customers', params);
 
-export const getCustomer = (id: number) =>
-  request<Customer>({ url: `/api/customers/${id}` });
+export const getCustomer = (id: number, options?: { forceNetwork?: boolean }) =>
+  request<Customer>({ url: `/api/customers/${id}`, forceNetwork: options?.forceNetwork });
 
 export const addCustomer = (data: CustomerForm) =>
   request<Customer>({ url: '/api/customers', method: 'POST', data });

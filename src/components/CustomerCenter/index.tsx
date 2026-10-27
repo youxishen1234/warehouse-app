@@ -2,9 +2,10 @@ import { useMemo, useState } from 'react';
 import { Button, Input, Text, View } from '@tarojs/components';
 import type { Customer } from '@/types';
 import type { DimensionCustomer } from '@/services/customer-dimensions';
-import { formatMoney } from '@/utils/format';
+import { session } from '@/services/session';
+import QuoteEditor from './QuoteEditor';
 import {
-  buildCustomerManagementRows, MAX_VISIBLE_CUSTOMER_SPECS, specificationSearchText
+  buildCustomerManagementRows, formatCustomerUnitPrice, MAX_VISIBLE_CUSTOMER_SPECS, specificationSearchText
 } from './model';
 import type { CustomerManagementRow, CustomerSpecView } from './model';
 import styles from './index.module.scss';
@@ -16,21 +17,26 @@ type Props = {
   onEditParty: (type: 'customer', id?: number, initialName?: string) => void;
   onViewBills: (id: number) => void;
   onOpenOrders: () => void;
+  onSpecsSaved: () => void | Promise<void>;
 };
 
 type Filter = 'all' | 'account' | 'draft';
 
-function CustomerSpecs({ customer, specs, expanded, onToggle }: {
+function CustomerSpecs({ customer, specs, expanded, onToggle, editable, onAdd, onEdit }: {
   customer: string;
   specs: CustomerSpecView[];
   expanded: boolean;
   onToggle: () => void;
+  editable?: boolean;
+  onAdd?: () => void;
+  onEdit?: (spec: CustomerSpecView) => void;
 }) {
   const visible = expanded ? specs : specs.slice(0, MAX_VISIBLE_CUSTOMER_SPECS);
   return <View className={styles.specs} data-testid={`customer-specs-${customer}`}>
     <View className={styles.specsHeading}>
       <Text className={styles.specsTitle}>常用规格</Text>
-      <Text className={styles.specsCount}>{specs.length} 种</Text>
+      <View className={styles.specsHeadingActions}><Text className={styles.specsCount}>{specs.length} 种</Text>
+        {editable && <Button className={styles.specAdd} data-testid={`customer-spec-add-${customer}`} onClick={onAdd}>＋规格</Button>}</View>
     </View>
     {!specs.length && <Text className={styles.specsEmpty}>还没有记录规格</Text>}
     {visible.map(spec => <View className={styles.specRow} key={spec.key} data-testid={`customer-spec-${customer}-${spec.key}`}>
@@ -42,7 +48,9 @@ function CustomerSpecs({ customer, specs, expanded, onToggle }: {
         <Text className={styles.specSize}>{spec.specification}</Text>
         <Text className={styles.specMeta}>材质：{spec.material || '未记录'} · 单位：{spec.unit}</Text>
       </View>
-      <Text className={styles.specPrice}>{spec.price == null ? '价格未记录' : `${formatMoney(spec.price)}/${spec.unit}`}</Text>
+      <View className={styles.specRowActions}><Text className={styles.specPrice}>{spec.price == null ? '价格未记录' : `${formatCustomerUnitPrice(spec.price)}/${spec.unit}`}</Text>
+        {editable && <Button className={styles.specEdit} aria-label={`编辑规格 ${spec.goods} ${spec.specification}`}
+          data-testid={`customer-spec-edit-${spec.key}`} onClick={() => onEdit?.(spec)}>编辑</Button>}</View>
     </View>)}
     {specs.length > MAX_VISIBLE_CUSTOMER_SPECS && <Button
       className={styles.specToggle}
@@ -53,12 +61,15 @@ function CustomerSpecs({ customer, specs, expanded, onToggle }: {
   </View>;
 }
 
-function CustomerCard({ row, expanded, onToggle, onEditParty, onViewBills }: {
+function CustomerCard({ row, expanded, onToggle, onEditParty, onViewBills, canEditSpecs, onAddSpec, onEditSpec }: {
   row: CustomerManagementRow;
   expanded: boolean;
   onToggle: () => void;
   onEditParty: Props['onEditParty'];
   onViewBills: Props['onViewBills'];
+  canEditSpecs: boolean;
+  onAddSpec: (customer: Customer) => void;
+  onEditSpec: (customer: Customer, spec: CustomerSpecView) => void;
 }) {
   const account = row.account;
   if (!account) return <View className={styles.card} data-testid={`customer-specs-only-${row.key}`} key={row.key}>
@@ -104,16 +115,22 @@ function CustomerCard({ row, expanded, onToggle, onEditParty, onViewBills }: {
       {account.address && <Text>地址：{account.address}</Text>}
     </View>}
     {account.remark && <Text className={styles.remark}>{account.remark}</Text>}
-    <CustomerSpecs customer={String(account.id)} specs={row.specs} expanded={expanded} onToggle={onToggle} />
+    <CustomerSpecs customer={String(account.id)} specs={row.specs} expanded={expanded} onToggle={onToggle}
+      editable={canEditSpecs} onAdd={() => onAddSpec(account)} onEdit={spec => onEditSpec(account, spec)} />
   </View>;
 }
 
 export default function CustomerCenter({
-  customers, dimensionCustomers, inactiveCustomerNames, onEditParty, onViewBills, onOpenOrders
+  customers, dimensionCustomers, inactiveCustomerNames, onEditParty, onViewBills, onOpenOrders, onSpecsSaved
 }: Props) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [expandedSpecs, setExpandedSpecs] = useState<Record<string, boolean>>({});
+  const [editingSpec, setEditingSpec] = useState<{ customer: Customer; seed?: CustomerSpecView } | null>(null);
+  const [canEditSpecs] = useState(() => {
+    const current = session();
+    return !!current && current.user.role !== 'viewer' && !current.user.disabled;
+  });
   const rows = useMemo(
     () => buildCustomerManagementRows(customers, dimensionCustomers, inactiveCustomerNames),
     [customers, dimensionCustomers, inactiveCustomerNames]
@@ -182,6 +199,9 @@ export default function CustomerCenter({
           onToggle={() => toggleSpecs(specKey)}
           onEditParty={onEditParty}
           onViewBills={onViewBills}
+          canEditSpecs={canEditSpecs}
+          onAddSpec={customer => setEditingSpec({ customer })}
+          onEditSpec={(customer, seed) => setEditingSpec({ customer, seed })}
         />;
       })}
       {!visibleRows.length && <View className={styles.empty} data-testid='customer-center-empty'>
@@ -189,5 +209,8 @@ export default function CustomerCenter({
         {filter === 'all' && <Text>新增客户后，可在客户资料中查看联系方式和规格。</Text>}
       </View>}
     </View>
+    {editingSpec && <QuoteEditor customer={editingSpec.customer} seed={editingSpec.seed}
+      onClose={() => setEditingSpec(null)}
+      onSaved={async () => { setEditingSpec(null); await onSpecsSaved(); }} />}
   </View>;
 }

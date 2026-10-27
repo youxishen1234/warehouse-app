@@ -1,5 +1,6 @@
 // 无扫码版仓库系统 - JSON 文件数据库
 const fs = require('fs');
+const { isDeepStrictEqual } = require('node:util');
 const path = require('path');
 const { roundDecimal, numberValue, lineAmount, dimensions, localDate, MONEY_DECIMALS } = require('./stock-math');
 const { ORDER_STATUSES } = require('./list-sort');
@@ -1206,9 +1207,61 @@ function addCustomer(d) {
   persist(); return c;
 }
 function updateCustomer(id, d) {
-  const specs = d.specs === undefined ? undefined : validateCustomerSpecs(d.specs);
+  if (d.specs !== undefined) {
+    if (!Array.isArray(d.specs) || d.specs.length > 500 || d.specs.some(s => !s || typeof s.id !== 'string')) throw new Error('客户规格资料无效');
+    if (new Set(d.specs.map(s => s.id)).size !== d.specs.length) throw new Error('客户规格编号重复');
+  }
   const c = getCustomer(id); if (!c) throw new Error('客户不存在');
-  if (specs !== undefined) c.specs = specs;
+  if (d.specs !== undefined) {
+    const previous = Array.isArray(c.specs) ? c.specs : [];
+    const nextSpecs = d.specs.map(s => {
+      const old = previous.find(item => item?.id === s.id);
+      if (old && isDeepStrictEqual(s, old)) return JSON.parse(JSON.stringify(old));
+      if (!s.id.trim()) throw new Error('客户规格资料无效');
+      if (s.kind !== undefined && s.kind !== '成品' && s.kind !== '纸板') throw new Error('客户规格类别无效');
+      const source = s.dimension_source;
+      if (source !== undefined && (!source || typeof source !== 'object' || Array.isArray(source)
+        || typeof source.customer_id !== 'string' || !source.customer_id.trim() || source.customer_id.length > 80
+        || typeof source.spec_id !== 'string' || !source.spec_id.trim() || source.spec_id.length > 80
+        || !Object.keys(source).every(key => key === 'customer_id' || key === 'spec_id'))) throw new Error('客户尺寸本关联无效');
+      if (typeof s.goods !== 'string' || !s.goods.trim() || s.goods.length > 100
+        || typeof s.specification !== 'string' || !s.specification.trim() || s.specification.length > 100
+        || (s.material !== undefined && (typeof s.material !== 'string' || s.material.length > 100))
+        || (s.unit !== undefined && (typeof s.unit !== 'string' || !s.unit.trim() || s.unit.length > 10))
+        || !Number.isFinite(s.price) || s.price < 0) throw new Error('客户规格资料无效');
+      return {
+        id: s.id, goods: s.goods.trim(), specification: s.specification.trim(),
+        material: String(s.material || '').trim(), unit: String(s.unit || '个').trim(), price: s.price,
+        ...(s.kind ? { kind: s.kind } : {}),
+        ...(source ? { dimension_source: { customer_id: source.customer_id.trim(), spec_id: source.spec_id.trim() } } : {})
+      };
+    });
+    const sources = new Set();
+    for (const spec of nextSpecs) {
+      if (!spec.dimension_source) continue;
+      const key = JSON.stringify([spec.dimension_source.customer_id, spec.dimension_source.spec_id]);
+      if (sources.has(key)) throw new Error('同一尺寸本规格不能重复报价');
+      sources.add(key);
+    }
+    const sourcesUsedByOtherCustomers = new Set();
+    for (const other of cache.customers) {
+      if (other.id === c.id || other.deleted_at || !Array.isArray(other.specs)) continue;
+      for (const spec of other.specs) {
+        const source = spec?.dimension_source;
+        if (!source) continue;
+        sourcesUsedByOtherCustomers.add(JSON.stringify([
+          String(source.customer_id || '').trim(),
+          String(source.spec_id || '').trim()
+        ]));
+      }
+    }
+    for (const spec of nextSpecs) {
+      if (!spec.dimension_source) continue;
+      const key = JSON.stringify([spec.dimension_source.customer_id, spec.dimension_source.spec_id]);
+      if (sourcesUsedByOtherCustomers.has(key)) throw new Error('该尺寸本规格已被其他客户报价');
+    }
+    c.specs = nextSpecs;
+  }
   const beforeProfile = JSON.stringify({ name: c.name, contact: c.contact, phone: c.phone, address: c.address, remark: c.remark });
   if (d.name!==undefined) { if (!String(d.name).trim()) throw new Error('名称不能为空'); c.name = String(d.name).trim(); }
   if (d.contact!==undefined) c.contact = d.contact;

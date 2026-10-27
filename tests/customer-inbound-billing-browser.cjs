@@ -237,13 +237,13 @@ async function main() {
     await expect(customerSpecs).toContainText('客户自产纸箱');
     await expect(customerSpecs).toContainText('30×20×15 cm');
     await expect(customerSpecs).toContainText('¥2.00/个');
-    await expect(customerSpecs.locator('[data-testid^="customer-spec-"]')).toHaveCount(3);
+    await expect(customerSpecs.locator(`[data-testid^="customer-spec-${customer.id}-"]`)).toHaveCount(3);
     await expect(customerSpecs).toContainText('160×110 cm');
     await expect(customerSpecs).toContainText('纸板');
     await expect(customerSpecs).toContainText('价格未记录');
     await expect(customerSpecs).not.toContainText('50×40×30 cm', { timeout: 1000 });
     await page.getByTestId(`customer-specs-toggle-${customer.id}`).click();
-    await expect(customerSpecs.locator('[data-testid^="customer-spec-"]')).toHaveCount(4);
+    await expect(customerSpecs.locator(`[data-testid^="customer-spec-${customer.id}-"]`)).toHaveCount(4);
     await expect(customerSpecs).toContainText('50×40×30 cm');
     await page.getByTestId(`customer-specs-toggle-${customer.id}`).click();
     await expect(customerSpecs).not.toContainText('50×40×30 cm', { timeout: 1000 });

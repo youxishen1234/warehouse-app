@@ -29,7 +29,7 @@ function uniqueCustomerSpecification(customer, product) {
 
 function validatedCustomerSpecification(customer, product, specId) {
   const specification = findCustomerSpecification(customer, specId);
-  if (!specification || (specification.price !== null && (typeof specification.price !== 'number' || !Number.isFinite(specification.price) || specification.price < 0))) return null;
+  if (!specification || specification.kind === '纸板' || (specification.price !== null && (typeof specification.price !== 'number' || !Number.isFinite(specification.price) || specification.price < 0))) return null;
   if (!product) return specification;
   return matchesSpecification(customer, product, specId);
 }

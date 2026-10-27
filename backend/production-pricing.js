@@ -110,6 +110,7 @@ function matchCustomerSpecification(customer, product, specId) {
   if (!customer || customer.deleted_at) throw new Error('客户不存在或已停用，请刷新');
   const specification = findCustomerSpecification(customer, specId);
   if (!specification) throw new Error('客户规格已变更，请刷新后重新选择');
+  if (specification.kind === '纸板') throw new Error('纸板规格不能用于纸箱计价，请选择成品规格');
   if (!product || product.deleted_at || product.category === '纸板') throw new Error('请选择有效纸箱商品');
   const productDimensions = dimensionsInCm(product.specification, product.size_unit || 'cm');
   const customerDimensions = dimensionsInCm(specification.specification ?? specification.size, specification.sizeUnit || 'cm');

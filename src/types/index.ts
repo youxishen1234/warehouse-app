@@ -108,7 +108,11 @@ export interface CustomerForm {
   address: string;
   remark: string;
 }
-export interface CustomerSpec { id: string; goods: string; specification: string; material: string; unit: string; price: number | null; }
+export interface CustomerSpec {
+  id: string; goods: string; specification: string; material: string; unit: string; price: number;
+  kind?: '成品' | '纸板';
+  dimension_source?: { customer_id: string; spec_id: string };
+}
 
 // API 通用响应
 export interface ApiResponse<T> {

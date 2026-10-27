@@ -254,6 +254,7 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
         onEditParty={(type, id, initialName) => setEditor({ id, supplier: type !== 'customer', initialName, lockName: Boolean(initialName) })}
         onViewBills={openCustomerBills}
         onOpenOrders={() => open('/pages/orders/index')}
+        onSpecsSaved={() => reload()}
       />}
       {panel === 'customers' && !hasSnapshot && !remote.loading && <View className={styles.empty}>客户资料暂不可用</View>}
       {panel === 'inbound' && <View><Text className={styles.sectionTitle}>这次入库的是什么？</Text><View className={styles.choices}>{[

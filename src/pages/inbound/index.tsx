@@ -310,7 +310,7 @@ export default function InboundPage() {
       </View>}
       {lines.map((line, index) => {
         const selected = line.product_id == null ? undefined : productMap.get(line.product_id);
-        const customerSpecifications = billingCustomer?.specs || [];
+        const customerSpecifications = (billingCustomer?.specs || []).filter(spec => spec.kind !== '纸板');
         const selectedCustomerSpecification = billingCustomer && line.customer_spec_id ? findCustomerSpecification(billingCustomer, line.customer_spec_id) : null;
         const unit = selectedCustomerSpecification?.unit || selected?.unit || '单位';
         const quotedPrice = selectedCustomerSpecification?.price != null;

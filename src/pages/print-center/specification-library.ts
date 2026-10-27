@@ -20,10 +20,12 @@ const dimensionText = (size: string, unit: string) => {
 };
 export function buildSpecificationOptions(customers: Customer[], products: Product[], dimensions: DimensionCustomer[] = []): SpecificationOption[] {
   const active = customers.filter(customer => !customer.deleted_at);
+  const quotedDimensions = new Set(active.flatMap(customer => (customer.specs || []).flatMap(spec =>
+    spec.dimension_source ? [JSON.stringify([spec.dimension_source.customer_id, spec.dimension_source.spec_id])] : [])));
   const options: SpecificationOption[] = [];
   for (const customer of active) {
     for (const spec of customer.specs || []) {
-      if (text(spec.unit || '个') !== '个' || !text(spec.specification)) continue;
+      if (spec.kind === '纸板' || text(spec.unit || '个') !== '个' || !text(spec.specification)) continue;
       options.push({ id: `customer:${customer.id}:${spec.id}`, source: 'customer', customer_id: customer.id, customer_name: customer.name, product_id: null,
         name: text(spec.goods), specification: normalizeSpecification(spec.specification), material: text(spec.material), price: priceText(spec.price), unit: '个' });
     }
@@ -32,7 +34,7 @@ export function buildSpecificationOptions(customers: Customer[], products: Produ
     const accounts = active.filter(row => text(row.name) === text(customer.name));
     if (!accounts.length && customers.some(row => row.deleted_at && text(row.name) === text(customer.name))) continue;
     for (const spec of customer.specs || []) {
-      if (text(spec.unit) !== '个' || !text(spec.size)) continue;
+      if (quotedDimensions.has(JSON.stringify([customer.id, spec.id])) || spec.kind === '纸板' || text(spec.unit) !== '个' || !text(spec.size)) continue;
       options.push({ id: `dimension:${customer.id}:${spec.id}`, source: 'dimension', customer_id: accounts.length === 1 ? accounts[0].id : null, customer_name: customer.name, product_id: null,
         name: text(spec.goods), specification: dimensionText(spec.size, spec.sizeUnit), material: text(spec.material), price: '', unit: '个' });
     }
