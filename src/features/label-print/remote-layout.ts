@@ -60,10 +60,11 @@ function boardRows(data: LabelSnapshot): LabelRow[] {
 }
 
 function manualBoardRows(data: ManualBoardLabelSnapshot): LabelRow[] {
+  if (!Number.isFinite(data.boardHeight) || data.boardHeight <= 0) throw new Error('纸板高度（cm）必须填写有效正数');
   const plate = [text(data.printPlate), text(data.printColor)].filter(Boolean).join(' · ');
   return [
     ['客户', text(data.customerName), 'customer'],
-    ['规格 · 长 × 宽（cm）', `${decimal(data.boardLength)} × ${decimal(data.boardWidth)}`, 'spec'],
+    ['规格 · 长 × 宽 × 高（cm）', `${decimal(data.boardLength)} × ${decimal(data.boardWidth)} × ${decimal(data.boardHeight)}`, 'spec'],
     ['材质 / 配纸', text(data.material), 'material'],
     ['印刷版 · 版名 / 颜色', plate || '未填写', 'plate']
   ];

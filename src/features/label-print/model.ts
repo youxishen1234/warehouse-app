@@ -26,7 +26,7 @@ export type BoardLabelSnapshot = Readonly<{
 }>;
 /** A print-only paperboard draft with no stock batch ID or resolver URL. */
 export type ManualBoardLabelSnapshot = Readonly<{
-  customerName: string; boardLength: number; boardWidth: number; material: string;
+  customerName: string; boardLength: number; boardWidth: number; boardHeight: number; material: string;
   printPlate?: string; printColor?: string; receivedQty?: number; receivedDate?: string;
 }>;
 export type LabelSnapshot = FinishedLabelSnapshot | BoardLabelSnapshot | ManualBoardLabelSnapshot;
@@ -119,7 +119,7 @@ export function buildBoardLabelSnapshot(batch: BoardBatch, options: BoardLabelOp
 }
 
 export function buildManualBoardLabelSnapshot(input: {
-  customerName: unknown; boardLength: unknown; boardWidth: unknown; material: unknown;
+  customerName: unknown; boardLength: unknown; boardWidth: unknown; boardHeight: unknown; material: unknown;
   printPlate?: unknown; printColor?: unknown; receivedQty?: unknown; receivedDate?: unknown;
 }): ManualBoardLabelSnapshot {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return fail('manual', '手填纸板标签资料无效');
@@ -127,6 +127,7 @@ export function buildManualBoardLabelSnapshot(input: {
     customerName: text(input.customerName, 'customerName', '客户'),
     boardLength: number(input.boardLength, 'boardLength', '纸板长度（cm）', true),
     boardWidth: number(input.boardWidth, 'boardWidth', '纸板宽度（cm）', true),
+    boardHeight: number(input.boardHeight, 'boardHeight', '纸板高度（cm）', true),
     material: text(input.material, 'material', '材质 / 配纸')
   };
   for (const [field, title] of [['printPlate', '印刷版名'], ['printColor', '颜色']] as const) {

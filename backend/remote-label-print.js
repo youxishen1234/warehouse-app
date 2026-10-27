@@ -11,7 +11,7 @@ const resolverPath = '/pages/label-resolver/index';
 const profileFields = ['profileId', 'printerName', 'widthMm', 'heightMm', 'paperStyle', 'density', 'marginMm', 'calibrated'];
 const finishedFields = ['productId', 'name', 'specification', 'unit', 'productUrl', 'material', 'corrugation', 'layers', 'weight', 'stockSnapshot', 'printedAt'];
 const boardFields = ['customerName', 'material', 'printPlate', 'printColor', 'batchId', 'boardLength', 'boardWidth', 'fluteType', 'supplier', 'batchUrl', 'layers', 'faceGsm', 'linerGsm', 'flutingGsm', 'cartonLength', 'cartonWidth', 'cartonHeight', 'receivedDate', 'location', 'receivedQty', 'remainingQtySnapshot'];
-const manualBoardFields = ['customerName', 'boardLength', 'boardWidth', 'material', 'printPlate', 'printColor', 'receivedQty', 'receivedDate'];
+const manualBoardFields = ['customerName', 'boardLength', 'boardWidth', 'boardHeight', 'material', 'printPlate', 'printColor', 'receivedQty', 'receivedDate'];
 
 const isObject = value => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const has = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
@@ -164,6 +164,7 @@ function manualBoardSnapshot(submitted) {
     customerName: valueText(submitted.customerName, '客户'),
     boardLength: valueNumber(submitted.boardLength, '纸板长度', true),
     boardWidth: valueNumber(submitted.boardWidth, '纸板宽度', true),
+    boardHeight: valueNumber(submitted.boardHeight, '纸板高度', true),
     material: valueText(submitted.material, '材质/配纸')
   };
   for (const [field, label] of [['printPlate', '印刷版名'], ['printColor', '颜色']]) {

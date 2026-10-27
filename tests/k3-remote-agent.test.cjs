@@ -31,6 +31,7 @@ function harness({ printResult = { status: 'printed', pageBefore: 2, pageAfter: 
   const journal = createJournal(journalFile);
   const calls = [];
   const prints = [];
+  const renderCalls = [];
   let first = true;
   const call = async (url, body) => {
     calls.push({ url, body });
@@ -41,11 +42,11 @@ function harness({ printResult = { status: 'printed', pageBefore: 2, pageAfter: 
     return { id: url.split('/').at(-1), status: body.status };
   };
   return {
-    dir, journal, journalFile, calls, prints,
+    dir, journal, journalFile, calls, prints, renderCalls,
     agent: createAgent({
       config: { printer: 'K3-I911020404', port: 'COM3' }, journal,
       client: { print: async input => { prints.push(input); return printResult; } },
-      render: async () => (typeof renderResult === 'function' ? renderResult() : renderResult),
+      render: async input => { renderCalls.push(input); return typeof renderResult === 'function' ? renderResult(input) : renderResult; },
       call, outputDir: dir, log: () => {}, readyProbe
     })
   };
@@ -173,7 +174,6 @@ test('same id with different content is rejected before printing', async () => {
     assert.ok(calls.some(item => /任务编号重复/.test(item.body?.message || '')));
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
-
 test('bitmap validation rejects wrong lengths and implausible density', () => {
   assert.equal(validBitmap(rendered()), '');
   assert.match(validBitmap({ ...rendered(), rowsBase64: Buffer.alloc(3).toString('base64') }), /行数/);
@@ -255,3 +255,49 @@ test('a long print keeps the processing lease alive without printing twice', asy
 function bodyLease(calls) {
   return calls.find(item => item.url.startsWith('agent/jobs/')).body.lease;
 }
+test('manual paperboard board height is forwarded unchanged to the renderer', async () => {
+  const data = {
+    customerName: '客户手填', boardLength: 120.5, boardWidth: 80, boardHeight: 35,
+    material: '五层 BC', printPlate: 'A款', printColor: '红黑'
+  };
+  const manualJob = job({ id: 'label-manual-height-0001', kind: 'paperboard-manual', data });
+  const h = harness({ jobs: [manualJob] });
+  try {
+    await h.agent.tick();
+    assert.equal(h.renderCalls.length, 1);
+    assert.deepEqual(h.renderCalls[0].data, data);
+    assert.equal(h.renderCalls[0].data.boardHeight, 35);
+    assert.equal(h.prints.length, 1);
+  } finally { fs.rmSync(h.dir, { recursive: true, force: true }); }
+});
+
+test('same manual label id with only board height changed is rejected before printing', async () => {
+  const data = { customerName: '客户', boardLength: 100, boardWidth: 70, boardHeight: 35, material: '牛卡' };
+  const original = job({ id: 'label-height-conflict-0001', kind: 'paperboard-manual', data });
+  const changed = job({ id: original.id, kind: original.kind, data: { ...data, boardHeight: 36 } });
+  assert.notEqual(signatureOf(original), signatureOf(changed));
+  const dir = mkdir(), file = path.join(dir, 'k3-jobs.json');
+  createJournal(file).begin(original);
+  const journal = createJournal(file);
+  const calls = [];
+  const prints = [];
+  let first = true;
+  const agent = createAgent({
+    journal, client: { print: async input => { prints.push(input); return { status: 'printed' }; } },
+    render: async () => rendered(), outputDir: dir,
+    call: async (url, body) => {
+      calls.push({ url, body });
+      if (url === 'agent/poll') {
+        if (first && body.ready) { first = false; return { job: changed }; }
+        return { job: null };
+      }
+      return {};
+    },
+    log: () => {}
+  });
+  try {
+    await agent.tick();
+    assert.equal(prints.length, 0);
+    assert.ok(calls.some(item => /任务编号重复/.test(item.body?.message || '')));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

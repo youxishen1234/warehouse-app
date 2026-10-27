@@ -27,7 +27,7 @@ const productSnapshot = (stockSnapshot = 6) => ({
   material: '牛皮纸', stockSnapshot, printedAt: '2026-10-23T10:00:00.000Z'
 });
 const manualBoardFixture = () => ({
-  customerName: '客户手填', boardLength: 120.5, boardWidth: 80,
+  customerName: '客户手填', boardLength: 120.5, boardWidth: 80, boardHeight: 35,
   material: '五层 BC', printPlate: 'A款', printColor: '红黑',
   receivedQty: 0, receivedDate: '2026-10-26'
 });
@@ -324,8 +324,8 @@ test('manual paperboard labels validate print-only fields without any inventory 
   const data = Object.freeze(manualBoardFixture());
   assert.deepEqual(canonicalSnapshot(db, 'paperboard-manual', data), data);
   assert.deepEqual(canonicalSnapshot(db, 'paperboard-manual', {
-    customerName: '客户', boardLength: 100, boardWidth: 70, material: '牛卡'
-  }), { customerName: '客户', boardLength: 100, boardWidth: 70, material: '牛卡' });
+    customerName: '客户', boardLength: 100, boardWidth: 70, boardHeight: 30, material: '牛卡'
+  }), { customerName: '客户', boardLength: 100, boardWidth: 70, boardHeight: 30, material: '牛卡' });
   assert.equal(canonicalSnapshot(db, 'paperboard-manual', data).receivedQty, 0);
   for (const field of ['batchId', 'batchUrl', 'productId', 'remainingQtySnapshot', 'supplier', 'unitPrice', 'manualOverrides']) {
     assert.throws(() => canonicalSnapshot(db, 'paperboard-manual', { ...data, [field]: 'unexpected' }), /字段/);
@@ -334,12 +334,13 @@ test('manual paperboard labels validate print-only fields without any inventory 
     ['customerName', ''], ['customerName', 'x'.repeat(121)], ['material', ''],
     ['printColor', '红\u0000黑'], ['printPlate', 'A\nB'],
     ['boardLength', 0], ['boardWidth', -1], ['boardLength', Infinity], ['boardWidth', '70'],
+    ['boardHeight', 0], ['boardHeight', -1], ['boardHeight', '35'], ['boardHeight', NaN], ['boardHeight', Infinity],
     ['receivedQty', -1], ['receivedQty', 1.5], ['receivedQty', '0'], ['receivedQty', 100000001],
     ['receivedDate', '2026-02-30'], ['receivedDate', '2026-1-1']
   ]) {
     assert.throws(() => canonicalSnapshot(db, 'paperboard-manual', { ...data, [field]: invalid }), undefined, field);
   }
-  for (const field of ['customerName', 'material', 'boardLength', 'boardWidth']) {
+  for (const field of ['customerName', 'material', 'boardLength', 'boardWidth', 'boardHeight']) {
     const incomplete = { ...data };
     delete incomplete[field];
     assert.throws(() => canonicalSnapshot(db, 'paperboard-manual', incomplete), undefined, field);
@@ -377,9 +378,10 @@ test('manual paperboard queue keeps calibrated 70x100 density-four media and imm
     const job = store.enqueue(pair.device.id, input, data);
     assert.equal(job.status, 'waiting');
     assert.deepEqual(store.enqueue(pair.device.id, input, data), job);
-    assert.throws(() => store.enqueue(pair.device.id, input, { ...data, printColor: '蓝' }), /编号已使用/);
+    assert.throws(() => store.enqueue(pair.device.id, input, { ...data, boardHeight: data.boardHeight + 1 }), /编号已使用/);
     data.customerName = '稍后修改的草稿';
-    const claim = store.claim(pair.agent, true).job;
+    const reloadedStore = createStore(path.join(dir, 'labels.json'), () => 100000);
+    const claim = reloadedStore.claim(pair.agent, true).job;
     assert.equal(claim.kind, 'paperboard-manual');
     assert.deepEqual(claim.data, manualBoardFixture());
     assert.equal(claim.copies, 2);
@@ -423,6 +425,10 @@ test('manual paperboard HTTP jobs do not read or mutate inventory and reject for
     assert.equal((await submit({ ...input, data: { ...data, batchId: 'BOARD-20261026-ABCDEF123456' } })).status, 400);
     assert.equal((await submit({ ...input, data: { ...data, batchUrl: 'https://example.invalid' } })).status, 400);
     assert.equal((await submit({ ...input, data: { ...data, receivedQty: 0.1 } })).status, 400);
+    const missingHeight = { ...data }; delete missingHeight.boardHeight;
+    assert.equal((await submit({ ...input, data: missingHeight })).status, 400);
+    assert.equal((await submit({ ...input, data: { ...data, boardHeight: 0 } })).status, 400);
+    assert.equal((await submit({ ...input, data: { ...data, boardHeight: '35' } })).status, 400);
     const accepted = await submit(input);
     assert.equal(accepted.status, 200);
     assert.equal((await accepted.json()).data.kind, 'paperboard-manual');

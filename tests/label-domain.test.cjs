@@ -115,27 +115,33 @@ test('paperboard DTO preserves cm and zero quantities with no financial or conta
 
 test('manual paperboard label is a validated print-only DTO with no inventory identity', () => {
   const snapshot = domain.buildManualBoardLabelSnapshot({
-    customerName: '客户甲', boardLength: 120.5, boardWidth: 80, material: '五层 BC',
+    customerName: '客户甲', boardLength: 120.5, boardWidth: 80, boardHeight: 25.5, material: '五层 BC',
     printPlate: 'A款', printColor: '红黑', receivedQty: 0, receivedDate: '2026-10-26'
   });
   assert.deepEqual(snapshot, {
-    customerName: '客户甲', boardLength: 120.5, boardWidth: 80, material: '五层 BC',
+    customerName: '客户甲', boardLength: 120.5, boardWidth: 80, boardHeight: 25.5, material: '五层 BC',
     printPlate: 'A款', printColor: '红黑', receivedQty: 0, receivedDate: '2026-10-26'
   });
   assert.equal(Object.isFrozen(snapshot), true);
   for (const key of ['batchId', 'batchUrl', 'supplier', 'remainingQtySnapshot']) assert.equal(key in snapshot, false);
   const withoutOptional = domain.buildManualBoardLabelSnapshot({
-    customerName: '客户甲', boardLength: 100, boardWidth: 70, material: '瓦楞纸',
+    customerName: '客户甲', boardLength: 100, boardWidth: 70, boardHeight: 20, material: '瓦楞纸',
     printPlate: '', printColor: '', receivedQty: '', receivedDate: ''
   });
-  assert.deepEqual(Object.keys(withoutOptional).sort(), ['boardLength', 'boardWidth', 'customerName', 'material']);
-  problem(() => domain.buildManualBoardLabelSnapshot({ customerName: '', boardLength: 100, boardWidth: 70, material: '纸板' }), 'customerName');
-  problem(() => domain.buildManualBoardLabelSnapshot({ customerName: '客户', boardLength: 0, boardWidth: 70, material: '纸板' }), 'boardLength');
-  problem(() => domain.buildManualBoardLabelSnapshot({ customerName: '客户', boardLength: 100, boardWidth: 70, material: '' }), 'material');
-  problem(() => domain.buildManualBoardLabelSnapshot({ customerName: '客户', boardLength: 100, boardWidth: 70, material: '纸板', receivedQty: -1 }), 'receivedQty');
-  problem(() => domain.buildManualBoardLabelSnapshot({ customerName: '客户', boardLength: 100, boardWidth: 70, material: '纸板', receivedQty: 1.5 }), 'receivedQty');
-  problem(() => domain.buildManualBoardLabelSnapshot({ customerName: '客户', boardLength: 100, boardWidth: 70, material: '纸板', receivedDate: '2026-02-31' }), 'receivedDate');
-  problem(() => domain.buildManualBoardLabelSnapshot({ customerName: '客户'.repeat(61), boardLength: 100, boardWidth: 70, material: '纸板' }), 'customerName');
+  assert.deepEqual(Object.keys(withoutOptional).sort(), ['boardHeight', 'boardLength', 'boardWidth', 'customerName', 'material']);
+  problem(() => domain.buildManualBoardLabelSnapshot({ customerName: '', boardLength: 100, boardWidth: 70, boardHeight: 20, material: '纸板' }), 'customerName');
+  problem(() => domain.buildManualBoardLabelSnapshot({ customerName: '客户', boardLength: 0, boardWidth: 70, boardHeight: 20, material: '纸板' }), 'boardLength');
+  problem(() => domain.buildManualBoardLabelSnapshot({ customerName: '客户', boardLength: 100, boardWidth: 70, material: '纸板' }), 'boardHeight');
+  problem(() => domain.buildManualBoardLabelSnapshot({ customerName: '客户', boardLength: 100, boardWidth: 70, boardHeight: 0, material: '纸板' }), 'boardHeight');
+  problem(() => domain.buildManualBoardLabelSnapshot({ customerName: '客户', boardLength: 100, boardWidth: 70, boardHeight: -1, material: '纸板' }), 'boardHeight');
+  problem(() => domain.buildManualBoardLabelSnapshot({ customerName: '客户', boardLength: 100, boardWidth: 70, boardHeight: '20', material: '纸板' }), 'boardHeight');
+  problem(() => domain.buildManualBoardLabelSnapshot({ customerName: '客户', boardLength: 100, boardWidth: 70, boardHeight: NaN, material: '纸板' }), 'boardHeight');
+  problem(() => domain.buildManualBoardLabelSnapshot({ customerName: '客户', boardLength: 100, boardWidth: 70, boardHeight: Infinity, material: '纸板' }), 'boardHeight');
+  problem(() => domain.buildManualBoardLabelSnapshot({ customerName: '客户', boardLength: 100, boardWidth: 70, boardHeight: 20, material: '' }), 'material');
+  problem(() => domain.buildManualBoardLabelSnapshot({ customerName: '客户', boardLength: 100, boardWidth: 70, boardHeight: 20, material: '纸板', receivedQty: -1 }), 'receivedQty');
+  problem(() => domain.buildManualBoardLabelSnapshot({ customerName: '客户', boardLength: 100, boardWidth: 70, boardHeight: 20, material: '纸板', receivedQty: 1.5 }), 'receivedQty');
+  problem(() => domain.buildManualBoardLabelSnapshot({ customerName: '客户', boardLength: 100, boardWidth: 70, boardHeight: 20, material: '纸板', receivedDate: '2026-02-31' }), 'receivedDate');
+  problem(() => domain.buildManualBoardLabelSnapshot({ customerName: '客户'.repeat(61), boardLength: 100, boardWidth: 70, boardHeight: 20, material: '纸板' }), 'customerName');
 });
 
 test('snapshot comparison detects visible fields and units, never hidden prices', () => {

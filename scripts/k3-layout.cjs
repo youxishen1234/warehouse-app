@@ -29,6 +29,9 @@ function boardLabelFonts() {
 }
 
 async function buildLargePaperboardLabel({ data, profile, width, height, margin, manual = false }) {
+  if (manual && (!Number.isFinite(data.boardHeight) || data.boardHeight <= 0)) {
+    throw new Error('纸板高度（cm）必须填写有效正数');
+  }
   const customer = when(data.customerName) || '未填写';
   const material = when(data.material) || '未填写';
   const plate = [when(data.printPlate), when(data.printColor)].filter(Boolean).join(' · ') || '未填写';
@@ -52,7 +55,7 @@ async function buildLargePaperboardLabel({ data, profile, width, height, margin,
   }
   const fields = [
     ['客户', customer, 'customer', ''],
-    ['规格 · 长 × 宽（cm）', `${fmt(data.boardLength)} × ${fmt(data.boardWidth)}`, 'spec', 'paperboard-spec'],
+    [manual ? '规格 · 长 × 宽 × 高（cm）' : '规格 · 长 × 宽（cm）', manual ? `${fmt(data.boardLength)} × ${fmt(data.boardWidth)} × ${fmt(data.boardHeight)}` : `${fmt(data.boardLength)} × ${fmt(data.boardWidth)}`, 'spec', 'paperboard-spec'],
     ['材质 / 配纸', material, 'material', ''],
     ['印刷版 · 版名 / 颜色', plate, 'plate', 'paperboard-plate'],
   ].map(([label, value, key, className]) =>

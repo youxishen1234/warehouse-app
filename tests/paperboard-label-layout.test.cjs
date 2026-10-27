@@ -46,6 +46,8 @@ test('K3 and phone preview share 70×100 business fields, source fonts, QR and e
   assert.deepEqual(k3.warnings, []);
   assertApprovedFieldOrder(k3.html);
   assert.match(k3.html, /纸板规格|规格 · 长 × 宽（cm）/);
+  assert.match(k3.html, /data-field="spec">120 × 100/);
+  assert.doesNotMatch(k3.html, /data-field="spec">120 × 100 ×/);
   assert.match(k3.html, /印刷版 · 版名 \/ 颜色/);
   assert.match(k3.html, /红·黑/);
   assert.match(k3.html, /数量：0 张/);
@@ -117,7 +119,7 @@ test('legacy empty fields display 未填写, long business text remains fit-chec
 test('remote manual paperboard preview has no stock QR or batch ID and hides optional empty values', async () => {
   const remote = loadRemoteLayout();
   const manual = {
-    customerName: '客户甲', boardLength: 120, boardWidth: 100, material: '五层 BC',
+    customerName: '客户甲', boardLength: 120, boardWidth: 100, boardHeight: 20, material: '五层 BC',
     printPlate: 'A款', printColor: '红黑'
   };
   const empty = await remote.buildRemoteLabelHtml({ kind: 'paperboard-manual', profile, copies: 1, data: manual });
@@ -125,7 +127,8 @@ test('remote manual paperboard preview has no stock QR or batch ID and hides opt
   assert.match(empty.html, /手填标签 · 生产识别/);
   assert.match(empty.html, /手填标签<br>不关联库存批次/);
   assert.match(empty.html, /data-field="customer">客户甲/);
-  assert.match(empty.html, /data-field="spec">120 × 100/);
+  assert.match(empty.html, /data-field="spec">120 × 100 × 20/);
+  assert.match(empty.html, /规格 · 长 × 宽 × 高（cm）/);
   assert.match(empty.html, /data-field="material">五层 BC/);
   assert.match(empty.html, /data-field="plate">A款 · 红黑/);
   assert.equal(empty.html.includes('data-qr'), false);
@@ -153,6 +156,7 @@ test('manual paperboard labels use the large template without QR or inventory id
       customerName: '<img src=x onerror=alert(1)>',
       boardLength: 120,
       boardWidth: 100,
+      boardHeight: 20,
       material: '五层 BC 瓦楞纸板',
       printPlate: 'A款彩印版',
       printColor: '红·黑',
@@ -164,7 +168,8 @@ test('manual paperboard labels use the large template without QR or inventory id
   assertApprovedFieldOrder(manual.html);
   assert.match(manual.html, /手填标签 · 生产识别/);
   assert.match(manual.html, /data-field="customer">&lt;img src=x onerror=alert\(1\)&gt;/);
-  assert.match(manual.html, /data-field="spec">120 × 100/);
+  assert.match(manual.html, /data-field="spec">120 × 100 × 20/);
+  assert.match(manual.html, /规格 · 长 × 宽 × 高（cm）/);
   assert.match(manual.html, /数量：0 张/);
   assert.match(manual.html, /日期：2026-10-26/);
   assert.match(manual.html, /<div class="paperboard-manual-note">手填标签<br>不关联库存批次<\/div>/);
@@ -185,6 +190,7 @@ test('manual paperboard labels use the large template without QR or inventory id
       customerName: '<img src=x onerror=alert(1)>',
       boardLength: 120,
       boardWidth: 100,
+      boardHeight: 20,
       material: '五层 BC 瓦楞纸板',
       printPlate: 'A款彩印版',
       printColor: '红·黑',
@@ -201,10 +207,15 @@ test('manual paperboard labels use the large template without QR or inventory id
   assert.equal(phone.html.includes('label-resolver'), false);
   assert.equal(phone.html.includes('data-qr'), false);
   assert.equal(phone.html.includes('<img'), false, 'manual preview does not contain QR images or injected HTML');
+  for (const boardHeight of [undefined, 0, -1, NaN, Infinity, '20']) {
+    const invalid = { customerName: '客户', boardLength: 120, boardWidth: 100, boardHeight, material: '五层 BC' };
+    await assert.rejects(buildLabelHtml({ kind: 'paperboard-manual', profile, data: invalid }), /纸板高度（cm）必须填写有效正数/);
+    await assert.rejects(remote.buildRemoteLabelHtml({ kind: 'paperboard-manual', profile, copies: 1, data: invalid }), /纸板高度（cm）必须填写有效正数/);
+  }
 
   const long = await buildLabelHtml({
     kind: 'paperboard-manual', profile,
-    data: { customerName: '客户名称'.repeat(30), boardLength: 120, boardWidth: 100, material: '五层 BC' },
+    data: { customerName: '客户名称'.repeat(30), boardLength: 120, boardWidth: 100, boardHeight: 20, material: '五层 BC' },
   });
   assert.match(long.html, /data-fit data-field="customer"/);
   assert.match(long.html, /max-height:2\.5em;overflow:visible/);

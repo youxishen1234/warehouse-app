@@ -15,6 +15,8 @@
 .topBar,
 .printModes,
 .deviceBar,
+.labelStage,
+.entrySection,
 .card,
 .messageCard {
   width: 100%;
@@ -36,9 +38,9 @@
 .printModes :global(button), .printModes taro-button-core { flex: 1; min-width: 0; min-height: 44PX; border: 0; border-radius: 9PX; padding: 10PX 8PX; color: #667983; background: transparent; font: inherit; font-size: 14PX !important; }
 .printModes :global(button[aria-pressed=true]), .printModes taro-button-core[aria-pressed=true] { color: #165d49; background: white; font-weight: 650; }
 
-.titleBlock { flex: 1 1 260PX; min-width: 0; }
-.eyebrow { display: block; color: #46717b; font-size: 12PX; letter-spacing: 2PX; margin-bottom: 4PX; }
-.title { display: block; font-size: 25PX; line-height: 1.25; font-weight: 700; letter-spacing: -0.4PX; }
+.titleBlock { flex: 1 1 160PX; min-width: 0; }
+.eyebrow { display: none; }
+.title { display: block; font-size: 19PX; line-height: 1.25; font-weight: 700; letter-spacing: 0; }
 .subtitle { display: block; margin-top: 7PX; color: #60727d; font-size: 13PX; line-height: 1.55; overflow-wrap: anywhere; }
 
 .deviceBar {
@@ -47,22 +49,28 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 12PX;
-  border-radius: 14PX;
-  padding: 16PX;
-  color: white;
-  background: #173746;
-}
-
-.deviceInfo { flex: 1 1 200PX; min-width: 0; }
-.deviceStatus { display: block; font-size: 16PX; line-height: 1.4; font-weight: 650; overflow-wrap: anywhere; }
-.deviceMeta { display: block; margin-top: 5PX; color: #c9d7dc; font-size: 12PX; line-height: 1.5; overflow-wrap: anywhere; }
-
-.card {
-  padding: 17PX;
-  border: 1PX solid #dfe5e9;
-  border-radius: 14PX;
+  border: 1PX solid #d8e1e6;
+  border-radius: 6PX;
+  padding: 10PX 12PX;
+  color: #233b43;
   background: #fff;
 }
+
+.deviceInfo { flex: 1 1 150PX; min-width: 0; }
+.deviceStatus { display: block; font-size: 14PX; line-height: 1.4; font-weight: 650; overflow-wrap: anywhere; }
+.deviceMeta { display: block; margin-top: 3PX; color: #687983; font-size: 11PX; line-height: 1.5; overflow-wrap: anywhere; }
+
+.card {
+  padding: 20PX 0;
+  border: 0;
+  border-top: 1PX solid #d9e0e5;
+  border-radius: 0;
+  background: transparent;
+}
+.entrySection { max-width: 560PX; padding: 20PX 0; border-top: 1PX solid #d9e0e5; }
+.labelStage { padding: 0 0 18PX; }
+.paperHeading { display: flex; justify-content: space-between; gap: 12PX; max-width: 322PX; margin: 0 auto 10PX; color: #536976; font-size: 12PX; line-height: 1.4; }
+.printControls { width: 100%; max-width: 440PX; margin: 16PX auto 0; }
 
 .messageCard { padding: 14PX 16PX; border-radius: 12PX; background: #fff4df; color: #674b16; line-height: 1.55; overflow-wrap: anywhere; }
 .sectionTitle { display: block; margin: 0 0 12PX; font-size: 18PX; font-weight: 650; line-height: 1.4; }
@@ -81,6 +89,7 @@
   font: inherit;
   line-height: 1.45;
 }
+.page :global(taro-input-core) :global(input) { min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; font: inherit; }
 
 .page :global(input),
 .page :global(taro-input-core) {
@@ -117,7 +126,7 @@
 
 .primaryButton { display: block; width: 100%; margin: 12PX 0 0; color: #fff; background: #176650; font-weight: 650; }
 .secondaryButton { flex: 0 0 auto; color: #284957; background: #e9f0f3; }
-.switchButton { flex: 0 1 134PX; width: auto; min-width: 112PX; max-width: 134PX; color: #145d49; background: #e6f3ee; font-size: 12PX; }
+.switchButton { flex: 0 0 108PX; width: 108PX; min-width: 108PX; max-width: 108PX; color: #145d49; background: #e6f3ee; font-size: 11PX; }
 .textButton { color: #315363; background: transparent; padding-left: 0; }
 .page :global(button[disabled]),
 .page :global(taro-button-core[disabled]) { opacity: .48; cursor: default; }
@@ -132,9 +141,16 @@
 .field { min-width: 0; color: #566a75; font-size: 12PX; }
 .field :global(input), .field :global(taro-input-core) { margin-top: 5PX; }
 .manualGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11PX 14PX; margin: 12PX 0; }
-.manualGrid .field { padding: 10PX; border: 1PX solid #e0e7ea; border-radius: 10PX; background: #fbfcfc; font-size: 13PX; }
+.manualGrid .field { font-size: 13PX; }
+.manualGrid > .field:first-child, .manualGrid > .field:nth-child(3) { grid-column: 1 / -1; }
 .manualGrid .field > :first-child { color: #405761; font-weight: 600; }
-.manualGrid .manualInput { min-height: 46PX; margin-top: 7PX; background: white; font-size: 16PX; }
+.manualGrid .manualInput { min-height: 46PX; margin-top: 7PX; border-radius: 4PX; background: white; font-size: 16PX; }
+.dimensionGroup { grid-column: 1 / -1; min-width: 0; margin: 0; padding: 0; border: 0; }
+.dimensionGroup legend { padding: 0; color: #405761; font-size: 13PX; font-weight: 600; line-height: 1.5; }
+.dimensionInputs { display: grid; grid-template-columns: minmax(0, 1fr) 12PX minmax(0, 1fr) 12PX minmax(0, 1fr); align-items: end; gap: 7PX; margin-top: 7PX; }
+.dimensionInputs .field > :first-child { font-size: 12PX; font-weight: 500; }
+.dimensionInputs .manualInput { padding: 9PX 7PX; text-align: center; }
+.dimensionSeparator { display: block; height: 46PX; line-height: 46PX; text-align: center; color: #81929a; font-size: 16PX; }
 .actions { display: flex; flex-wrap: wrap; gap: 9PX; align-items: center; margin-top: 12PX; }
 .profileButton, .profileSelected { display: inline-block; margin: 0 7PX 8PX 0; border: 1PX solid #dce4e8; background: white; }
 .profileSelected { border-color: #318568; color: #17634c; background: #edf8f2; }
@@ -160,8 +176,9 @@
 .fieldRow > :first-child { color: #6b7a86; }
 .fieldRow > :last-child { text-align: right; overflow-wrap: anywhere; }
 
-.previewBox { width: 100%; overflow: hidden; margin: 10PX 0; border: 1PX solid #dce4e8; background: white; }
+.previewBox { display: grid; place-items: center; width: 100%; max-width: 322PX; overflow: hidden; margin: 0 auto; border: 0; outline: 1PX solid #d7dce0; background: white; box-shadow: 0 4PX 16PX #15242e16; }
 .previewFrame { display: block; width: 100%; height: 100%; border: 0; pointer-events: none; }
+.previewChecking { display: block; margin: 8PX 0; color: #71818a; font-size: 12PX; line-height: 1.5; }
 .previewOkay { display: block; color: #1b6a4e; font-size: 12PX; line-height: 1.5; margin: 8PX 0; }
 .copyRow { display: flex; flex-wrap: wrap; align-items: center; gap: 9PX; margin-top: 14PX; }
 .copyRow :global(input), .copyRow :global(taro-input-core) { width: 82PX; margin: 0; text-align: center; }
@@ -176,13 +193,14 @@
   .page { padding-left: 12PX; padding-right: 12PX; }
   .topBar { display: block; }
   .switchButton { margin-top: 9PX; max-width: 100%; }
-  .deviceBar, .card { padding: 13PX; }
+  .deviceBar { padding: 10PX; }
+  .card { padding: 18PX 0; }
   .deviceBar { flex-wrap: wrap; }
   .fieldRow { grid-template-columns: minmax(72PX, .75fr) minmax(0, 1.25fr); }
 }
 
 @media (max-width: 560PX) {
-  .manualGrid { grid-template-columns: minmax(0, 1fr); gap: 8PX; }
+  .manualGrid { gap: 12PX; }
 }
 
 @media (min-width: 900PX) {

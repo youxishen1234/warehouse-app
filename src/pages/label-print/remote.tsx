@@ -45,7 +45,7 @@ const boardOptions: FieldOption[] = [
 const fieldNames: Record<string, string> = {
   customerName: '客户', printPlate: '印刷版名', printColor: '颜色',
   name: '商品名称', specification: '规格', unit: '库存单位', productId: '商品 ID', batchId: '批次号',
-  boardLength: '纸板长', boardWidth: '纸板宽', fluteType: '楞型', supplier: '板厂', material: '材质',
+  boardLength: '纸板长', boardWidth: '纸板宽', boardHeight: '纸板高', fluteType: '楞型', supplier: '板厂', material: '材质',
   corrugation: '楞型', layers: '层数', weight: '克重', stockSnapshot: '打印时库存', printedAt: '打印日期',
   faceGsm: '面纸克重', linerGsm: '里纸克重', flutingGsm: '楞纸克重',
   cartonLength: '纸箱长', cartonWidth: '纸箱宽', cartonHeight: '纸箱高', receivedDate: '入库日期',
@@ -53,9 +53,13 @@ const fieldNames: Record<string, string> = {
 };
 const PAGE_SIZE = 12;
 const defaultMedia = { widthMm: '70', heightMm: '100', top: '0.6', right: '0.5', bottom: '0.5', left: '0.5' };
+const manualPreviewProfile: MediaProfile = {
+  profileId: 'manual-preview-70x100', printerName: 'K3', widthMm: 70, heightMm: 100,
+  density: 4, paperStyle: 'gap', calibrated: false, marginMm: { top: 0.6, right: 0.5, bottom: 0.5, left: 0.5 }
+};
 type EntryMode = 'manual' | 'inventory';
 type ManualBoardFields = {
-  customerName: string; boardLength: string; boardWidth: string; material: string;
+  customerName: string; boardLength: string; boardWidth: string; boardHeight: string; material: string;
   printPlate: string; printColor: string; receivedQty: string; receivedDate: string;
 };
 const todayLocal = () => {
@@ -63,7 +67,7 @@ const todayLocal = () => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
 const emptyManualBoard = (): ManualBoardFields => ({
-  customerName: '', boardLength: '', boardWidth: '', material: '',
+  customerName: '', boardLength: '', boardWidth: '', boardHeight: '', material: '',
   printPlate: '', printColor: '', receivedQty: '', receivedDate: todayLocal()
 });
 const disabledIf = (condition: boolean) => condition ? true : undefined;
@@ -117,6 +121,7 @@ function manualSnapshotOf(fields: ManualBoardFields): ManualBoardLabelSnapshot {
     customerName: fields.customerName,
     boardLength: fields.boardLength.trim() ? Number(fields.boardLength) : undefined,
     boardWidth: fields.boardWidth.trim() ? Number(fields.boardWidth) : undefined,
+    boardHeight: fields.boardHeight.trim() ? Number(fields.boardHeight) : undefined,
     material: fields.material,
     printPlate: fields.printPlate,
     printColor: fields.printColor,
@@ -125,7 +130,7 @@ function manualSnapshotOf(fields: ManualBoardFields): ManualBoardLabelSnapshot {
   });
 }
 function valueText(key: string, value: unknown, data: LabelSnapshot): string {
-  if (['boardLength', 'boardWidth', 'cartonLength', 'cartonWidth', 'cartonHeight'].includes(key)) return `${value} cm`;
+  if (['boardLength', 'boardWidth', 'boardHeight', 'cartonLength', 'cartonWidth', 'cartonHeight'].includes(key)) return `${value} cm`;
   if (['weight', 'faceGsm', 'linerGsm', 'flutingGsm'].includes(key)) return `${value} g/m²`;
   if (['receivedQty', 'remainingQtySnapshot'].includes(key)) return `${value} 张`;
   if (key === 'stockSnapshot' && 'unit' in data) return `${value} ${data.unit}`;
@@ -155,6 +160,7 @@ function manualFieldsFromAttempt(attempt: RemoteLabelAttempt | null): ManualBoar
     customerName: data.customerName || '',
     boardLength: String(data.boardLength),
     boardWidth: String(data.boardWidth),
+    boardHeight: 'boardHeight' in data && data.boardHeight !== undefined ? String(data.boardHeight) : '',
     material: data.material || '',
     printPlate: data.printPlate || '',
     printColor: data.printColor || '',
@@ -200,10 +206,12 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [preview, setPreview] = useState('');
+  const [previewBuiltKey, setPreviewBuiltKey] = useState('');
   const [previewWarnings, setPreviewWarnings] = useState<string[]>([]);
   const [previewError, setPreviewError] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewFits, setPreviewFits] = useState<boolean | null>(null);
+  const [previewFitsKey, setPreviewFitsKey] = useState('');
   const [refresh, setRefresh] = useState(0);
   const alive = useRef(true);
   const actionLock = useRef(false);
@@ -217,6 +225,7 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
   const pairLinkHandled = useRef(false);
   const currentProfile = useMemo(() => device?.profiles.find(item =>
     item.profileId === profileId && item.printerName === device.printer && profileMatchesKind(activeKind, item)), [device, profileId, activeKind]);
+  const previewProfile = currentProfile || (entryMode === 'manual' ? manualPreviewProfile : undefined);
   const largeBoardTemplate = Boolean(currentProfile &&
     densityFor(activeKind === 'paperboard-manual' ? activeKind : 'paperboard-batch', currentProfile.widthMm, currentProfile.heightMm) === 4);
   const effectiveBoardFields = useMemo<BoardLabelOptions>(() => largeBoardTemplate
@@ -400,22 +409,26 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
     };
   }, []);
 
-  const previewKey = built.data && currentProfile
-    ? JSON.stringify({ kind: activeKind, data: built.data, profile: currentProfile, copies: copyCount })
+  const previewKey = built.data && previewProfile
+    ? JSON.stringify({ kind: activeKind, data: built.data, profile: previewProfile, copies: copyCount })
     : '';
+  const hasCurrentPreview = Boolean(preview && previewBuiltKey === previewKey);
   useEffect(() => {
     const generation = ++previewGeneration.current;
     setPreview('');
+    setPreviewBuiltKey('');
     setPreviewFits(null);
+    setPreviewFitsKey('');
     setPreviewWarnings([]);
     setPreviewError('');
-    if (!built.data || !currentProfile || !copiesValid) { setPreviewLoading(false); return undefined; }
+    if (!built.data || !previewProfile || !copiesValid) { setPreviewLoading(false); return undefined; }
     setPreviewLoading(true);
     void buildRemoteLabelHtml({
-      kind: activeKind, profile: currentProfile, copies: copyCount, data: built.data
+      kind: activeKind, profile: previewProfile, copies: copyCount, data: built.data
     }).then(result => {
       if (!alive.current || generation !== previewGeneration.current) return;
       setPreview(result.html);
+      setPreviewBuiltKey(previewKey);
       setPreviewWarnings(result.warnings || []);
     }).catch(issue => {
       if (alive.current && generation === previewGeneration.current) setPreviewError(remoteLabelErrorMessage(issue));
@@ -428,8 +441,10 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
   }, [previewKey, copiesValid, activeKind]);
 
   const checkFrameGeometry = useCallback(() => {
-    if (!currentProfile) { setPreviewFits(false); return; }
-    const profile = currentProfile;
+    if (!previewProfile || !previewKey || previewBuiltKey !== previewKey) {
+      setPreviewFits(false); setPreviewFitsKey(''); return;
+    }
+    const profile = previewProfile;
     const generation = ++previewFitGeneration.current;
     setPreviewFits(null);
     let documentAttempts = 0;
@@ -460,6 +475,7 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
         labelPage.style.transformOrigin = 'top left';
         labelPage.style.transform = `scale(${scale})`;
         setPreviewFits(fits);
+        setPreviewFitsKey(previewKey);
       } catch {
         if (generation === previewFitGeneration.current) setPreviewFits(false);
       }
@@ -511,20 +527,23 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
     };
 
     waitForCurrentDocument();
-  }, [currentProfile]);
+  }, [previewProfile, previewKey, previewBuiltKey]);
   useEffect(() => {
     const resize = () => { void checkFrameGeometry(); };
     window.addEventListener('resize', resize);
     return () => window.removeEventListener('resize', resize);
   }, [checkFrameGeometry]);
   useEffect(() => {
-    if (!preview || !currentProfile) return undefined;
+    if (!preview || !previewProfile) return undefined;
     const timer = window.setTimeout(checkFrameGeometry, 50);
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(checkFrameGeometry);
+    if (frame.current) observer?.observe(frame.current);
     return () => {
       window.clearTimeout(timer);
+      observer?.disconnect();
       previewFitGeneration.current += 1;
     };
-  }, [preview, currentProfile, checkFrameGeometry]);
+  }, [preview, previewBuiltKey, previewProfile, checkFrameGeometry]);
 
   const pair = useCallback(async (raw?: string) => {
     if (actionLock.current) return;
@@ -698,7 +717,7 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
     if (resumeIssue) { setError(resumeIssue); return; }
     if (!attempt || !device || !currentProfile || !notFound || pending || busy) return;
     const frozenData = attempt.kind === 'paperboard-manual'
-      ? manualSnapshotOf(manualFieldsFromAttempt(attempt))
+      ? buildManualBoardLabelSnapshot(attempt.data as ManualBoardLabelSnapshot)
       : attempt.data;
     const resumedAttempt = { ...attempt, data: frozenData };
     const input: RemoteLabelJobInput = {
@@ -836,15 +855,20 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
     if (!attempt.data) return '原任务缺少冻结标签资料';
     if (attempt.kind === 'finished-product' && !('productId' in attempt.data)) return '原任务商品标签资料无效';
     if (attempt.kind === 'paperboard-batch' && !('batchId' in attempt.data)) return '原任务纸板批次标签资料无效';
+    if (attempt.kind === 'paperboard-manual') {
+      try { buildManualBoardLabelSnapshot(attempt.data as ManualBoardLabelSnapshot); }
+      catch { return '原任务缺少有效的长宽高，请重新填写并核对预览'; }
+    }
     return '';
   })();
   const canSubmit = Boolean((entryMode === 'manual' || selected) && built.data && currentProfile?.calibrated && device?.online && device.ready &&
-    !deviceError && !pending && !busy && configuredProfile && copiesValid && preview && previewFits && !previewWarnings.length &&
+    !deviceError && !pending && !busy && configuredProfile && copiesValid && hasCurrentPreview && !previewLoading &&
+    previewFits && previewFitsKey === previewKey && !previewError && !previewWarnings.length &&
     (entryMode !== 'manual' || (currentProfile.widthMm === 70 && currentProfile.heightMm === 100)));
   const optionState = kind === 'finished-product' ? finishedOptions : boardFields;
-  const manualField = (key: keyof ManualBoardFields, title: string, numeric = false, placeholder = '请输入') =>
+  const manualField = (key: keyof ManualBoardFields, title: string, numeric = false, placeholder = '请输入', caption = title) =>
     <View className={styles.field} key={key}>
-      <Text>{title}</Text>
+      <Text>{caption}</Text>
       <Input
         ariaLabel={title}
         className={styles.manualInput}
@@ -866,7 +890,7 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
       <View className={styles.titleBlock}>
         <Text className={styles.eyebrow}>仓库 · 标签</Text>
         <Text className={styles.title}>电脑 USB 打印 K3</Text>
-        <Text className={styles.subtitle}>手机经互联网发送到店里电脑，再由 USB K3 打印；手机不连接蓝牙。送货单 630K 通道保持独立。</Text>
+        <Text className={styles.subtitle}>70 × 100 mm · 手机不连接蓝牙</Text>
       </View>
       <Button className={styles.switchButton} onClick={onBluetooth}>切换手机蓝牙打印</Button>
     </View>
@@ -875,12 +899,48 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
       <View className={styles.deviceInfo}>
         <Text className={styles.deviceStatus}>{deviceState}</Text>
         <Text className={styles.deviceMeta}>{device ? `${device.name} · USB 打印机：${device.printer}` : '店里电脑需开机、登录并联网，K3 通过 USB 接入'}</Text>
-        <Text className={styles.deviceMeta}>电脑在线且 K3 就绪后自动接收；出纸完成后由打印机页面计数自动回报，不需要手机蓝牙。</Text>
       </View>
       <Button className={styles.secondaryButton} disabled={disabledIf(Boolean(action))} onClick={() => setRefresh(value => value + 1)}>刷新状态</Button>
     </View>
 
-    <View className={styles.card}>
+    <section className={styles.labelStage} aria-label='实际标签预览'>
+      <View className={styles.paperHeading}>
+        <Text>实际标签预览</Text>
+        <Text>{previewProfile ? `${previewProfile.widthMm} × ${previewProfile.heightMm} mm` : '70 × 100 mm'}</Text>
+      </View>
+      <View className={styles.previewBox} style={{ aspectRatio: `${previewProfile?.widthMm || 70} / ${previewProfile?.heightMm || 100}` }}>
+        {!previewProfile ? <Text className={styles.previewEmpty}>{token ? '先保存并选择纸张配置。' : '连接打印电脑后显示标签预览。'}</Text>
+          : previewError ? <Text className={styles.error}>{previewError}</Text>
+            : previewLoading || Boolean(previewKey && previewBuiltKey !== previewKey) ? <Text className={styles.previewEmpty}>正在生成标签预览…</Text>
+              : hasCurrentPreview ? <iframe key={previewBuiltKey} ref={frame} title='K3 标签预览' className={styles.previewFrame}
+                  sandbox='allow-same-origin' srcDoc={preview} onLoad={checkFrameGeometry} />
+                : <Text className={styles.previewEmpty}>{entryMode === 'manual' ? '填写客户、长宽高和材质后显示标签。' : '选择记录后显示标签。'}</Text>}
+      </View>
+      <View className={styles.printControls}>
+        {hasCurrentPreview && !previewLoading && !previewError && <Text className={previewFits === null ? styles.previewChecking : previewFits ? styles.previewOkay : styles.error}>
+          {previewFits === null ? '正在核对实际尺寸…' : previewFits
+            ? `单张预览 ${previewProfile?.widthMm} × ${previewProfile?.heightMm} mm，未发现内容溢出。`
+            : '无法确认标签边界或检测到内容溢出；请修改可选字段后再打印。'}
+        </Text>}
+        {previewWarnings.map(warning => <Text className={styles.error} key={warning}>{warning}</Text>)}
+        <View className={styles.copyRow}>
+          <Text>打印份数</Text>
+          <Input ariaLabel='打印份数' type='number' value={copies} disabled={disabledIf(busy)} onInput={event => setCopies(event.detail.value)} />
+          <Text className={styles.help}>最多 {maxCopies} 份</Text>
+        </View>
+        {!copiesValid && <Text className={styles.error}>请输入 1–{maxCopies} 的整数份数。</Text>}
+        {entryMode === 'manual' && !currentProfile && <Text className={styles.help}>{token ? '标签预览使用 70 × 100 mm；保存纸张配置并完成校准后可打印。' : '标签预览使用 70 × 100 mm；连接店里打印电脑后可打印。'}</Text>}
+        {!currentProfile?.calibrated && currentProfile && <Text className={styles.help}>完成一次校准并核对实物后，才能打印正式标签。</Text>}
+        {currentProfile && !configuredProfile && <Text className={styles.help}>纸张实测值已修改，请先保存纸张配置；当前预览与打印仍绑定已保存配置。</Text>}
+        <Button className={styles.primaryButton} disabled={disabledIf(!canSubmit)} onClick={() => void submit()}>
+          {busy ? action || '任务处理中…' : !device?.online || !device?.ready ? '等待打印电脑与 K3 就绪' : !currentProfile?.calibrated ? '请先完成一次校准' : '复核最新资料并发送到 K3'}
+        </Button>
+        {notice && <Text className={styles.notice}>{notice}</Text>}
+        {error && <Text className={styles.error}>{error}</Text>}
+      </View>
+    </section>
+
+    <View className={styles.entrySection}>
       <Text className={styles.sectionTitle}>标签资料填写方式</Text>
         <Text className={styles.help}>手动标签仅打印，不写入库存。</Text>
       <View className={styles.tabs}>
@@ -891,8 +951,16 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
         <Text className={styles.sectionSubTitle}>手填纸板标签 · 70 × 100 mm</Text>
         <View className={styles.manualGrid}>
           {manualField('customerName', '客户 *')}
-          {manualField('boardLength', '纸板长（cm）*', true)}
-          {manualField('boardWidth', '纸板宽（cm）*', true)}
+          <fieldset className={styles.dimensionGroup} aria-label='纸板尺寸（cm）' data-label-dimensions>
+            <legend>规格 · 长 × 宽 × 高（cm）*</legend>
+            <View className={styles.dimensionInputs}>
+              {manualField('boardLength', '纸板长（cm）*', true, '长', '长')}
+              <Text className={styles.dimensionSeparator}>×</Text>
+              {manualField('boardWidth', '纸板宽（cm）*', true, '宽', '宽')}
+              <Text className={styles.dimensionSeparator}>×</Text>
+              {manualField('boardHeight', '纸板高（cm）*', true, '高', '高')}
+            </View>
+          </fieldset>
           {manualField('material', '材质 / 配纸 *')}
           {manualField('printPlate', '印刷版名（选填）')}
           {manualField('printColor', '颜色（选填）')}
@@ -900,7 +968,7 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
           {manualField('receivedDate', '日期（选填）', false, 'YYYY-MM-DD')}
         </View>
         {built.error && <Text className={styles.error}>{built.error}</Text>}
-        <Text className={styles.help}>客户、长宽、材质必填；数量可选。日期默认今天。</Text>
+        <Text className={styles.help}>客户、长宽高、材质必填；数量可选。日期默认今天。</Text>
       </>}
     </View>
 
@@ -999,19 +1067,9 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
         </View>
       </View>}
 
-      <View className={styles.card}>
-        <Text className={styles.sectionTitle}>3 · 字段、预览与打印</Text>
-        {entryMode === 'manual' ? built.data
-          ? <View className={styles.fieldList}>
-            <View className={styles.fieldRow}><Text>标签类型</Text><Text>手填纸板标签 · 不关联库存</Text></View>
-            {Object.entries(built.data).map(([key, value]) =>
-              <View className={styles.fieldRow} key={key}>
-                <Text>{key === 'receivedQty' ? '数量（张）' : key === 'receivedDate' ? '日期' : fieldNames[key] || key}</Text>
-                <Text>{valueText(key, value, built.data!)}</Text>
-              </View>)}
-          </View>
-          : <Text className={styles.empty}>请先在上方填写客户、纸板长宽和材质。</Text>
-          : !selected ? <Text className={styles.empty}>先选择商品或纸板批次。</Text> : <>
+      {entryMode === 'inventory' && <View className={styles.card}>
+        <Text className={styles.sectionTitle}>标签字段</Text>
+        {!selected ? <Text className={styles.empty}>先选择商品或纸板批次。</Text> : <>
           <Text className={styles.help}>必需识别字段保留。点选可选字段；库存和批次数量按当前实测快照打印。</Text>
           <View className={styles.options}>
             {(kind === 'finished-product' ? productOptions : visibleBoardOptions).map(option => <Button
@@ -1036,35 +1094,7 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
             <View className={styles.fieldRow}><Text>二维码</Text><Text>系统生成只读详情链接</Text></View>
           </View>}
         </>}
-        <Text className={styles.sectionSubTitle}>实际标签预览</Text>
-        {!currentProfile ? <Text className={styles.previewEmpty}>先保存并选择纸张配置。</Text>
-          : previewLoading ? <Text className={styles.previewEmpty}>正在生成标签预览…</Text>
-            : previewError ? <Text className={styles.error}>{previewError}</Text>
-              : preview ? <View className={styles.previewBox} style={{ aspectRatio: `${currentProfile.widthMm} / ${currentProfile.heightMm}` }}>
-                <iframe ref={frame} title='K3 标签预览' className={styles.previewFrame}
-                  sandbox='allow-same-origin' srcDoc={preview} onLoad={checkFrameGeometry} />
-              </View>
-                : <Text className={styles.previewEmpty}>{entryMode === 'manual' ? '填写必填项后显示实际尺寸预览。' : '选择记录后显示实际尺寸预览。'}</Text>}
-        {preview && !previewLoading && !previewError && <Text className={previewFits === null ? styles.previewEmpty : previewFits ? styles.previewOkay : styles.error}>
-          {previewFits === null ? '正在核对实际尺寸…' : previewFits
-            ? `单张预览 ${currentProfile?.widthMm} × ${currentProfile?.heightMm} mm，未发现内容溢出。`
-            : '无法确认标签边界或检测到内容溢出；请修改可选字段后再打印。'}
-        </Text>}
-        {previewWarnings.map(warning => <Text className={styles.error} key={warning}>{warning}</Text>)}
-        <View className={styles.copyRow}>
-          <Text>打印份数</Text>
-          <Input ariaLabel='打印份数' type='number' value={copies} disabled={disabledIf(busy)} onInput={event => setCopies(event.detail.value)} />
-          <Text className={styles.help}>最多 {maxCopies} 份；校准固定 1 份</Text>
-        </View>
-        {!copiesValid && <Text className={styles.error}>请输入 1–{maxCopies} 的整数份数。</Text>}
-        {!currentProfile?.calibrated && currentProfile && <Text className={styles.help}>完成一次校准并核对实物后，才能打印正式标签。</Text>}
-        {currentProfile && !configuredProfile && <Text className={styles.help}>纸张实测值已修改，请先保存纸张配置；当前预览与打印仍绑定已保存配置。</Text>}
-        <Button className={styles.primaryButton} disabled={disabledIf(!canSubmit)} onClick={() => void submit()}>
-          {busy ? action || '任务处理中…' : !device?.online || !device?.ready ? '等待打印电脑与 K3 就绪' : !currentProfile?.calibrated ? '请先完成一次校准' : '复核最新资料并发送到 K3'}
-        </Button>
-        {notice && <Text className={styles.notice}>{notice}</Text>}
-        {error && <Text className={styles.error}>{error}</Text>}
-      </View>
+      </View>}
 
       {attempt && <View className={styles.card}>
         <Text className={styles.sectionTitle}>打印任务 · {job ? statusNames[job.status] || job.status : '正在查询原任务'}</Text>
