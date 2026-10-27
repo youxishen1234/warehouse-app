@@ -1,7 +1,6 @@
 import QRCode from 'qrcode';
 import type { MediaProfile } from './native';
-import type { LabelKind } from './links';
-import type { LabelSnapshot } from './model';
+import type { LabelSnapshot, ManualBoardLabelSnapshot, RemotePrintableLabelKind } from './model';
 import sourceHanHeavy from '../../assets/label-fonts/SourceHanSansSC-Heavy.woff2';
 import sourceHanMedium from '../../assets/label-fonts/SourceHanSansSC-Medium.woff2';
 
@@ -60,6 +59,16 @@ function boardRows(data: LabelSnapshot): LabelRow[] {
   return rows;
 }
 
+function manualBoardRows(data: ManualBoardLabelSnapshot): LabelRow[] {
+  const plate = [text(data.printPlate), text(data.printColor)].filter(Boolean).join(' · ');
+  return [
+    ['客户', text(data.customerName), 'customer'],
+    ['规格 · 长 × 宽（cm）', `${decimal(data.boardLength)} × ${decimal(data.boardWidth)}`, 'spec'],
+    ['材质 / 配纸', text(data.material), 'material'],
+    ['印刷版 · 版名 / 颜色', plate || '未填写', 'plate']
+  ];
+}
+
 const PAPERBOARD_LABEL_STYLE = `
 @font-face{font-family:PaperboardSourceHan;src:url("${sourceHanHeavy}") format("woff2");font-style:normal;font-weight:900;font-display:block}
 @font-face{font-family:PaperboardSourceHan;src:url("${sourceHanMedium}") format("woff2");font-style:normal;font-weight:500;font-display:block}
@@ -78,42 +87,55 @@ body{font-family:PaperboardSourceHan,sans-serif;color:#000;-webkit-font-smoothin
 .paperboard-bottom{display:flex;gap:1.75mm;align-items:center;margin-top:auto;padding-top:0.5mm;min-height:24.5mm}
 .paperboard-details{flex:1;min-width:0;font-size:3.375mm;font-weight:500;line-height:1.55;overflow:hidden}
 .paperboard-batch{font-size:2.375mm;line-height:1.4;overflow-wrap:anywhere;word-break:break-word}
+.paperboard-manual-note{font-size:2.75mm;font-weight:700;line-height:1.4;color:#333}
 .paperboard-qr{width:24mm;height:24mm;flex:0 0 24mm;display:flex;align-items:center;justify-content:center}
 .paperboard-qr img{display:block;width:24mm;height:24mm;image-rendering:pixelated}
 `;
 
-async function buildLargePaperboardLabel(profile: MediaProfile, data: LabelSnapshot): Promise<{ html: string; warnings: string[] }> {
-  if (!('batchId' in data) || !('boardLength' in data)) throw new Error('纸板批次资料无效');
+async function buildLargePaperboardLabel(
+  profile: MediaProfile, data: LabelSnapshot, manual = false
+): Promise<{ html: string; warnings: string[] }> {
+  if (!('boardLength' in data) || (!manual && !('batchId' in data))) throw new Error('纸板标签资料无效');
   const customer = text(data.customerName) || '未填写';
   const material = text(data.material) || '未填写';
   const plate = [text(data.printPlate), text(data.printColor)].filter(Boolean).join(' · ') || '未填写';
   const length = decimal(data.boardLength), width = decimal(data.boardWidth);
-  const quantity = num(data.remainingQtySnapshot) ?? num(data.receivedQty);
-  const date = text(data.receivedDate) || '未填写';
-  const url = text(data.batchUrl);
+  const quantity = manual
+    ? num('receivedQty' in data ? data.receivedQty : undefined)
+    : num('remainingQtySnapshot' in data ? data.remainingQtySnapshot : undefined) ??
+      num('receivedQty' in data ? data.receivedQty : undefined);
+  const date = manual
+    ? text(data.receivedDate)
+    : text('receivedDate' in data ? data.receivedDate : undefined) || '未填写';
+  const url = manual || !('batchUrl' in data) ? '' : text(data.batchUrl);
   const warnings: string[] = [];
-  if (!url.startsWith('https://youxishen.online/#/pages/label-resolver/index?v=1&kind=paperboard-batch&id=')) {
+  if (!manual && !url.startsWith('https://youxishen.online/#/pages/label-resolver/index?v=1&kind=paperboard-batch&id=')) {
     warnings.push('二维码链接与当前纸板批次不一致，已停止打印');
   }
-  const qr = !warnings.length
+  const qr = !manual && !warnings.length
     ? await QRCode.toDataURL(url, {
       errorCorrectionLevel: 'M', margin: 4, width: 336,
       color: { dark: '#000000ff', light: '#ffffffff' }
     })
     : '';
-  const values: LabelRow[] = [
-    ['客户', customer, 'customer'],
-    ['规格 · 长 × 宽（cm）', `${length} × ${width}`, 'spec'],
-    ['材质 / 配纸', material, 'material'],
-    ['印刷版 · 版名 / 颜色', plate, 'plate']
-  ];
+  const values: LabelRow[] = manual
+    ? manualBoardRows(data as ManualBoardLabelSnapshot)
+    : [['客户', customer, 'customer'], ['规格 · 长 × 宽（cm）', `${length} × ${width}`, 'spec'],
+      ['材质 / 配纸', material, 'material'], ['印刷版 · 版名 / 颜色', plate, 'plate']];
   const fields = values.map(([label, value, key]) =>
     `<div class="paperboard-major${key === 'spec' ? ' paperboard-spec' : ''}${key === 'plate' ? ' paperboard-plate' : ''}">` +
     `<div class="paperboard-key">${esc(label)}</div>` +
     `<div class="paperboard-value" data-fit data-field="${key}">${esc(value)}</div></div>`
   ).join('');
-  const qtyText = quantity === null ? '未填写' : decimal(quantity);
-  const batch = text(data.batchId);
+  const qtyText = quantity === null ? '' : decimal(quantity);
+  const batch = 'batchId' in data ? text(data.batchId) : '';
+  const details = manual
+    ? [
+      quantity === null ? '' : `数量：${esc(qtyText)} 张`,
+      date ? `日期：${esc(date)}` : ''
+    ].filter(Boolean).join('<br>')
+    : `数量：${quantity === null ? '未填写' : `${esc(qtyText)}`} 张<br>日期：${esc(date)}`;
+  const batchLine = batch ? `<br><span class="paperboard-batch">批次：${esc(batch)}</span>` : '';
   const widthMm = profile.widthMm, heightMm = profile.heightMm;
   const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src 'self' data:; base-uri 'none'">
@@ -121,10 +143,11 @@ async function buildLargePaperboardLabel(profile: MediaProfile, data: LabelSnaps
 .warehouse-label{width:${mm(widthMm)};height:${mm(heightMm)}}
 .paperboard-label{width:${mm(widthMm)};height:${mm(heightMm)};padding:${mm(profile.marginMm.top + 2.5)} ${mm(profile.marginMm.right + 3)} ${mm(profile.marginMm.bottom + 2.5)} ${mm(profile.marginMm.left + 3)}}
 </style></head><body><div class="warehouse-label paperboard-label" data-page data-fit>
-  <div class="paperboard-header"><span>纸板标签</span><span class="paperboard-tag">客户专用 · 生产识别</span></div>
+  <div class="paperboard-header"><span>纸板标签</span><span class="paperboard-tag">${manual ? '手填标签 · 生产识别' : '客户专用 · 生产识别'}</span></div>
   ${fields}
   <div class="paperboard-bottom">
-    <div class="paperboard-details">数量：${esc(qtyText)} 张<br>日期：${esc(date)}<br><span class="paperboard-batch">批次：${esc(batch)}</span></div>
+    <div class="paperboard-details">${details}${batchLine}</div>
+    ${manual ? '<div class="paperboard-manual-note">手填标签<br>不关联库存批次</div>' : ''}
     ${qr ? `<div class="paperboard-qr" data-qr><img src="${qr}" alt="批次二维码"></div>` : ''}
   </div>
 </div></body></html>`;
@@ -155,7 +178,7 @@ body{font-family:"Microsoft YaHei","Microsoft YaHei UI","SimHei",sans-serif;colo
 
 /** Same content ordering as the PC renderer. Units are physical millimetres. */
 export async function buildRemoteLabelHtml(input: {
-  kind: LabelKind; profile: MediaProfile; copies: number; data: LabelSnapshot;
+  kind: RemotePrintableLabelKind; profile: MediaProfile; copies: number; data: LabelSnapshot;
 }): Promise<{ html: string; warnings: string[] }> {
   const { profile, data, kind } = input;
   if (!(profile.widthMm >= 20 && profile.widthMm <= 120) || !(profile.heightMm >= 20 && profile.heightMm <= 200)) {
@@ -166,7 +189,12 @@ export async function buildRemoteLabelHtml(input: {
   const usableHeight = profile.heightMm - margin.top - margin.bottom;
   if (usableWidth < 15 || usableHeight < 25) throw new Error('标签可用区域过小，无法排版');
 
+  const manualBoard = kind === 'paperboard-manual';
   const board = kind === 'paperboard-batch';
+  if (manualBoard && (Math.abs(profile.widthMm - 70) >= 0.001 || Math.abs(profile.heightMm - 100) >= 0.001)) {
+    throw new Error('手填纸板标签仅支持 70 × 100 mm 纸张');
+  }
+  if (manualBoard) return buildLargePaperboardLabel(profile, data, true);
   if (board && Math.abs(profile.widthMm - 70) < 0.001 && Math.abs(profile.heightMm - 100) < 0.001) {
     return buildLargePaperboardLabel(profile, data);
   }
@@ -209,8 +237,7 @@ export async function buildRemoteLabelHtml(input: {
     if (!value) warnings.push(`字段「${label}」为空`);
     return `<div class="row" data-field="${esc(key)}"><span class="k">${esc(label)}</span><span class="v">${esc(value)}</span></div>`;
   }).join('');
-  const meta = board
-    ? `<div class="meta">${esc('batchId' in data ? data.batchId : '')}<br>扫码查看批次</div>`
+  const meta = board ? `<div class="meta">${esc('batchId' in data ? data.batchId : '')}<br>扫码查看批次</div>`
     : `<div class="meta">ID ${esc('productId' in data ? data.productId : '')}<br>扫码查看商品</div>`;
 
   const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">

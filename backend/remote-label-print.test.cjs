@@ -26,6 +26,11 @@ const productSnapshot = (stockSnapshot = 6) => ({
   productUrl: 'https://youxishen.online/#/pages/label-resolver/index?v=1&kind=finished-product&id=12',
   material: '牛皮纸', stockSnapshot, printedAt: '2026-10-23T10:00:00.000Z'
 });
+const manualBoardFixture = () => ({
+  customerName: '客户手填', boardLength: 120.5, boardWidth: 80,
+  material: '五层 BC', printPlate: 'A款', printColor: '红黑',
+  receivedQty: 0, receivedDate: '2026-10-26'
+});
 const mkdir = prefix => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 const close = async server => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); };
 
@@ -312,4 +317,124 @@ test('business board fields are canonical, reject stale or forged values without
  for(const field of ['customerName','material','printPlate','printColor']) assert.throws(()=>canonicalSnapshot(db,'paperboard-batch',{...snapshot,[field]:'伪造'}),/已更新/);
  assert.deepEqual(canonicalSnapshot(db,'paperboard-batch',base),base,'old clients remain compatible');
  assert.equal(JSON.stringify(batch),before);
+});
+
+test('manual paperboard labels validate print-only fields without any inventory record access', () => {
+  const db = new Proxy({}, { get() { throw new Error('manual labels must not access inventory'); } });
+  const data = Object.freeze(manualBoardFixture());
+  assert.deepEqual(canonicalSnapshot(db, 'paperboard-manual', data), data);
+  assert.deepEqual(canonicalSnapshot(db, 'paperboard-manual', {
+    customerName: '客户', boardLength: 100, boardWidth: 70, material: '牛卡'
+  }), { customerName: '客户', boardLength: 100, boardWidth: 70, material: '牛卡' });
+  assert.equal(canonicalSnapshot(db, 'paperboard-manual', data).receivedQty, 0);
+  for (const field of ['batchId', 'batchUrl', 'productId', 'remainingQtySnapshot', 'supplier', 'unitPrice', 'manualOverrides']) {
+    assert.throws(() => canonicalSnapshot(db, 'paperboard-manual', { ...data, [field]: 'unexpected' }), /字段/);
+  }
+  for (const [field, invalid] of [
+    ['customerName', ''], ['customerName', 'x'.repeat(121)], ['material', ''],
+    ['printColor', '红\u0000黑'], ['printPlate', 'A\nB'],
+    ['boardLength', 0], ['boardWidth', -1], ['boardLength', Infinity], ['boardWidth', '70'],
+    ['receivedQty', -1], ['receivedQty', 1.5], ['receivedQty', '0'], ['receivedQty', 100000001],
+    ['receivedDate', '2026-02-30'], ['receivedDate', '2026-1-1']
+  ]) {
+    assert.throws(() => canonicalSnapshot(db, 'paperboard-manual', { ...data, [field]: invalid }), undefined, field);
+  }
+  for (const field of ['customerName', 'material', 'boardLength', 'boardWidth']) {
+    const incomplete = { ...data };
+    delete incomplete[field];
+    assert.throws(() => canonicalSnapshot(db, 'paperboard-manual', incomplete), undefined, field);
+  }
+});
+
+test('manual paperboard queue keeps calibrated 70x100 density-four media and immutable idempotent payloads', () => {
+  const dir = mkdir('remote-label-manual-profile-');
+  try {
+    const store = createStore(path.join(dir, 'labels.json'), () => 100000);
+    const pair = store.register('manual-print-device', '店里电脑', 'K3 USB');
+    const data = manualBoardFixture();
+    const calibrate = profile => {
+      const saved = store.saveProfile(pair.device.id, profile);
+      const id = `manual-calibration-${profile.profileId}`;
+      store.enqueue(pair.device.id, { id, kind: 'calibration', profileId: saved.profileId, copies: 1 });
+      const job = store.claim(pair.agent, true).job;
+      store.acknowledge(pair.agent, id, { lease: job.lease, status: 'queued' });
+      return store.confirm(pair.device.id, saved.profileId, id);
+    };
+    const oldProfile = calibrate(makeProfile());
+    assert.throws(() => store.enqueue(pair.device.id, {
+      id: 'manual-wrong-density-001', kind: 'paperboard-manual', profileId: oldProfile.profileId, copies: 1, data
+    }, data), /70 × 100 mm/);
+    const wrongSize = calibrate(makeProfile({ profileId: 'manual-wrong-size', density: 4, widthMm: 58 }));
+    assert.throws(() => store.enqueue(pair.device.id, {
+      id: 'manual-wrong-size-001', kind: 'paperboard-manual', profileId: wrongSize.profileId, copies: 1, data
+    }, data), /70 × 100 mm/);
+    const profile = store.saveProfile(pair.device.id, makeProfile({ profileId: 'manual-correct', density: 4 }));
+    assert.throws(() => store.enqueue(pair.device.id, {
+      id: 'manual-needs-calibration-001', kind: 'paperboard-manual', profileId: profile.profileId, copies: 1, data
+    }, data), /校准/);
+    calibrate(profile);
+    const input = { id: 'manual-board-print-job-001', kind: 'paperboard-manual', profileId: profile.profileId, copies: 2, data };
+    const job = store.enqueue(pair.device.id, input, data);
+    assert.equal(job.status, 'waiting');
+    assert.deepEqual(store.enqueue(pair.device.id, input, data), job);
+    assert.throws(() => store.enqueue(pair.device.id, input, { ...data, printColor: '蓝' }), /编号已使用/);
+    data.customerName = '稍后修改的草稿';
+    const claim = store.claim(pair.agent, true).job;
+    assert.equal(claim.kind, 'paperboard-manual');
+    assert.deepEqual(claim.data, manualBoardFixture());
+    assert.equal(claim.copies, 2);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('manual paperboard HTTP jobs do not read or mutate inventory and reject forged record identities', async () => {
+  const dir = mkdir('remote-label-manual-api-');
+  const db = new Proxy({}, { get() { throw new Error('manual label endpoint must not touch inventory'); } });
+  const express = require('express'), app = express(), router = express.Router();
+  app.use(express.json());
+  const token = 'a'.repeat(64);
+  const store = install(router, db, {
+    file: path.join(dir, 'labels.json'),
+    clientDevice: value => {
+      if (value !== token) throw Object.assign(new Error('invalid pairing'), { status: 401 });
+      return { id: 'manual-device' };
+    },
+    agentDevice: () => ({ id: 'manual-device' })
+  });
+  const pair = store.register('manual-device', '店里电脑', 'K3 USB');
+  const profile = store.saveProfile('manual-device', makeProfile({ density: 4 }));
+  const calibration = store.enqueue('manual-device', { id: 'manual-api-calibration-01', kind: 'calibration', profileId: profile.profileId, copies: 1 });
+  const calibrationClaim = store.claim(pair.agent, true).job;
+  store.acknowledge(pair.agent, calibration.id, { lease: calibrationClaim.lease, status: 'queued' });
+  store.confirm('manual-device', profile.profileId, calibration.id);
+  app.use('/api', router);
+  app.use((error, req, res, next) => res.status(error.status || 500).json({ message: error.message })); // eslint-disable-line no-unused-vars
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  const url = `http://127.0.0.1:${server.address().port}/api/remote-print/labels/jobs`;
+  const data = manualBoardFixture();
+  const input = { id: 'manual-api-print-job-001', kind: 'paperboard-manual', profileId: profile.profileId, copies: 1, data };
+  const submit = (body, clientToken = token) => fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Print-Client': clientToken },
+    body: JSON.stringify(body)
+  });
+  try {
+    assert.equal((await submit(input, 'bad-token')).status, 401);
+    assert.equal((await submit({ ...input, data: { ...data, batchId: 'BOARD-20261026-ABCDEF123456' } })).status, 400);
+    assert.equal((await submit({ ...input, data: { ...data, batchUrl: 'https://example.invalid' } })).status, 400);
+    assert.equal((await submit({ ...input, data: { ...data, receivedQty: 0.1 } })).status, 400);
+    const accepted = await submit(input);
+    assert.equal(accepted.status, 200);
+    assert.equal((await accepted.json()).data.kind, 'paperboard-manual');
+    assert.equal((await submit(input)).status, 200, 'retrying the same frozen payload is idempotent');
+    const claim = store.claim(pair.agent, true).job;
+    assert.deepEqual(claim.data, data);
+    assert.equal(claim.kind, 'paperboard-manual');
+    assert.equal(claim.profile.density, 4);
+    assert.ok(!('batchId' in claim.data));
+    assert.ok(!('batchUrl' in claim.data));
+  } finally {
+    await close(server);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

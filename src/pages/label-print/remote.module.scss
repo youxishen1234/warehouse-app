@@ -131,6 +131,10 @@
 
 .field { min-width: 0; color: #566a75; font-size: 12PX; }
 .field :global(input), .field :global(taro-input-core) { margin-top: 5PX; }
+.manualGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11PX 14PX; margin: 12PX 0; }
+.manualGrid .field { padding: 10PX; border: 1PX solid #e0e7ea; border-radius: 10PX; background: #fbfcfc; font-size: 13PX; }
+.manualGrid .field > :first-child { color: #405761; font-weight: 600; }
+.manualGrid .manualInput { min-height: 46PX; margin-top: 7PX; background: white; font-size: 16PX; }
 .actions { display: flex; flex-wrap: wrap; gap: 9PX; align-items: center; margin-top: 12PX; }
 .profileButton, .profileSelected { display: inline-block; margin: 0 7PX 8PX 0; border: 1PX solid #dce4e8; background: white; }
 .profileSelected { border-color: #318568; color: #17634c; background: #edf8f2; }
@@ -175,6 +179,10 @@
   .deviceBar, .card { padding: 13PX; }
   .deviceBar { flex-wrap: wrap; }
   .fieldRow { grid-template-columns: minmax(72PX, .75fr) minmax(0, 1.25fr); }
+}
+
+@media (max-width: 560PX) {
+  .manualGrid { grid-template-columns: minmax(0, 1fr); gap: 8PX; }
 }
 
 @media (min-width: 900PX) {

@@ -81,6 +81,14 @@ test('legacy empty fields display 未填写, long business text remains fit-chec
   assert.match(empty.html, /data-fit/);
   assert.deepEqual(empty.warnings, []);
 
+  const legacyWithoutBusinessFields = { ...data };
+  for (const field of ['customerName', 'material', 'printPlate', 'printColor']) delete legacyWithoutBusinessFields[field];
+  const legacy = await buildLabelHtml({ kind: 'paperboard-batch', profile, data: legacyWithoutBusinessFields });
+  assert.match(legacy.html, /data-field="customer">未填写/);
+  assert.match(legacy.html, /data-field="material">未填写/);
+  assert.match(legacy.html, /data-field="plate">未填写/);
+  assert.deepEqual(legacy.warnings, []);
+
   const long = await buildLabelHtml({
     kind: 'paperboard-batch', profile,
     data: { ...data, customerName: '客户名称'.repeat(30) },
@@ -104,4 +112,107 @@ test('legacy empty fields display 未填写, long business text remains fit-chec
   });
   assert.match(product.html, /成品标签/);
   assert.equal(product.html.includes('SourceHanSansSC-Heavy'), false);
+});
+
+test('remote manual paperboard preview has no stock QR or batch ID and hides optional empty values', async () => {
+  const remote = loadRemoteLayout();
+  const manual = {
+    customerName: '客户甲', boardLength: 120, boardWidth: 100, material: '五层 BC',
+    printPlate: 'A款', printColor: '红黑'
+  };
+  const empty = await remote.buildRemoteLabelHtml({ kind: 'paperboard-manual', profile, copies: 1, data: manual });
+  assert.deepEqual(empty.warnings, []);
+  assert.match(empty.html, /手填标签 · 生产识别/);
+  assert.match(empty.html, /手填标签<br>不关联库存批次/);
+  assert.match(empty.html, /data-field="customer">客户甲/);
+  assert.match(empty.html, /data-field="spec">120 × 100/);
+  assert.match(empty.html, /data-field="material">五层 BC/);
+  assert.match(empty.html, /data-field="plate">A款 · 红黑/);
+  assert.equal(empty.html.includes('data-qr'), false);
+  assert.equal(empty.html.includes('batchId'), false);
+  assert.equal(empty.html.includes('数量：'), false);
+  assert.equal(empty.html.includes('日期：'), false);
+  await assert.rejects(
+    remote.buildRemoteLabelHtml({ kind: 'paperboard-manual', profile: { ...profile, widthMm: 58 }, copies: 1, data: manual }),
+    /70 × 100/
+  );
+
+  const withZero = await remote.buildRemoteLabelHtml({
+    kind: 'paperboard-manual', profile, copies: 1,
+    data: { ...manual, receivedQty: 0, receivedDate: '2026-10-26' }
+  });
+  assert.match(withZero.html, /数量：0 张/);
+  assert.match(withZero.html, /日期：2026-10-26/);
+});
+
+test('manual paperboard labels use the large template without QR or inventory identity', async () => {
+  const manual = await buildLabelHtml({
+    kind: 'paperboard-manual',
+    profile,
+    data: {
+      customerName: '<img src=x onerror=alert(1)>',
+      boardLength: 120,
+      boardWidth: 100,
+      material: '五层 BC 瓦楞纸板',
+      printPlate: 'A款彩印版',
+      printColor: '红·黑',
+      receivedQty: 0,
+      receivedDate: '2026-10-26',
+    },
+  });
+  assert.deepEqual(manual.warnings, []);
+  assertApprovedFieldOrder(manual.html);
+  assert.match(manual.html, /手填标签 · 生产识别/);
+  assert.match(manual.html, /data-field="customer">&lt;img src=x onerror=alert\(1\)&gt;/);
+  assert.match(manual.html, /data-field="spec">120 × 100/);
+  assert.match(manual.html, /数量：0 张/);
+  assert.match(manual.html, /日期：2026-10-26/);
+  assert.match(manual.html, /<div class="paperboard-manual-note">手填标签<br>不关联库存批次<\/div>/);
+  assert.match(manual.html, /\.paperboard-manual-note\{font-size:22px;font-weight:700;line-height:1\.4;color:#333\}/);
+  assert.match(manual.html, /data-fit data-field="customer"/);
+  assert.equal(manual.html.includes('批次：'), false);
+  assert.equal(manual.html.includes('batchId'), false);
+  assert.equal(manual.html.includes('label-resolver'), false);
+  assert.equal(manual.html.includes('data-qr'), false);
+  assert.equal(manual.html.includes('<img'), false, 'manual labels do not include QR images or injected HTML');
+
+  const remote = loadRemoteLayout();
+  const phone = await remote.buildRemoteLabelHtml({
+    kind: 'paperboard-manual',
+    profile,
+    copies: 1,
+    data: {
+      customerName: '<img src=x onerror=alert(1)>',
+      boardLength: 120,
+      boardWidth: 100,
+      material: '五层 BC 瓦楞纸板',
+      printPlate: 'A款彩印版',
+      printColor: '红·黑',
+      receivedQty: 0,
+      receivedDate: '2026-10-26',
+    },
+  });
+  assert.deepEqual(phone.warnings, []);
+  assertApprovedFieldOrder(phone.html);
+  assert.match(phone.html, /手填标签<br>不关联库存批次/);
+  assert.match(phone.html, /&lt;img src=x onerror=alert\(1\)&gt;/);
+  assert.match(phone.html, /数量：0 张/);
+  assert.equal(phone.html.includes('批次：'), false);
+  assert.equal(phone.html.includes('label-resolver'), false);
+  assert.equal(phone.html.includes('data-qr'), false);
+  assert.equal(phone.html.includes('<img'), false, 'manual preview does not contain QR images or injected HTML');
+
+  const long = await buildLabelHtml({
+    kind: 'paperboard-manual', profile,
+    data: { customerName: '客户名称'.repeat(30), boardLength: 120, boardWidth: 100, material: '五层 BC' },
+  });
+  assert.match(long.html, /data-fit data-field="customer"/);
+  assert.match(long.html, /max-height:2\.5em;overflow:visible/);
+  assert.match(long.html, /手填标签/);
+  assert.doesNotMatch(long.html, /数量：/);
+  assert.doesNotMatch(long.html, /日期：/);
+  await assert.rejects(
+    buildLabelHtml({ kind: 'paperboard-manual', profile: { ...profile, widthMm: 58 }, data: {} }),
+    /手填纸板标签仅支持 70 × 100 mm/,
+  );
 });

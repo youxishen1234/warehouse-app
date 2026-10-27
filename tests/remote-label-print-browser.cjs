@@ -167,7 +167,9 @@ async function main() {
   page.setDefaultTimeout(15000);
   page.on('pageerror', error => errors.push(error.message));
   try {
-    await page.goto(`${origin}/#/pages/label-print/index`);
+    // Keep this regression on the prior finished-product inventory flow now
+    // that the label page opens in manual paperboard mode by default.
+    await page.goto(`${origin}/#/pages/label-print/index?kind=finished-product&id=12`);
     await expect(page.getByText('电脑 USB 打印 K3', { exact: true })).toBeVisible();
     assert.equal(new URL(page.url()).search, '', 'pair token is not placed in the page URL');
     await page.getByLabel('打印电脑配对码').locator('input').fill(token);

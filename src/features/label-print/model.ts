@@ -1,6 +1,7 @@
 import type { Product } from '../../types';
 import type { BoardBatch, BoardMovement } from '../../services/boards';
 import { buildLabelUrl, validateLabelId } from './links';
+import type { LabelKind } from './links';
 
 export const LABEL_TEMPLATE_VERSION = 1;
 export type LabelIssue = Readonly<{ field: string; message: string }>;
@@ -23,7 +24,14 @@ export type BoardLabelSnapshot = Readonly<{
   cartonLength?: number; cartonWidth?: number; cartonHeight?: number;
   receivedDate?: string; location?: string; receivedQty?: number; remainingQtySnapshot?: number;
 }>;
-export type LabelSnapshot = FinishedLabelSnapshot | BoardLabelSnapshot;
+/** A print-only paperboard draft with no stock batch ID or resolver URL. */
+export type ManualBoardLabelSnapshot = Readonly<{
+  customerName: string; boardLength: number; boardWidth: number; material: string;
+  printPlate?: string; printColor?: string; receivedQty?: number; receivedDate?: string;
+}>;
+export type LabelSnapshot = FinishedLabelSnapshot | BoardLabelSnapshot | ManualBoardLabelSnapshot;
+/** Remote USB labels may include a stock-free, manually entered paperboard label. */
+export type RemotePrintableLabelKind = LabelKind | 'paperboard-manual';
 export type FinishedLabelOptions = Readonly<{ material?: boolean; corrugation?: boolean; layers?: boolean; weight?: boolean; stockSnapshot?: boolean; printedAt?: boolean }>;
 export type BoardLabelOptions = Readonly<{ layers?: boolean; faceGsm?: boolean; linerGsm?: boolean; flutingGsm?: boolean; cartonDimensions?: boolean; receivedDate?: boolean; location?: boolean; receivedQty?: boolean; remainingQtySnapshot?: boolean }>;
 
@@ -107,6 +115,31 @@ export function buildBoardLabelSnapshot(batch: BoardBatch, options: BoardLabelOp
   if (options.location === true) { const value = optionalText(batch.location, 'location', '库位'); if (value !== undefined) snapshot.location = value; }
   if (options.receivedQty === true) snapshot.receivedQty = number(batch.receivedQty, 'receivedQty', '实收数量（张）', false, true);
   if (options.remainingQtySnapshot === true) snapshot.remainingQtySnapshot = number(batch.remainingQty, 'remainingQtySnapshot', '打印时余量（张）', false, true);
+  return Object.freeze(snapshot);
+}
+
+export function buildManualBoardLabelSnapshot(input: {
+  customerName: unknown; boardLength: unknown; boardWidth: unknown; material: unknown;
+  printPlate?: unknown; printColor?: unknown; receivedQty?: unknown; receivedDate?: unknown;
+}): ManualBoardLabelSnapshot {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return fail('manual', '手填纸板标签资料无效');
+  const snapshot: { -readonly [K in keyof ManualBoardLabelSnapshot]: ManualBoardLabelSnapshot[K] } = {
+    customerName: text(input.customerName, 'customerName', '客户'),
+    boardLength: number(input.boardLength, 'boardLength', '纸板长度（cm）', true),
+    boardWidth: number(input.boardWidth, 'boardWidth', '纸板宽度（cm）', true),
+    material: text(input.material, 'material', '材质 / 配纸')
+  };
+  for (const [field, title] of [['printPlate', '印刷版名'], ['printColor', '颜色']] as const) {
+    const value = optionalText(input[field], field, title);
+    if (value !== undefined) snapshot[field] = value;
+  }
+  if (input.receivedQty !== undefined && input.receivedQty !== null && input.receivedQty !== '') {
+    snapshot.receivedQty = number(input.receivedQty, 'receivedQty', '数量（张）', false, true);
+  }
+  if (input.receivedDate !== undefined && input.receivedDate !== null && input.receivedDate !== '') {
+    const value = date(input.receivedDate, 'receivedDate', '日期');
+    if (value !== undefined) snapshot.receivedDate = value;
+  }
   return Object.freeze(snapshot);
 }
 

@@ -5,12 +5,13 @@ const crypto = require('node:crypto');
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 const hash = value => crypto.createHash('sha256').update(String(value || '')).digest('hex');
 const terminal = new Set(['queued', 'failed', 'expired']);
-const labelKinds = new Set(['finished-product', 'paperboard-batch']);
+const labelKinds = new Set(['finished-product', 'paperboard-batch', 'paperboard-manual']);
 const labelOrigin = 'https://youxishen.online';
 const resolverPath = '/pages/label-resolver/index';
 const profileFields = ['profileId', 'printerName', 'widthMm', 'heightMm', 'paperStyle', 'density', 'marginMm', 'calibrated'];
 const finishedFields = ['productId', 'name', 'specification', 'unit', 'productUrl', 'material', 'corrugation', 'layers', 'weight', 'stockSnapshot', 'printedAt'];
 const boardFields = ['customerName', 'material', 'printPlate', 'printColor', 'batchId', 'boardLength', 'boardWidth', 'fluteType', 'supplier', 'batchUrl', 'layers', 'faceGsm', 'linerGsm', 'flutingGsm', 'cartonLength', 'cartonWidth', 'cartonHeight', 'receivedDate', 'location', 'receivedQty', 'remainingQtySnapshot'];
+const manualBoardFields = ['customerName', 'boardLength', 'boardWidth', 'material', 'printPlate', 'printColor', 'receivedQty', 'receivedDate'];
 
 const isObject = value => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const has = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
@@ -157,9 +158,33 @@ function assertSnapshotEqual(input, canonical) {
   }
 }
 
+function manualBoardSnapshot(submitted) {
+  if (!isObject(submitted) || !exactKeys(submitted, manualBoardFields)) throw fail('手填纸板标签字段无效');
+  const snapshot = {
+    customerName: valueText(submitted.customerName, '客户'),
+    boardLength: valueNumber(submitted.boardLength, '纸板长度', true),
+    boardWidth: valueNumber(submitted.boardWidth, '纸板宽度', true),
+    material: valueText(submitted.material, '材质/配纸')
+  };
+  for (const [field, label] of [['printPlate', '印刷版名'], ['printColor', '颜色']]) {
+    if (has(submitted, field)) {
+      const value = optionalText(submitted[field], label);
+      if (value !== undefined) snapshot[field] = value;
+    }
+  }
+  if (has(submitted, 'receivedQty')) snapshot.receivedQty = valueNumber(submitted.receivedQty, '数量', false, true);
+  if (has(submitted, 'receivedDate')) {
+    const value = validDate(submitted.receivedDate);
+    if (value !== undefined) snapshot.receivedDate = value;
+  }
+  assertSnapshotEqual(submitted, snapshot);
+  return snapshot;
+}
+
 function canonicalSnapshot(db, kind, data) {
   if (!labelKinds.has(kind)) throw fail('标签类型无效');
   if (!isObject(data)) throw fail('标签资料无效');
+  if (kind === 'paperboard-manual') return manualBoardSnapshot(data);
   if (kind === 'finished-product') {
     const id = validateLabelId(kind, data.productId);
     const product = db.getProduct(Number(id));
@@ -305,6 +330,9 @@ function createStore(file, clock = Date.now) {
       if (input.kind !== 'calibration' && input.copies > 99) throw fail('打印份数超出上限');
       const profile = device.profiles.find(row => row.profileId === input.profileId);
       if (!profile) throw fail('纸张配置不存在，请重新选择', 409);
+      if (input.kind === 'paperboard-manual' && (profile.widthMm !== 70 || profile.heightMm !== 100 || profile.density !== 4)) {
+        throw fail('手填纸板标签须使用 70 × 100 mm、浓度 4 的纸张配置', 409);
+      }
       if (input.kind === 'calibration') {
         if (has(input, 'data') || safeData !== undefined) throw fail('校准任务不应包含标签资料');
       } else {

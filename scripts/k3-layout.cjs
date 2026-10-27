@@ -28,20 +28,22 @@ function boardLabelFonts() {
 `;
 }
 
-async function buildLargePaperboardLabel({ data, profile, width, height, margin }) {
+async function buildLargePaperboardLabel({ data, profile, width, height, margin, manual = false }) {
   const customer = when(data.customerName) || '未填写';
   const material = when(data.material) || '未填写';
   const plate = [when(data.printPlate), when(data.printColor)].filter(Boolean).join(' · ') || '未填写';
-  const quantity = number(data.remainingQtySnapshot) ?? number(data.receivedQty);
-  const date = when(data.receivedDate) || '未填写';
+  const quantity = manual
+    ? number(data.receivedQty)
+    : number(data.remainingQtySnapshot) ?? number(data.receivedQty);
+  const date = when(data.receivedDate);
   const batch = when(data.batchId);
   const url = when(data.batchUrl);
   const warnings = [];
-  if (!/^https:\/\/youxishen\.online\/#\/pages\/label-resolver\/index\?v=1&kind=paperboard-batch&id=BOARD-[0-9]{8}-[A-F0-9]{12}$/.test(url)) {
+  if (!manual && !/^https:\/\/youxishen\.online\/#\/pages\/label-resolver\/index\?v=1&kind=paperboard-batch&id=BOARD-[0-9]{8}-[A-F0-9]{12}$/.test(url)) {
     warnings.push('二维码链接与当前纸板批次不一致，已停止打印');
   }
   let qr = '';
-  if (!warnings.length) {
+  if (!manual && !warnings.length) {
     const dataUrl = await QRCode.toDataURL(url, {
       errorCorrectionLevel: 'M', margin: 4, width: px(24),
       color: { dark: '#000000ff', light: '#ffffffff' },
@@ -77,16 +79,20 @@ body{font-family:PaperboardSourceHan,sans-serif;color:#000;-webkit-font-smoothin
 .paperboard-plate{border-bottom:${px(.5)}px solid #000}
 .paperboard-bottom{display:flex;gap:${px(1.75)}px;align-items:center;margin-top:auto;padding-top:${px(.5)}px;min-height:${px(24.5)}px}
 .paperboard-details{flex:1;min-width:0;font-size:${px(3.375)}px;font-weight:500;line-height:1.55;overflow:hidden}
-.paperboard-batch{font-size:${px(2.375)}px;line-height:1.4;overflow-wrap:anywhere;word-break:break-word}
+.paperboard-footer-label{font-size:${px(2.375)}px;line-height:1.4;overflow-wrap:anywhere;word-break:break-word}
+.paperboard-manual-note{font-size:${px(2.75)}px;font-weight:700;line-height:1.4;color:#333}
 .paperboard-qr{width:${px(24)}px;height:${px(24)}px;flex:0 0 ${px(24)}px;display:flex;align-items:center;justify-content:center}
 .paperboard-qr img{display:block;width:${px(24)}px;height:${px(24)}px;image-rendering:pixelated}
 .warehouse-label{width:${width}px;height:${height}px}
 .paperboard-label{width:${width}px;height:${height}px;padding:${margin.top + px(2.5)}px ${margin.right + px(3)}px ${margin.bottom + px(2.5)}px ${margin.left + px(3)}px}
 </style></head><body><div class="warehouse-label paperboard-label" data-page data-fit>
-  <div class="paperboard-header"><span>纸板标签</span><span class="paperboard-tag">客户专用 · 生产识别</span></div>
+  <div class="paperboard-header"><span>纸板标签</span><span class="paperboard-tag">${manual ? '手填标签 · 生产识别' : '客户专用 · 生产识别'}</span></div>
   ${fields}
   <div class="paperboard-bottom">
-    <div class="paperboard-details">数量：${esc(qtyText)} 张<br>日期：${esc(date)}<br><span class="paperboard-batch">批次：${esc(batch)}</span></div>
+    <div class="paperboard-details">${manual
+      ? [quantity === null ? '' : `数量：${esc(qtyText)} 张`, date ? `日期：${esc(date)}` : ''].filter(Boolean).join('<br>')
+      : `数量：${esc(qtyText)} 张<br>日期：${esc(date || '未填写')}<br><span class="paperboard-footer-label">批次：${esc(batch)}</span>`}</div>
+    ${manual ? '<div class="paperboard-manual-note">手填标签<br>不关联库存批次</div>' : ''}
     ${qr}
   </div>
 </div></body></html>`;
@@ -157,11 +163,15 @@ body{font-family:"Microsoft YaHei","Microsoft YaHei UI","SimHei",sans-serif;colo
 `;
 
 /**
- * Builds the label HTML. `kind` is 'finished-product' | 'paperboard-batch'.
+ * Builds the label HTML. `kind` is 'finished-product' | 'paperboard-batch' | 'paperboard-manual'.
  * Returns warnings; any warning means the caller must not send the job.
  */
 async function buildLabelHtml({ kind, data, profile }) {
   if (!profile || typeof profile.widthMm !== 'number' || typeof profile.heightMm !== 'number') throw new Error('纸张配置无效');
+  const isManualBoard = kind === 'paperboard-manual';
+  if (isManualBoard && (Math.abs(profile.widthMm - 70) >= 0.001 || Math.abs(profile.heightMm - 100) >= 0.001)) {
+    throw new Error('手填纸板标签仅支持 70 × 100 mm');
+  }
   const width = px(profile.widthMm), height = px(profile.heightMm);
   const margin = {
     top: px(profile.marginMm?.top ?? 1), right: px(profile.marginMm?.right ?? 1),
@@ -173,8 +183,8 @@ async function buildLabelHtml({ kind, data, profile }) {
 
   const warnings = [];
   const isBoard = kind === 'paperboard-batch';
-  if (isBoard && Math.abs(profile.widthMm - 70) < 0.001 && Math.abs(profile.heightMm - 100) < 0.001) {
-    return buildLargePaperboardLabel({ data: data || {}, profile, width, height, margin });
+  if ((isBoard || isManualBoard) && Math.abs(profile.widthMm - 70) < 0.001 && Math.abs(profile.heightMm - 100) < 0.001) {
+    return buildLargePaperboardLabel({ data: data || {}, profile, width, height, margin, manual: isManualBoard });
   }
   const rows = isBoard ? boardFields(data || {}) : finishedFields(data || {});
   const url = text(isBoard ? data?.batchUrl : data?.productUrl);

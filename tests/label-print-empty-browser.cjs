@@ -39,7 +39,9 @@ async function main() {
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
 
-    await page.goto(origin + '/#/pages/label-print/index');
+    await page.goto(origin + '/#/pages/label-print/index?kind=finished-product');
+    await page.getByText('从库存选择', { exact: true }).click();
+    await page.getByText('成品标签', { exact: true }).click();
     const productLink = page.getByText('前往商品管理', { exact: true });
     await expect(page.getByText('当前共享仓库还没有商品记录。', { exact: true })).toBeVisible();
     await expect(productLink).toBeVisible();
@@ -52,6 +54,7 @@ async function main() {
     boardPage.setDefaultTimeout(12000);
     boardPage.on('pageerror', error => errors.push(error.message));
     await boardPage.goto(origin + '/#/pages/label-print/index?kind=paperboard-batch');
+    await boardPage.getByText('从库存选择', { exact: true }).click();
     const boardLink = boardPage.getByText('新增纸板批次', { exact: true });
     await expect(boardPage.getByText('当前共享仓库还没有纸板批次记录。', { exact: true })).toBeVisible();
     await expect(boardLink).toBeVisible();

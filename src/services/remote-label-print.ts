@@ -1,10 +1,11 @@
 import Taro from '@tarojs/taro';
-import type { LabelKind, LabelSnapshot } from '@/features/label-print';
+import type { LabelSnapshot, RemotePrintableLabelKind } from '@/features/label-print';
 import type { MediaProfile } from '@/features/label-print/native';
 import { getBaseUrl } from './request';
 import { readPrintPair } from './remote-print';
 
-export type RemoteLabelKind = LabelKind | 'calibration';
+export type RemoteLabelKind = RemotePrintableLabelKind | 'calibration';
+export type RemoteLabelSnapshot = LabelSnapshot;
 export type RemoteLabelStatus = 'waiting' | 'processing' | 'queued' | 'failed' | 'uncertain' | 'expired';
 export type RemoteLabelDevice = {
   id: string;
@@ -28,7 +29,7 @@ export type RemoteLabelJobInput = {
   kind: RemoteLabelKind;
   profileId: string;
   copies: number;
-  data?: LabelSnapshot;
+  data?: RemoteLabelSnapshot;
 };
 export type RemoteLabelAttempt = {
   id: string;
@@ -38,7 +39,7 @@ export type RemoteLabelAttempt = {
   profileId: string;
   kind: RemoteLabelKind;
   copies: number;
-  data?: LabelSnapshot;
+  data?: RemoteLabelSnapshot;
   startedAt: number;
 };
 
