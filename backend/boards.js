@@ -58,9 +58,7 @@ function receive(data, raw) {
   if (amount > 100000000) fail('货款超出支持范围');
   const date = text(raw.date, '送货日期', true, 10);
   if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date) fail('送货日期无效');
-  const now = new Date();
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  if (date > today) fail('送货日期不能晚于今天');
+  if (date > localDate()) fail('送货日期不能晚于今天');
   const batch = { ...spec, id: `BOARD-${date.replace(/-/g, '')}-${crypto.randomBytes(6).toString('hex').toUpperCase()}`, specKey: specKey(spec), supplier, customerName: batchLabelText(raw.customerName, '客户'), material: batchLabelText(raw.material, '材质 / 配纸'), printPlate: batchLabelText(raw.printPlate, '印刷版名'), printColor: batchLabelText(raw.printColor, '印刷颜色'), orderedQty, receivedQty, remainingQty: receivedQty, giftQty: Math.max(0, receivedQty - orderedQty), shortageQty: Math.max(0, orderedQty - receivedQty), billedArea, unitPrice, amount, date, deliveryNo: text(raw.deliveryNo, '送货单号'), location: text(raw.location, '库位'), remark: text(raw.remark, '备注', false, 500), warningQty: number(raw.warningQty ?? 0, '预警数量', false, true), createdAt: Date.now() };
   data.board_batches ||= []; data.board_movements ||= [];
   data.board_batches.push(batch);

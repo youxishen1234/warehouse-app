@@ -39,8 +39,24 @@ function dimensions(specification, product = {}) {
   return match ? [Number(match[1]), Number(match[2])] : [0, 0];
 }
 
+// Business dates belong to the workshop's calendar, not the server's. CI runs
+// in UTC while the app runs in China, so derive YYYY-MM-DD in Asia/Shanghai
+// explicitly; relying on system-local getters would reject valid form dates
+// for eight hours around midnight.
+const BUSINESS_TIME_ZONE = 'Asia/Shanghai';
+const businessDateFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: BUSINESS_TIME_ZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit'
+});
+
 function localDate(date = new Date()) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  const value = date instanceof Date ? date : new Date(date);
+  if (!Number.isFinite(value.getTime())) throw new Error('日期无效');
+  const parts = businessDateFormatter.formatToParts(value);
+  const part = type => parts.find(item => item.type === type)?.value;
+  return `${part('year')}-${part('month')}-${part('day')}`;
 }
 
 function sanitizeDecimalInput(value, maxDecimals = 6) {
@@ -54,4 +70,4 @@ function sanitizeDecimalInput(value, maxDecimals = 6) {
   return pieces.length ? `${integer || '0'}.${decimal}` : integer;
 }
 
-module.exports = { roundDecimal, numberValue, lineAmount, dimensions, localDate, sanitizeDecimalInput, QUANTITY_DECIMALS, MONEY_DECIMALS, AREA_DECIMALS, MAX_QUANTITY_VALUE, MAX_MONEY_VALUE };
+module.exports = { roundDecimal, numberValue, lineAmount, dimensions, localDate, sanitizeDecimalInput, BUSINESS_TIME_ZONE, QUANTITY_DECIMALS, MONEY_DECIMALS, AREA_DECIMALS, MAX_QUANTITY_VALUE, MAX_MONEY_VALUE };
