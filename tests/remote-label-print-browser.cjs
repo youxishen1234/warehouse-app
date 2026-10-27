@@ -290,8 +290,12 @@ async function main() {
     for (const value of ['客户甲', '牛卡高瓦', '包装A', '红黑']) {
       await expect(previewFrame.locator('body')).toContainText(value);
     }
+    await expect.poll(
+      () => previewFrame.locator('body').evaluate(() => document.fonts.status),
+      { timeout: 15000 }
+    ).toBe('loaded');
     const previewReady = page.getByText('单张预览 70 × 100 mm，未发现内容溢出。', { exact: true });
-    await expect(previewReady).toBeVisible();
+    await expect(previewReady).toBeVisible({ timeout: 15000 });
     // Taro's custom button is not always interpreted as a native button by Playwright.
     // Wait for the component's actual disabled attribute to be absent before clicking.
     await expect.poll(() => sendBoard.getAttribute('disabled')).toBeNull();
@@ -305,7 +309,7 @@ async function main() {
       item.path === '/api/remote-print/labels/jobs' && item.method === 'POST').length, beforeBoardPosts,
     'stale color is not sent');
     await expect(previewFrame.locator('body')).toContainText('蓝黑');
-    await expect(previewReady).toBeVisible();
+    await expect(previewReady).toBeVisible({ timeout: 15000 });
     await expect.poll(() => sendBoard.getAttribute('disabled')).toBeNull();
 
     // Model a server-side batch edit between the UI's fresh read and job submission.
@@ -318,7 +322,7 @@ async function main() {
       request.body.kind === 'paperboard-batch');
     assert.equal(boardPostsAfterConflict.length, 1, 'a 409 conflict does not trigger an automatic second POST');
     assert.equal(boardPostsAfterConflict[0].body.data.printColor, '蓝黑', 'conflict request contains the previewed version');
-    await expect(previewReady).toBeVisible();
+    await expect(previewReady).toBeVisible({ timeout: 15000 });
     await expect.poll(() => sendBoard.getAttribute('disabled')).toBeNull();
     await sendBoard.click();
     await expect.poll(() => requests.filter(request =>

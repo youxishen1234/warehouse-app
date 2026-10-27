@@ -203,13 +203,14 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
   const [previewWarnings, setPreviewWarnings] = useState<string[]>([]);
   const [previewError, setPreviewError] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewFits, setPreviewFits] = useState(false);
+  const [previewFits, setPreviewFits] = useState<boolean | null>(null);
   const [refresh, setRefresh] = useState(0);
   const alive = useRef(true);
   const actionLock = useRef(false);
   const frame = useRef<HTMLIFrameElement | null>(null);
   const listGeneration = useRef(0);
   const previewGeneration = useRef(0);
+  const previewFitGeneration = useRef(0);
   const activeKind: RemotePrintableLabelKind = entryMode === 'manual' ? 'paperboard-manual' : kind;
   const linkedPair = useRef(readPrintPairFromAddress());
   const hadPairLink = useRef(typeof window !== 'undefined' && window.location.href.includes('print_pair='));
@@ -405,7 +406,7 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
   useEffect(() => {
     const generation = ++previewGeneration.current;
     setPreview('');
-    setPreviewFits(false);
+    setPreviewFits(null);
     setPreviewWarnings([]);
     setPreviewError('');
     if (!built.data || !currentProfile || !copiesValid) { setPreviewLoading(false); return undefined; }
@@ -427,45 +428,106 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
   }, [previewKey, copiesValid, activeKind]);
 
   const checkFrameGeometry = useCallback(() => {
-    const document = frame.current?.contentDocument;
-    if (!document || !currentProfile) { setPreviewFits(false); return; }
-    const measure = () => {
-      if (document !== frame.current?.contentDocument) return;
-      const labelPage = document.querySelector<HTMLElement>('.warehouse-label');
-      const body = document.querySelector<HTMLElement>('.label-body, .paperboard-label');
-      if (!labelPage || !body) { setPreviewFits(false); return; }
-      labelPage.style.transform = 'none';
-      const pageBox = labelPage.getBoundingClientRect();
-      const expectedRatio = currentProfile.widthMm / currentProfile.heightMm;
-      const actualRatio = pageBox.width / Math.max(1, pageBox.height);
-      const tolerance = Math.max(2, pageBox.width * 0.025);
-      const fieldsFit = Array.from(document.querySelectorAll<HTMLElement>('[data-field][data-fit]')).every(element => {
-        const maxHeight = parseFloat(document.defaultView!.getComputedStyle(element).maxHeight);
-        const verticalOverflow = element.classList.contains('paperboard-value')
-          ? Number.isFinite(maxHeight) && element.scrollHeight > maxHeight + 2
-          : element.scrollHeight > element.clientHeight + 2;
-        return element.scrollWidth <= element.clientWidth + 2 && !verticalOverflow;
-      });
-      const fits = fieldsFit && Math.abs(actualRatio - expectedRatio) <= 0.04 &&
-        labelPage.scrollWidth <= labelPage.clientWidth + 2 && labelPage.scrollHeight <= labelPage.clientHeight + 2 &&
-        body.scrollWidth <= body.clientWidth + 2 && body.scrollHeight <= body.clientHeight + 2 &&
-        body.getBoundingClientRect().right <= labelPage.getBoundingClientRect().right + tolerance &&
-        body.getBoundingClientRect().bottom <= labelPage.getBoundingClientRect().bottom + tolerance;
-      const scale = frame.current ? frame.current.clientWidth / Math.max(1, pageBox.width) : 1;
-      labelPage.style.transformOrigin = 'top left';
-      labelPage.style.transform = `scale(${scale})`;
-      setPreviewFits(fits);
+    if (!currentProfile) { setPreviewFits(false); return; }
+    const profile = currentProfile;
+    const generation = ++previewFitGeneration.current;
+    setPreviewFits(null);
+    let documentAttempts = 0;
+
+    const measure = (frameDocument: Document) => {
+      try {
+        const labelPage = frameDocument.querySelector<HTMLElement>('.warehouse-label');
+        const body = frameDocument.querySelector<HTMLElement>('.label-body, .paperboard-label');
+        if (!labelPage || !body) { setPreviewFits(false); return; }
+        labelPage.style.transform = 'none';
+        const pageBox = labelPage.getBoundingClientRect();
+        const expectedRatio = profile.widthMm / profile.heightMm;
+        const actualRatio = pageBox.width / Math.max(1, pageBox.height);
+        const tolerance = Math.max(2, pageBox.width * 0.025);
+        const fieldsFit = Array.from(frameDocument.querySelectorAll<HTMLElement>('[data-field][data-fit]')).every(element => {
+          const maxHeight = parseFloat(frameDocument.defaultView!.getComputedStyle(element).maxHeight);
+          const verticalOverflow = element.classList.contains('paperboard-value')
+            ? Number.isFinite(maxHeight) && element.scrollHeight > maxHeight + 2
+            : element.scrollHeight > element.clientHeight + 2;
+          return element.scrollWidth <= element.clientWidth + 2 && !verticalOverflow;
+        });
+        const fits = fieldsFit && Math.abs(actualRatio - expectedRatio) <= 0.04 &&
+          labelPage.scrollWidth <= labelPage.clientWidth + 2 && labelPage.scrollHeight <= labelPage.clientHeight + 2 &&
+          body.scrollWidth <= body.clientWidth + 2 && body.scrollHeight <= body.clientHeight + 2 &&
+          body.getBoundingClientRect().right <= labelPage.getBoundingClientRect().right + tolerance &&
+          body.getBoundingClientRect().bottom <= labelPage.getBoundingClientRect().bottom + tolerance;
+        const scale = frame.current ? frame.current.clientWidth / Math.max(1, pageBox.width) : 1;
+        labelPage.style.transformOrigin = 'top left';
+        labelPage.style.transform = `scale(${scale})`;
+        setPreviewFits(fits);
+      } catch {
+        if (generation === previewFitGeneration.current) setPreviewFits(false);
+      }
     };
-    measure();
-    document.fonts?.ready.then(() => {
-      if (document === frame.current?.contentDocument) document.defaultView?.requestAnimationFrame(measure);
-    }).catch(() => undefined);
+
+    const waitForCurrentDocument = () => {
+      if (generation !== previewFitGeneration.current) return;
+      const frameDocument = frame.current?.contentDocument;
+      const ready = frameDocument && frameDocument.readyState !== 'loading' &&
+        frameDocument.querySelector('.warehouse-label');
+      if (!ready) {
+        documentAttempts += 1;
+        if (documentAttempts < 80) window.setTimeout(waitForCurrentDocument, 50);
+        else setPreviewFits(false);
+        return;
+      }
+
+      let completed = false;
+      const fontTimeout = window.setTimeout(() => {
+        if (completed || generation !== previewFitGeneration.current) return;
+        completed = true;
+        if (frameDocument !== frame.current?.contentDocument) {
+          documentAttempts = 0;
+          waitForCurrentDocument();
+          return;
+        }
+        setPreviewFits(false);
+      }, 10000);
+      const finish = () => {
+        if (completed || generation !== previewFitGeneration.current) return;
+        completed = true;
+        window.clearTimeout(fontTimeout);
+        frameDocument.defaultView?.requestAnimationFrame(() => {
+          if (generation !== previewFitGeneration.current) return;
+          if (frameDocument !== frame.current?.contentDocument) {
+            documentAttempts = 0;
+            waitForCurrentDocument();
+            return;
+          }
+          measure(frameDocument);
+        });
+      };
+      if (frameDocument.fonts) {
+        frameDocument.fonts.ready.then(finish).catch(() => {
+          if (completed || generation !== previewFitGeneration.current) return;
+          completed = true;
+          window.clearTimeout(fontTimeout);
+          if (frameDocument === frame.current?.contentDocument) setPreviewFits(false);
+          else { documentAttempts = 0; waitForCurrentDocument(); }
+        });
+      } else finish();
+    };
+
+    waitForCurrentDocument();
   }, [currentProfile]);
   useEffect(() => {
     const resize = () => { void checkFrameGeometry(); };
     window.addEventListener('resize', resize);
     return () => window.removeEventListener('resize', resize);
   }, [checkFrameGeometry]);
+  useEffect(() => {
+    if (!preview || !currentProfile) return undefined;
+    const timer = window.setTimeout(checkFrameGeometry, 50);
+    return () => {
+      window.clearTimeout(timer);
+      previewFitGeneration.current += 1;
+    };
+  }, [preview, currentProfile, checkFrameGeometry]);
 
   const pair = useCallback(async (raw?: string) => {
     if (actionLock.current) return;
@@ -986,8 +1048,10 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
                   sandbox='allow-same-origin' srcDoc={preview} onLoad={checkFrameGeometry} />
               </View>
                 : <Text className={styles.previewEmpty}>{entryMode === 'manual' ? '填写必填项后显示实际尺寸预览。' : '选择记录后显示实际尺寸预览。'}</Text>}
-        {preview && !previewLoading && !previewError && <Text className={previewFits ? styles.previewOkay : styles.error}>
-          {previewFits ? `单张预览 ${currentProfile?.widthMm} × ${currentProfile?.heightMm} mm，未发现内容溢出。` : '无法确认标签边界或检测到内容溢出；请修改可选字段后再打印。'}
+        {preview && !previewLoading && !previewError && <Text className={previewFits === null ? styles.previewEmpty : previewFits ? styles.previewOkay : styles.error}>
+          {previewFits === null ? '正在核对实际尺寸…' : previewFits
+            ? `单张预览 ${currentProfile?.widthMm} × ${currentProfile?.heightMm} mm，未发现内容溢出。`
+            : '无法确认标签边界或检测到内容溢出；请修改可选字段后再打印。'}
         </Text>}
         {previewWarnings.map(warning => <Text className={styles.error} key={warning}>{warning}</Text>)}
         <View className={styles.copyRow}>
