@@ -148,7 +148,8 @@ async function harness(options = {}) {
     setRoute: value => { setRoute(value); notify(); },
     setDepth: value => { depth = value; },
     nativeReady: () => window.dispatchEvent(new Event('sg-native-ready')),
-    tabContext: () => root.hasAttribute('data-tab-context')
+    tabContext: () => root.hasAttribute('data-tab-context'),
+    tabModal: () => root.hasAttribute('data-tab-modal')
   };
 }
 
@@ -190,10 +191,12 @@ test('native requests cannot switch behind a modal and same-tab selections still
   try {
     h.modal(true); h.select('ai-assistant', 9); await h.flush();
     assert.equal(h.calls.length, 0);
+    assert.equal(h.tabModal(), true);
     assert.equal(h.messages.at(-1).navigationFailed, true);
     assert.equal(h.messages.at(-1).modal, true);
     h.modal(false); h.select('home', 10); await h.flush();
     assert.equal(h.calls.length, 0);
+    assert.equal(h.tabModal(), false);
     assert.equal(h.messages.at(-1).requestId, 10);
     assert.equal(h.messages.at(-1).navigationFailed, false);
   } finally { h.dispose(); }
