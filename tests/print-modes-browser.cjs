@@ -182,7 +182,7 @@ async function main() {
       await page.waitForURL(/pages\/label-print\/index/);
       await expectModes('标签打印');
       await expect(active().getByText('电脑 USB 打印 K3', { exact: true })).toBeVisible();
-      await expect(active().getByText('手机经互联网发送到店里电脑，再由 USB K3 打印；手机不连接蓝牙。送货单 630K 通道保持独立。', { exact: true })).toBeVisible();
+      await expect(active().getByText('70 × 100 mm · 手机不连接蓝牙', { exact: true })).toBeVisible();
       await expect(active().locator('nav[aria-label="打印类型"]').locator('button')).toHaveCount(2);
       await noOverflow('label mode');
       await modes().getByRole('button', { name: '送货单', exact: true }).click();
