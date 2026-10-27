@@ -299,6 +299,8 @@ async function main() {
     await expect.poll(() => previewFrame.locator('body').evaluate(() => document.fonts.status), { timeout: 30000 }).toBe('loaded');
     const previewMetrics = await previewFrame.locator('body').evaluate(() => {
       const pageElement = document.querySelector('.warehouse-label');
+      const originalTransform = pageElement.style.transform;
+      pageElement.style.transform = 'none';
       const body = document.querySelector('.label-body, .paperboard-label');
       const fields = [...document.querySelectorAll('[data-fit]')].map(element => {
         const style = getComputedStyle(element);
@@ -319,7 +321,26 @@ async function main() {
           rect: element.getBoundingClientRect().toJSON()
         };
       });
+      const pageBox = pageElement.getBoundingClientRect();
+      const bodyBox = body.getBoundingClientRect();
+      const expectedRatio = 70 / 100;
+      const actualRatio = pageBox.width / Math.max(1, pageBox.height);
+      const tolerance = Math.max(2, pageBox.width * 0.025);
+      const checks = {
+        fieldsFit: fields.every(field => !field.horizontalOverflow && !field.verticalOverflow),
+        ratio: Math.abs(actualRatio - expectedRatio) <= 0.04,
+        pageWidth: pageElement.scrollWidth <= pageElement.clientWidth + 2,
+        pageHeight: pageElement.scrollHeight <= pageElement.clientHeight + 2,
+        bodyWidth: body.scrollWidth <= body.clientWidth + 2,
+        bodyHeight: body.scrollHeight <= body.clientHeight + 2,
+        bodyRight: bodyBox.right <= pageBox.right + tolerance,
+        bodyBottom: bodyBox.bottom <= pageBox.bottom + tolerance
+      };
+      pageElement.style.transform = originalTransform;
       return {
+        checks,
+        fits: Object.values(checks).every(Boolean),
+        geometry: { pageBox: pageBox.toJSON(), bodyBox: bodyBox.toJSON(), actualRatio, expectedRatio, tolerance },
         fontsStatus: document.fonts.status,
         fontFaces: [...document.fonts].map(face => ({
           family: face.family,
