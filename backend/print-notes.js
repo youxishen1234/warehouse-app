@@ -1,7 +1,15 @@
 // Customer delivery documents are independent of stock and accounting entries.
 const { numberValue, lineAmount } = require('./stock-math');
 const { parseDateQuery } = require('./date-query');
+const { productOwnerId, assertProductCustomer } = require('./product-ownership');
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
+const identityText = value => String(value ?? '').normalize('NFKC').replace(/\s+/g, '').toLocaleLowerCase('en-US');
+function normalizeProductCustomerId(value, label) {
+  if (value === undefined || value === null || value === '') return null;
+  const id = Number(value);
+  if (!Number.isSafeInteger(id) || id <= 0) throw fail(`${label}商品归属编号无效`);
+  return id;
+}
 function normalizeSpecification(value) {
   return String(value ?? '').replace(/(\d)\s*(?:mm|ｍｍ|毫米)(?=\s*(?:[×xX*＊✕]|乘|$))/gi, '$1')
     .replace(/\s*(?:[×xX*＊✕]|乘)\s*/g, '×').trim();
@@ -29,9 +37,44 @@ function validateNote(raw) {
     } catch (error) { throw fail(error.message); }
     const productId = item.product_id == null || item.product_id === '' ? null : item.product_id;
     if (productId !== null && (!Number.isSafeInteger(productId) || productId < 1)) throw fail(`第 ${index + 1} 行库存商品编号无效`);
-    return { product_id: productId, name: text(item.name, `第 ${index + 1} 行产品名称`, 100),
-      specification: normalizeSpecification(text(item.specification, '规格', 100)),
-      unit: '个', quantity, price, amount, remark: text(item.remark, '备注', 250) };
+    const name = text(item.name, `第 ${index + 1} 行产品名称`, 100);
+    const specification = normalizeSpecification(text(item.specification, '规格', 100));
+    const customerSpecId = item.customer_spec_id == null || item.customer_spec_id === '' ? null : item.customer_spec_id;
+    if (customerSpecId !== null && (typeof customerSpecId !== 'string' || !customerSpecId.trim() || customerSpecId.length > 180)) {
+      throw fail(`第 ${index + 1} 行客户规格编号无效`);
+    }
+    const rawSnapshot = item.customer_spec_snapshot;
+    let customerSpecSnapshot = null;
+    if (rawSnapshot !== null && rawSnapshot !== undefined) {
+      if (!rawSnapshot || typeof rawSnapshot !== 'object' || Array.isArray(rawSnapshot)) throw fail(`第 ${index + 1} 行客户规格快照无效`);
+      const snapshotId = typeof rawSnapshot.id === 'string' ? rawSnapshot.id.trim() : '';
+      const snapshotSpecification = normalizeSpecification(text(rawSnapshot.specification, `第 ${index + 1} 行客户规格尺寸`, 100));
+      const snapshotPrice = numberValue(rawSnapshot.price, `第 ${index + 1} 行客户规格单价`);
+      const snapshotMaterial = text(rawSnapshot.material, `第 ${index + 1} 行客户规格材质`, 100);
+      const snapshotUnit = text(rawSnapshot.unit, `第 ${index + 1} 行客户规格单位`, 20, true);
+      if (!snapshotId || snapshotId !== customerSpecId || productId === null || customerId === null
+        || snapshotPrice !== price || snapshotUnit !== '个'
+        || identityText(rawSnapshot.goods) !== identityText(name)
+        || snapshotSpecification !== specification) {
+        throw fail(`第 ${index + 1} 行客户规格快照与商品明细不一致`);
+      }
+      customerSpecSnapshot = {
+        id: snapshotId,
+        goods: text(rawSnapshot.goods, `第 ${index + 1} 行客户规格名称`, 100, true),
+        specification: snapshotSpecification,
+        material: snapshotMaterial,
+        unit: snapshotUnit,
+        price: snapshotPrice
+      };
+    }
+    if ((customerSpecId === null) !== (customerSpecSnapshot === null)) throw fail(`第 ${index + 1} 行客户规格身份不完整`);
+    if (customerSpecId !== null && (productId === null || customerId === null)) throw fail(`第 ${index + 1} 行客户规格必须关联客户和商品`);
+    const productCustomerId = normalizeProductCustomerId(item.product_customer_id, `第 ${index + 1} 行`);
+    if (productCustomerId !== null && productId === null) throw fail(`第 ${index + 1} 行商品归属缺少商品编号`);
+    return { product_id: productId, name, specification,
+      unit: '个', quantity, price, amount, remark: text(item.remark, '备注', 250),
+      ...(customerSpecId !== null ? { customer_spec_id: customerSpecId.trim(), customer_spec_snapshot: customerSpecSnapshot } : {}),
+      ...(productCustomerId !== null ? { product_customer_id: productCustomerId } : {}) };
   });
   const cents = items.reduce((sum, item) => sum + Math.round(item.amount * 100), 0);
   if (!Number.isSafeInteger(cents) || cents >= 1e14) throw fail('合计金额超出支持范围');
@@ -58,6 +101,8 @@ function save(data, raw, id) {
     const product = data.products.find(row => row.id === item.product_id && !row.deleted_at);
     if (!product) throw fail(`第 ${index + 1} 行库存商品不存在或已停用，请重新选择`);
     if (String(product.unit || '件') !== '个') throw fail(`第 ${index + 1} 行库存商品单位为「${product.unit || '件'}」，送货单出库要求单位为「个」`);
+    assertProductCustomer(product, note.customer_id, `第 ${index + 1} 行库存商品`);
+    item.product_customer_id = productOwnerId(product);
   }
   const nextId = previous?.id ?? notes.reduce((max, row) => Math.max(max, row.id), 0) + 1;
   const now = Date.now();
@@ -70,12 +115,28 @@ function validateBackup(data) {
   if (data.print_notes === undefined) return;
   if (!Array.isArray(data.print_notes)) throw fail('送货单备份格式无效');
   const ids = new Set();
+  const customers = new Set((data.customers || []).map(customer => Number(customer.id)));
+  const products = new Map((data.products || []).map(product => [Number(product.id), product]));
   for (const note of data.print_notes) {
     const normalized = validateNote(note);
     if (!Number.isSafeInteger(note.id) || note.id < 1 || ids.has(note.id) || typeof note.number !== 'string' || !note.number || note.number.length > 80
       || !Number.isSafeInteger(note.version) || note.version < 1 || !Number.isSafeInteger(note.created_at) || note.created_at < 0
       || !Number.isSafeInteger(note.updated_at) || note.updated_at < 0 || normalized.total !== note.total
+      || note.customer_id != null && !customers.has(Number(note.customer_id))
       || normalized.items.some((item, i) => item.amount !== note.items[i].amount || note.items[i].unit !== '个')) throw fail('送货单备份编号、版本或金额无效');
+    for (const [index, item] of normalized.items.entries()) {
+      if (item.product_id == null) continue;
+      const product = products.get(Number(item.product_id));
+      if (!product) throw fail(`送货单 ${note.id} 第 ${index + 1} 行商品不存在`);
+      try {
+        assertProductCustomer(product, note.customer_id, `送货单 ${note.id} 第 ${index + 1} 行商品`);
+        if (item.product_customer_id != null && productOwnerId(product) !== item.product_customer_id) {
+          throw new Error('商品归属快照不一致');
+        }
+      } catch (error) {
+        throw fail(error.message);
+      }
+    }
     ids.add(note.id);
   }
 }

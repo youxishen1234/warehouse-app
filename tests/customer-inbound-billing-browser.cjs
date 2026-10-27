@@ -63,7 +63,7 @@ async function main() {
   const server = app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
   const origin = `http://127.0.0.1:${server.address().port}`;
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(process.env.PLAYWRIGHT_BROWSER_CHANNEL ? { channel: process.env.PLAYWRIGHT_BROWSER_CHANNEL } : {});
   const context = await browser.newContext({ viewport: { width: 390, height: 900 }, locale: 'zh-CN', timezoneId: 'Asia/Shanghai', acceptDownloads: true });
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
@@ -138,7 +138,13 @@ async function main() {
   const go = async route => { await page.goto('about:blank'); await page.goto(origin + '/#' + route); };
   const choose = async (label, text) => {
     const picker = page.locator(`[aria-label=${JSON.stringify(label)}]`).first();
-    if (await picker.evaluate(node => node.tagName === 'SELECT')) return picker.selectOption({ label: text });
+    const matches = value => typeof text === 'string' ? value.includes(text) : text.test(value);
+    if (await picker.evaluate(node => node.tagName === 'SELECT')) {
+      const options = await picker.locator('option').allTextContents();
+      const option = options.find(matches);
+      assert.ok(option, `Missing option matching ${text} in ${label}: ${options.join(' | ')}`);
+      return picker.selectOption({ label: option });
+    }
     await picker.click();
     const wheel = page.locator('.weui-picker__group:visible').last();
     await expect(wheel).toBeVisible();
@@ -166,8 +172,11 @@ async function main() {
     await expect(page.getByText('纸箱生产入库', { exact: true })).toBeVisible();
     await expect(input('货物 1 本次完工数量')).toBeVisible();
     await choose('选择客户', customer.name);
-    await page.getByText('选择已有商品', { exact: true }).last().click();
-    await page.getByText(carton.name, { exact: true }).last().click();
+    const specPicker = page.locator('[aria-label="货物 1 客户常用规格"]').first();
+    await expect(specPicker).toBeVisible();
+    await choose('货物 1 客户常用规格', /客户自产纸箱 · 30×20×15 cm · 牛皮纸 · 个 ·/);
+    await expect(page.getByText('选择已有商品', { exact: true })).toHaveCount(0, '选择客户后应直接选客户规格，不再经库存商品弹窗');
+    assert.equal(requests.filter(row => row.method === 'POST' && row.path === '/products').length, 0, '选择客户规格不得创建库存商品');
   };
   const saveReceipt = async (number, price) => {
     await expect(input('货物 1 入库单价')).toHaveValue(String(price));
@@ -189,8 +198,12 @@ async function main() {
     await openCarton();
     await expect(input('货物 1 入库单价')).toHaveValue('3');
     await choose('选择客户', other.name);
+    await expect(input('货物 1 入库单价')).toHaveValue('', { timeout: 5000 });
+    await choose('货物 1 客户常用规格', /客户自产纸箱 · 30×20×15 cm · 牛皮纸 · 个 ·/);
     await expect(input('货物 1 入库单价')).toHaveValue('5');
     await choose('选择客户', customer.name);
+    await expect(input('货物 1 入库单价')).toHaveValue('', { timeout: 5000 });
+    await choose('货物 1 客户常用规格', /客户自产纸箱 · 30×20×15 cm · 牛皮纸 · 个 ·/);
     await expect(input('货物 1 入库单价')).toHaveValue('3');
     const first = await saveReceipt('CUSTOMER-INBOUND-300', 3);
     assert.equal(db.getCustomer(customer.id).debt, 300);
@@ -200,6 +213,10 @@ async function main() {
     assert.equal(db.getCustomer(customer.id).debt, 500);
     assert.equal(db.getDeliveryNote(first.id).lines[0].unit_price, 3, 'saved prices are immutable snapshots');
     assert.equal(db.getProduct(carton.id).price, 9, 'customer price must not overwrite stock base price');
+    assert.equal(first.lines[0].product_id, carton.id, '无歧义的历史同规格 SKU 应认领给客户，避免重复库存');
+    assert.equal(second.lines[0].product_id, first.lines[0].product_id, 'repeat receipts must reuse the same customer-owned SKU');
+    assert.equal(db.getProduct(carton.id).customer_id, customer.id, '认领后的历史 SKU 必须记录客户归属');
+    assert.equal(db.getProduct(carton.id).stock, 200, '认领后的 SKU 应累计同一客户的两次入库');
     assert.equal(db.getCustomer(other.id).debt, 0, 'same dimensions must not combine different customers');
     // Keep actual input/amount coverage above while exercising cross-month
     // accounting with an isolated, validated historical snapshot.
@@ -318,7 +335,7 @@ async function main() {
     await expect.poll(() => db.getCustomer(customer.id).debt).toBe(400);
     await expect(customerCard).toContainText('400.00');
     await expect(customerCard).toContainText('500.00');
-    const shipped = db.stockOut(carton.id, 200, 'E2E', '已入库计账纸箱发货', customer.id, { unit_price: 2, specification: spec.specification });
+    const shipped = db.stockOut(first.lines[0].product_id, 200, 'E2E', '已入库计账纸箱发货', customer.id, { unit_price: 2, specification: spec.specification });
     assert.equal(shipped.transaction.receivable_amount, 0);
     assert.equal(db.getCustomer(customer.id).debt, 400, 'shipping the billed cartons must not charge again');
     await page.getByLabel('刷新服务器数据').click();

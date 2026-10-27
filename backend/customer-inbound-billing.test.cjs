@@ -90,7 +90,7 @@ test('customer production receipts are billed once, settle correctly and preserv
     await t.test('customer quotation is authoritative, including zero, and old receipt prices stay immutable', () => {
       const spec = { id: 'quote-a', goods: '客户规格纸箱', specification: '30×20×15 cm', material: '牛皮纸', unit: '个', price: 3 };
       const c = customer('报价', [spec]); const p = product();
-      const body = { lines: [{ product_id: p.id, quantity: 2, delivered_qty: 2, customer_spec_id: spec.id, specification: p.specification, unit_price: 3 }] };
+      const body = { lines: [{ product_id: null, quantity: 2, delivered_qty: 2, customer_spec_id: spec.id, specification: p.specification, unit_price: 3 }] };
       const first = receipt(c, p, 2, 3, body);
       assert.equal(first.total_amount, 6); assert.equal(first.lines[0].customer_spec_id, spec.id);
       assert.equal(first.lines[0].customer_spec_snapshot.price, 3);
@@ -99,7 +99,7 @@ test('customer production receipts are billed once, settle correctly and preserv
       const zero = receipt(c, p, 2, 0, { lines: [{ ...body.lines[0], unit_price: 0 }] });
       assert.equal(zero.total_amount, 0);
       assert.equal(db.getDeliveryNote(first.id).total_amount, 6);
-      const shipped = db.stockOut(p.id, 4, '', '', c.id, { unit_price: 10 }).transaction;
+      const shipped = db.stockOut(zero.lines[0].product_id, 4, '', '', c.id, { unit_price: 10 }).transaction;
       assert.equal(shipped.receivable_amount, 0, 'zero-valued billed receipts still cover their quantity');
       assert.equal(db.getCustomer(c.id).debt, 6);
       const other = customer('错误规格客户');

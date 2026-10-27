@@ -120,13 +120,19 @@ async function verify() {
     }));
     requireSuccess(await call('PUT', `/api/customers/${customer.id}`, { specs }, key()), 'fixture customer quotation');
 
+    const inboundProductIds = [];
     for (const price of [300, 200]) {
-      requireSuccess(await call('POST', '/api/delivery-notes', {
+      const receipt = requireSuccess(await call('POST', '/api/delivery-notes', {
         source_type: 'production', party_type: 'customer', customer_id: customer.id,
         work_order_no: `VERIFY-${price}-${suffix}`,
-        lines: [{ product_id: product.id, quantity: 1, delivered_qty: 1, customer_spec_id: `billing-${price}`, specification: '20×10×5cm' }]
+        lines: [{ product_id: null, quantity: 1, delivered_qty: 1, customer_spec_id: `billing-${price}`, specification: '20×10×5cm' }]
       }, key()), `production receipt at ${price}`);
+      inboundProductIds.push(receipt.lines[0]?.product_id);
     }
+    if (!inboundProductIds[0] || new Set(inboundProductIds).size !== 1) {
+      throw new Error('customer specifications must resolve one reusable customer-owned stock SKU');
+    }
+    const inboundProductId = inboundProductIds[0];
 
     let currentCustomer = requireSuccess(await call('GET', `/api/customers/${customer.id}`), 'customer balance after production receipts');
     if (Math.abs(Number(currentCustomer.debt) - 500) > 0.005) throw new Error(`production receipts should create 500 receivable, got ${currentCustomer.debt}`);
@@ -137,7 +143,7 @@ async function verify() {
 
     const outbound = requireSuccess(await call('POST', '/api/stock/out/batch', {
       customer_id: customer.id, operator: 'billing-release-verification',
-      lines: [{ product_id: product.id, quantity: 2, unit: '个', unit_price: 250, specification: '20×10×5cm' }]
+      lines: [{ product_id: inboundProductId, quantity: 2, unit: '个', unit_price: 250, specification: '20×10×5cm' }]
     }, key()), 'shipment');
     const transaction = outbound?.transactions?.[0]?.transaction;
     if (!transaction || Number(transaction.receivable_amount) !== 0) {

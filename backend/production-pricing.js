@@ -1,6 +1,7 @@
 'use strict';
 
 const normalizeText = value => String(value ?? '').normalize('NFKC').trim().replace(/\s+/g, '').toLocaleLowerCase('en-US');
+const normalizeCustomerName = value => String(value ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('en-US');
 
 function dimensionsInCm(specification, dimensionUnit = 'cm') {
   const text = String(specification ?? '').trim();
@@ -19,6 +20,85 @@ function dimensionsInCm(specification, dimensionUnit = 'cm') {
   }
   return values.length >= 2 && values.every(value => Number.isFinite(value) && value > 0 && value <= 1e8) ? values : null;
 }
+
+function canonicalSpecification(value, dimensionUnit = 'cm') {
+  const text = String(value ?? '').trim();
+  const dimensions = dimensionsInCm(text, dimensionUnit);
+  if (!dimensions || dimensions.length !== 3) return null;
+  if (/(?:mm|cm|毫米|厘米)/i.test(text)) return text;
+  const rawUnit = String(dimensionUnit || 'cm').trim();
+  const unit = /^(mm|毫米)$/i.test(rawUnit) ? 'mm' : /^(cm|厘米)$/i.test(rawUnit) ? 'cm' : null;
+  return unit ? `${text} ${unit}` : null;
+}
+
+function specificationIdentity(specification) {
+  const dimensions = dimensionsInCm(specification.specification, 'cm');
+  if (!dimensions || dimensions.length !== 3) return null;
+  return JSON.stringify([
+    normalizeText(specification.goods),
+    normalizeText(specification.material),
+    normalizeText(specification.unit),
+    dimensions
+  ]);
+}
+
+function dimensionSpecId(customerId, specId) {
+  return `dimension:${JSON.stringify([String(customerId), String(specId)])}`;
+}
+
+function mergeCustomerCartonSpecifications(customer, customers, dimensions) {
+  if (!customer || customer.deleted_at) return [];
+  const accountSpecs = Array.isArray(customer.specs) ? customer.specs : [];
+  const reservedIds = new Set(accountSpecs.map(spec => String(spec?.id ?? '')));
+  const result = [];
+  const accountIdentities = new Set();
+  for (const spec of accountSpecs) {
+    if (!spec || spec.kind === '纸板' || typeof spec.id !== 'string' || !spec.id.trim()) continue;
+    const specification = canonicalSpecification(spec.specification ?? spec.size, spec.sizeUnit || 'cm');
+    const price = spec.price === undefined ? null : spec.price;
+    if (!specification || typeof spec.goods !== 'string' || !spec.goods.trim()
+      || (price !== null && (typeof price !== 'number' || !Number.isFinite(price) || price < 0))) continue;
+    const canonical = {
+      id: spec.id.trim(), goods: spec.goods.trim(), specification,
+      material: String(spec.material ?? ''), unit: String(spec.unit ?? '').trim() || '个', price
+    };
+    result.push(canonical);
+    const identity = specificationIdentity(canonical);
+    if (identity) accountIdentities.add(identity);
+  }
+
+  const activeCustomers = (Array.isArray(customers) ? customers : []).filter(row => !row?.deleted_at);
+  const customerName = normalizeCustomerName(customer.name);
+  const sameNameCustomers = activeCustomers.filter(row => normalizeCustomerName(row?.name) === customerName);
+  if (sameNameCustomers.length !== 1 || Number(sameNameCustomers[0].id) !== Number(customer.id)) return result;
+  const dimensionCustomers = Array.isArray(dimensions?.customers) ? dimensions.customers : [];
+  const matchingDimensionCustomers = dimensionCustomers.filter(row => normalizeCustomerName(row?.name) === customerName);
+  const seenDimensionIdentities = new Set();
+  const seenDimensionIds = new Set();
+  for (const dimensionCustomer of matchingDimensionCustomers) {
+    if (!Array.isArray(dimensionCustomer?.specs)) continue;
+    for (const spec of dimensionCustomer.specs) {
+      if (!spec || spec.kind === '纸板' || typeof spec.id !== 'string' || !spec.id.trim()) continue;
+      const specification = canonicalSpecification(spec.size ?? spec.specification, spec.sizeUnit || 'cm');
+      if (!specification) continue;
+      // Some legacy dimensions entries predate the goods field; retain them under a stable label.
+      const goods = String(spec.goods ?? '').trim() || '纸箱规格';
+      const canonical = {
+        id: dimensionSpecId(dimensionCustomer.id, spec.id),
+        goods, specification, material: String(spec.material ?? ''),
+        unit: String(spec.unit ?? '').trim() || '个', price: null
+      };
+      const identity = specificationIdentity(canonical);
+      if (!identity || accountIdentities.has(identity) || seenDimensionIdentities.has(identity)
+        || seenDimensionIds.has(canonical.id) || reservedIds.has(canonical.id)) continue;
+      seenDimensionIdentities.add(identity);
+      seenDimensionIds.add(canonical.id);
+      result.push(canonical);
+    }
+  }
+  return result;
+}
+
 
 function findCustomerSpecification(customer, specId) {
   if (!customer || customer.deleted_at) return null;
@@ -43,7 +123,8 @@ function matchCustomerSpecification(customer, product, specId) {
   if (normalizeText(product.material) !== normalizeText(specification.material)) {
     throw new Error('客户规格材质与所选纸箱商品材质不匹配');
   }
-  if (typeof specification.price !== 'number' || !Number.isFinite(specification.price) || specification.price < 0) {
+  if (specification.price !== null && (typeof specification.price !== 'number'
+    || !Number.isFinite(specification.price) || specification.price < 0)) {
     throw new Error('客户规格单价无效，请先更新客户资料');
   }
   return {
@@ -60,4 +141,4 @@ function matchCustomerSpecification(customer, product, specId) {
   };
 }
 
-module.exports = { dimensionsInCm, findCustomerSpecification, matchCustomerSpecification };
+module.exports = { dimensionsInCm, canonicalSpecification, dimensionSpecId, mergeCustomerCartonSpecifications, findCustomerSpecification, matchCustomerSpecification };

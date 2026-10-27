@@ -5,7 +5,8 @@ const {
   matchingProductsForSpecification,
   uniqueCustomerSpecification,
   validatedCustomerSpecification,
-  customerSpecificationText
+  customerSpecificationText,
+  customerSpecificationDimensions
 } = require('../src/pages/inbound/customer-pricing');
 
 const customer = {
@@ -53,4 +54,18 @@ test('刷新报价时保留有效零价；规格被删除或商品不再匹配�
 test('纸板及非三维商品不能作为客户纸箱报价匹配', () => {
   assert.deepEqual(matchingCustomerSpecifications(customer, product({ category: '纸板' })), []);
   assert.deepEqual(matchingCustomerSpecifications(customer, product({ specification: '40×30' })), []);
+});
+
+test('没有报价的客户规格仍可选择，但不会被当成零价报价', () => {
+  const unpriced = { ...customer, specs: [{ ...customer.specs[0], price: null }] };
+  assert.equal(validatedCustomerSpecification(unpriced, null, 'a').price, null);
+  assert.equal(uniqueCustomerSpecification(unpriced, product()).price, null);
+  assert.equal(validatedCustomerSpecification(unpriced, product({ material: 'different' }), 'a'), null);
+});
+
+test('客户规格面积按物理单位换算为毫米，不将厘米当成毫米', () => {
+  assert.deepEqual(customerSpecificationDimensions(customer.specs[0]), [400, 300]);
+  assert.deepEqual(customerSpecificationDimensions(customer.specs[1]), [400, 300]);
+  assert.deepEqual(customerSpecificationDimensions({ size: '40x30x20', sizeUnit: 'cm' }), [400, 300]);
+  assert.deepEqual(customerSpecificationDimensions(null), [0, 0]);
 });

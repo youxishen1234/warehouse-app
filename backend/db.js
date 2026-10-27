@@ -6,17 +6,19 @@ const { ORDER_STATUSES } = require('./list-sort');
 const { parseDateQuery } = require('./date-query');
 const customerDimensions = require('./customer-dimensions');
 const productionPricing = require('./production-pricing');
+const { productOwnerId, assertProductCustomer } = require('./product-ownership');
 
 const DB_PATH = process.env.WAREHOUSE_DATA_FILE || path.join(__dirname, 'data.json');
 const ledgerAttachments = require('./ledger-attachments').createStore(DB_PATH);
 const productImages = require('./product-image-backup').createStore();
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const BACKUP_DIR = process.env.WAREHOUSE_BACKUP_DIR || path.join(path.dirname(DB_PATH), 'backups');
 const AUTO_BACKUP_KEEP = Math.max(1, Math.min(100, Number(process.env.WAREHOUSE_BACKUP_KEEP) || 7));
 const AUTO_BACKUP_MAX_DAYS = Math.max(1, Math.min(3650, Number(process.env.WAREHOUSE_BACKUP_MAX_DAYS) || 30));
 const { BACKUP_MAX_BYTES } = require('./backup-limits');
 let loadWarnings = [];
 let migratedDimensions = false;
+let migratedProductOwnership = false;
 
 function normalizeTimestampFields(data) {
   const fields = ['created_at', 'updated_at', 'profile_updated_at', 'stock_updated_at', 'balance_updated_at', 'counted_at', 'voided_at'];
@@ -60,6 +62,87 @@ function scanReferenceWarnings(data) {
     for (const line of note.lines || []) if (!products.has(Number(line.product_id))) warnings.push(`delivery-note:${note.id}:missing-product:${line.product_id}`);
   }
   return warnings.slice(0, 100);
+}
+
+function productOwnershipEvidence(data) {
+  const evidence = new Map();
+  const add = (productId, customerId, customerSpecEvidence = false) => {
+    const id = Number(productId);
+    if (!Number.isSafeInteger(id) || id <= 0) return;
+    const row = evidence.get(id) || { customers: new Set(), specCustomers: new Set(), shared: false };
+    const ownerId = Number(customerId);
+    if (customerId !== undefined && customerId !== null && customerId !== ''
+      && Number.isSafeInteger(ownerId) && ownerId > 0) {
+      row.customers.add(ownerId);
+      if (customerSpecEvidence) row.specCustomers.add(ownerId);
+    }
+    else row.shared = true;
+    evidence.set(id, row);
+  };
+  for (const transaction of data.transactions || []) {
+    if (transaction?.type === 'adjustment') continue;
+    add(transaction?.product_id, transaction?.customer_id);
+  }
+  for (const note of data.delivery_notes || []) {
+    for (const line of note?.lines || []) {
+      const snapshot = line?.customer_spec_snapshot;
+      const hasSpecEvidence = typeof line?.customer_spec_id === 'string' && line.customer_spec_id.trim()
+        && snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot)
+        && snapshot.id === line.customer_spec_id;
+      add(line?.product_id, note.customer_id, Boolean(hasSpecEvidence));
+    }
+  }
+  for (const note of data.print_notes || []) {
+    for (const item of note?.items || []) {
+      const snapshot = item?.customer_spec_snapshot;
+      const hasSpecEvidence = typeof item?.customer_spec_id === 'string' && item.customer_spec_id.trim()
+        && snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot)
+        && snapshot.id === item.customer_spec_id;
+      add(item?.product_id, note.customer_id, Boolean(hasSpecEvidence));
+    }
+  }
+  return evidence;
+}
+
+function migrateProductOwnership(data) {
+  const result = { changed: [], conflicts: [] };
+  if (!data || !Array.isArray(data.products)) return result;
+  const products = new Map(data.products.map(product => [Number(product.id), product]));
+  const customers = new Map((data.customers || []).map(customer => [Number(customer.id), customer]));
+  for (const [productId, evidence] of productOwnershipEvidence(data)) {
+    const product = products.get(productId);
+    if (!product) continue;
+    let currentOwner;
+    try { currentOwner = productOwnerId(product); } catch {
+      result.conflicts.push({ productId, reason: 'invalid-owner' });
+      continue;
+    }
+    if (!evidence.specCustomers.size) continue;
+    const owners = [...evidence.specCustomers];
+    const consistent = !evidence.shared && owners.length === 1 && customers.has(owners[0])
+      && evidence.customers.size === 1 && evidence.customers.has(owners[0]);
+    if (!consistent || (currentOwner !== null && currentOwner !== owners[0])) {
+      result.conflicts.push({
+        productId,
+        reason: evidence.shared ? 'shared-history' : owners.length > 1 ? 'multiple-customers' : 'missing-customer'
+      });
+      continue;
+    }
+    if (currentOwner === null) {
+      const owner = customers.get(owners[0]);
+      product.customer_id = owner.id;
+      product.customer_name = owner.name;
+      result.changed.push(productId);
+    }
+  }
+  return result;
+}
+
+function canAssignProductOwner(data, productId, customerId) {
+  const evidence = productOwnershipEvidence(data).get(Number(productId));
+  if (!evidence) return true;
+  const ownerId = Number(customerId);
+  return !evidence.shared && evidence.customers.size === 1 && evidence.customers.has(ownerId);
 }
 
 function cleanupResidualTemps() {
@@ -163,6 +246,14 @@ function load() {
     if (!Array.isArray(d.order_events)) d.order_events = [];
     if (!Array.isArray(d.stocktakes)) d.stocktakes = [];
     if (!Array.isArray(d.delivery_notes)) d.delivery_notes = [];
+    const ownershipMigration = migrateProductOwnership(d);
+    if (ownershipMigration.changed.length) {
+      migratedProductOwnership = true;
+      loadWarnings.push(`product ownership migration claimed ${ownershipMigration.changed.length} legacy products`);
+    }
+    for (const conflict of ownershipMigration.conflicts) {
+      loadWarnings.push(`product:${conflict.productId}:ownership-${conflict.reason}`);
+    }
     require('./print-notes').validateBackup(d);
     if (!d.print_notes) d.print_notes = [];
     if (!d._meta.nextLedgerId) d._meta.nextLedgerId = d.ledger.length + 1;
@@ -641,78 +732,229 @@ function isProductionInboundProduct(product) {
   if (!product || product.category === '纸板') return false;
   return product.category === '纸箱' || productionPricing.dimensionsInCm(product.specification, product.size_unit || 'cm')?.length === 3;
 }
-function addDeliveryNote(data) {
-  if (!Array.isArray(data.lines) || !data.lines.length) throw new Error('至少添加一行商品');
-  if (data.source_type !== undefined && data.source_type !== 'production') throw new Error('入库来源类型无效');
-  const productionInbound = data.source_type === 'production';
-  const workOrderNo = String(data.work_order_no || '').trim();
-  if (workOrderNo && cache.delivery_notes.some(note => !note.voided_at && String(note.work_order_no || '').trim() === workOrderNo) && data.confirm_duplicate_work_order !== true) {
-    throw new Error(`工单编号「${workOrderNo}」已有未作废送货单，请确认后再重复开单`);
+function normalizeCartonIdentity(value) {
+  return String(value ?? '').normalize('NFKC').trim().replace(/\s+/g, '').toLocaleLowerCase('en-US');
+}
+function validateCustomerSpecs(specs) {
+  if (!Array.isArray(specs) || specs.length > 500) throw new Error('客户规格资料无效');
+  const seen = new Set();
+  return specs.map(spec => {
+    if (!spec || typeof spec !== 'object' || Array.isArray(spec)
+      || typeof spec.id !== 'string' || !spec.id.trim()
+      || typeof spec.goods !== 'string' || !spec.goods.trim()
+      || typeof spec.specification !== 'string' || !spec.specification.trim()) {
+      throw new Error('客户规格资料无效');
+    }
+    const id = spec.id.trim();
+    if (seen.has(id)) throw new Error('客户规格编号重复');
+    seen.add(id);
+    const price = spec.price === undefined || spec.price === null ? null : spec.price;
+    if (price !== null && (typeof price !== 'number' || !Number.isFinite(price) || price < 0)) {
+      throw new Error('客户规格单价无效');
+    }
+    return {
+      id, goods: spec.goods.trim(), specification: spec.specification.trim(),
+      material: String(spec.material ?? ''), unit: String(spec.unit || '个').trim(), price
+    };
+  });
+}
+function normalizedCustomerSpecSnapshot(specs, label) {
+  if (!Array.isArray(specs)) throw new Error(`${label}格式无效`);
+  const seen = new Set();
+  return specs.map(spec => {
+    if (!spec || typeof spec !== 'object' || typeof spec.id !== 'string' || !spec.id.trim()) {
+      throw new Error(`${label}格式无效`);
+    }
+    const id = spec.id.trim();
+    if (seen.has(id)) throw new Error(`${label}编号重复`);
+    seen.add(id);
+    const rawPrice = spec.price === undefined || spec.price === null ? null : Number(spec.price);
+    if (rawPrice !== null && (!Number.isFinite(rawPrice) || rawPrice < 0)) throw new Error(`${label}单价无效`);
+    return {
+      id,
+      goods: String(spec.goods ?? ''),
+      specification: String(spec.specification ?? ''),
+      material: String(spec.material ?? ''),
+      unit: String(spec.unit ?? ''),
+      price: rawPrice
+    };
+  }).sort((left, right) => left.id.localeCompare(right.id));
+}
+function cartonInboundCustomers() {
+  const customers = cache.customers.filter(customer => !customer.deleted_at);
+  return customers.map(customer => ({
+    ...customer,
+    specs: productionPricing.mergeCustomerCartonSpecifications(
+      customer, customers, cache.customer_dimensions
+    )
+  }));
+}
+function customerCartonProductMatches(customer, product, specification) {
+  if (!product || product.deleted_at || !isProductionInboundProduct(product)) return false;
+  const dimensions = productionPricing.dimensionsInCm(product.specification, product.size_unit || 'cm');
+  const wanted = productionPricing.dimensionsInCm(specification.specification, 'cm');
+  if (normalizeCartonIdentity(product.name) !== normalizeCartonIdentity(specification.goods)
+    || dimensions?.length !== 3 || wanted?.length !== 3
+    || dimensions.some((value, index) => value !== wanted[index])
+    || normalizeCartonIdentity(product.material) !== normalizeCartonIdentity(specification.material)
+    || normalizeCartonIdentity(product.unit || '件') !== normalizeCartonIdentity(specification.unit)) return false;
+  try {
+    productionPricing.matchCustomerSpecification({ ...customer, specs: [specification] }, product, specification.id);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function claimCustomerCartonProduct(customer, product) {
+  if (productOwnerId(product) !== null) throw new Error('历史商品已归属其他客户，不能认领');
+  if (!canAssignProductOwner(cache, product.id, customer.id)) {
+    throw new Error('历史商品已有其他客户或共享业务记录，不能自动认领，请先核对并拆分商品');
   }
   const now = Date.now();
-  let partyType; let supplier = null; let customer = null;
-  if (productionInbound) {
-    const hasPartyId = value => value !== undefined && value !== null && String(value).trim() !== '';
-    if (hasPartyId(data.supplier_id) || hasPartyId(data.supplier_name)) throw new Error('自产成品入库不能关联供应商');
-    if (hasPartyId(data.customer_id)) {
-      if (data.party_type != null && data.party_type !== 'customer') throw new Error('关联客户的自产入库往来类型必须为客户');
-      customer = activeParty(data.customer_id, 'customer');
-      partyType = 'customer';
-    } else {
-      if (data.party_type != null) throw new Error('自产成品入库未选择客户时不能关联往来对象');
-      if (hasPartyId(data.customer_name)) throw new Error('客户信息必须通过客户编号选择');
-      partyType = null;
-    }
-  } else {
-    partyType = data.party_type === undefined ? (data.customer_id != null ? 'customer' : 'supplier') : data.party_type;
-    if (partyType !== 'supplier' && partyType !== 'customer') throw new Error('入库往来对象类型无效');
-    if (partyType === 'customer' && data.supplier_id != null) throw new Error('客户入库不能同时关联供货商');
-    if (partyType === 'supplier' && data.customer_id != null) throw new Error('供货商入库不能同时关联客户');
-    supplier = partyType === 'supplier' ? activeParty(data.supplier_id, 'supplier') : null;
-    customer = partyType === 'customer' ? activeParty(data.customer_id, 'customer') : null;
-  }
-  const freight = numberValue(data.freight === undefined ? 0 : data.freight, '运费');
-  const date = data.date === undefined ? localDate() : String(data.date);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date) throw new Error('日期格式无效');
-  if (date > localDate()) throw new Error('业务日期不能晚于今天');
-  const seen = new Set();
-  const prepared = data.lines.map(raw => {
-    const product = getProduct(Number(raw?.product_id));
+  product.customer_id = customer.id;
+  product.customer_name = customer.name;
+  product.updated_at = now;
+  product.profile_updated_at = now;
+  return product;
+}
+
+function resolveCustomerCartonProduct(customer, specification, explicitProductId) {
+  const matches = cache.products.filter(product => customerCartonProductMatches(customer, product, specification));
+  const owned = matches.filter(product => productOwnerId(product) === Number(customer.id));
+  const unowned = matches.filter(product => productOwnerId(product) === null);
+
+  if (explicitProductId !== undefined) {
+    const product = getProduct(Number(explicitProductId));
     if (!product || product.deleted_at) throw new Error('请选择有效商品，入库不会自动创建商品');
-    if (productionInbound && !isProductionInboundProduct(product)) throw new Error('自产成品入库只能选择纸箱商品，不能选择纸板');
-    if (seen.has(product.id)) throw new Error('同一商品不能重复入库，请合并数量');
-    seen.add(product.id);
-    const quantity = numberValue(raw.quantity, '计划数量', true);
-    const delivered = numberValue(raw.delivered_qty === undefined ? quantity : raw.delivered_qty, '实际入库数量', productionInbound);
-    let customerSpecSnapshot;
-    let lineDetails = raw;
-    if (raw.customer_spec_id !== undefined && raw.customer_spec_id !== null && String(raw.customer_spec_id).trim() !== '') {
-      if (!productionInbound || !customer) throw new Error('客户规格只能用于已选择客户的自产成品入库');
-      const matched = productionPricing.matchCustomerSpecification(customer, product, String(raw.customer_spec_id));
-      const currentPrice = numberValue(matched.specification.price, '客户规格单价');
-      const requestedPrice = raw.unit_price !== undefined ? raw.unit_price : raw.price;
-      if (requestedPrice !== undefined && roundDecimal(numberValue(requestedPrice, '入库单价'), 6) !== roundDecimal(currentPrice, 6)) {
-        throw new Error('客户单价已更新，请刷新后重试');
-      }
-      const requestedSpecification = String(raw.specification ?? '').trim();
-      if (requestedSpecification) {
-        const requestedDimensions = productionPricing.dimensionsInCm(requestedSpecification, product.size_unit || 'cm');
-        const productDimensions = productionPricing.dimensionsInCm(product.specification, product.size_unit || 'cm');
-        if (!requestedDimensions || requestedDimensions.length !== 3 || requestedDimensions.some((value, index) => value !== productDimensions[index])) {
-          throw new Error('客户规格尺寸与所选纸箱商品不匹配');
-        }
-      }
-      customerSpecSnapshot = { ...matched.snapshot, price: currentPrice };
-      lineDetails = { ...raw, unit_price: currentPrice, specification: String(product.specification || '') };
+    assertProductCustomer(product, customer.id, '所选商品');
+    if (!customerCartonProductMatches(customer, product, specification)) {
+      throw new Error('所选商品与客户规格不匹配，请重新核对商品资料');
     }
-    const values = stockValues(product, delivered, lineDetails, delivered > 0);
-    const specification = String(lineDetails.specification ?? product.specification ?? '').trim();
-    const [length, width] = dimensions(specification, product);
-    const square = roundDecimal(delivered * length * width / 1000000, 4);
-    if (!Number.isFinite(square)) throw new Error('面积超出支持范围');
-    return { product, quantity, delivered, ...values, specification, material: product.material || '', length, width, square, ...(customerSpecSnapshot ? { customer_spec_id: String(raw.customer_spec_id), customer_spec_snapshot: customerSpecSnapshot } : {}) };
+    if (productOwnerId(product) === Number(customer.id)) return product;
+    if (owned.length) throw new Error('已有归属当前客户的同规格商品，请刷新后重新选择');
+    if (unowned.length !== 1 || Number(unowned[0].id) !== Number(product.id)) {
+      throw new Error('历史同规格商品不唯一，请先核对商品资料，系统不会自动认领或重复建品');
+    }
+    return claimCustomerCartonProduct(customer, product);
+  }
+
+  if (owned.length > 1) throw new Error('存在多个归属当前客户的同规格商品，请先核对商品资料');
+  if (owned.length === 1) return owned[0];
+  if (unowned.length > 1) throw new Error('历史同规格商品不唯一，请先核对商品资料，系统不会自动认领或重复建品');
+  if (unowned.length === 1) return claimCustomerCartonProduct(customer, unowned[0]);
+  const product = addProduct({
+    name: specification.goods, category: '纸箱', specification: specification.specification,
+    material: specification.material, unit: specification.unit || '个',
+    length: roundDecimal((productionPricing.dimensionsInCm(specification.specification, 'cm')?.[0] || 0) * 10, 6),
+    width: roundDecimal((productionPricing.dimensionsInCm(specification.specification, 'cm')?.[1] || 0) * 10, 6),
+    price: 0, stock: 0
   });
+  return claimCustomerCartonProduct(customer, product);
+}
+function addDeliveryNote(data) {
   return atomicMutation(() => {
+    if (!Array.isArray(data.lines) || !data.lines.length) throw new Error('至少添加一行商品');
+    if (data.source_type !== undefined && data.source_type !== 'production') throw new Error('入库来源类型无效');
+    const productionInbound = data.source_type === 'production';
+    const workOrderNo = String(data.work_order_no || '').trim();
+    if (workOrderNo && cache.delivery_notes.some(note => !note.voided_at && String(note.work_order_no || '').trim() === workOrderNo) && data.confirm_duplicate_work_order !== true) {
+      throw new Error(`工单编号「${workOrderNo}」已有未作废送货单，请确认后再重复开单`);
+    }
+    const now = Date.now();
+    let partyType; let supplier = null; let customer = null;
+    if (productionInbound) {
+      const hasPartyId = value => value !== undefined && value !== null && String(value).trim() !== '';
+      if (hasPartyId(data.supplier_id) || hasPartyId(data.supplier_name)) throw new Error('自产成品入库不能关联供应商');
+      if (hasPartyId(data.customer_id)) {
+        if (data.party_type != null && data.party_type !== 'customer') throw new Error('关联客户的自产入库往来类型必须为客户');
+        customer = activeParty(data.customer_id, 'customer');
+        partyType = 'customer';
+      } else {
+        if (data.party_type != null) throw new Error('自产成品入库未选择客户时不能关联往来对象');
+        if (hasPartyId(data.customer_name)) throw new Error('客户信息必须通过客户编号选择');
+        partyType = null;
+      }
+    } else {
+      partyType = data.party_type === undefined ? (data.customer_id != null ? 'customer' : 'supplier') : data.party_type;
+      if (partyType !== 'supplier' && partyType !== 'customer') throw new Error('入库往来对象类型无效');
+      if (partyType === 'customer' && data.supplier_id != null) throw new Error('客户入库不能同时关联供货商');
+      if (partyType === 'supplier' && data.customer_id != null) throw new Error('供货商入库不能同时关联客户');
+      supplier = partyType === 'supplier' ? activeParty(data.supplier_id, 'supplier') : null;
+      customer = partyType === 'customer' ? activeParty(data.customer_id, 'customer') : null;
+    }
+    const freight = numberValue(data.freight === undefined ? 0 : data.freight, '运费');
+    const date = data.date === undefined ? localDate() : String(data.date);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date) throw new Error('日期格式无效');
+    if (date > localDate()) throw new Error('业务日期不能晚于今天');
+    const seen = new Set();
+    const prepared = data.lines.map(raw => {
+      const customerSpecId = raw?.customer_spec_id == null ? '' : String(raw.customer_spec_id).trim();
+      const hasProductId = raw?.product_id !== undefined && raw?.product_id !== null && raw.product_id !== '';
+      let product;
+      let matched;
+      if (customerSpecId) {
+        if (!productionInbound || !customer) throw new Error('客户规格只能用于已选择客户的自产成品入库');
+        const customerWithSpecs = cartonInboundCustomers().find(row => row.id === customer.id);
+        const spec = productionPricing.findCustomerSpecification(customerWithSpecs, customerSpecId);
+        if (!spec) throw new Error('客户规格已变更，请刷新后重新选择');
+        matched = { specification: spec };
+        product = resolveCustomerCartonProduct(customer, spec, hasProductId ? Number(raw.product_id) : undefined);
+      } else {
+        product = hasProductId ? getProduct(Number(raw.product_id)) : null;
+      }
+      if (!product || product.deleted_at) throw new Error('请选择有效商品，入库不会自动创建商品');
+      assertProductCustomer(product, customer?.id ?? null, '商品');
+      if (productionInbound && !isProductionInboundProduct(product)) throw new Error('自产成品入库只能选择纸箱商品，不能选择纸板');
+      if (seen.has(product.id)) throw new Error('同一商品不能重复入库，请合并数量');
+      seen.add(product.id);
+      const quantity = numberValue(raw.quantity, '计划数量', true);
+      const delivered = numberValue(raw.delivered_qty === undefined ? quantity : raw.delivered_qty, '实际入库数量', productionInbound);
+      let customerSpecSnapshot;
+      let lineDetails = raw;
+      if (matched) {
+        matched = productionPricing.matchCustomerSpecification({ ...customer, specs: [matched.specification] }, product, customerSpecId);
+        const requestedPrice = raw.unit_price !== undefined ? raw.unit_price : raw.price;
+        let currentPrice;
+        if (matched.specification.price === null) {
+          if (requestedPrice === undefined) throw new Error('未设置客户报价，请填写入库单价');
+          currentPrice = numberValue(requestedPrice, '入库单价');
+        } else {
+          currentPrice = numberValue(matched.specification.price, '客户规格单价');
+          if (requestedPrice !== undefined && roundDecimal(numberValue(requestedPrice, '入库单价'), 6) !== roundDecimal(currentPrice, 6)) {
+            throw new Error('客户单价已更新，请刷新后重试');
+          }
+        }
+        const requestedSpecification = String(raw.specification ?? '').trim();
+        if (requestedSpecification) {
+          const requestedDimensions = productionPricing.dimensionsInCm(requestedSpecification, product.size_unit || 'cm');
+          const productDimensions = productionPricing.dimensionsInCm(product.specification, product.size_unit || 'cm');
+          if (!requestedDimensions || requestedDimensions.length !== 3 || requestedDimensions.some((value, index) => value !== productDimensions[index])) {
+            throw new Error('客户规格尺寸与所选纸箱商品不匹配');
+          }
+        }
+        customerSpecSnapshot = {
+          ...matched.snapshot,
+          material: String(product.material || ''),
+          unit: String(product.unit || '件'),
+          specification: String(matched.specification.specification ?? matched.specification.size ?? ''),
+          price: currentPrice
+        };
+        lineDetails = { ...raw, unit_price: currentPrice, specification: String(product.specification || '') };
+      }
+      const values = stockValues(product, delivered, lineDetails, delivered > 0);
+      const specification = String(lineDetails.specification ?? product.specification ?? '').trim();
+      const cartonDimensions = matched ? productionPricing.dimensionsInCm(specification, product.size_unit || 'cm') : null;
+      const [length, width] = cartonDimensions?.length === 3
+        ? [cartonDimensions[0] * 10, cartonDimensions[1] * 10]
+        : dimensions(specification, product);
+      const square = roundDecimal(delivered * length * width / 1000000, 4);
+      if (!Number.isFinite(square)) throw new Error('面积超出支持范围');
+      return {
+        product, quantity, delivered, ...values, specification, material: product.material || '', length, width, square,
+        ...(customerSpecSnapshot ? { customer_spec_id: customerSpecId, customer_spec_snapshot: customerSpecSnapshot } : {})
+      };
+    });
     const note = { id: cache._meta.nextDeliveryNoteId++, date, work_order_no: workOrderNo, ...(productionInbound ? { source_type: 'production' } : {}), party_type: partyType, supplier_id: supplier?.id || null, supplier_name: supplier?.name || '', customer_id: customer?.id || null, customer_name: customer?.name || '', driver_phone: String(data.driver_phone || '').trim(), vehicle_no: String(data.vehicle_no || '').trim(), operator: String(data.operator || '').trim(), freight, remark: String(data.remark || '').trim(), lines: [], total_square_meters: 0, total_amount: 0, created_at: now };
     for (const item of prepared) {
       const { product, quantity, delivered, unit, unitPrice, amount, specification, material, length, width, square } = item;
@@ -739,7 +981,7 @@ cleanupResidualTemps();
 createAutoBackup('startup');
 let batching = false;
 let cache = load();
-if (migratedDimensions) persist();
+if (migratedDimensions || migratedProductOwnership) persist();
 function atomicMutation(action) {
   if (batching) return action();
   const before = JSON.stringify(cache);
@@ -933,6 +1175,7 @@ function listCustomers(f={}) {
   l.sort((a,b) => (b.profile_updated_at||b.updated_at||0)-(a.profile_updated_at||a.updated_at||0) || b.id-a.id);
   return l;
 }
+function listCartonInboundCustomers() { return cartonInboundCustomers(); }
 function getCustomer(id) { return cache.customers.find(c => c.id===id) || null; }
 function listInactiveCustomerNames() {
   return [...new Set(cache.customers
@@ -942,6 +1185,7 @@ function listInactiveCustomerNames() {
 }
 function addCustomer(d) {
   if (!d.name || !String(d.name).trim()) throw new Error('客户名称不能为空');
+  const specs = d.specs === undefined ? undefined : validateCustomerSpecs(d.specs);
   const debt = d.debt === undefined ? 0 : moneyValue(d.debt, '期初应收');
   const now = Date.now();
   const c = {
@@ -951,6 +1195,7 @@ function addCustomer(d) {
     phone: d.phone || '',
     address: d.address || '',
     remark: d.remark || '',
+    ...(specs ? { specs } : {}),
     debt,
     created_at: now, updated_at: now, profile_updated_at: now, balance_updated_at: debt > 0 ? now : 0
   };
@@ -959,12 +1204,9 @@ function addCustomer(d) {
   persist(); return c;
 }
 function updateCustomer(id, d) {
-  if (d.specs !== undefined) {
-    if (!Array.isArray(d.specs) || d.specs.length > 500 || d.specs.some(s => !s || typeof s.id !== 'string' || !String(s.goods || '').trim() || !String(s.specification || '').trim() || !Number.isFinite(s.price) || s.price < 0)) throw new Error('客户规格资料无效');
-    if (new Set(d.specs.map(s => s.id)).size !== d.specs.length) throw new Error('客户规格编号重复');
-  }
+  const specs = d.specs === undefined ? undefined : validateCustomerSpecs(d.specs);
   const c = getCustomer(id); if (!c) throw new Error('客户不存在');
-  if (d.specs !== undefined) c.specs = d.specs.map(s => ({ id: s.id, goods: String(s.goods).trim(), specification: String(s.specification).trim(), material: String(s.material || ''), unit: String(s.unit || '个'), price: s.price }));
+  if (specs !== undefined) c.specs = specs;
   const beforeProfile = JSON.stringify({ name: c.name, contact: c.contact, phone: c.phone, address: c.address, remark: c.remark });
   if (d.name!==undefined) { if (!String(d.name).trim()) throw new Error('名称不能为空'); c.name = String(d.name).trim(); }
   if (d.contact!==undefined) c.contact = d.contact;
@@ -983,6 +1225,78 @@ function updateCustomer(id, d) {
   if (beforeProfile !== afterProfile) c.profile_updated_at = now;
   if (d.debt !== undefined) c.balance_updated_at = now;
   persist(); return c;
+}
+function saveCustomerSpecs(id, raw = {}) {
+  return atomicMutation(() => {
+    const customer = getCustomer(Number(id));
+    if (!customer || customer.deleted_at) throw Object.assign(new Error('客户不存在或已停用'), { status: 404 });
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('客户规格保存内容无效');
+    if (!raw.profile || typeof raw.profile !== 'object' || Array.isArray(raw.profile)) throw new Error('客户资料格式无效');
+    if (!Number.isSafeInteger(raw.dimension_revision) || raw.dimension_revision < 0) throw new Error('尺寸库版本无效');
+    if (!Array.isArray(raw.removed_dimension_spec_ids)) throw new Error('待删除尺寸库规格格式无效');
+
+    const expected = normalizedCustomerSpecSnapshot(raw.expected_specs, '预期客户规格快照');
+    const current = normalizedCustomerSpecSnapshot(
+      cartonInboundCustomers().find(row => row.id === customer.id)?.specs || [],
+      '当前客户规格快照'
+    );
+    if (JSON.stringify(expected) !== JSON.stringify(current) || raw.dimension_revision !== cache.customer_dimensions.revision) {
+      throw Object.assign(new Error('客户规格或尺寸库已更新，请重新读取后再保存'), { status: 409 });
+    }
+
+    const specs = validateCustomerSpecs(raw.specs);
+    const profile = raw.profile;
+    const profileFields = ['name', 'contact', 'phone', 'address', 'remark'];
+    const unsupported = Object.keys(profile).find(field => !profileFields.includes(field));
+    if (unsupported) throw new Error(`客户资料不支持字段：${unsupported}`);
+    if (typeof profile.name !== 'string' || !profile.name.trim()) throw new Error('客户名称不能为空');
+    const limits = { name: 50, contact: 50, phone: 20, address: 200, remark: 500 };
+    for (const field of profileFields) {
+      if (profile[field] !== undefined && typeof profile[field] !== 'string') throw new Error(`${field} 必须是文本`);
+      if (typeof profile[field] === 'string' && profile[field].length > limits[field]) throw new Error(`${field} 长度不能超过 ${limits[field]} 个字符`);
+    }
+
+    const removedIds = new Set();
+    for (const specId of raw.removed_dimension_spec_ids) {
+      if (typeof specId !== 'string' || !specId.trim() || removedIds.has(specId.trim())) throw new Error('待删除尺寸库规格编号无效或重复');
+      removedIds.add(specId.trim());
+    }
+    const expectedIds = new Set(expected.map(spec => spec.id));
+    const dimensionSpecs = new Map();
+    for (const dimensionCustomer of cache.customer_dimensions.customers || []) {
+      for (const spec of dimensionCustomer.specs || []) {
+        dimensionSpecs.set(productionPricing.dimensionSpecId(dimensionCustomer.id, spec.id), { dimensionCustomer, spec });
+      }
+    }
+    for (const specId of removedIds) {
+      if (!expectedIds.has(specId) || !dimensionSpecs.has(specId)) {
+        throw Object.assign(new Error('尺寸库规格已变化，请刷新后核对再保存'), { status: 409 });
+      }
+    }
+
+    const nextDimensions = JSON.parse(JSON.stringify(cache.customer_dimensions));
+    if (removedIds.size) {
+      nextDimensions.customers = nextDimensions.customers.map(dimensionCustomer => ({
+        ...dimensionCustomer,
+        specs: dimensionCustomer.specs.filter(spec => !removedIds.has(productionPricing.dimensionSpecId(dimensionCustomer.id, spec.id)))
+      }));
+      nextDimensions.revision = cache.customer_dimensions.revision + 1;
+      customerDimensions.validateDocument(nextDimensions);
+    }
+
+    const beforeProfile = JSON.stringify({ name: customer.name, contact: customer.contact, phone: customer.phone, address: customer.address, remark: customer.remark });
+    customer.specs = specs;
+    for (const field of profileFields) {
+      if (profile[field] !== undefined) customer[field] = profile[field].trim();
+    }
+    const now = Date.now();
+    customer.updated_at = now;
+    const afterProfile = JSON.stringify({ name: customer.name, contact: customer.contact, phone: customer.phone, address: customer.address, remark: customer.remark });
+    if (beforeProfile !== afterProfile) customer.profile_updated_at = now;
+    if (removedIds.size) cache.customer_dimensions = nextDimensions;
+    persist();
+    return JSON.parse(JSON.stringify(customer));
+  });
 }
 function deleteCustomer(id) {
   const i = cache.customers.findIndex(c => c.id===id);
@@ -1097,6 +1411,7 @@ function postStock(type, productId, quantity, op, remark, partyId, details, inco
   const customerReceipt = incoming && incomingPartyType === 'customer';
   const partyType = incoming ? (customerReceipt ? 'customer' : 'supplier') : 'customer';
   const party = activeParty(partyId, partyType);
+  assertProductCustomer(product, partyType === 'customer' ? party?.id : null, '商品');
   const productionInboundBilling = incoming && incomingPartyType === 'customer' && billingSource === 'production_inbound';
   let billedInboundAllocations = [];
   let receivableAmount = amount;
@@ -1344,6 +1659,12 @@ function updateTransaction(id, d = {}) {
   const amount = lineAmount(quantity, unitPrice);
   const partyField = incoming ? 'supplier_id' : 'customer_id';
   const party = activeParty(d[partyField] !== undefined ? d[partyField] : tx[partyField], incoming ? 'supplier' : 'customer');
+  assertProductCustomer(oldProduct, tx.customer_id, '原商品');
+  const targetCustomerId = incoming ? null : party?.id;
+  assertProductCustomer(product, targetCustomerId, '新商品');
+  if (productOwnerId(oldProduct) !== null && Number(targetCustomerId) !== productOwnerId(oldProduct)) {
+    throw new Error('客户专属纸箱的流水不能转给其他客户');
+  }
   const sameProduct = product.id === oldProduct.id;
   const restoredStock = roundDecimal(Number(oldProduct.stock) + (incoming ? -tx.quantity : tx.quantity), 6);
   if (restoredStock < 0) throw new Error('无法修改：当前库存已低于该入库数量，请先核对后续出库流水');
@@ -1496,6 +1817,46 @@ function backupData(options = {}) {
   snapshot.products = (snapshot.products || []).map(product => ({ ...product, image_url: portableImageUrl(product.image_url) }));
   return options.includeAttachments ? productImages.portable(ledgerAttachments.portable(snapshot, options.maxBytes), options.maxBytes) : snapshot;
 }
+function normalizeLegacyBackup(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('备份文件格式无效');
+  for (const customer of value.customers || []) {
+    if (customer?.specs !== undefined) validateCustomerSpecs(customer.specs);
+  }
+  const next = JSON.parse(JSON.stringify(value));
+  migrateProductOwnership(next);
+  for (const collection of ['orders', 'order_events', 'stocktakes', 'delivery_notes']) {
+    if (next[collection] === undefined) next[collection] = [];
+  }
+  for (const product of next.products || []) {
+    if (product.specification === undefined) product.specification = '';
+    if (product.material === undefined) product.material = '';
+    if (product.corrugation === undefined) product.corrugation = '';
+    if (product.weight === undefined) product.weight = 0;
+    if (product.length === undefined) product.length = 0;
+    if (product.width === undefined) product.width = 0;
+    if (product.layers === undefined) product.layers = 0;
+    if (product.unit === undefined) product.unit = '件';
+    if (product.price === undefined) product.price = 0;
+    if (product.safety_stock === undefined) product.safety_stock = 0;
+  }
+  for (const customer of next.customers || []) if (customer.debt === undefined) customer.debt = 0;
+  for (const supplier of next.suppliers || []) if (supplier.payable === undefined) supplier.payable = 0;
+  for (const transaction of next.transactions || []) {
+    if (transaction.specification === undefined) transaction.specification = '';
+    if (transaction.material === undefined) transaction.material = '';
+    if (transaction.unit === undefined) transaction.unit = '';
+    if (transaction.unit_price === undefined) transaction.unit_price = 0;
+    if (transaction.amount === undefined) transaction.amount = lineAmount(Number(transaction.quantity || 0), transaction.unit_price);
+    if (transaction.product_name === undefined) {
+      transaction.product_name = (next.products || []).find(product => Number(product.id) === Number(transaction.product_id))?.name || '';
+    }
+  }
+  for (const order of next.orders || []) {
+    if (order.amount === undefined) order.amount = lineAmount(Number(order.quantity || 0), Number(order.unit_price || 0));
+  }
+  for (const take of next.stocktakes || []) if (take.counted_at === undefined) take.counted_at = Number(take.created_at) || 0;
+  return next;
+}
 function health() {
   let readable = false; let writable = false;
   try { fs.accessSync(DB_PATH, fs.constants.R_OK); readable = true; } catch {}
@@ -1529,8 +1890,16 @@ function validateBackupData(data) {
     nonNegative(value, label);
     if (roundDecimal(value, MONEY_DECIMALS) !== value) throw new Error(`${label}必须精确到分`);
   };
-  for (const p of data.products) { nonNegative(p.stock, '商品库存'); nonNegative(p.price, '商品单价'); nonNegative(p.safety_stock, '安全库存'); }
-  for (const c of data.customers) moneyNonNegative(c.debt, '客户应收');
+  const productById = new Map(data.products.map(product => [Number(product.id), product]));
+  for (const p of data.products) {
+    nonNegative(p.stock, '商品库存'); nonNegative(p.price, '商品单价'); nonNegative(p.safety_stock, '安全库存');
+    const ownerId = productOwnerId(p);
+    if (ownerId !== null && !customerIds.has(ownerId)) throw new Error(`商品 ${p.id} 引用了不存在的客户归属`);
+  }
+  for (const c of data.customers) {
+    moneyNonNegative(c.debt, '客户应收');
+    if (c.specs !== undefined) validateCustomerSpecs(c.specs);
+  }
   for (const s of data.suppliers) moneyNonNegative(s.payable, '供应商应付');
   const timestamp = (value, label) => {
     if (value !== undefined && value !== null && (!Number.isSafeInteger(Number(value)) || Number(value) < 0)) throw new Error(`${label} timestamp is invalid`);
@@ -1543,6 +1912,7 @@ function validateBackupData(data) {
     nonNegative(t.quantity, '流水数量'); nonNegative(t.unit_price, '流水单价'); moneyNonNegative(t.amount, '流水金额');
     if (t.customer_id != null && !customerIds.has(Number(t.customer_id))) throw new Error(`流水 ${t.id} 引用了不存在的客户`);
     if (t.supplier_id != null && !supplierIds.has(Number(t.supplier_id))) throw new Error(`流水 ${t.id} 引用了不存在的供应商`);
+    if (t.type !== 'adjustment') assertProductCustomer(productById.get(Number(t.product_id)), t.customer_id, `流水 ${t.id} 商品`);
     if (!allowedTransactionTypes.has(t.type)) throw new Error(`transaction ${t.id} type is invalid`);
     const expectedAmount = lineAmount(t.type === 'adjustment' ? Math.abs(Number(t.adjustment ?? t.quantity)) : Number(t.quantity), Number(t.unit_price));
     if (roundDecimal(Number(t.amount), 2) !== roundDecimal(expectedAmount, 2)) throw new Error(`transaction ${t.id} amount does not match quantity and unit price`);
@@ -1659,14 +2029,18 @@ function validateBackupData(data) {
       throw new Error(`自产成品入库单 ${note.id} 运费不能关联往来对象`);
     }
     let totalAmount = 0; let totalSquareMeters = 0;
+    const noteCustomerSpecIds = new Set();
     for (const line of note.lines) {
       nonNegative(line.quantity, 'delivery planned quantity'); nonNegative(line.delivered_qty, 'delivery received quantity'); nonNegative(line.unit_price, 'delivery unit price'); moneyNonNegative(line.amount, 'delivery amount');
       if (line.transaction_id != null && !transactionIds.has(Number(line.transaction_id))) throw new Error(`delivery note ${note.id} references a missing transaction`);
       const transaction = line.transaction_id == null ? null : transactionById.get(Number(line.transaction_id));
       if (Number(line.delivered_qty) > 0 && !transaction) throw new Error(`送货单 ${note.id} 明细缺少对应入库流水`);
+      const product = productById.get(Number(line.product_id));
+      assertProductCustomer(product, note.customer_id, `送货单 ${note.id} 商品`);
       if (line.customer_spec_id !== undefined || line.customer_spec_snapshot !== undefined) {
         const snapshot = line.customer_spec_snapshot;
-        const product = data.products.find(row => Number(row.id) === Number(line.product_id));
+        if (noteCustomerSpecIds.has(line.customer_spec_id)) throw new Error(`送货单 ${note.id} 客户规格编号重复`);
+        noteCustomerSpecIds.add(line.customer_spec_id);
         const snapshotDimensions = productionPricing.dimensionsInCm(snapshot?.specification, 'cm');
         const lineDimensions = productionPricing.dimensionsInCm(line.specification, 'cm');
         if (note.source_type !== 'production' || note.customer_id == null
@@ -1676,7 +2050,11 @@ function validateBackupData(data) {
           || roundDecimal(Number(snapshot.price), 6) !== roundDecimal(Number(line.unit_price), 6)
           || String(snapshot.material || '') !== String(line.material || '')
           || String(snapshot.unit || '') !== String(line.unit || '')
-          || !snapshotDimensions || !lineDimensions || snapshotDimensions.length !== 3 || lineDimensions.length !== 3
+          || !normalizeCartonIdentity(snapshot.goods)
+          || normalizeCartonIdentity(snapshot.goods) !== normalizeCartonIdentity(line.product_name)
+          || productOwnerId(product) !== Number(note.customer_id)
+          || !snapshotDimensions || !lineDimensions
+          || snapshotDimensions.length !== 3 || lineDimensions.length !== 3
           || snapshotDimensions.some((value, index) => value !== lineDimensions[index])) {
           throw new Error(`送货单 ${note.id} 客户规格快照无效`);
         }
@@ -1714,9 +2092,10 @@ function validateBackupData(data) {
   }
 }
 function validateBackup(data) {
-  validateBackupData(data);
-  ledgerAttachments.validate(data);
-  productImages.validate(data);
+  const normalized = normalizeLegacyBackup(data);
+  validateBackupData(normalized);
+  ledgerAttachments.validate(normalized);
+  productImages.validate(normalized);
 }
 function settleParty(partyType, id, amount, remark = '') {
   const isCustomer = partyType === 'customer';
@@ -1743,8 +2122,10 @@ function restoreSafetySnapshot() {
 }
 function restoreData(value) {
   restoreSafetySnapshot();
-  validateBackup(value);
-  const next = JSON.parse(JSON.stringify(value));
+  const next = normalizeLegacyBackup(value);
+  validateBackupData(next);
+  ledgerAttachments.validate(next);
+  productImages.validate(next);
   // Older backups must not erase documents created in the new print center.
   if (next.print_notes === undefined) next.print_notes = JSON.parse(JSON.stringify(cache.print_notes || []));
   next.print_notes.forEach(note => {
@@ -1790,13 +2171,21 @@ function shipPrintNote(id) {
     const note = cache.print_notes.find(row => row.id === Number(id));
     if (!note) throw Object.assign(new Error('送货单不存在'), { status: 404 });
     if (note.outbound_at) return JSON.parse(JSON.stringify(note));
+    require('./print-notes').validateBackup({ products: cache.products, customers: cache.customers, print_notes: [note] });
     const seen = new Set();
     const lines = note.items.map(item => {
-      let product = item.product_id == null ? null : cache.products.find(row => row.id === Number(item.product_id) && !row.deleted_at);
-      if (!product) {
-        const matches = cache.products.filter(row => !row.deleted_at && row.unit === '个' && row.name === item.name && String(row.specification || '') === String(item.specification || ''));
+      let product = null;
+      if (item.product_id != null) {
+        product = cache.products.find(row => row.id === Number(item.product_id) && !row.deleted_at) || null;
+        if (!product) throw new Error('送货单关联的商品已停用或不存在，请先核对商品资料');
+      } else {
+        const matches = cache.products.filter(row => !row.deleted_at && row.unit === '个'
+          && row.name === item.name && String(row.specification || '') === String(item.specification || ''))
+          .filter(row => {
+            try { assertProductCustomer(row, note.customer_id, '送货单商品'); return true; } catch { return false; }
+          });
         if (matches.length !== 1) throw new Error('商品无法唯一匹配库存，请先在商品管理核对名称和规格');
-        product = matches[0]; item.product_id = product.id;
+        product = matches[0]; item.product_id = product.id; item.product_customer_id = productOwnerId(product);
       }
       if (product.unit !== '个') throw new Error('库存商品单位不是个，不能从送货单出库');
       if (seen.has(product.id)) throw new Error('同一商品重复出现，请合并送货明细');
@@ -1844,6 +2233,6 @@ function listProduction() { return (cache.production_records || []).slice().reve
 function completeProduction(raw, operator) { return atomicMutation(() => { const record = require('./business-workflow').complete(cache, raw, operator, stockIn, addProduct); persist(); return record; }); }
 module.exports = { listBusinessSpecifications, listProduction, completeProduction, listPrintNotes, savePrintNote, shipPrintNote, getCustomerDimensions, updateCustomerDimensions, listBoards, receiveBoard, moveBoard, updateBoard, deleteBoard, listProducts, getProduct, addProduct, updateProduct, deleteProduct,
   getLedgerAttachments, addLedgerAttachment, readLedgerAttachment, listCustomerAttachments, addCustomerAttachment, readCustomerAttachment, prepareLedgerAttachment: ledgerAttachments.prepare, prepareCustomerAttachment, validateBackup,
-  listCustomers, getCustomer, listInactiveCustomerNames, addCustomer, updateCustomer, deleteCustomer,
+  listCustomers, listCartonInboundCustomers, getCustomer, listInactiveCustomerNames, addCustomer, updateCustomer, saveCustomerSpecs, deleteCustomer,
   listSuppliers, getSupplier, addSupplier, updateSupplier, deleteSupplier,
   stockIn, stockOut, stockOutBatch, orderToOutbound, listTx, streamTx, updateTransaction, deleteTransaction, listLedger, streamLedger, addLedger, deleteLedger, listOrders, listOrderEvents, addOrder, updateOrder, addStocktake, listStocktakes, listDeliveryNotes, getDeliveryNote, addDeliveryNote, voidDeliveryNote, backupData, restoreData, health, stats, transact, revision, audit, receipt, settleParty };

@@ -212,6 +212,11 @@ jobs:
           CUSTOMER_BILLING_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
           CUSTOMER_BILLING_EVIDENCE_DIR: release/customer-billing-${{ github.run_id }}-${{ github.run_attempt }}
         run: node tests/customer-inbound-billing-browser.cjs
+      - name: Validate customer specification carton inbound
+        env:
+          CUSTOMER_SPEC_INBOUND_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          CUSTOMER_SPEC_INBOUND_EVIDENCE_DIR: release/customer-spec-inbound-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/customer-spec-carton-inbound-browser.cjs
       - name: Validate factory carton receipts
         env:
           CARTON_PRODUCTION_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}

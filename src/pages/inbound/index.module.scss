@@ -1,6 +1,10 @@
 .page { color: #eef3ef; font-size: 14PX; line-height: 1.5; min-width: 0; }
 .field { margin-bottom: 16PX; min-width: 0; }
 .fieldLabel { display: block; color: #b5c0b9; font-size: 12PX; margin-bottom: 7PX; }
+.fieldHead { display: flex; align-items: center; justify-content: space-between; gap: 10PX; }
+.fieldHead .fieldLabel { margin-bottom: 0; }
+.textButton { display: flex; align-items: center; gap: 5PX; }
+.actionIcon { width: 16PX; height: 16PX; flex: 0 0 16PX; }
 .input,.picker { display: flex; align-items: center; justify-content: space-between; width: 100%; min-width: 0; min-height: 44PX; padding: 10PX 12PX; border: 1PX solid #414e44; border-radius: 9PX; box-sizing: border-box; background: #29332c; color: #eef3ef; font-size: 16PX; line-height: 1.5; }
 .picker { font-size: 14PX; gap: 8PX; overflow-wrap: anywhere; }
 .picker > text:last-child { color: #a6dcb8; }

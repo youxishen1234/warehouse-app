@@ -6,3 +6,4 @@ export function matchingProductsForSpecification(customer: Customer | null | und
 export function uniqueCustomerSpecification(customer: Customer | null | undefined, product: Product | null | undefined): CustomerSpecification | null;
 export function validatedCustomerSpecification(customer: Customer | null | undefined, product: Product | null | undefined, specId: string): CustomerSpecification | null;
 export function customerSpecificationText(specification: CustomerSpecification | null | undefined): string;
+export function customerSpecificationDimensions(specification: CustomerSpecification | null | undefined): [number, number];

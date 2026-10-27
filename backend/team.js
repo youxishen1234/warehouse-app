@@ -102,7 +102,7 @@ function install(db, options = {}) {
   });
   route('get', '/health', (req, res) => ok(res, { ...db.health(), authentication: false }));
   const bearer = req => String(req.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
-  const actorFor = req => {
+  const defaultActorFor = req => {
     const token = bearer(req);
     const session = token ? guestSessions.get(digest(token)) : null;
     // 回执与审计使用设备级稳定身份：访客令牌在服务重启后会失效，若身份随之变化，
@@ -112,6 +112,7 @@ function install(db, options = {}) {
     if (session && session.expires > Date.now()) return { ...session.actor, id: stableId };
     return { id: stableId, username: '\u533f\u540d\u7528\u6237' };
   };
+  const actorFor = typeof options.actorFor === 'function' ? options.actorFor : defaultActorFor;
   // Guest bootstrap is optional for clients that retain a session token.
   // The token identifies an anonymous actor only; it grants no role or account privileges.
   route('post', '/auth/guest', (req, res) => {
@@ -308,6 +309,7 @@ function install(db, options = {}) {
   route('get', '/stocktakes', (req, res) => { validateListQuery(req.query, 'stocktakes'); return ok(res, paginateList(sortList(db.listStocktakes(req.query), req.query, 'stocktakes'), req.query)); });
   route('get', '/delivery-notes', (req, res) => { validateListQuery(req.query, 'delivery_notes'); return ok(res, paginateList(sortList(db.listDeliveryNotes(), req.query, 'delivery_notes'), req.query)); });
   route('get', '/delivery-notes/:id', (req, res) => { const note=db.getDeliveryNote(Number(req.params.id)); if(!note) throw error('送货单不存在',404); ok(res,note); });
+  route('get', '/production-inbound/customers', (req, res) => ok(res, db.listCartonInboundCustomers()));
   route('post', '/delivery-notes', (req, res) => { const remark = req.body?.remark;
     if (remark !== undefined && (typeof remark !== 'string' || remark.length > 500)) throw error('remark 长度不能超过 500 个字符且必须为文本');
     const key = req.get('Idempotency-Key');
@@ -472,6 +474,14 @@ function install(db, options = {}) {
     const key = req.get('Idempotency-Key'); const body = req.body || {};
     const operation = `POST /customers/${req.params.id}/settlement`;
     const result = db.transact(req.user, key, digest(operation + JSON.stringify(body)), req.get('If-Match'), operation, () => db.settleParty('customer', Number(req.params.id), body.amount, body.remark));
+    res.set('X-Warehouse-Revision', String(result.revision)); ok(res, result.data);
+  });
+  route('put', '/customers/:id/specs', (req, res) => {
+    if (req.user.role === 'viewer') throw error('只读账号不能修改客户规格', 403);
+    const operation = `PUT /customers/${req.params.id}/specs`;
+    const body = req.body || {};
+    const result = db.transact(req.user, req.get('Idempotency-Key'), digest(operation + JSON.stringify(body)), req.get('If-Match'), operation,
+      () => db.saveCustomerSpecs(Number(req.params.id), body));
     res.set('X-Warehouse-Revision', String(result.revision)); ok(res, result.data);
   });
   route('post', '/suppliers/:id/settlement', (req, res) => {

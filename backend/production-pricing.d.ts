@@ -9,7 +9,7 @@ export interface CustomerSpecification {
   material: string;
   /** Inventory unit, for example 个. */
   unit: string;
-  price: number;
+  price: number | null;
 }
 
 export interface CustomerWithSpecifications {
@@ -42,6 +42,14 @@ export interface CustomerSpecificationMatch {
 
 /** Parse two- or three-dimensional sizes and normalize them into centimetres. */
 export function dimensionsInCm(specification: string, dimensionUnit?: string): number[] | null;
+/** Normalize an eligible three-dimensional carton specification with an explicit physical unit. */
+export function canonicalSpecification(specification: string, dimensionUnit?: string): string | null;
+/** Merge account specifications with unambiguous same-name legacy dimension-book carton specs. */
+export function mergeCustomerCartonSpecifications(
+  customer: CustomerWithSpecifications | null | undefined,
+  customers: CustomerWithSpecifications[],
+  dimensions: { customers?: Array<{ id: string; name: string; specs?: Array<{ id: string; goods: string; size?: string; specification?: string; sizeUnit?: string; material: string; unit: string; kind?: string }> }> } | null | undefined
+): CustomerSpecification[];
 /** Return a specification only when the ID belongs to this active customer. */
 export function findCustomerSpecification(
   customer: CustomerWithSpecifications | null | undefined,

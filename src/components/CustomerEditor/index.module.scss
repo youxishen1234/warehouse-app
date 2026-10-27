@@ -9,6 +9,18 @@
 .field input,.field textarea { display:block; width:100%; max-width:100%; min-width:0; box-sizing:border-box; margin-top:6PX; padding:10PX; border:1PX solid #dfe4ec; border-radius:9PX; font-size:16PX; background:#f6f7f9; }
 .field input { min-height:42PX; }
 .field textarea { height:94PX; }
+ .specSection { width:100%; min-width:0; margin:16PX 0; }
+ .specHeading,.specRowHeading { display:flex; align-items:center; justify-content:space-between; gap:8PX; min-width:0; }
+ .specHeading { padding-bottom:4PX; font-weight:600; }
+ .specRow { min-width:0; padding:12PX 0 8PX; border-top:1PX solid #e5e9ee; }
+ .specRowHeading { margin-bottom:5PX; color:#536579; font-size:12PX; }
+ .specHeading button,.specRowHeading button { min-height:44PX; padding:8PX 10px; font-size:12PX; }
+ .specFields { display:grid; grid-template-columns:minmax(0,1fr); gap:0 10PX; min-width:0; }
+ .specField { min-width:0; margin:5PX 0; }
+ .specField > text { display:block; color:#526276; font-size:12PX; }
+ .specField input { display:block; width:100%; max-width:100%; min-width:0; min-height:40PX; box-sizing:border-box; margin-top:4PX; padding:8PX 9PX; border:1PX solid #dfe4ec; border-radius:8PX; font-size:16PX; background:#f6f7f9; }
+ @media(min-width:390PX) { .specFields { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+ @media(max-width:374PX) { .specSection { margin-top:12PX; } .specFields { grid-template-columns:minmax(0,1fr); } }
 .hint { display:block; color:#788797; font-size:12PX; margin:8PX 0; overflow-wrap:anywhere; }
 .error { color:#b42318; background:#fff2f0; padding:12PX; border-radius:9PX; overflow-wrap:anywhere; }
 .error button { margin-top:10PX; }

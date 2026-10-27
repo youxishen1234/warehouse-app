@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Input, Picker, Button } from '@tarojs/components';
 import Taro, { useDidShow, useRouter } from '@tarojs/taro';
-import { addDeliveryNote, deliveryNoteCsvUrl, getCustomers, getDeliveryNotes, getSuppliers, voidDeliveryNote, type DeliveryNote } from '@/services/api';
+import { addDeliveryNote, deliveryNoteCsvUrl, getCartonInboundCustomers, getDeliveryNotes, getSuppliers, voidDeliveryNote, type DeliveryNote } from '@/services/api';
 import { invalidateProducts, loadProducts } from '@/services/product-store';
 import { downloadCsv } from '@/services/download';
 import { useSharedRefresh } from '@/services/shared-refresh';
@@ -9,22 +9,24 @@ import { dimensions, localDate, numberValue, previewAmount, roundDecimal, saniti
 import { formatMoney, formatMoneyPreview } from '@/utils/format';
 import StockProductPicker from '@/components/StockProductPicker';
 import StockEntryLayout from '@/components/StockEntryLayout';
+import CustomerEditor from '@/components/CustomerEditor';
+import Icon from '@/components/Icon';
 import { formatSpecificationInput } from '../print-center/specification-input';
 import type { Customer, Product, Supplier } from '@/types';
 import styles from './index.module.scss';
 import { useRemoteData } from '@/hooks/useRemoteData';
 import { findCustomerSpecification, matchCustomerSpecification } from '../../../backend/production-pricing';
 import type { CustomerSpecification } from '../../../backend/production-pricing';
-import { customerSpecificationText, matchingProductsForSpecification, uniqueCustomerSpecification, validatedCustomerSpecification } from './customer-pricing';
+import { customerSpecificationDimensions, customerSpecificationText, uniqueCustomerSpecification, validatedCustomerSpecification } from './customer-pricing';
 
 type EditableLine = { key: string; product_id: number | null; specification: string; quantity: string; quantityEdited: boolean; unit_price: string; delivered_qty: string; customer_spec_id: string | null; customer_quote_invalid: boolean };
 const newLine = (): EditableLine => ({ key: `${Date.now()}-${Math.random()}`, product_id: null, specification: '', quantity: '1', quantityEdited: false, unit_price: '0', delivered_qty: '1', customer_spec_id: null, customer_quote_invalid: false });
 const applyProduct = (line: EditableLine, product: Product): EditableLine => ({ ...line, product_id: product.id, specification: product.specification || '', unit_price: String(product.price), customer_spec_id: null, customer_quote_invalid: false });
-const applyCustomerSpecification = (line: EditableLine, product: Product | undefined, specification: CustomerSpecification): EditableLine => ({
+const applyCustomerSpecification = (line: EditableLine, product: Product | undefined, specification: CustomerSpecification, preserveManualPrice = false): EditableLine => ({
   ...line,
   product_id: product?.id ?? null,
   specification: customerSpecificationText(specification) || product?.specification || line.specification,
-  unit_price: String(specification.price),
+  unit_price: specification.price == null ? (preserveManualPrice && line.customer_spec_id === specification.id ? line.unit_price : '') : String(specification.price),
   customer_spec_id: specification.id,
   customer_quote_invalid: false
 });
@@ -42,6 +44,7 @@ const applyProductForCustomer = (line: EditableLine, product: Product, customer:
   return specification ? applyCustomerSpecification(line, product, specification) : applyProduct(line, product);
 };
 const message = (error: unknown) => error instanceof Error ? error.message : '操作失败，请重试';
+const specificationLabel = (specification: CustomerSpecification) => [specification.goods, customerSpecificationText(specification), specification.material, specification.unit, specification.price == null ? '未设单价' : formatMoney(specification.price)].filter(Boolean).join(' · ');
 
 type InboundNoteRowProps = { note: DeliveryNote; onOpen: (note: DeliveryNote) => void };
 const InboundNoteRow = React.memo(function InboundNoteRow({ note, onOpen }: InboundNoteRowProps) {
@@ -64,6 +67,7 @@ export default function InboundPage() {
   const [parties, setParties] = useState<Supplier[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [billingCustomerId, setBillingCustomerId] = useState<number | null>(null);
+  const [customerEditor, setCustomerEditor] = useState<{ id?: number } | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [notes, setNotes] = useState<DeliveryNote[]>([]);
   const [date, setDate] = useState(() => localDate());
@@ -101,7 +105,7 @@ export default function InboundPage() {
     lastLoadAt.current = Date.now();
     const [loadedParties, loadedCustomers, p, n] = await Promise.all([
       cartonOnly ? Promise.resolve([] as Supplier[]) : getSuppliers(),
-      cartonOnly ? getCustomers() : Promise.resolve([] as Customer[]),
+      cartonOnly ? getCartonInboundCustomers() : Promise.resolve([] as Customer[]),
       loadProducts(true),
       getDeliveryNotes()
     ]);
@@ -119,6 +123,7 @@ export default function InboundPage() {
   }, [remoteReload]);
   // useRemoteData owns loadSequence/requestId; if (current !== loadSequence.current), stale responses are discarded.
   useEffect(() => {
+    if (remote.loading) setReady(false);
     if (!remote.loading && remote.ready) { setParties(remote.data.parties); setCustomers(remote.data.customers); setProducts(remote.data.products); setNotes(remote.data.notes); setReady(true); setLoadError(''); }
     if (remote.loadError) { setReady(false); setLoadError(remote.loadError); }
   }, [remote.loading, remote.ready, remote.loadError, remote.data]);
@@ -146,10 +151,11 @@ export default function InboundPage() {
   const openPreview = useCallback((note: DeliveryNote) => setPreview(note), []);
   const calculated = useMemo(() => lines.map(line => {
     const selected = line.product_id == null ? undefined : productMap.get(line.product_id);
-    const [length, width] = dimensions(line.specification, selected);
+    const specification = billingCustomer && line.customer_spec_id ? findCustomerSpecification(billingCustomer, line.customer_spec_id) : null;
+    const [length, width] = specification ? customerSpecificationDimensions(specification) : dimensions(line.specification, selected);
     const delivered = Math.max(0, Number(line.delivered_qty) || 0);
     return { square: roundDecimal(delivered * length * width / 1000000, 4), amount: previewAmount(line.delivered_qty, line.unit_price) };
-  }), [lines, productMap]);
+  }), [lines, productMap, billingCustomer]);
   const totalSquare = useMemo(() => roundDecimal(calculated.reduce((sum, item) => sum + item.square, 0), 4), [calculated]);
   const totalAmount = useMemo(() => calculated.every(item => Number.isFinite(item.amount)) ? roundDecimal(calculated.reduce((sum, item) => sum + item.amount, 0), 2) : Number.NaN, [calculated]);
   const updateLine = (key: string, patch: Partial<EditableLine>) => {
@@ -171,8 +177,8 @@ export default function InboundPage() {
       if (customer && product) {
         const specification = uniqueCustomerSpecification(customer, product);
         return specification
-          ? applyCustomerSpecification(line, product, specification)
-          : { ...line, product_id: product.id, specification: product.specification || line.specification, unit_price: '', customer_spec_id: null, customer_quote_invalid: false };
+          ? applyCustomerSpecification({ ...line, customer_spec_id: null, unit_price: '' }, product, specification)
+          : { ...line, product_id: null, specification: '', unit_price: '', customer_spec_id: null, customer_quote_invalid: false };
       }
       if (!customer && product) return applyProduct(line, product);
       return { ...line, product_id: null, specification: '', unit_price: '', customer_spec_id: null, customer_quote_invalid: false };
@@ -181,21 +187,23 @@ export default function InboundPage() {
   const changeCustomerSpecification = (line: EditableLine, specId: string) => {
     if (busy.current) return;
     if (!specId || !billingCustomer) {
-      const product = line.product_id == null ? undefined : productMap.get(line.product_id);
-      updateLine(line.key, product ? applyProduct(line, product) : { ...line, specification: '', unit_price: '', customer_spec_id: null, customer_quote_invalid: false });
+      updateLine(line.key, { product_id: null, specification: '', unit_price: '', customer_spec_id: null, customer_quote_invalid: false });
       return;
     }
     const specification = findCustomerSpecification(billingCustomer, specId);
-    if (!specification || typeof specification.price !== 'number' || !Number.isFinite(specification.price) || specification.price < 0) {
+    if (!specification || !validatedCustomerSpecification(billingCustomer, undefined, specId)) {
       Taro.showToast({ title: '客户规格已变更或单价无效，请刷新客户资料', icon: 'none' });
       return;
     }
-    const candidates = matchingProductsForSpecification(billingCustomer, products, specification.id);
-    const currentProduct = line.product_id == null ? undefined : productMap.get(line.product_id);
-    const product = currentProduct && candidates.some(item => item.id === currentProduct.id)
-      ? currentProduct
-      : candidates.length === 1 ? candidates[0] : undefined;
-    updateLine(line.key, applyCustomerSpecification(line, product, specification));
+    updateLine(line.key, applyCustomerSpecification(line, undefined, specification, true));
+  };
+  const customerSaved = async (customer: Customer) => {
+    if (billingCustomerId !== customer.id) {
+      setBillingCustomerId(customer.id);
+      setLines(current => current.map(line => ({ ...line, product_id: null, specification: '', unit_price: '', customer_spec_id: null, customer_quote_invalid: false })));
+    }
+    await load(true);
+    setCustomerEditor(null);
   };
   useEffect(() => {
     if (!cartonOnly || remote.loading || !remote.ready || billingCustomerId == null) return;
@@ -212,7 +220,7 @@ export default function InboundPage() {
       if (!specification) {
         return { ...line, customer_spec_id: null, unit_price: '', customer_quote_invalid: true };
       }
-      return applyCustomerSpecification(line, product, specification);
+      return applyCustomerSpecification(line, product, specification, true);
     }));
   }, [cartonOnly, remote.loading, remote.ready, billingCustomerId, billingCustomer, productMap]);
   const save = async () => {
@@ -225,19 +233,22 @@ export default function InboundPage() {
       if (!ready || loadError) throw new Error(`请先刷新商品${cartonOnly ? '与客户' : '与供应商'}数据`);
       if (!cartonOnly && partyId && !party) throw new Error('供货商已停用，请重新选择');
       if (cartonOnly && billingCustomerId != null && !billingCustomer) throw new Error('所选客户已停用或资料已变更，请刷新后重新选择');
-      if (new Set(lines.map(line => line.product_id)).size !== lines.length) throw new Error('同一商品不能重复，请合并数量');
+      const lineKeys = lines.map(line => line.product_id != null ? `product:${line.product_id}` : line.customer_spec_id ? `spec:${line.customer_spec_id}` : line.key);
+      if (new Set(lineKeys).size !== lines.length) throw new Error('同一纸箱不能重复，请合并数量');
       const payload = lines.map((line, index) => {
         const product = line.product_id == null ? undefined : productMap.get(line.product_id);
-        if (!product) throw new Error(`第 ${index + 1} 行请选择有效商品`);
         const customerSpecification = cartonOnly && billingCustomer && line.customer_spec_id
-          ? matchCustomerSpecification(billingCustomer, { ...product, specification: product.specification || '' }, line.customer_spec_id).specification
+          ? validatedCustomerSpecification(billingCustomer, product, line.customer_spec_id)
           : null;
+        if (line.customer_spec_id && !customerSpecification) throw new Error(`第 ${index + 1} 行客户规格已变更，请重新选择`);
+        if (cartonOnly && billingCustomer && !customerSpecification) throw new Error(`第 ${index + 1} 行请选择客户纸箱规格`);
+        if (!customerSpecification && !product) throw new Error(`第 ${index + 1} 行请选择${cartonOnly && billingCustomer ? '客户纸箱规格' : '有效商品'}`);
         return {
-          product_id: product.id,
-          product_name: product.name,
+          product_id: product?.id ?? null,
+          product_name: customerSpecification?.goods || product?.name || '',
           specification: line.specification.trim(),
-          material: product.material || '',
-          unit: product.unit,
+          material: customerSpecification?.material || product?.material || '',
+          unit: customerSpecification?.unit || product?.unit || '个',
           quantity: numberValue(line.quantity, `第 ${index + 1} 行计划数量`, true),
           delivered_qty: numberValue(line.delivered_qty, `第 ${index + 1} 行${cartonOnly ? '本次完工数量' : '实际入库数量'}`, cartonOnly),
           unit_price: customerSpecification?.price ?? numberValue(line.unit_price, `第 ${index + 1} 行${cartonOnly ? '入库单价' : '单价'}`),
@@ -286,7 +297,7 @@ export default function InboundPage() {
       {loadError && <View role='alert' className={styles.error}>{loadError}<Button disabled={saving} className={styles.textButton} onClick={() => { void load(true); }}>重新读取</Button></View>}
       {cartonOnly && <>
         <View className={styles.field}>
-          <Text className={styles.fieldLabel}>客户（选填）</Text>
+          <View className={styles.fieldHead}><Text className={styles.fieldLabel}>客户（选填）</Text><Button aria-label='新增入库客户' className={styles.textButton} disabled={saving} onClick={() => setCustomerEditor({})}><Icon name='plus' color='#a6dcb8' className={styles.actionIcon} /><Text>新增客户</Text></Button></View>
           <Picker aria-label='选择客户' disabled={saving} range={customerOptions.map(option => option.label)} value={billingCustomerIndex} onChange={e => { const option = customerOptions[Number(e.detail.value)]; changeBillingCustomer(option?.id ?? null); }}>
             <View className={styles.picker}>{billingCustomer?.name || (billingCustomerId != null ? `${selectedBillingCustomer?.name || '所选客户'}（已停用或不可用，请重新选择）` : '不关联客户 · 只增加库存')}<Text>⌄</Text></View>
           </Picker>
@@ -299,34 +310,29 @@ export default function InboundPage() {
       </View>}
       {lines.map((line, index) => {
         const selected = line.product_id == null ? undefined : productMap.get(line.product_id);
-        const unit = selected?.unit || '单位';
         const customerSpecifications = billingCustomer?.specs || [];
         const selectedCustomerSpecification = billingCustomer && line.customer_spec_id ? findCustomerSpecification(billingCustomer, line.customer_spec_id) : null;
-        const customerSpecMatches = selectedCustomerSpecification && billingCustomer
-          ? matchingProductsForSpecification(billingCustomer, products, selectedCustomerSpecification.id)
-          : [];
-        const needsManualProduct = Boolean(selectedCustomerSpecification && !customerSpecMatches.some(item => item.id === selected?.id));
+        const unit = selectedCustomerSpecification?.unit || selected?.unit || '单位';
+        const quotedPrice = selectedCustomerSpecification?.price != null;
         return <View className={styles.lineCard} key={line.key}>
-          <View className={styles.lineHead}><Text className={styles.fieldLabel}>{lines.length > 1 ? `货物 ${index + 1}` : '货物名称'}</Text>{lines.length > 1 && <Button disabled={saving} aria-label={`移除货物 ${index + 1}`} className={styles.remove} onClick={() => { if (!busy.current) setLines(current => current.filter(item => item.key !== line.key)); }}>移除</Button>}</View>
-          <StockProductPicker products={products} value={line.product_id} disabled={saving} excluded={lines.filter(item => item.key !== line.key).map(item => item.product_id || 0)} onSelect={product => updateLine(line.key, cartonOnly ? applyProductForCustomer(line, product, billingCustomer) : applyProduct(line, product))} />
+          <View className={styles.lineHead}><Text className={styles.fieldLabel}>{lines.length > 1 ? `货物 ${index + 1}` : cartonOnly && billingCustomer ? '纸箱规格' : '货物名称'}</Text>{lines.length > 1 && <Button disabled={saving} aria-label={`移除货物 ${index + 1}`} className={styles.remove} onClick={() => { if (!busy.current) setLines(current => current.filter(item => item.key !== line.key)); }}>移除</Button>}</View>
+          {(!cartonOnly || !billingCustomer) && <StockProductPicker products={products} value={line.product_id} disabled={saving || !ready} excluded={lines.filter(item => item.key !== line.key).map(item => item.product_id || 0)} onSelect={product => updateLine(line.key, applyProduct(line, product))} />}
           {cartonOnly && billingCustomer && <View className={styles.field}>
-            <Text className={styles.fieldLabel}>客户常用规格</Text>
-            <Picker aria-label={`货物 ${index + 1} 客户常用规格`} disabled={saving} range={['手动录入（不匹配客户报价）', ...customerSpecifications.map(spec => `${spec.goods} · ${customerSpecificationText(spec)} · ${spec.material} · ${spec.unit} · ${formatMoney(spec.price)}`)]} value={Math.max(0, customerSpecifications.findIndex(spec => spec.id === line.customer_spec_id) + 1)} onChange={e => { const option = Number(e.detail.value); changeCustomerSpecification(line, option ? customerSpecifications[option - 1]?.id || '' : ''); }}>
-              <View className={styles.picker}>{selectedCustomerSpecification ? `${selectedCustomerSpecification.goods} · ${customerSpecificationText(selectedCustomerSpecification)} · ${selectedCustomerSpecification.material} · ${selectedCustomerSpecification.unit} · ${formatMoney(selectedCustomerSpecification.price)}` : customerSpecifications.length ? '选择客户常用规格（可选）' : '暂无客户常用规格，可手动填价'}<Text>⌄</Text></View>
+            <Picker aria-label={`货物 ${index + 1} 客户常用规格`} disabled={saving || !ready || !customerSpecifications.length} range={['选择纸箱规格', ...customerSpecifications.map(specificationLabel)]} value={Math.max(0, customerSpecifications.findIndex(spec => spec.id === line.customer_spec_id) + 1)} onChange={e => { const option = Number(e.detail.value); changeCustomerSpecification(line, option ? customerSpecifications[option - 1]?.id || '' : ''); }}>
+              <View className={styles.picker}>{selectedCustomerSpecification ? specificationLabel(selectedCustomerSpecification) : customerSpecifications.length ? '选择客户的纸箱规格' : '暂无纸箱规格'}<Text>⌄</Text></View>
             </Picker>
+            <Button className={styles.textButton} aria-label='编辑入库客户规格' disabled={saving} onClick={() => setCustomerEditor({ id: billingCustomer.id })}><Icon name='edit' color='#a6dcb8' className={styles.actionIcon} /><Text>编辑客户规格</Text></Button>
             {line.customer_quote_invalid
-              ? <Text className={styles.hint}>原客户规格报价已失效，单价已清空；请重新选择有效客户规格或手动录入新价。</Text>
-              : selectedCustomerSpecification && needsManualProduct
-              ? <Text className={styles.hint}>{customerSpecMatches.length ? '该规格对应多个现有商品，请手动选择匹配的纸箱商品。' : '该规格未匹配到现有纸箱商品，请手动选择已有商品；不会自动创建商品。'}</Text>
-              : <Text className={styles.hint}>{line.customer_spec_id ? '客户规格单价已同步（只读），客户资料变化后刷新会同步最新报价。' : '未匹配客户报价；可手动填写入库单价，不修改客户或商品价格。'}</Text>}
+              ? <Text className={styles.hint}>原客户规格已失效，请重新选择。</Text>
+              : null}
           </View>}
-          <View className={styles.field}><Text className={styles.fieldLabel}>规格尺寸</Text><Input aria-label={`货物 ${index + 1} 规格尺寸`} disabled={saving} className={styles.input} value={line.specification} onInput={e => {
+          <View className={styles.field}><Text className={styles.fieldLabel}>规格尺寸</Text><Input aria-label={`货物 ${index + 1} 规格尺寸`} disabled={saving || (cartonOnly && line.customer_spec_id != null)} className={styles.input} value={line.specification} onInput={e => {
             const specification = cartonOnly ? formatSpecificationInput(e.detail.value, line.specification) : e.detail.value;
             updateLine(line.key, line.customer_spec_id ? { specification, customer_spec_id: null, unit_price: selected ? String(selected.price) : '', customer_quote_invalid: false } : { specification });
           }} /></View>
           <View className={styles.grid}>
             <View><Text className={styles.fieldLabel}>{cartonOnly ? `本次完工数量（${unit}）` : `入库数量（${unit}）`}</Text><Input aria-label={`货物 ${index + 1} ${cartonOnly ? '本次完工数量' : '实际入库数量'}`} disabled={saving} className={styles.input} type='digit' value={line.delivered_qty} onInput={e => updateLine(line.key, { delivered_qty: sanitizeDecimalInput(e.detail.value, 6) })} /></View>
-            <View><Text className={styles.fieldLabel}>{cartonOnly && line.customer_spec_id ? `客户单价（只读，元/${unit}）` : cartonOnly && billingCustomer ? `入库单价（未匹配报价，元/${unit}）` : cartonOnly ? `入库单价（元/${unit}）` : `单价（元/${unit}）`}</Text><Input aria-label={`货物 ${index + 1} ${cartonOnly ? '入库单价' : '单价'}`} disabled={saving || (cartonOnly && line.customer_spec_id != null)} className={styles.input} type='digit' value={line.unit_price} onInput={e => updateLine(line.key, { unit_price: sanitizeDecimalInput(e.detail.value, 2), customer_quote_invalid: false })} /></View>
+            <View><Text className={styles.fieldLabel}>{cartonOnly && quotedPrice ? `客户单价（只读，元/${unit}）` : cartonOnly ? `入库单价（元/${unit}）` : `单价（元/${unit}）`}</Text><Input aria-label={`货物 ${index + 1} ${cartonOnly ? '入库单价' : '单价'}`} disabled={saving || (cartonOnly && quotedPrice)} className={styles.input} type='digit' value={line.unit_price} onInput={e => updateLine(line.key, { unit_price: sanitizeDecimalInput(e.detail.value, 2), customer_quote_invalid: false })} /></View>
           </View>
           {cartonOnly && <><View className={styles.amountNote} data-testid={`inbound-line-amount-${index + 1}`}><Text>入库金额（自动）</Text><Text>{formatMoneyPreview(calculated[index].amount)}</Text></View><Text className={styles.hint}>入库金额＝完工数量×入库单价，修改即重算</Text></>}
           {selected && <Text className={styles.stockNote}>库存 {selected.stock}{unit} → {roundDecimal(selected.stock + Math.max(0, Number(line.delivered_qty) || 0), 6)}{unit}</Text>}
@@ -340,8 +346,9 @@ export default function InboundPage() {
         <View className={styles.field}><Text className={styles.fieldLabel}>{cartonOnly ? '生产工单编号' : '工单编号 / 采购单号'}</Text><Input aria-label={cartonOnly ? '生产工单编号' : '工单编号或采购单号'} disabled={saving} className={styles.input} value={workOrder} onInput={e => setWorkOrder(e.detail.value)} /></View>
         {lines.map((line, index) => {
           const selected = line.product_id == null ? undefined : productMap.get(line.product_id);
-          const [length, width] = dimensions(line.specification, selected);
-          return <View key={line.key} className={styles.planField}><Text className={styles.fieldLabel}>{lines.length > 1 ? `货物 ${index + 1} · ` : ''}计划数量（{selected?.unit || '单位'}）</Text><Input aria-label={`货物 ${index + 1} 计划数量`} disabled={saving} className={styles.input} type='digit' value={line.quantity} onInput={e => updateLine(line.key, { quantity: sanitizeDecimalInput(e.detail.value, 6), quantityEdited: true })} /><Text className={styles.hint}>{cartonOnly ? (line.quantityEdited ? '已手动设置计划数量，后续修改完工数量不会覆盖。' : '默认与完工数量一致，有超计划或未达计划时可分别填写。') : (line.quantityEdited ? '已手动设置计划数量，后续修改实收数不会覆盖。' : '默认与实收数量一致，有超收或少收时可分别填写。')}</Text><Text className={styles.hint}>{length && width ? `实际面积 ${calculated[index].square.toFixed(4)} ㎡，按 ${length}×${width} mm × ${cartonOnly ? '完工' : '实收'}数量计算` : '未设置有效长宽，面积不统计；库存和金额正常计算'}</Text></View>;
+          const selectedSpec = billingCustomer && line.customer_spec_id ? findCustomerSpecification(billingCustomer, line.customer_spec_id) : null;
+          const [length, width] = selectedSpec ? customerSpecificationDimensions(selectedSpec) : dimensions(line.specification, selected);
+          return <View key={line.key} className={styles.planField}><Text className={styles.fieldLabel}>{lines.length > 1 ? `货物 ${index + 1} · ` : ''}计划数量（{selectedSpec?.unit || selected?.unit || '单位'}）</Text><Input aria-label={`货物 ${index + 1} 计划数量`} disabled={saving} className={styles.input} type='digit' value={line.quantity} onInput={e => updateLine(line.key, { quantity: sanitizeDecimalInput(e.detail.value, 6), quantityEdited: true })} /><Text className={styles.hint}>{cartonOnly ? (line.quantityEdited ? '已手动设置计划数量，后续修改完工数量不会覆盖。' : '默认与完工数量一致，有超计划或未达计划时可分别填写。') : (line.quantityEdited ? '已手动设置计划数量，后续修改实收数不会覆盖。' : '默认与实收数量一致，有超收或少收时可分别填写。')}</Text><Text className={styles.hint}>{length && width ? `实际面积 ${calculated[index].square.toFixed(4)} ㎡，按 ${length}×${width} mm × ${cartonOnly ? '完工' : '实收'}数量计算` : '未设置有效长宽，面积不统计；库存和金额正常计算'}</Text></View>;
         })}
         {!cartonOnly && <View className={styles.row}>
           <View><Text className={styles.fieldLabel}>司机电话</Text><Input aria-label='司机电话' disabled={saving} className={styles.input} value={driverPhone} onInput={e => setDriverPhone(e.detail.value)} /></View>
@@ -369,6 +376,7 @@ export default function InboundPage() {
       <Button disabled={saving} className={styles.historyToggle} aria-expanded={historyOpen} onClick={() => setHistoryOpen(!historyOpen)}><Text>最近入库单</Text><Text>{historyOpen ? '收起 −' : '查看 ＋'}</Text></Button>
       {historyOpen && (!notes.length ? <View className={styles.empty}>暂无入库单</View> : notes.map(note => <InboundNoteRow key={note.id} note={note} onOpen={openPreview} />))}
       {detailsOpen && <Text className={styles.hint}>本单实际面积 {totalSquare.toFixed(4)} ㎡</Text>}
+      {customerEditor && <CustomerEditor id={customerEditor.id} onClose={() => setCustomerEditor(null)} onSaved={customerSaved} />}
     </View>
   </StockEntryLayout>;
 }

@@ -1,4 +1,4 @@
-import type { Product, Transaction, Stats, ProductForm, Customer, Supplier, CustomerForm, CustomerOrder, Stocktake, StocktakeForm, LedgerType, LedgerEntry, DeliveryNote, OrderStatusEvent, PageResult, BackupExport } from '@/types';
+import type { Product, Transaction, Stats, ProductForm, Customer, CustomerSpec, Supplier, CustomerForm, CustomerOrder, Stocktake, StocktakeForm, LedgerType, LedgerEntry, DeliveryNote, OrderStatusEvent, PageResult, BackupExport } from '@/types';
 import type { SORT_FIELDS } from '../../backend/list-sort';
 import { request } from './request';
 
@@ -37,6 +37,8 @@ export const deleteProduct = (id: number) =>
 // 客户
 export const getCustomers = (keyword?: string) =>
   request<Customer[]>({ url: `/api/customers${keyword ? `?keyword=${encodeURIComponent(keyword)}` : ''}` });
+export const getCartonInboundCustomers = () =>
+  request<Customer[]>({ url: '/api/production-inbound/customers' });
 export const getCustomersPage = (params: PageQuery & SortQuery<'customers'> & { keyword?: string }) => getPage<Customer>('/api/customers', params);
 
 export const getCustomer = (id: number) =>
@@ -47,6 +49,17 @@ export const addCustomer = (data: CustomerForm) =>
 
 export const updateCustomer = (id: number, data: Partial<CustomerForm>) =>
   request<Customer>({ url: `/api/customers/${id}`, method: 'PUT', data });
+
+export type CustomerSpecsUpdate = {
+  profile: Pick<CustomerForm, 'name' | 'contact' | 'phone' | 'address' | 'remark'>;
+  specs: CustomerSpec[];
+  expected_specs: CustomerSpec[];
+  dimension_revision: number;
+  removed_dimension_spec_ids: string[];
+};
+
+export const updateCustomerSpecs = (id: number, data: CustomerSpecsUpdate) =>
+  request<Customer>({ url: `/api/customers/${id}/specs`, method: 'PUT', data });
 
 export const deleteCustomer = (id: number) =>
   request<{ id: number }>({ url: `/api/customers/${id}`, method: 'DELETE' });

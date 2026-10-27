@@ -2,6 +2,8 @@
 export interface Product {
   id: number;
   name: string;
+  customer_id?: number | null;
+  customer_name?: string;
   category: string;
   specification?: string;
   material?: string;
@@ -106,7 +108,7 @@ export interface CustomerForm {
   address: string;
   remark: string;
 }
-export interface CustomerSpec { id: string; goods: string; specification: string; material: string; unit: string; price: number; }
+export interface CustomerSpec { id: string; goods: string; specification: string; material: string; unit: string; price: number | null; }
 
 // API 通用响应
 export interface ApiResponse<T> {
@@ -178,7 +180,7 @@ export interface DeliveryLine {
   specification: string;
   material?: string;
   customer_spec_id?: string | null;
-  customer_spec_snapshot?: Pick<CustomerSpec, 'id' | 'goods' | 'specification' | 'material' | 'unit' | 'price'>;
+  customer_spec_snapshot?: Omit<Pick<CustomerSpec, 'id' | 'goods' | 'specification' | 'material' | 'unit' | 'price'>, 'price'> & { price: number };
   unit?: string;
   length?: number;
   width?: number;

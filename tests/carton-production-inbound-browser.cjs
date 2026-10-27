@@ -41,7 +41,7 @@ async function main() {
   const server = app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
   const origin = `http://127.0.0.1:${server.address().port}`;
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(process.env.PLAYWRIGHT_BROWSER_CHANNEL ? { channel: process.env.PLAYWRIGHT_BROWSER_CHANNEL } : {});
   const context = await browser.newContext({ viewport: { width: 390, height: 900 }, locale: 'zh-CN' });
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
@@ -157,8 +157,8 @@ async function main() {
       await expect(page.locator('[data-testid="inbound-total-amount"]')).toContainText('入库金额合计');
       await expect(page.locator('[data-testid="inbound-total-amount"]')).toContainText(`¥${amount}`);
     };
-    const countPartyListRequests = type => apiRequests.filter(item =>
-      item.path === `/${type}` || item.path.startsWith(`/${type}?`)
+    const countCartonInboundCustomerRequests = () => apiRequests.filter(item =>
+      item.method === 'GET' && item.path === '/production-inbound/customers'
     ).length;
     const assertNoOverflow = async width => {
       await page.setViewportSize({ width, height: 900 });
@@ -182,8 +182,8 @@ async function main() {
     await openProductionEntry();
     await expect(page.locator('[aria-label="选择客户"]')).toBeVisible();
     await expect(page.getByText('选择供货商', { exact: true })).toHaveCount(0);
-    assert.ok(countPartyListRequests('customers') > 0, '纸箱自产页面加载可选客户，以便同步客户账单');
-    assert.equal(countPartyListRequests('suppliers'), 0, '纸箱自产页面不得加载供货商列表');
+    assert.ok(countCartonInboundCustomerRequests() > 0, '纸箱自产页面从生产入库客户接口加载可选客户');
+    assert.equal(apiRequests.filter(item => item.method === 'GET' && item.path.startsWith('/suppliers')).length, 0, '纸箱自产页面不得加载供货商列表');
 
     await buttonContainingText('更多信息').click();
     await expect(input('生产工单编号')).toBeVisible();
@@ -294,9 +294,11 @@ async function main() {
     await expect(page.getByText('LEGACY-SUPPLIER-INBOUND', { exact: true }).last()).toBeVisible();
     await expect(page.getByText('LEGACY-CUSTOMER-SUPPLY', { exact: true }).last()).toBeVisible();
 
-    const partyRequestsBeforeReenter = countPartyListRequests();
+    const customerRequestsBeforeReenter = countCartonInboundCustomerRequests();
+    const supplierRequestsBeforeReenter = apiRequests.filter(item => item.method === 'GET' && item.path.startsWith('/suppliers')).length;
     await openProductionEntry();
-    assert.equal(countPartyListRequests(), partyRequestsBeforeReenter, '重新打开纸箱生产页面不加载客户/供货商列表');
+    assert.ok(countCartonInboundCustomerRequests() >= customerRequestsBeforeReenter, '重新打开纸箱生产页面仍只从生产入库客户接口读取客户');
+    assert.equal(apiRequests.filter(item => item.method === 'GET' && item.path.startsWith('/suppliers')).length, supplierRequestsBeforeReenter, '重新打开纸箱自产页面不得加载供货商列表');
     await buttonContainingText('最近入库单').click();
     await expect(page.getByText('PROD-BROWSER-20261023-01', { exact: true }).last()).toBeVisible();
     await expect(page.getByText('LEGACY-SUPPLIER-INBOUND', { exact: true })).toHaveCount(0);

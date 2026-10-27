@@ -1,6 +1,6 @@
 'use strict';
 
-const { findCustomerSpecification, matchCustomerSpecification } = require('../../../backend/production-pricing');
+const { dimensionsInCm, findCustomerSpecification, matchCustomerSpecification } = require('../../../backend/production-pricing');
 
 function matchesSpecification(customer, product, specId) {
   try {
@@ -29,7 +29,7 @@ function uniqueCustomerSpecification(customer, product) {
 
 function validatedCustomerSpecification(customer, product, specId) {
   const specification = findCustomerSpecification(customer, specId);
-  if (!specification || typeof specification.price !== 'number' || !Number.isFinite(specification.price) || specification.price < 0) return null;
+  if (!specification || (specification.price !== null && (typeof specification.price !== 'number' || !Number.isFinite(specification.price) || specification.price < 0))) return null;
   if (!product) return specification;
   return matchesSpecification(customer, product, specId);
 }
@@ -41,10 +41,16 @@ function customerSpecificationText(specification) {
   )).trim();
 }
 
+function customerSpecificationDimensions(specification) {
+  const values = dimensionsInCm(customerSpecificationText(specification), 'cm');
+  return values?.length === 3 ? [values[0] * 10, values[1] * 10] : [0, 0];
+}
+
 module.exports = {
   matchingCustomerSpecifications,
   matchingProductsForSpecification,
   uniqueCustomerSpecification,
   validatedCustomerSpecification,
-  customerSpecificationText
+  customerSpecificationText,
+  customerSpecificationDimensions
 };

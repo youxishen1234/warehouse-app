@@ -9,7 +9,7 @@ test('multi-line inbound forms index products once for row previews and stock ch
     assert.doesNotMatch(source, /products\.find\(item => item\.id === line\.product_id\)/);
     assert.doesNotMatch(source, /products\.find\(product => product\.id === line\.product_id\)/);
   }
-  assert.match(fs.readFileSync('src/pages/inbound/index.tsx', 'utf8'), /\[lines, productMap\]/);
+  assert.match(fs.readFileSync('src/pages/inbound/index.tsx', 'utf8'), /\[lines, productMap, billingCustomer\]/);
   // Outbound now edits one order line. The browser regression verifies that
   // selecting its product and refreshing cannot change the submitted draft.
 });

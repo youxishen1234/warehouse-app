@@ -44,7 +44,7 @@ function customerSpecs(account: Customer | null, dimension: DimensionCustomer | 
       specification: normalizeSpecification(spec.specification),
       material: specText(spec.material),
       unit: specText(spec.unit) || '个',
-      price: Number.isFinite(Number(spec.price)) && Number(spec.price) >= 0 ? Number(spec.price) : null,
+      price: spec.price != null && Number.isFinite(Number(spec.price)) && Number(spec.price) >= 0 ? Number(spec.price) : null,
       kind: '成品'
     };
     const base = specBaseKey(row);
