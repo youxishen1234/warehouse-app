@@ -361,6 +361,38 @@ async function main() {
       screenshots: [320, 390, 1280].map(width => path.join(output, `remote-label-${width}.png`)),
       physicalPrintingTested: false
     }, null, 2));
+  } catch (error) {
+    // Preserve exact font and box metrics for platform-specific preview failures.
+    const geometry = await page.evaluate(() => {
+      const document = window.document.querySelector('iframe[title="K3 标签预览"]')?.contentDocument;
+      if (!document) return { frame: 'unavailable' };
+      const label = document.querySelector('.warehouse-label');
+      const transform = label?.style.transform;
+      if (label) label.style.transform = 'none';
+      try {
+        const nodes = [...document.querySelectorAll('.warehouse-label, .label-body, .paperboard-header, .paperboard-major, .paperboard-value, .paperboard-bottom, .paperboard-details')];
+        return {
+          fonts: document.fonts?.status,
+          fontFaces: document.fonts ? [...document.fonts].map(font => ({ family: font.family, weight: font.weight, status: font.status })) : [],
+          nodes: nodes.map(element => {
+            const box = element.getBoundingClientRect();
+            const style = document.defaultView.getComputedStyle(element);
+            return {
+              className: element.className, field: element.getAttribute('data-field'),
+              text: element.textContent, width: box.width, height: box.height, right: box.right, bottom: box.bottom,
+              scrollWidth: element.scrollWidth, clientWidth: element.clientWidth,
+              scrollHeight: element.scrollHeight, clientHeight: element.clientHeight,
+              fontFamily: style.fontFamily, fontSize: style.fontSize, fontWeight: style.fontWeight,
+              lineHeight: style.lineHeight, maxHeight: style.maxHeight
+            };
+          })
+        };
+      } finally {
+        if (label) label.style.transform = transform;
+      }
+    }).catch(issue => ({ unavailable: issue.message }));
+    console.error('Remote label preview diagnostics:', JSON.stringify(geometry));
+    throw error;
   } finally {
     await context.close();
     await browser.close();
