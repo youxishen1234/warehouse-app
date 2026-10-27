@@ -81,7 +81,7 @@ async function main() {
     await expect(page.getByTestId('workbench-today')).toContainText(longProductName);
     const activity = page.getByTestId('workbench-today').locator('taro-button-core').first();
 
-    for (const width of [320, 390, 736, 1280]) {
+    for (const width of [320, 390, 430, 736, 1280]) {
       await page.setViewportSize({ width, height: width === 320 ? 700 : width === 390 ? 844 : 1068 });
       const root = page.getByTestId('simple-workbench');
       assert.ok(await root.evaluate(element => element.scrollWidth <= element.clientWidth + 1), `workbench width ${width} has no horizontal overflow`);
@@ -111,8 +111,13 @@ async function main() {
         };
       }));
       assert.equal(cardMetrics.length, 4);
-      assert.ok(cardMetrics[0].card.left < cardMetrics[1].card.left && cardMetrics[2].card.left < cardMetrics[3].card.left, `primary actions remain in two columns at ${width}px`);
-      assert.ok(Math.abs(cardMetrics[0].card.top - cardMetrics[1].card.top) < 2 && Math.abs(cardMetrics[2].card.top - cardMetrics[3].card.top) < 2 && cardMetrics[2].card.top > cardMetrics[0].card.top, `primary actions remain in a two-by-two grid at ${width}px`);
+      if (width <= 520) {
+        assert.ok(cardMetrics.every(metric => Math.abs(metric.card.left - cardMetrics[0].card.left) < 2 && Math.abs(metric.card.right - cardMetrics[0].card.right) < 2), `primary actions share one column at ${width}px`);
+        assert.ok(cardMetrics.every((metric, index) => index === 0 || metric.card.top >= cardMetrics[index - 1].card.bottom - 1), `primary actions stack vertically at ${width}px`);
+      } else {
+        assert.ok(cardMetrics[0].card.left < cardMetrics[1].card.left && cardMetrics[2].card.left < cardMetrics[3].card.left, `primary actions remain in two columns at ${width}px`);
+        assert.ok(Math.abs(cardMetrics[0].card.top - cardMetrics[1].card.top) < 2 && Math.abs(cardMetrics[2].card.top - cardMetrics[3].card.top) < 2 && cardMetrics[2].card.top > cardMetrics[0].card.top, `primary actions remain in a two-by-two grid at ${width}px`);
+      }
       for (const [index, metric] of cardMetrics.entries()) {
         assert.ok(metric.card.height >= 44, `action ${index} has a usable touch target at ${width}px`);
         assert.ok(metric.guide && metric.badge && metric.label, `action ${index} guide is rendered at ${width}px`);
@@ -131,10 +136,34 @@ async function main() {
         return { left: rect.left, right: rect.right, parentLeft: parent.left, parentRight: parent.right };
       });
       assert.ok(titleRect.left >= titleRect.parentLeft && titleRect.right <= titleRect.parentRight + 1, `long activity title stays in its row at ${width}px`);
-      if (width === 320) await page.screenshot({ path: path.join(artifacts, 'home-320.png'), fullPage: true });
+      if (width <= 430) await page.screenshot({ path: path.join(artifacts, `home-${width}.png`), fullPage: true });
     }
 
     await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(origin + '/#/pages/home/index');
+    await page.reload();
+    await expect(page.getByTestId('workbench-summary')).toBeVisible();
+    const embeddedRoot = page.getByTestId('simple-workbench').filter({ visible: true });
+    const embeddedCards = embeddedRoot.getByTestId('workbench-actions').locator('taro-button-core');
+    const embeddedMetrics = await embeddedCards.evaluateAll(elements => elements.map(card => {
+      const rect = card.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+    }));
+    assert.equal(embeddedMetrics.length, 4);
+    assert.ok(embeddedMetrics.every(metric => Math.abs(metric.left - embeddedMetrics[0].left) < 2 && Math.abs(metric.right - embeddedMetrics[0].right) < 2), 'embedded home actions share one column at 390px');
+    assert.ok(embeddedMetrics.every((metric, index) => index === 0 || metric.top >= embeddedMetrics[index - 1].bottom - 1), 'embedded home actions stack vertically at 390px');
+    const bottomInset = await embeddedRoot.evaluate(element => ({
+      clearance: parseFloat(getComputedStyle(element).paddingBottom),
+      backingHeight: parseFloat(getComputedStyle(element, '::after').height),
+      backingPosition: getComputedStyle(element, '::after').position
+    }));
+    assert.ok(bottomInset.clearance >= 132, 'embedded home reserves space below content for the native tab bar');
+    assert.ok(bottomInset.backingHeight >= 104 && bottomInset.backingPosition === 'fixed', 'embedded home gives the translucent native dock a fixed backing that hides text underneath');
+    await page.screenshot({ path: path.join(artifacts, 'home-embedded-390.png'), fullPage: true });
+
+    await page.goto(origin + '/#/pages/business-center/index');
+    await page.reload();
+    await expect(page.getByText('办理业务', { exact: true })).toBeVisible();
     await button(home, '收付款').click();
     await expect(page.getByTestId('finance-center')).toBeVisible();
     await expect(page.getByTestId('finance-tab-ledger')).toBeVisible();
@@ -160,7 +189,7 @@ async function main() {
     assert.ok(dialogMetrics.top >= 0 && dialogMetrics.bottom <= 320, 'stocktake dialog fits inside a short phone viewport');
     assert.ok(dialogMetrics.scrollHeight > dialogMetrics.clientHeight, 'dialog contents remain reachable through internal scrolling when screen height is short');
     assert.deepEqual(errors, []);
-    console.log('PASS business-center layout: action guidance/text/badges stay inside cards at 320/390/736/1280px; long activity title, finance entry and short-screen dialog verified.');
+    console.log('PASS business-center layout: phone actions stack in one column at 320/390/430px, tablet/desktop keep two columns at 736/1280px; guidance, badges, long activity title, finance entry and short-screen dialog verified.');
   } finally {
     await Promise.all(contexts.map(context => context.close()));
     await browser.close();

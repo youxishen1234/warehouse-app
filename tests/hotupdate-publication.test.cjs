@@ -52,6 +52,9 @@ test('server and client reject older timestamp versions including fallback manif
     assert.equal(implementation.isNewerVersion('20261004000001', '20261004000002'), false);
     assert.equal(implementation.isNewerVersion('20261004000001', '20261004000001'), false);
     assert.equal(implementation.isNewerVersion('20261004000001', 'builtin'), true);
+    assert.equal(implementation.isNewerVersion('20261004000001', '1.131'), true);
+    assert.equal(implementation.isNewerVersion('20261004000001', '1.1.135'), true);
     assert.equal(implementation.isNewerVersion('unknown', '20261004000001'), false);
+    assert.equal(implementation.isNewerVersion('20261004000001', 'unknown'), false);
   }
 });

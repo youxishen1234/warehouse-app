@@ -112,6 +112,7 @@
 @media (max-width: 700PX) {
   .page { padding: 0; background: #222924; }
   .page.embedded { padding-bottom: calc(132PX + env(safe-area-inset-bottom)); }
+  .page.embedded::after { content: ''; position: fixed; z-index: 14; right: 0; bottom: 0; left: 0; height: calc(max(104PX, var(--sg-native-bottom-space, 84PX) + 20PX) + env(safe-area-inset-bottom)); background: #222924; pointer-events: none; }
   .page.customerPage .content { padding-right: 20PX; padding-left: 20PX; }
   .surface { border: 0; border-radius: 0; min-height: 100vh; min-height: 100dvh; }
   .page.embedded .surface { min-height: calc(100vh - 132PX); min-height: calc(100dvh - 132PX); }
@@ -129,6 +130,11 @@
   .footer { padding: 12PX 20PX; font-size: 11PX; }
   .page.embedded .summary { margin-bottom: 22PX; }
   .customerToolbar { justify-content: flex-start; margin-bottom: 18PX; }
+}
+@media (max-width: 520PX) {
+  .entries { grid-template-columns: 1fr; gap: 12PX; }
+  .entry { min-height: 94PX !important; padding: 16PX 18PX !important; gap: 10PX !important; }
+  .entryGuide { gap: 6PX; font-size: 12PX; }
 }
 @media (max-width: 360PX) {
   .masthead { padding-left: 16PX; padding-right: 16PX; }
