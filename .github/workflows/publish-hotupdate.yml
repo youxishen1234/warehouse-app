@@ -172,6 +172,11 @@ jobs:
         env:
           BUSINESS_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
         run: node tests/business-center-browser.cjs
+      - name: Validate removed inventory reminders
+        env:
+          STOCK_WARNING_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          STOCK_WARNING_EVIDENCE_DIR: release/stock-warning-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/stock-warning-removed-browser.cjs
       - name: Validate single homepage customer entry and order selection
         env:
           CUSTOMER_ENTRY_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}

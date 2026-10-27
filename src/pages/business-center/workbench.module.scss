@@ -35,10 +35,9 @@
 .page .customerToolbarButton { display: inline-flex; align-items: center; justify-content: center; gap: 8PX; min-height: 44PX; padding: 9PX 13PX; border: 1PX solid #526357; border-radius: 6PX; background: #2b382f; color: #a6dcb8; font-size: 14PX; text-align: left; }
 .page .customerToolbarButton:hover { color: #d5eadb; background: #314238; }
 .entries { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13PX; margin-top: 17PX; }
-.summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1PX; margin-bottom: 26PX; border: 1PX solid #414e44; border-radius: 8PX; overflow: hidden; background: #414e44; }
+.summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1PX; margin-bottom: 26PX; border: 1PX solid #414e44; border-radius: 8PX; overflow: hidden; background: #414e44; }
 .summaryItem { display: flex; flex-direction: column; gap: 4PX; padding: 14PX 15PX; background: #222924; color: #b5c0b9; font-size: 13PX; }
 .summaryItem strong { color: #eef3ef; font-size: 23PX; font-weight: 500; font-variant-numeric: tabular-nums; }
-.summaryItem .alertValue { color: #ffcf7a; }
 .page .entry { width: 100%; min-height: 112PX; display: flex; align-items: stretch; flex-direction: column; justify-content: space-between; gap: 11PX; padding: 18PX; border: 1PX solid #414e44; border-radius: 8PX; background: transparent; text-align: left; font-size: 20PX; }
 .entryTop { display: flex; align-items: center; gap: 12PX; width: 100%; }
 .entryTop > taro-image-core:first-child { flex-shrink: 0; }
@@ -99,11 +98,6 @@
 .form > :is(button, taro-button-core) { width: 100%; margin-top: 14PX; }
 .error { color: #ffd0cb; background: #4b2929; padding: 14PX; margin: 12PX 0; overflow-wrap: anywhere; }
 .empty { display: block; padding: 32PX 0; color: #b5c0b9; }
-.page .stockNotice { display: flex; align-items: center; justify-content: space-between; gap: 14PX; width: 100%; margin-top: 26PX; padding: 17PX 18PX; border: 1PX solid #414e44; border-radius: 8PX; background: transparent; text-align: left; }
-.page .stockNotice:hover { background: #2a342d; }
-.noticeTitle { display: block; color: #eef3ef; font-size: 16PX; font-weight: 500; }
-.noticeDetail { display: block; margin-top: 5PX; color: #b5c0b9; font-size: 13PX; overflow-wrap: anywhere; }
-.noticeAction { display: flex; align-items: center; flex-shrink: 0; color: #a6dcb8; font-size: 14PX; }
 .page.customerPage .surface { max-width: 1120PX; }
 .page.customerPage .content { padding-right: 40PX; padding-left: 40PX; }
 .page .photoRow { display: block; width: 100%; text-align: left; background: transparent; border: 0; border-bottom: 1PX solid #414e44; border-radius: 0; }

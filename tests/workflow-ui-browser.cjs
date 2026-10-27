@@ -58,7 +58,7 @@ async function check(engine, name, base) {
           if (route === 'home') {
             assert.equal(await active.getByTestId('workbench-actions').locator('taro-button-core').count(), 4);
             await active.getByTestId('workbench-summary').waitFor();
-            await active.getByTestId('workbench-stock-notice').waitFor();
+            await active.getByTestId('workbench-stock-notice').waitFor({ state: 'detached' });
           } else {
             await active.getByText('查看库存', { exact: true }).first().waitFor();
           }

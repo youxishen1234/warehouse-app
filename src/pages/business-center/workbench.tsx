@@ -10,7 +10,7 @@ import { getCustomerDimensions } from '@/services/customer-dimensions';
 import type { DimensionDocument } from '@/services/customer-dimensions';
 import { useRemoteData } from '@/hooks/useRemoteData';
 import { useSharedRefresh } from '@/services/shared-refresh';
-import { invalidateProducts, loadProducts } from '@/services/product-store';
+import { invalidateProducts } from '@/services/product-store';
 import { getCopy } from '@/services/copy';
 import { formatMoney, formatTime } from '@/utils/format';
 import type { CustomerOrder, Product, Stats } from '@/types';
@@ -77,7 +77,6 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
   const [financePartyId, setFinancePartyId] = useState<number | undefined>(() => params.party_id ? Number(params.party_id) : undefined);
   const [financeEntryId, setFinanceEntryId] = useState<number | undefined>(() => params.entry ? Number(params.entry) : undefined);
   const [stats, setStats] = useState<Stats | null>(null);
-  const [lowStock, setLowStock] = useState<Product[]>([]);
   const [kind, setKind] = useState<'board' | 'carton'>('board');
   const [query, setQuery] = useState('');
   const [now, setNow] = useState(new Date());
@@ -101,9 +100,7 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
   const customerRoute = ['pages/customers/index', 'customers/index'].includes(normalizedRoutePath(path));
   const loadHomeSummary = useCallback(async () => {
     try {
-      const [nextStats, products] = await Promise.all([getStats(), loadProducts(true)]);
-      setStats(nextStats);
-      setLowStock(products.filter(product => Number(product.stock || 0) <= Number(product.safety_stock || 0)).slice(0, 3));
+      setStats(await getStats());
     } catch (loadError) {
       console.error('[Workbench] summary load failed', loadError);
     }
@@ -231,7 +228,6 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
         {embedded && <View className={styles.summary} data-testid='workbench-summary'>
           <View className={styles.summaryItem}><Text>今日入库</Text><strong>{stats ? stats.todayIn : '--'}</strong></View>
           <View className={styles.summaryItem}><Text>今日出库</Text><strong>{stats ? stats.todayOut : '--'}</strong></View>
-          <View className={styles.summaryItem}><Text>库存预警</Text><strong className={lowStock.length ? styles.alertValue : undefined}>{stats ? stats.lowStock : '--'}</strong></View>
         </View>}
         <View className={styles.customerToolbar} data-testid='workbench-customer-toolbar'>
           <View className={styles.customerToolbarActions}>
@@ -255,10 +251,6 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
           <View className={styles.activityBody}><Text className={styles.activityTitle}>{row.title}</Text><Text className={styles.activityDetail}>{new Date(row.time).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' })} · {row.detail}</Text></View>
           <View className={styles.activityValue}><Text>{row.money ? formatMoney(row.value) : `${row.value} ${row.unit || ''}`}</Text><Text className={styles.activityStatus}>{row.status}</Text></View>
         </Button>)}{!today.length && <View className={styles.emptyToday}><Icon name='notebook' color='#8a9b8f' strokeWidth={1.5} style={{ width: 28, height: 28 }} /><Text>今天还没有业务记录</Text><Text>完成入库、生产、出库或收款后，会显示在这里。</Text></View>}</View>
-        {embedded && <Button className={styles.stockNotice} onClick={() => changePanel('stock')} data-testid='workbench-stock-notice'>
-          <View><Text className={styles.noticeTitle}>{lowStock.length ? `库存提醒 · ${lowStock.length} 项` : '库存状态'}</Text><Text className={styles.noticeDetail}>{lowStock.length ? lowStock.map(product => `${product.name} ${product.stock}${product.unit}`).join(' · ') : '纸板与纸箱库存均可从这里查看'}</Text></View>
-          <View className={styles.noticeAction}>查看库存<Icon name='chevron' color='#a6dcb8' strokeWidth={1.5} style={{ width: 16, height: 16 }} /></View>
-        </Button>}
       </View>}
       {panel === 'customers' && hasSnapshot && <CustomerCenter
         customers={data.customers}
