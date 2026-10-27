@@ -240,7 +240,7 @@ export default function RemotePrint({ remote, open, onOpenChange, showSendAction
         <p className={styles.muted}>扫描店里打印电脑上的连接二维码，即可完成连接；也可直接打开电脑提供的连接链接。</p>
         <button type='button' className={styles.secondary} disabled={busy} onClick={() => void remote.pair()}>{busy ? '正在验证连接…' : '扫描连接二维码'}</button>
       </> : <>
-        <p className={styles.muted}>{device?.name || '打印电脑'} · {device?.printer || '630K'}<br />电脑需开机、登录并联网，打印机需开机。仅发送打印，不自动出库。</p>
+        <p className={styles.muted}>{device?.name || '打印电脑'} · {device?.printer || '630K'}<br />电脑需开机、登录并联网，打印机需开机。仅发送已出库单据，不会重复扣减库存。</p>
         {!remote.saved && <p className={styles.muted}>请先保存单据，再发送远程打印。</p>}
         {device && !deviceError && !device.online && !pending && <p className={styles.muted}>打印电脑离线；可以先发送，电脑恢复在线后自动接收。</p>}
         <div className={styles.previewControls}>

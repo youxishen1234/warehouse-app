@@ -1,1 +1,1 @@
-export default definePageConfig({ navigationBarTitleText: '收付款', navigationStyle: 'custom' });
+export default definePageConfig({ navigationBarTitleText: '账单中心', navigationStyle: 'custom' });

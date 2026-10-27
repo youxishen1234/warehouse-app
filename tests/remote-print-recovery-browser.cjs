@@ -13,7 +13,8 @@ async function main() {
   const db = require('../backend/db');
   const store = require('../backend/remote-print').createStore(process.env.WAREHOUSE_REMOTE_PRINT_FILE);
   const pair = store.register('测试打印电脑', '630K');
-  const note = db.savePrintNote({ company: '远程打印测试', customer_id: null, customer_name: '隔离测试客户', address: '', phone: '', receiver: '', sender: '', date: '2026-10-13', paper: '241-93', items: [{ name: '', specification: '400×300×200', quantity: 1, price: 2, remark: '' }] });
+  const product = db.addProduct({ name: '远程测试纸箱', specification: '400×300×200', unit: '个', stock: 3, price: 2 });
+  const note = db.savePrintNote({ company: '远程打印测试', customer_id: null, customer_name: '隔离测试客户', address: '', phone: '', receiver: '', sender: '', date: '2026-10-13', paper: '241-93', items: [{ product_id: product.id, name: product.name, specification: '400×300×200', quantity: 1, price: 2, remark: '' }] });
   const built = !!process.env.REMOTE_PRINT_WEB_DIR;
   if (built) process.env.WAREHOUSE_WEB_ROOT = path.resolve(process.env.REMOTE_PRINT_WEB_DIR);
   const app = built ? require('../backend/server') : require('./helpers/print-center-source.cjs')(db);
@@ -60,6 +61,9 @@ async function main() {
     await page.goto(origin + '/#/pages/print-center/index?mode=edit');
     await page.locator('.team-boot').waitFor({ state: 'hidden' });
     await button('历史单据').click(); await button('重新打印').click();
+    await expect(page.getByText(/远程打印到店里/)).toHaveCount(0);
+    await button('确认出库并打印').click();
+    await expect(dialog()).toBeVisible();
     await page.getByText(/远程打印到店里/).click();
     await expect(page.getByText('打印电脑离线；可以先发送，电脑恢复在线后自动接收。')).toBeVisible();
     await button('发送到630K').click();
@@ -100,7 +104,7 @@ async function main() {
     await expect(button('再打印一份')).toBeEnabled();
     assert.equal(submissions, 1, 'releasing the terminal pending gate must not resubmit the recovered job');
 
-    await button('返回单据').click(); await button('重新打印').click();
+    await button('返回单据').click(); await button('再次打印').click();
     await page.getByText(/远程打印到店里/).click();
     await expect(button('再打印一份')).toBeEnabled();
     assert.equal(submissions, 1, 'closing and reopening never resends automatically');

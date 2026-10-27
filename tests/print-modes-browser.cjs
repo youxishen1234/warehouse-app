@@ -87,7 +87,7 @@ async function main() {
   let browser, page, failure;
   try {
     assert.ok(['chromium', 'webkit'].includes(engine), 'PRINT_BROWSER must be chromium or webkit');
-    browser = await (engine === 'webkit' ? webkit : chromium).launch();
+    browser = await (engine === 'webkit' ? webkit : chromium).launch(engine === 'webkit' || !process.env.PRINT_BROWSER_EXECUTABLE ? {} : { executablePath: process.env.PRINT_BROWSER_EXECUTABLE });
     const options = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, locale: 'zh-CN', serviceWorkers: 'block', hasTouch: true };
     const context = await browser.newContext(options);
     await installFixture(context, webOrigin);
@@ -154,7 +154,7 @@ async function main() {
       const main = active().locator('main');
       await main.evaluate(element => { element.scrollTop = element.scrollHeight; });
       await expect(button('保存单据')).toBeVisible();
-      await expect(button('预览打印')).toBeVisible();
+      await expect(button('确认出库并打印')).toBeVisible();
       const layout = await main.evaluate(element => {
         const form = element.querySelector('fieldset'), footer = element.querySelector('footer');
         const formRect = form.getBoundingClientRect(), rect = footer.getBoundingClientRect(), mainRect = element.getBoundingClientRect();
@@ -213,7 +213,7 @@ async function main() {
     await expect(field(1, '规格尺寸')).toHaveValue('30×20×15');
     await expect(field(2, '规格尺寸')).toHaveValue('25×18×10');
     await actionsRemainBelowForm('draft');
-    checks.push('save and preview actions follow the form and stay hittable above dock');
+    checks.push('save and outbound actions follow the form and stay hittable above dock');
     const draftBefore = await active().locator('main input').evaluateAll(inputs => inputs.map(input => [input.getAttribute('aria-label'), input.value]));
     await labelAndBack('edit');
     assert.deepEqual(await active().locator('main input').evaluateAll(inputs => inputs.map(input => [input.getAttribute('aria-label'), input.value])), draftBefore, 'all customer, date, delivery and two-item draft fields survive label round trip');

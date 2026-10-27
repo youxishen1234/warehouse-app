@@ -15,7 +15,7 @@ async function main() {
   app.use(express.static(path.resolve(process.env.WORKBENCH_REFERENCE_WEB_DIR || process.env.TARO_OUTPUT_DIR || 'release/business-ui-reference-20261019/web')));
   const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
   const origin = 'http://127.0.0.1:' + server.address().port;
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(process.env.CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.CHROMIUM_EXECUTABLE_PATH } : {});
   const contexts = [];
   const errors = [];
   const setup = async width => {
@@ -45,6 +45,19 @@ async function main() {
     await new Promise(resolve => setTimeout(resolve, 10));
     db.settleParty('customer', customer.id, 50, '转账 · 学习示例');
     const page = await setup(849); await page.setViewportSize({ width: 849, height: 1068 }); await go(page);
+    const root = page.getByTestId('simple-workbench');
+    await expect(root).toHaveAttribute('data-tab-route', '/pages/home/index');
+    await expect(page.getByTestId('workbench-content')).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('data-tab-context', '');
+    await expect(page.locator('body')).not.toHaveAttribute('data-simple-workbench-active', '');
+    const dock = page.locator('taro-tabbar.sg-glass-host');
+    await expect(dock).toBeVisible();
+    await expect(dock.locator('.sg-glass-tab[data-tab]')).toHaveCount(5);
+    await expect(dock.locator('.sg-glass-tab[data-tab="0"]')).toHaveAttribute('aria-current', 'page');
+    await dock.locator('.sg-glass-tab[data-tab="0"]').click();
+    await page.waitForURL(/\/pages\/home\/index/);
+    await expect(page.getByTestId('simple-workbench')).toBeVisible();
+    await go(page);
     const feed = page.getByTestId('workbench-today');
     await expect(feed).toContainText('示例客户 · 收款记录'); await expect(feed).toContainText('¥50.00');
     await expect(feed).toContainText('示例客户 · 出库单'); await expect(feed).toContainText('¥72.00');
@@ -53,9 +66,11 @@ async function main() {
     await page.screenshot({ path: path.join(artifacts, 'reference-home-desktop.png'), fullPage: true });
     for (const width of [320, 390, 736, 1280]) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 1068 });
-      const root = page.getByTestId('simple-workbench');
-      const geometry = await root.boundingBox(); assert.ok(Math.abs(geometry.x) < 1, 'no leftover desktop sidebar width');
-      assert.ok(await root.evaluate(el => el.scrollWidth <= el.clientWidth + 1), 'no horizontal overflow');
+      const pageRoot = page.getByTestId('simple-workbench');
+      const geometry = await pageRoot.boundingBox();
+      if (width >= 1024) assert.ok(geometry.x >= 209, 'desktop page clears the 210px liquid sidebar: ' + JSON.stringify(geometry));
+      else assert.ok(Math.abs(geometry.x) < 1, 'mobile and tablet pages use the full width: ' + JSON.stringify(geometry));
+      assert.ok(await pageRoot.evaluate(el => el.scrollWidth <= el.clientWidth + 1), 'no horizontal overflow');
       await page.screenshot({ path: path.join(artifacts, 'reference-home-' + width + '.png'), fullPage: true });
     }
     await page.setViewportSize({ width: 390, height: 844 });
@@ -63,27 +78,32 @@ async function main() {
     await expect(page.getByText('纸板入库', { exact: true })).toBeVisible();
     await expect(page.getByText('纸箱入库', { exact: true })).toBeVisible();
     await page.screenshot({ path: path.join(artifacts, 'reference-inbound.png'), fullPage: true });
-    await button(page.getByTestId('simple-workbench'), '总台').click(); await button(page.getByTestId('simple-workbench'), '收付款').click();
-    await expect(page.getByTestId('finance-center')).toBeVisible();
+    await page.locator('[aria-label="返回总台"]:visible').last().click(); await button(page.getByTestId('simple-workbench').filter({ visible: true }).last(), '账单中心').click();
+    await expect(page.getByTestId('finance-center').filter({ visible: true }).last()).toBeVisible();
     await page.getByTestId('finance-tab-customer').click();
     await expect(page.getByTestId('finance-customer-view')).toBeVisible();
     await expect(page.locator('[data-testid^="customer-bill-"]').filter({ hasText: '示例客户' })).toContainText('当前待收款 ¥22.00');
-    await button(page.getByTestId('simple-workbench'), '供货商账单').click();
+    await button(page.getByTestId('simple-workbench').filter({ visible: true }).last(), '供货商账单').click();
     await expect(page.getByTestId('finance-supplier-view')).toBeVisible();
     await expect(page.locator('[data-testid^="supplier-bill-"]').filter({ hasText: '示例板厂' })).toContainText('当前待付款 ¥211.20');
     await page.screenshot({ path: path.join(artifacts, 'reference-bills.png'), fullPage: true });
-    await button(page.getByTestId('simple-workbench'), '总台').click();
+    await page.locator('[aria-label="返回总台"]:visible').last().click();
     await button(page, '示例客户 · 收款记录').click();
     await expect(page.getByRole('dialog', { name: '流水详情' })).toBeVisible();
-    await expect(page.getByTestId('simple-workbench')).toBeVisible();
-    await expect(page.getByTestId('finance-center')).toBeVisible();
-    await expect(page.locator('body')).toHaveAttribute('data-simple-workbench-active', '');
+    await expect(page.getByTestId('simple-workbench').filter({ visible: true }).last()).toBeVisible();
+    await expect(page.getByTestId('finance-center').filter({ visible: true }).last()).toBeVisible();
+    await expect(page.getByTestId('simple-workbench').filter({ visible: true }).last()).toHaveAttribute('data-tab-route', '/pages/home/index');
+    await expect(page.locator('html')).toHaveAttribute('data-tab-modal', '');
+    await expect(page.locator('taro-tabbar.sg-glass-host')).toBeHidden();
+    await page.getByRole('button', { name: '关闭流水详情', exact: true }).click();
+    await expect(page.locator('taro-tabbar.sg-glass-host')).toBeVisible();
+    await expect(page.locator('body')).not.toHaveAttribute('data-simple-workbench-active', '');
     await go(page); await button(page.getByTestId('simple-workbench'), '全部记录').click();
     await expect(page.getByText('业务记录与存根', { exact: true })).toBeVisible();
-    await button(page.getByTestId('simple-workbench'), '总台').click(); await button(page.getByTestId('simple-workbench'), '成品 B · 生产单').click();
+    await page.locator('[aria-label="返回总台"]:visible').last().click(); await button(page.getByTestId('simple-workbench').filter({ visible: true }).last(), '成品 B · 生产单').click();
     await expect(page.getByText('领用 100 张 · 完工 100 个', { exact: true })).toBeVisible();
     assert.deepEqual(errors, []);
-    console.log('PASS reference UI: four actions, three real daily records, separate inbound and bills, deep links, shell cleanup, 320/390/736/1280 widths');
+    console.log('PASS reference UI: liquid dock ownership, real home navigation, four actions, daily records, bills, deep links, 320/390/736/1280 widths');
   } finally {
     await Promise.all(contexts.map(c => c.close())); await browser.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); fs.rmSync(temporary, { recursive: true, force: true });
   }

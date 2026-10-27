@@ -53,7 +53,9 @@ async function main() {
       await first.screenshot({ path: path.join(artifacts, 'home-' + width + '.png'), fullPage: true });
     }
     await first.setViewportSize({ width: 390, height: 900 });
-    await button(workbench(first), '库存').click(); await expect(first.getByTestId('workbench-board')).toContainText('成箱 40 × 30 × 20 cm');
+    await button(workbench(first), '入库').click();
+    await button(workbench(first), '查看已有库存').click();
+    await expect(first.getByTestId('workbench-board')).toContainText('成箱 40 × 30 × 20 cm');
     await button(workbench(first), '生产').click();
     await expect(first.getByTestId('production-spec')).toContainText('40 × 30 × 20 cm');
     await first.locator('[aria-label="纸箱名称"] input').fill('学习纸箱');
@@ -64,11 +66,13 @@ async function main() {
     await first.locator('.taro-model__confirm').click();
     assert.equal(db.listBoards()[0].remainingQty, 90); assert.equal(db.listProduction().length, 1);
     const product = db.listProducts()[0]; assert.equal(product.specification, '40 × 30 × 20 cm'); assert.equal(product.stock, 8);
-    await button(workbench(second), '库存').click();
+    await button(workbench(second), '入库').click();
+    await button(workbench(second), '查看已有库存').click();
     await expect(second.getByTestId('workbench-board')).toContainText('90 张', { timeout: 20000 });
-    await button(workbench(first), '记录').click(); await expect(first.getByText('领用 10 张 · 完工 8 个', { exact: true })).toBeVisible();
+    await go(first);
+    await button(workbench(first), '全部记录').click(); await expect(first.getByText('领用 10 张 · 完工 8 个', { exact: true })).toBeVisible();
     await first.screenshot({ path: path.join(artifacts, 'production-record.png'), fullPage: true });
-    await button(workbench(first), '票据').click(); await button(workbench(first), '学习板厂').click();
+    await button(workbench(first), '票据原件').click(); await button(workbench(first), '学习板厂').click();
     await expect(first.getByRole('dialog', { name: '流水详情' })).toBeVisible();
     await expect(first.getByText('单据凭证', { exact: true })).toBeVisible();
     await first.screenshot({ path: path.join(artifacts, 'receipt-upload.png'), fullPage: true });
@@ -82,7 +86,9 @@ async function main() {
     await (await chooser).setFiles({ name: 'learning-only.png', mimeType: 'image/png', buffer: bytes });
     await button(first.getByRole('dialog', { name: '流水详情' }), '上传 1 张照片').click();
     await expect(first.getByText('已保存 1 张原图，待人工核对', { exact: true })).toBeVisible();
-    await button(workbench(second), '票据').click();
+    await go(second);
+    await button(workbench(second), '全部记录').click();
+    await button(workbench(second), '票据原件').click();
     await expect(second.getByText('1 张原件照片', { exact: true })).toBeVisible({ timeout: 20000 });
     await button(workbench(second), '学习板厂').click();
     await second.getByRole('button', { name: '查看送货单第 1 张' }).click();
@@ -93,7 +99,7 @@ async function main() {
     assert.equal(db.listSuppliers()[0].payable, 176); assert.equal(db.listLedger().length, 1);
     assert.equal(db.listLedger()[0].attachments.length, 1);
     await go(first);
-    await button(workbench(first), '收付款').click();
+    await button(workbench(first), '账单中心').click();
     await button(workbench(first), '供货商账单').click(); await expect(first.getByText('当前待付款 ¥176.00', { exact: true })).toBeVisible();
     await button(workbench(first), '付款').click(); await first.locator('[aria-label="供货商付款金额"] input').fill('50'); await button(workbench(first), '确认付款').click();
     await expect(first.getByText('当前待付款 ¥126.00', { exact: true })).toBeVisible();

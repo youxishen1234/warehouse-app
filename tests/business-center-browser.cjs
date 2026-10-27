@@ -52,7 +52,8 @@ async function main() {
     assert.equal(await page.getByTestId('workbench-actions').locator('taro-button-core').count(), 4);
     await page.screenshot({ path: path.join(artifacts, 'workbench-home.png'), fullPage: true });
 
-    await click('库存', workbench());
+    await click('入库', workbench());
+    await click('查看已有库存', workbench());
     await expect(page.getByTestId('workbench-board')).toContainText('160 × 110 cm');
     await expect(page.getByTestId('workbench-board')).toContainText('成箱 40 × 30 × 20 cm');
     await page.getByLabel('搜索库存').locator('input').fill('40*30*20');
@@ -140,8 +141,8 @@ async function main() {
     await expect(page.getByText('纸箱入库', { exact: true })).toBeVisible();
     await page.screenshot({ path: path.join(artifacts, 'workbench-inbound.png'), fullPage: true });
 
-    await go('/pages/business-center/index');
-    await click('票据');
+    await go('/pages/business-center/index?section=records');
+    await click('票据原件');
     await expect(page.getByText('原件照片按业务账单保存', { exact: false })).toBeVisible();
 
     for (const width of [320, 390, 430, 736, 1280]) {

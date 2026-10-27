@@ -185,9 +185,15 @@ test('canonical snapshots are rebuilt from current product and board records, re
   assert.deepEqual(canonicalSnapshot(db, 'paperboard-batch', board), board);
   const withoutBusinessFields = Object.fromEntries(Object.entries(board).filter(([key]) => !['customerName', 'material', 'printPlate', 'printColor'].includes(key)));
   assert.deepEqual(canonicalSnapshot(db, 'paperboard-batch', withoutBusinessFields), withoutBusinessFields, 'pre-existing clients can still print legacy fields');
-  for (const field of ['customerName', 'material', 'printPlate', 'printColor']) {
+  for (const field of ['customerName', 'material']) {
     assert.throws(() => canonicalSnapshot(db, 'paperboard-batch', { ...board, [field]: '伪造内容' }), /已更新/);
   }
+  for (const field of ['printPlate', 'printColor']) {
+    assert.throws(() => canonicalSnapshot(db, 'paperboard-batch', { ...board, [field]: '伪造内容' }), /已更新/);
+  }
+  const printFields = { printPlate: '本次A版', printColor: '蓝黑' };
+  const printOnly = canonicalSnapshot(db, 'paperboard-batch', { ...board, ...printFields }, printFields);
+  assert.deepEqual(printOnly, { ...board, ...printFields }, 'explicit print-only fields override stale batch metadata');
   assert.throws(() => canonicalSnapshot(db, 'paperboard-batch', { ...board, remainingQtySnapshot: 71 }), /已更新/);
   assert.throws(() => canonicalSnapshot({ ...db, listBoards: () => [] }, 'paperboard-batch', board), /已删除/);
 });
@@ -315,8 +321,76 @@ test('business board fields are canonical, reject stale or forged values without
  const before=JSON.stringify(batch);
  assert.deepEqual(canonicalSnapshot(db,'paperboard-batch',snapshot),snapshot);
  for(const field of ['customerName','material','printPlate','printColor']) assert.throws(()=>canonicalSnapshot(db,'paperboard-batch',{...snapshot,[field]:'伪造'}),/已更新/);
+ const printFields={printPlate:'打印版',printColor:'蓝黑'};
+ assert.deepEqual(canonicalSnapshot(db,'paperboard-batch',{...snapshot,...printFields},printFields),{...snapshot,...printFields});
+ assert.throws(()=>canonicalSnapshot(db,'paperboard-batch',{...snapshot,printPlate:'打印版'},{printPlate:'打印版',customerName:'伪造'}),/字段/);
  assert.deepEqual(canonicalSnapshot(db,'paperboard-batch',base),base,'old clients remain compatible');
  assert.equal(JSON.stringify(batch),before);
+});
+
+test('HTTP board jobs accept print-only metadata without changing the batch or admitting it on other label kinds', async () => {
+  const dir = mkdir('remote-label-board-print-api-');
+  const token = 'b'.repeat(64);
+  const batch = {
+    id: 'BOARD-20261027-ABCDEF123456', boardLength: 100, boardWidth: 70, fluteType: 'B',
+    supplier: 'Board Mill', customerName: 'Customer A', material: 'Kraft',
+    printPlate: 'OLD-PLATE', printColor: 'OLD-COLOUR', remainingQty: 7
+  };
+  const printFields = { printPlate: 'PLATE-B', printColor: 'BLUE-BLACK' };
+  const data = {
+    batchId: batch.id, boardLength: 100, boardWidth: 70, fluteType: 'B', supplier: 'Board Mill',
+    customerName: 'Customer A', material: 'Kraft', printPlate: printFields.printPlate,
+    printColor: printFields.printColor, remainingQtySnapshot: 7,
+    batchUrl: 'https://youxishen.online/#/pages/label-resolver/index?v=1&kind=paperboard-batch&id=' + batch.id
+  };
+  const db = { listBoards: () => [batch] };
+  const express = require('express'), app = express(), router = express.Router();
+  app.use(express.json());
+  const store = install(router, db, {
+    file: path.join(dir, 'labels.json'),
+    clientDevice: value => {
+      if (value !== token) throw Object.assign(new Error('invalid pairing'), { status: 401 });
+      return { id: 'board-device' };
+    },
+    agentDevice: () => ({ id: 'board-device' })
+  });
+  const pair = store.register('board-device', 'Shop PC', 'K3 USB');
+  const profile = store.saveProfile('board-device', makeProfile({ profileId: 'board-profile' }));
+  const calibration = store.enqueue('board-device', {
+    id: 'board-api-calibration-01', kind: 'calibration', profileId: profile.profileId, copies: 1
+  });
+  const calibrationClaim = store.claim(pair.agent, true).job;
+  store.acknowledge(pair.agent, calibration.id, { lease: calibrationClaim.lease, status: 'queued' });
+  store.confirm('board-device', profile.profileId, calibration.id);
+  app.use('/api', router);
+  app.use((error, req, res, next) => res.status(error.status || 500).json({ message: error.message })); // eslint-disable-line no-unused-vars
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  const url = `http://127.0.0.1:${server.address().port}/api/remote-print/labels/jobs`;
+  const submit = body => fetch(url, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Print-Client': token }, body: JSON.stringify(body)
+  });
+  try {
+    const before = JSON.stringify(batch);
+    const accepted = await submit({
+      id: 'board-api-print-job-001', kind: 'paperboard-batch', profileId: profile.profileId,
+      copies: 1, data, boardPrintFields: printFields
+    });
+    assert.equal(accepted.status, 200);
+    assert.equal((await accepted.json()).data.kind, 'paperboard-batch');
+    assert.deepEqual(store.claim(pair.agent, true).job.data, data);
+    assert.equal(JSON.stringify(batch), before, 'print-only metadata is never written back to the board batch');
+
+    const rejected = await submit({
+      id: 'manual-api-print-job-02', kind: 'paperboard-manual', profileId: profile.profileId,
+      copies: 1, data: manualBoardFixture(), boardPrintFields: printFields
+    });
+    assert.equal(rejected.status, 400);
+    assert.match((await rejected.json()).message, /仅适用于纸板批次标签/);
+  } finally {
+    await close(server);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('manual paperboard labels validate print-only fields without any inventory record access', () => {

@@ -29,7 +29,7 @@ async function main() {
   const server = app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
   const origin = `http://127.0.0.1:${server.address().port}`;
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(process.env.CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.CHROMIUM_EXECUTABLE_PATH } : {});
   let page;
   const errors = [];
   try {
@@ -134,6 +134,13 @@ async function main() {
     await expect(viewer.locator('img')).toHaveCount(1);
     await viewer.locator('img').evaluate(image => image.decode());
     await page.screenshot({ path: path.join(artifacts, 'ledger-photo-viewer.png') });
+    await expect.poll(() => page.evaluate(() => document.documentElement.hasAttribute('data-tab-modal'))).toBe(true);
+    const modalDock = await page.evaluate(() => {
+      const tabbar = document.querySelector('taro-tabbar');
+      const style = tabbar ? getComputedStyle(tabbar) : null;
+      return { modal: document.documentElement.hasAttribute('data-tab-modal'), visibility: style?.visibility, pointerEvents: style?.pointerEvents };
+    });
+    assert.deepEqual(modalDock, { modal: true, visibility: 'hidden', pointerEvents: 'none' }, 'modal must not leave the glass dock over its actions');
     await page.getByRole('button', { name: '放大查看', exact: true }).click();
     await expect(page.getByRole('button', { name: '适应屏幕', exact: true })).toBeVisible();
     const imageWidth = await viewer.locator('taro-image-core').evaluate(element => element.getBoundingClientRect().width);
@@ -146,6 +153,10 @@ async function main() {
     await page.keyboard.press('Escape');
     await expect(viewer).toHaveCount(0);
     await expect(sheet).toBeVisible();
+    assert.equal(await page.evaluate(() => document.documentElement.hasAttribute('data-tab-modal')), true, 'the parent sheet keeps the dock suppressed');
+    await page.getByRole('button', { name: '关闭流水详情', exact: true }).click();
+    await expect.poll(() => page.evaluate(() => document.documentElement.hasAttribute('data-tab-modal'))).toBe(false);
+    await rows.filter({ hasText: '新星食品（示例）' }).click();
 
     await page.getByRole('button', { name: '签收单', exact: true }).click();
     await add('添加签收单照片', [fixtures[0]]);

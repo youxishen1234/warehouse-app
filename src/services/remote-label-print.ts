@@ -1,6 +1,7 @@
 import Taro from '@tarojs/taro';
 import type { LabelSnapshot, RemotePrintableLabelKind } from '@/features/label-print';
 import type { MediaProfile } from '@/features/label-print/native';
+import type { BoardBatch } from '@/services/boards';
 import { getBaseUrl } from './request';
 import { readPrintPair } from './remote-print';
 
@@ -30,6 +31,7 @@ export type RemoteLabelJobInput = {
   profileId: string;
   copies: number;
   data?: RemoteLabelSnapshot;
+  boardPrintFields?: Partial<Pick<BoardBatch, 'printPlate' | 'printColor'>>;
 };
 export type RemoteLabelAttempt = {
   id: string;
@@ -40,6 +42,7 @@ export type RemoteLabelAttempt = {
   kind: RemoteLabelKind;
   copies: number;
   data?: RemoteLabelSnapshot;
+  boardPrintFields?: Partial<Pick<BoardBatch, 'printPlate' | 'printColor'>>;
   startedAt: number;
 };
 

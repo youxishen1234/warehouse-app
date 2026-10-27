@@ -178,7 +178,8 @@ async function main() {
     await expect(consumed).toHaveValue('7');
 
     // Empty search results should explain the state and offer a one-tap reset.
-    await button(workbench, '库存').click();
+    await page.goto(origin + '/#/pages/business-center/index?section=stock');
+    await expect(page.getByTestId('workbench-board')).toBeVisible();
     await page.getByLabel('搜索库存').locator('input').fill('没有这款纸板');
     await expect(page.getByTestId('workbench-stock-empty')).toContainText('没有找到匹配库存');
     await button(page.getByTestId('workbench-stock-empty'), '清空搜索').click();
@@ -197,7 +198,7 @@ async function main() {
     await expect(page.getByRole('dialog', { name: '流水详情' })).toBeVisible();
     await page.getByRole('button', { name: '关闭流水详情' }).click();
     await expect(page.getByRole('dialog', { name: '流水详情' })).toHaveCount(0);
-    await button(workbench, '总台').click();
+    await page.locator('[aria-label="返回总台"]:visible').last().click();
     await button(workbench, '入库').click();
     await button(workbench, '供货商 / 付款').click();
     await expect(page.getByTestId('finance-center')).toBeVisible();

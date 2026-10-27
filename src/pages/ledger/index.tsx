@@ -20,7 +20,7 @@ export default function LedgerPage() {
     void Taro.redirectTo({ url: `/pages/business-center/index?${target.toString()}` });
   }, [params]);
 
-  return <View role='status' aria-label='正在打开收付款中心'>
-    <Text>正在打开收付款中心…</Text>
+  return <View role='status' aria-label='正在打开账单中心'>
+    <Text>正在打开账单中心…</Text>
   </View>;
 }

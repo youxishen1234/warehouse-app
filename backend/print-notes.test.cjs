@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { validateNote, normalizeSpecification } = require('./print-notes');
+const { validateNote, normalizeSpecification, removeDuplicates, list } = require('./print-notes');
 const fixture = () => ({ company: '东光县曙光纸箱包装', customer_id: null, customer_name: '测试客户', address: '测试地址', phone: '123456', receiver: '王先生', sender: '李师傅', date: '2026-10-09', paper: '241-93',
   items: [{ name: '瓦楞纸箱', specification: '400mm x 300毫米 * 200 mm', unit: '箱', quantity: '3', price: '1.005', amount: 999, remark: '' }] });
 
@@ -21,6 +21,22 @@ test('delivery note validation normalizes dimensions and unit, calculates cents,
     const raw = fixture(); raw.items[0][field] = value; assert.throws(() => validateNote(raw), /无效|数字|非负|正数|小数/);
   }
   for (const patch of [{ date: '2026-02-30' }, { date: '1791550000' }, { customer_name: '' }, { items: [] }, { items: Array(201).fill(fixture().items[0]) }]) assert.throws(() => validateNote({ ...fixture(), ...patch }));
+});
+
+test('automatic cleanup hides newer exact unshipped drafts and preserves shipped or distinct notes', () => {
+  const base = validateNote(fixture());
+  const stored = (id, createdAt, patch = {}) => ({ ...base, ...patch, id, number: `SH-${id}`, version: 1, created_at: createdAt, updated_at: createdAt });
+  const original = stored(1, 100);
+  const duplicate = stored(2, 200);
+  const shipped = stored(3, 150, { outbound_at: 300 });
+  const distinct = stored(4, 200, { receiver: '另一个收货人' });
+  const data = { print_notes: [duplicate, shipped, original, distinct] };
+
+  assert.deepEqual(removeDuplicates(data), [2]);
+  assert.equal(data.print_notes.find(note => note.id === 2).deleted_at > 0, true);
+  assert.equal(data.print_notes.find(note => note.id === 2).version, 2);
+  assert.deepEqual(list(data).map(note => note.id).sort((a, b) => a - b), [1, 3, 4]);
+  assert.deepEqual(removeDuplicates(data), []);
 });
 
 test('saved notes persist, update in place, search all lines, reject stale edits, and survive older backups', async () => {
@@ -50,6 +66,8 @@ test('saved notes persist, update in place, search all lines, reject stale edits
     assert.equal(created.status, 200); const saved = created.data;
     const replay = await call('/print-notes', 'POST', raw, { 'Idempotency-Key': 'print-note-replay-001' });
     assert.deepEqual(replay.data, saved); assert.equal(db.listPrintNotes().length, 1);
+    const duplicateContent = await call('/print-notes', 'POST', raw);
+    assert.equal(duplicateContent.data.id, saved.id); assert.equal(db.listPrintNotes().length, 1);
     const updated = await call(`/print-notes/${saved.id}`, 'PUT', { ...saved, receiver: '新收货人', items: [...saved.items, { ...saved.items[0], product_id: product2.id, name: '第二行商品', specification: '300×200×150', quantity: 5 }] });
     updated.data.items[1].product_id = product2.id;
     assert.equal(updated.status, 200); assert.equal(updated.data.version, 2);

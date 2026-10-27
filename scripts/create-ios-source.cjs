@@ -5,6 +5,8 @@ function createSource(info, date = new Date().toISOString()) {
   if (!info.version || !info.build || !info.bundleId || !Number.isSafeInteger(info.sizeBytes) || info.sizeBytes <= 0) throw new Error('Invalid IPA metadata');
   const origin = 'https://youxishen.online';
   const icon = origin + '/download/app-icon.png';
+  const downloadPath = typeof info.url === 'string' && /^\/[A-Za-z0-9._/-]+$/.test(info.url)
+    ? info.url : '/shuguang.ipa';
   return {
     name: '曙光软件源',
     message: '曙光仓库管理官方安装包。刷新获取已发布版本，下载后自行签名安装。',
@@ -17,7 +19,7 @@ function createSource(info, date = new Date().toISOString()) {
       versionDate: date,
       versionDescription: '曙光仓库管理 · Build ' + info.build + '。未签名 IPA，请使用自己的证书签名安装。',
       lock: '0', isLanZouCloud: '0',
-      downloadURL: origin + '/shuguang.ipa?build=' + encodeURIComponent(info.build),
+      downloadURL: origin + downloadPath + '?build=' + encodeURIComponent(info.build),
       iconURL: icon, tintColor: '#2563eb', size: String(info.sizeBytes)
     }]
   };

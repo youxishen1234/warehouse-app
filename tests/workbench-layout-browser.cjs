@@ -32,7 +32,7 @@ async function main() {
   const server = app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
   const origin = 'http://127.0.0.1:' + server.address().port;
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(process.env.CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.CHROMIUM_EXECUTABLE_PATH } : {});
   const contexts = [];
   const errors = [];
 
@@ -78,6 +78,7 @@ async function main() {
     await page.goto(origin + '/#/pages/business-center/index');
     await expect(page.getByText('办理业务', { exact: true })).toBeVisible();
     await expect(page.getByText('服务器数据已读取 · 多设备自动同步', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('workbench-version')).toHaveText('网页版本 1.1.137');
     await expect(page.getByTestId('workbench-today')).toContainText(longProductName);
     const activity = page.getByTestId('workbench-today').locator('taro-button-core').first();
 
@@ -154,17 +155,34 @@ async function main() {
     assert.ok(embeddedMetrics.every((metric, index) => index === 0 || metric.top >= embeddedMetrics[index - 1].bottom - 1), 'embedded home actions stack vertically at 390px');
     const bottomInset = await embeddedRoot.evaluate(element => ({
       clearance: parseFloat(getComputedStyle(element).paddingBottom),
-      backingHeight: parseFloat(getComputedStyle(element, '::after').height),
-      backingPosition: getComputedStyle(element, '::after').position
+      dockSpace: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sg-workbench-dock-space')) || 84,
+      backingContent: getComputedStyle(element, '::after').content
     }));
-    assert.ok(bottomInset.clearance >= 132, 'embedded home reserves space below content for the native tab bar');
-    assert.ok(bottomInset.backingHeight >= 104 && bottomInset.backingPosition === 'fixed', 'embedded home gives the translucent native dock a fixed backing that hides text underneath');
+    assert.ok(bottomInset.clearance >= bottomInset.dockSpace, 'embedded home reserves the shared liquid-dock space: ' + JSON.stringify(bottomInset));
+    assert.equal(bottomInset.backingContent, 'none', 'embedded home no longer paints an opaque strip over the dock');
+    const shell = await page.evaluate(() => {
+      const activePage = Array.from(document.querySelectorAll('.taro_page'))
+        .find(element => getComputedStyle(element).display !== 'none');
+      return {
+        enabled: document.documentElement.hasAttribute('data-workbench-shell'),
+        background: getComputedStyle(document.documentElement).backgroundColor,
+        pagePaddingTop: activePage ? getComputedStyle(activePage).paddingTop : ''
+      };
+    });
+    assert.equal(shell.enabled, true, 'workbench routes opt into the light scroll shell');
+    assert.equal(shell.background, 'rgb(244, 247, 251)', 'iOS overscroll reveals the workbench background');
+    assert.equal(shell.pagePaddingTop, '0px', 'workbench masthead owns the top safe area without double padding');
+    const footer = embeddedRoot.getByTestId('workbench-sync-status');
+    await footer.scrollIntoViewIfNeeded();
+    const footerBox = await footer.boundingBox();
+    const dockBox = await page.locator('taro-tabbar').boundingBox();
+    assert.ok(footerBox.y + footerBox.height <= dockBox.y, 'scrolled footer stays above the liquid dock: ' + JSON.stringify({ footerBox, dockBox }));
     await page.screenshot({ path: path.join(artifacts, 'home-embedded-390.png'), fullPage: true });
 
     await page.goto(origin + '/#/pages/business-center/index');
     await page.reload();
     await expect(page.getByText('办理业务', { exact: true })).toBeVisible();
-    await button(home, '收付款').click();
+    await button(home, '账单中心').click();
     await expect(page.getByTestId('finance-center')).toBeVisible();
     await expect(page.getByTestId('finance-tab-ledger')).toBeVisible();
     await expect(page.getByTestId('finance-tab-customer')).toBeVisible();
@@ -175,9 +193,13 @@ async function main() {
     await expect(page.getByTestId('finance-supplier-view')).toBeVisible();
     await page.screenshot({ path: path.join(artifacts, 'finance-entry-390.png'), fullPage: true });
 
-    await button(home, '总台').click();
-    await button(home, '库存').click();
-    await button(home, '纸箱').click();
+    await page.getByLabel('返回总台').click();
+    await expect(page.getByText('办理业务', { exact: true })).toBeVisible();
+    await page.locator('.sg-glass-items [data-tab="2"]').click();
+    await page.waitForURL(/pages\/inventory\/index/);
+    const inventory = page.getByTestId('simple-workbench').filter({ visible: true }).last();
+    await expect(inventory.getByText('查看库存', { exact: true })).toBeVisible();
+    await button(inventory, '纸箱').click();
     await page.setViewportSize({ width: 320, height: 320 });
     await button(page.getByTestId('workbench-carton'), '盘点 / 调整库存').click();
     const dialog = page.getByRole('dialog', { name: '库存盘点' });

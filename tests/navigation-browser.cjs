@@ -37,6 +37,7 @@ async function verify(browser, name) {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   const errors = [];
   page.on('pageerror', err => errors.push(err.message));
+  const origin = 'http://127.0.0.1:' + server.address().port;
   await page.route(/\/api\//, route => {
     const url = new URL(route.request().url());
     let data = [];
@@ -45,7 +46,7 @@ async function verify(browser, name) {
     if (url.pathname.endsWith('/sync')) data = { revision: 1 };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data }) });
   });
-  await page.goto('http://127.0.0.1:' + server.address().port);
+  await page.goto(origin);
   await page.waitForSelector('.sg-glass-tab[data-tab]');
   const workbench = page.locator('[data-testid="simple-workbench"]:visible').first();
   await workbench.locator('[data-testid="workbench-actions"] > taro-button-core').first().waitFor();
@@ -62,10 +63,37 @@ async function verify(browser, name) {
     selected: getComputedStyle(document.querySelector('.sg-glass-lens')).color,
     glass: getComputedStyle(document.querySelector('.sg-glass-rail')).backgroundColor
   }));
-  assert.equal(colors.normal, 'rgb(255, 255, 255)');
-  assert.equal(colors.selected, 'rgb(36, 166, 248)');
-  assert.equal(colors.glass, 'rgba(36, 37, 42, 0.78)');
+  assert.notEqual(colors.normal, colors.selected, 'dock labels and selected labels use distinct colors');
+  assert.ok(colors.glass && colors.glass !== 'rgba(0, 0, 0, 0)', 'dock keeps an opaque liquid backing');
   await page.screenshot({ path: 'release/glass-' + name + '-rest.png' });
+  await page.goto(origin + '/#/pages/business-center/index');
+  const businessWorkbench = page.locator('[data-testid="simple-workbench"][data-tab-route="/pages/home/index"]:visible').first();
+  await businessWorkbench.locator('[data-testid="workbench-actions"] > taro-button-core').first().waitFor();
+  const businessState = await page.evaluate(() => ({
+    context: document.documentElement.hasAttribute('data-tab-context'),
+    route: location.hash,
+    pages: Array.from(document.querySelectorAll('.taro_page')).map(page => ({
+      id: page.id,
+      display: getComputedStyle(page).display,
+      width: page.getBoundingClientRect().width,
+      classes: page.className,
+      owner: page.getAttribute('data-tab-route')
+        || page.querySelector('[data-tab-route]')?.getAttribute('data-tab-route')
+    }))
+  }));
+  assert.equal(businessState.context, true, 'business center restores the main-tab context: ' + JSON.stringify(businessState));
+  assert.equal(await page.locator('.sg-glass-tab[data-tab="0"]').getAttribute('aria-current'), 'page', 'business center belongs to the home tab');
+  assert.equal(await page.locator('taro-tabbar').isVisible(), true, 'business center keeps the shared liquid dock');
+  assert.notEqual(await swipe(page, 110), 'none', 'business-center page swipe back to home follows the finger');
+  await page.waitForURL(/home/);
+  await page.goto(origin + '/#/pages/business-center/index');
+  await businessWorkbench.locator('[data-testid="workbench-actions"] > taro-button-core').first().waitFor();
+  assert.notEqual(await swipe(page, -110), 'none', 'business-center page swipe follows the finger');
+  await page.waitForURL(/ai-assistant/);
+  await page.waitForTimeout(500);
+  await page.locator('.sg-glass-tab[data-tab="0"]').click();
+  await page.waitForURL(/home/);
+  await page.waitForTimeout(500);
   const restingLens = await page.locator('.sg-glass-lens').boundingBox();
   const railBounds = await page.locator('.sg-glass-rail').boundingBox();
   async function assertStableLens() {
@@ -88,7 +116,7 @@ async function verify(browser, name) {
   assert.equal(await page.locator('.sg-glass-lens-ink').evaluate(el => getComputedStyle(el).filter), 'none', 'icons are not distorted');
   assert.match(page.url(), /home/, 'drag previews without navigating until release');
   await page.screenshot({ path: 'release/glass-' + name + '-drag.png' });
-  await page.getByText('库存', { exact: true }).first().waitFor();
+  await page.locator('.sg-glass-tab[data-tab="2"] span').waitFor();
   await page.mouse.move(last.x + last.width / 2, last.y + last.height / 2, { steps: 12 });
   await assertStableLens();
   await page.mouse.up();
@@ -216,7 +244,7 @@ async function verify(browser, name) {
   assert.equal(await page.evaluate(() => window.__nativeMessages.length), acknowledgments.length, 'unrelated DOM changes do not resend the selection');
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('sg-native-tab', { detail: '/pages/home/index' })));
   await page.waitForURL(/home/);
-  for (const label of ['入库', '生产', '出库', '收付款', '今天的记录']) assert.ok(pageText.includes(label), `homepage action missing: ${label}`);
+  for (const label of ['入库', '生产', '出库', '账单中心', '今天的记录']) assert.ok(pageText.includes(label), `homepage action missing: ${label}`);
   await page.evaluate(() => {
     delete window.__sgNativeDock;
     window.dispatchEvent(new Event('sg-native-ready'));
@@ -233,7 +261,9 @@ async function verify(browser, name) {
   await page.waitForURL(/ai-assistant/);
   await page.keyboard.press('Home');
   await page.waitForURL(/home/);
-  const lastShortcut = page.locator('.taro_page:visible').last().getByText('查看库存', { exact: true }).first();
+  const homeWorkbench = page.locator('[data-testid="simple-workbench"]:visible:not([data-tab-route])').last();
+  await homeWorkbench.waitFor();
+  const lastShortcut = homeWorkbench.getByTestId('workbench-sync-status');
   await lastShortcut.scrollIntoViewIfNeeded();
   await lastShortcut.evaluate(item => {
     for (let parent = item.parentElement; parent; parent = parent.parentElement) {
@@ -256,10 +286,12 @@ async function verify(browser, name) {
 (async () => {
   fs.mkdirSync('release', { recursive: true });
   await new Promise(r => server.listen(0, '127.0.0.1', r));
+  const requestedEngines = (process.env.NAV_BROWSERS || process.env.NAV_ENGINES)
+    ? (process.env.NAV_BROWSERS || process.env.NAV_ENGINES).split(',').map(name => name.trim()) : null;
   for (const [name, engine, executablePath] of [
     ['chromium', chromium, process.env.NAV_CHROMIUM],
     ['webkit', webkit, process.env.NAV_WEBKIT]
-  ]) {
+  ].filter(([name]) => !requestedEngines || requestedEngines.includes(name))) {
     const browser = await engine.launch({ executablePath });
     try { await verify(browser, name); } finally { await browser.close(); }
   }

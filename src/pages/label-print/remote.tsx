@@ -58,6 +58,7 @@ const manualPreviewProfile: MediaProfile = {
   density: 4, paperStyle: 'gap', calibrated: false, marginMm: { top: 0.6, right: 0.5, bottom: 0.5, left: 0.5 }
 };
 type EntryMode = 'manual' | 'inventory';
+type BoardPrintOverrides = Partial<Pick<BoardBatch, 'printPlate' | 'printColor'>>;
 type ManualBoardFields = {
   customerName: string; boardLength: string; boardWidth: string; boardHeight: string; material: string;
   printPlate: string; printColor: string; receivedQty: string; receivedDate: string;
@@ -111,10 +112,16 @@ const asProfile = (device: RemoteLabelDevice, values: typeof defaultMedia, kind:
   profile.profileId = profileIdFor(device.id, profile);
   return profile;
 };
-function snapshotOf(record: RecordChoice, finished: FinishedLabelOptions, board: BoardLabelOptions, at: string): LabelSnapshot {
+function snapshotOf(
+  record: RecordChoice,
+  finished: FinishedLabelOptions,
+  board: BoardLabelOptions,
+  at: string,
+  boardPrintFields: BoardPrintOverrides = {}
+): LabelSnapshot {
   return record.kind === 'finished-product'
     ? buildFinishedLabelSnapshot(record.data, finished, at)
-    : buildBoardLabelSnapshot(record.data, board);
+    : buildBoardLabelSnapshot({ ...record.data, ...boardPrintFields }, board);
 }
 function manualSnapshotOf(fields: ManualBoardFields): ManualBoardLabelSnapshot {
   return buildManualBoardLabelSnapshot({
@@ -138,19 +145,23 @@ function valueText(key: string, value: unknown, data: LabelSnapshot): string {
   return String(value);
 }
 function attemptFor(input: RemoteLabelJobInput, device: RemoteLabelDevice, profile: MediaProfile): RemoteLabelAttempt {
-  const fingerprint = attemptFingerprint(device, profile, input.kind, input.copies, input.data);
+  const fingerprint = attemptFingerprint(device, profile, input.kind, input.copies, input.data, input.boardPrintFields);
   return {
     id: newRemoteLabelJobId(), fingerprint, deviceId: device.id, printer: device.printer,
-    profileId: profile.profileId, kind: input.kind, copies: input.copies, data: input.data, startedAt: Date.now()
+    profileId: profile.profileId, kind: input.kind, copies: input.copies, data: input.data,
+    ...(input.boardPrintFields && Object.keys(input.boardPrintFields).length ? { boardPrintFields: input.boardPrintFields } : {}),
+    startedAt: Date.now()
   };
 }
 function attemptFingerprint(
   device: RemoteLabelDevice, profile: MediaProfile, kind: RemoteLabelJobInput['kind'],
-  copies: number, data: RemoteLabelJobInput['data']
+  copies: number, data: RemoteLabelJobInput['data'],
+  boardPrintFields?: RemoteLabelJobInput['boardPrintFields']
 ) {
   return fnv1a(JSON.stringify({
     deviceId: device.id, printer: device.printer, profileId: profile.profileId,
-    profile: profileSignature(profile), kind, copies, data
+    profile: profileSignature(profile), kind, copies, data,
+    ...(boardPrintFields && Object.keys(boardPrintFields).length ? { boardPrintFields } : {})
   }));
 }
 function manualFieldsFromAttempt(attempt: RemoteLabelAttempt | null): ManualBoardFields {
@@ -186,6 +197,7 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
   const [selected, setSelected] = useState<RecordChoice | null>(null);
   const [finishedOptions, setFinishedOptions] = useState<FinishedLabelOptions>({});
   const [boardFields, setBoardFields] = useState<BoardLabelOptions>({ receivedDate: true, receivedQty: true });
+  const [boardPrintFields, setBoardPrintFields] = useState<BoardPrintOverrides>({});
   const [manualBoardFields, setManualBoardFields] = useState<ManualBoardFields>(() => manualFieldsFromAttempt(readRemoteLabelAttempt()));
   const [frozenAt, setFrozenAt] = useState(() => new Date().toISOString());
   const [token, setToken] = useState(readPrintPair);
@@ -240,9 +252,9 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
       catch (issue) { return { data: null, error: remoteLabelErrorMessage(issue) }; }
     }
     if (!selected) return { data: null, error: '' };
-    try { return { data: snapshotOf(selected, finishedOptions, effectiveBoardFields, frozenAt), error: '' }; }
+    try { return { data: snapshotOf(selected, finishedOptions, effectiveBoardFields, frozenAt, boardPrintFields), error: '' }; }
     catch (issue) { return { data: null, error: remoteLabelErrorMessage(issue) }; }
-  }, [entryMode, manualBoardFields, selected, finishedOptions, effectiveBoardFields, frozenAt]);
+  }, [entryMode, manualBoardFields, selected, finishedOptions, effectiveBoardFields, frozenAt, boardPrintFields]);
   const copyCount = Number(copies);
   const maxCopies = Math.max(1, Math.min(99, Math.floor(device?.maxCopies || 99)));
   const copiesValid = /^\d+$/.test(copies) && Number.isSafeInteger(copyCount) && copyCount >= 1 && copyCount <= maxCopies;
@@ -354,6 +366,11 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
       setSelected(nextKind === 'finished-product'
         ? { kind: 'finished-product', data: data as Product }
         : { kind: 'paperboard-batch', data: data as BoardBatch });
+      const savedAttempt = readRemoteLabelAttempt();
+      setBoardPrintFields(nextKind === 'paperboard-batch' && savedAttempt?.kind === 'paperboard-batch' &&
+        savedAttempt.data && 'batchId' in savedAttempt.data && savedAttempt.data.batchId === id
+        ? savedAttempt.boardPrintFields || {}
+        : {});
       setFrozenAt(new Date().toISOString());
       setNotice('');
     } catch (issue) {
@@ -710,7 +727,10 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
     }
     if (job.kind !== activeKind) { setError('请切回该任务对应的填写方式和标签类型，重新核对预览后重试'); return; }
     if (!canSubmit || !built.data) { setError('请先完成字段校验、核对当前预览并确认纸张配置及打印机状态，再重试'); return; }
-    void startJob({ id: '', kind: activeKind, profileId: currentProfile.profileId, copies: copyCount, data: built.data });
+    void startJob({
+      id: '', kind: activeKind, profileId: currentProfile.profileId, copies: copyCount, data: built.data,
+      ...(activeKind === 'paperboard-batch' && Object.keys(boardPrintFields).length ? { boardPrintFields } : {})
+    });
   };
 
   const resumeMissingJob = () => {
@@ -722,7 +742,8 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
     const resumedAttempt = { ...attempt, data: frozenData };
     const input: RemoteLabelJobInput = {
       id: attempt.id, kind: attempt.kind, profileId: attempt.profileId, copies: attempt.copies,
-      ...(attempt.kind === 'calibration' || !frozenData ? {} : { data: frozenData })
+      ...(attempt.kind === 'calibration' || !frozenData ? {} : { data: frozenData }),
+      ...(attempt.boardPrintFields ? { boardPrintFields: attempt.boardPrintFields } : {})
     };
     void startJob(input, resumedAttempt);
   };
@@ -746,7 +767,7 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
       const freshChoice: RecordChoice = selected.kind === 'finished-product'
         ? { kind: 'finished-product', data: latest as Product }
         : { kind: 'paperboard-batch', data: latest as BoardBatch };
-      const fresh = snapshotOf(freshChoice, finishedOptions, effectiveBoardFields, frozenAt);
+      const fresh = snapshotOf(freshChoice, finishedOptions, effectiveBoardFields, frozenAt, boardPrintFields);
       const changed = changedSnapshotFields(expected, fresh);
       if (changed.length) {
         setSelected(freshChoice);
@@ -757,7 +778,10 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
       setNotice('');
       actionLock.current = false;
       setAction('');
-      const result = await startJob({ id: '', kind, profileId: currentProfile.profileId, copies: copyCount, data: expected });
+      const result = await startJob({
+        id: '', kind, profileId: currentProfile.profileId, copies: copyCount, data: expected,
+        ...(kind === 'paperboard-batch' && Object.keys(boardPrintFields).length ? { boardPrintFields } : {})
+      });
       if (result?.conflict) throw result.conflict;
     } catch (issue) {
       const statusCode = (issue as { statusCode?: number })?.statusCode;
@@ -767,7 +791,7 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
           const freshChoice: RecordChoice = selected.kind === 'finished-product'
             ? { kind: 'finished-product', data: latest as Product }
             : { kind: 'paperboard-batch', data: latest as BoardBatch };
-          const fresh = snapshotOf(freshChoice, finishedOptions, effectiveBoardFields, frozenAt);
+          const fresh = snapshotOf(freshChoice, finishedOptions, effectiveBoardFields, frozenAt, boardPrintFields);
           const changed = changedSnapshotFields(expected, fresh);
           if (changed.length) {
             setSelected(freshChoice);
@@ -802,6 +826,7 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
   const switchKind = (next: LabelKind) => {
     if (busy || next === kind) return;
     setKind(next); setSelected(null); setQuery(''); setPage(1); setNotice(''); setError('');
+    setBoardPrintFields({});
     setProfileId(''); setMedia(defaultMedia);
   };
   const switchEntryMode = (next: EntryMode) => {
@@ -812,6 +837,7 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
       : undefined;
     setEntryMode(next);
     setSelected(null);
+    setBoardPrintFields({});
     setQuery('');
     setPage(1);
     setProfileId(reusableProfile?.profileId || '');
@@ -842,7 +868,7 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
     if (attempt.kind !== 'calibration' && attempt.kind !== activeKind) return '请先切回原任务对应的填写方式和标签类型';
     if (!currentProfile || currentProfile.profileId !== attempt.profileId) return '原任务的纸张配置已不存在或未选中';
     if (profileIdFor(device.id, currentProfile) !== currentProfile.profileId ||
-      attemptFingerprint(device, currentProfile, attempt.kind, attempt.copies, attempt.data) !== attempt.fingerprint) {
+      attemptFingerprint(device, currentProfile, attempt.kind, attempt.copies, attempt.data, attempt.boardPrintFields) !== attempt.fingerprint) {
       return '原任务纸张配置已变化，请重新填写并核对预览';
     }
     if (!Number.isSafeInteger(attempt.copies) || attempt.copies < 1 || attempt.copies > maxCopies) return '原任务打印份数无效';
@@ -880,6 +906,19 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
         onInput={event => setManualBoardFields(value => ({ ...value, [key]: event.detail.value }))}
       />
     </View>;
+  const batchPrintField = (key: 'printPlate' | 'printColor', title: string) => <View className={styles.field} key={key}>
+    <Text>{title}</Text>
+    <Input
+      ariaLabel={title}
+      className={styles.manualInput}
+      type='text'
+      maxlength={120}
+      value={boardPrintFields[key] ?? (selected?.kind === 'paperboard-batch' ? selected.data[key] || '' : '')}
+      placeholder='打印时填写（选填）'
+      disabled={disabledIf(busy)}
+      onInput={event => setBoardPrintFields(value => ({ ...value, [key]: event.detail.value }))}
+    />
+  </View>;
 
   return <View className={styles.page}>
     <nav className={styles.printModes} aria-label='打印类型'>
@@ -1071,6 +1110,11 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
         <Text className={styles.sectionTitle}>标签字段</Text>
         {!selected ? <Text className={styles.empty}>先选择商品或纸板批次。</Text> : <>
           <Text className={styles.help}>必需识别字段保留。点选可选字段；库存和批次数量按当前实测快照打印。</Text>
+          {kind === 'paperboard-batch' && <View className={styles.manualGrid} data-testid='batch-print-metadata'>
+            {batchPrintField('printPlate', '印刷版名（选填）')}
+            {batchPrintField('printColor', '颜色（选填）')}
+          </View>}
+          {kind === 'paperboard-batch' && <Text className={styles.help}>印刷资料只用于本次打印，不会写回纸板入库或批次记录。</Text>}
           <View className={styles.options}>
             {(kind === 'finished-product' ? productOptions : visibleBoardOptions).map(option => <Button
               key={option.key}

@@ -40,6 +40,11 @@ async function prepareDownload(ipaPath, outputDir = 'release/download') {
     ? bplist.parseBuffer(buffer)[0] : plist.parse(buffer.toString('utf8'));
   if (!info.CFBundleShortVersionString || !info.CFBundleVersion) throw new Error('IPA version is missing');
   const bytes = await fs.readFile(ipaPath);
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
+  const sourceCommit = process.env.GITHUB_SHA || '';
+  if (sourceCommit && !/^[a-f0-9]{40}$/.test(sourceCommit)) throw new Error('GITHUB_SHA is invalid');
+  const artifactName = `shuguang-${info.CFBundleShortVersionString}-${info.CFBundleVersion}-${sha256.slice(0, 12)}.ipa`
+    .replace(/[^A-Za-z0-9._-]/g, '_');
   const metadata = {
     name: info.CFBundleDisplayName || info.CFBundleName,
     version: String(info.CFBundleShortVersionString),
@@ -47,8 +52,9 @@ async function prepareDownload(ipaPath, outputDir = 'release/download') {
     minimumOSVersion: info.MinimumOSVersion || null,
     bundleId: info.CFBundleIdentifier,
     sizeBytes: bytes.length,
-    sha256: createHash('sha256').update(bytes).digest('hex'),
-    url: '/shuguang.ipa',
+    sha256,
+    url: '/download/' + artifactName,
+    ...(sourceCommit ? { sourceCommit } : {}),
   };
   const root = path.resolve(__dirname, '..');
   await fs.mkdir(outputDir, { recursive: true });

@@ -70,6 +70,10 @@ async function main() {
   });
   const decimalHistory = db.receiveBoard({
     ...sharedHistory,
+    customerName: '历史客户',
+    material: '历史材质',
+    printPlate: '历史版名',
+    printColor: '蓝 / 黑',
     boardLength: 30.5,
     boardWidth: 20.25,
     cartonLength: 40.5,
@@ -158,6 +162,11 @@ async function main() {
       [30.5, 20.25, 40.5, 30.25, 20.75],
       '编辑保存必须保留历史批次纸板和成箱规格中的小数尺寸'
     );
+    assert.deepEqual(
+      [savedDecimal.customerName, savedDecimal.material, savedDecimal.printPlate, savedDecimal.printColor],
+      ['历史客户', '历史材质', '历史版名', '蓝 / 黑'],
+      '编辑历史批次时仍保留已隐藏的印刷资料'
+    );
     assert.equal(db.getSupplier(historicalSupplier.id).payable, historyPayable, '历史批次编辑不能重复计入货款');
 
     // Start a clean form after checking the history template, then exercise
@@ -166,8 +175,8 @@ async function main() {
     await fieldInput('板厂名称').fill('演示纸板入库板厂');
     await fieldInput('客户').fill('青禾纸品');
     await fieldInput('材质 / 配纸').fill('牛卡 / 120g高强瓦楞 / 140g芯纸');
-    await fieldInput('印刷版名').fill('青禾正面版');
-    await fieldInput('颜色').fill('红 + 黑');
+    await expect(fieldInput('印刷版名')).toHaveCount(0);
+    await expect(fieldInput('颜色')).toHaveCount(0);
     await fieldInput('实收数').fill('8');
     await fieldInput('计费平米').fill('50');
     await fieldInput('每平米单价').fill('2.4');
@@ -247,8 +256,8 @@ async function main() {
     assert.ok(saved, '确认入库后后端应保存新纸板批次');
     assert.deepEqual(
       [saved.customerName, saved.material, saved.printPlate, saved.printColor],
-      ['青禾纸品', '牛卡 / 120g高强瓦楞 / 140g芯纸', '青禾正面版', '红 + 黑'],
-      '新批次应保存实际输入的客户、材质/配纸、印刷版名和颜色'
+      ['青禾纸品', '牛卡 / 120g高强瓦楞 / 140g芯纸', '', ''],
+      '新批次保存客户和材质，印刷版名与颜色留到打印时填写'
     );
     assert.deepEqual(
       [saved.boardLength, saved.boardWidth, saved.cartonLength, saved.cartonWidth, saved.cartonHeight],
@@ -278,8 +287,8 @@ async function main() {
     await expect(fieldInput('板厂名称')).toHaveValue('演示纸板入库板厂');
     await expect(fieldInput('客户')).toHaveValue('青禾纸品');
     await expect(fieldInput('材质 / 配纸')).toHaveValue('牛卡 / 120g高强瓦楞 / 140g芯纸');
-    await expect(fieldInput('印刷版名')).toHaveValue('青禾正面版');
-    await expect(fieldInput('颜色')).toHaveValue('红 + 黑');
+    await expect(fieldInput('印刷版名')).toHaveCount(0);
+    await expect(fieldInput('颜色')).toHaveCount(0);
     await expect(fieldInput('实收数')).toHaveValue('8');
     await page.reload();
     await expect(page.locator('.team-boot')).toBeHidden();
@@ -288,14 +297,14 @@ async function main() {
     await expect(fieldInput('板厂名称')).toHaveValue('演示纸板入库板厂');
     await expect(fieldInput('客户')).toHaveValue('青禾纸品');
     await expect(fieldInput('材质 / 配纸')).toHaveValue('牛卡 / 120g高强瓦楞 / 140g芯纸');
-    await expect(fieldInput('印刷版名')).toHaveValue('青禾正面版');
-    await expect(fieldInput('颜色')).toHaveValue('红 + 黑');
+    await expect(fieldInput('印刷版名')).toHaveCount(0);
+    await expect(fieldInput('颜色')).toHaveCount(0);
     await expect(fieldInput('实收数')).toHaveValue('8');
     await expect(fieldInput('计费平米')).toHaveValue('50');
     await expect(fieldInput('每平米单价')).toHaveValue('2.4');
     assert.deepEqual(pageErrors, [], '浏览器页面不应产生运行时异常');
     assert.ok(externalBlocked.every(request => !request.includes('youxishen.online')), '被拦截的外部网络请求不得到达生产域名');
-    console.log(`PASS: two-/three-dimension string input, keyboard separator/deletion, invalid dimensions, historical templates, persisted edit reload, amount/supplier/quantity/date, isolated local API, 320/390px layouts. Evidence: ${evidence}`);
+    console.log(`PASS: two-/three-dimension string input, keyboard separator/deletion, invalid dimensions, historical templates and metadata, persisted edit reload, amount/supplier/quantity/date, print-only plate/color entry, isolated local API, 320/390px layouts. Evidence: ${evidence}`);
   } finally {
     await context.close();
     await browser.close();

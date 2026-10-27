@@ -87,4 +87,16 @@ body, #app, .taro_router, .taro_page { min-height: 100%; }
   box-sizing: border-box;
 }
 
+// Workbench headers own their safe area. Keep the scroll shell on the same
+// light colour so iOS edge scrolling never reveals a white page underneath.
+html[data-workbench-shell],
+html[data-workbench-shell] body,
+html[data-workbench-shell] .taro_router,
+html[data-workbench-shell] .taro_page {
+  background: #f4f7fb;
+}
+html[data-workbench-shell] .taro_page {
+  padding-top: 0;
+}
+
 // Navigation layout is shared with the legacy helpers in css/polish.css.

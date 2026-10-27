@@ -61,7 +61,8 @@
         document.getElementById('version').textContent = info.version + ' (Build ' + info.build + ')';
         document.getElementById('size').textContent = (info.sizeBytes / 1048576).toFixed(2) + ' MiB';
         document.getElementById('platform').textContent = info.minimumOSVersion ? 'iOS ' + info.minimumOSVersion + '+' : 'iOS';
-        var ipaUrl = 'https://youxishen.online/shuguang.ipa?build=' + encodeURIComponent(info.build);
+        var ipaPath = /^\/[A-Za-z0-9._/-]+$/.test(info.url || '') ? info.url : '/shuguang.ipa';
+        var ipaUrl = 'https://youxishen.online' + ipaPath + '?build=' + encodeURIComponent(info.build);
         var importUrl = 'loadcontroller://import?url=' + encodeURIComponent(ipaUrl) + '&name=' + encodeURIComponent('shuguang-' + info.build + '.ipa');
         if (/^[a-f0-9]{64}$/i.test(info.sha256 || '')) importUrl += '&sha256=' + info.sha256;
         document.getElementById('lcsign-import').href = importUrl;

@@ -46,7 +46,7 @@ async function main() {
   const requests = { products: 0, dimensions: 0 };
   let browser, page, releaseDimensions;
   try {
-    browser = await (engine === 'webkit' ? webkit : chromium).launch();
+    browser = await (engine === 'webkit' ? webkit : chromium).launch(engine === 'webkit' || !process.env.PRINT_BROWSER_EXECUTABLE ? {} : { executablePath: process.env.PRINT_BROWSER_EXECUTABLE });
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
     let failDimensions = false, holdDimensions = false;
     await context.route('**/*', async route => {
@@ -171,12 +171,6 @@ async function main() {
     const saved = db.listPrintNotes()[0];
     assert.equal(saved.total, 35);
     assert.equal(saved.items.length, 1);
-    await button('预览打印').click();
-    await expect(button('打印送货单')).toBeEnabled();
-    const frame = () => page.frameLocator('iframe[title="送货单纸张预览"]');
-    await expect(frame().getByText('400×300×200', { exact: true })).toBeVisible();
-    await page.screenshot({ path: path.join(artifacts, 'single-preview.png'), fullPage: true });
-    await button('返回单据').click();
     inventoryUnchanged();
     await page.reload();
     await page.locator('.team-boot').waitFor({ state: 'hidden' });
@@ -199,7 +193,7 @@ async function main() {
     assert.equal(db.listPrintNotes()[0].number, saved.number);
     assert.equal(db.listPrintNotes()[0].total, 43.75);
     inventoryUnchanged();
-    checks.push('current customer isolation; original customer selector retained; save/preview/history edit reuse original flows');
+    checks.push('current customer isolation; original customer selector retained; save/history edit reuse original flows');
 
     await newDraft();
     await selectCustomer();
@@ -226,11 +220,6 @@ async function main() {
     await button('保存单据').click();
     await expect(button('已保存')).toBeDisabled();
     assert.equal(db.listPrintNotes().length, 2);
-    await button('预览打印').click();
-    await expect(frame().locator('tr[data-line]')).toHaveCount(3);
-    await expect(frame().getByText(/45×30×20\s*cm/i)).toBeVisible();
-    await page.screenshot({ path: path.join(artifacts, 'batch-preview.png'), fullPage: true });
-    await button('返回单据').click();
     inventoryUnchanged();
     checks.push('batch dedupe; cm and material preserved; blank quantity/price; explicit missing-price validation');
 

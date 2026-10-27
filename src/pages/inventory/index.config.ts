@@ -1,5 +1,5 @@
 export default definePageConfig({
   navigationBarTitleText: '库存查询',
-  enablePullDownRefresh: true,
+  enablePullDownRefresh: false,
   navigationStyle: 'custom'
 })

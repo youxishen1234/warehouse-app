@@ -13,7 +13,7 @@ async function main() {
   const server = require('../backend/server').listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
   const origin = `http://127.0.0.1:${server.address().port}`;
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(process.env.CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.CHROMIUM_EXECUTABLE_PATH } : {});
   const page = await browser.newPage({ viewport: { width: 1366, height: 900 } });
   page.setDefaultTimeout(12000);
   const errors = [];
@@ -46,19 +46,21 @@ async function main() {
       await page.goto(origin);
       await current('home');
     }
-    await page.locator('button[data-nav]').filter({ hasText: '收付款' }).click();
+    await page.locator('button[data-nav]').filter({ hasText: '账单中心' }).click();
     await current('business-center');
-    await page.getByTestId('finance-center').waitFor();
-    await page.getByTestId('finance-ledger-view').waitFor();
-    await page.goto(origin);
+    await page.getByTestId('finance-center').filter({ visible: true }).last().waitFor();
+    await page.getByTestId('finance-ledger-view').filter({ visible: true }).last().waitFor();
+    assert.equal(await page.locator('taro-tabbar').isVisible(), true, 'business center keeps the shared liquid dock');
+    assert.equal(await tab(0).getAttribute('aria-current'), 'page', 'business center selects the home tab');
+    assert.equal(await page.evaluate(() => document.documentElement.hasAttribute('data-tab-context')), true);
+    await tab(0).click();
     await current('home');
     // Retired ledger deep links remain compatible and land in the unified finance tab.
     await page.goto(origin + '/#/pages/ledger/index');
     await current('business-center');
-    await page.getByTestId('finance-center').waitFor();
-    await page.getByTestId('finance-ledger-view').waitFor();
+    await page.getByTestId('finance-center').filter({ visible: true }).last().waitFor();
+    await page.getByTestId('finance-ledger-view').filter({ visible: true }).last().waitFor();
     // Resizing restores the mobile lens and preserves its drag-to-select behavior.
-    // Workbench routes intentionally hide the legacy mobile dock.
     await page.goto(origin + '/#/pages/mine/index');
     await current('mine');
     await page.setViewportSize({ width: 390, height: 844 });

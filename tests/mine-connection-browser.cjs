@@ -24,7 +24,7 @@ async function main() {
         CapacitorUpdater: {
           current: async () => ({
             bundle: { version: '20261027025127' },
-            native: '1.1.136'
+            native: '1.1.137'
           })
         }
       }
@@ -59,7 +59,7 @@ async function main() {
     await page.goto(origin + '/#/pages/mine/index');
     await page.getByText('已连接', { exact: true }).waitFor();
     await page.locator('.team-boot').waitFor({ state: 'detached' });
-    await expect(page.getByText('网页版本 1.1.136', { exact: true })).toBeVisible();
+    await expect(page.getByText('网页版本 1.1.137', { exact: true })).toBeVisible();
     await expect(page.getByText('20261027025127', { exact: true })).toHaveCount(0);
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('sg_custom_base')).data), 'https://youxishen.online');
     assert.equal(requests.some(item => item.path === '/api/stats'), false, 'connection must not depend on business statistics');

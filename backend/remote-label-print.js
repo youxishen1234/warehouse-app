@@ -11,6 +11,7 @@ const resolverPath = '/pages/label-resolver/index';
 const profileFields = ['profileId', 'printerName', 'widthMm', 'heightMm', 'paperStyle', 'density', 'marginMm', 'calibrated'];
 const finishedFields = ['productId', 'name', 'specification', 'unit', 'productUrl', 'material', 'corrugation', 'layers', 'weight', 'stockSnapshot', 'printedAt'];
 const boardFields = ['customerName', 'material', 'printPlate', 'printColor', 'batchId', 'boardLength', 'boardWidth', 'fluteType', 'supplier', 'batchUrl', 'layers', 'faceGsm', 'linerGsm', 'flutingGsm', 'cartonLength', 'cartonWidth', 'cartonHeight', 'receivedDate', 'location', 'receivedQty', 'remainingQtySnapshot'];
+const batchPrintFields = ['printPlate', 'printColor'];
 const manualBoardFields = ['customerName', 'boardLength', 'boardWidth', 'boardHeight', 'material', 'printPlate', 'printColor', 'receivedQty', 'receivedDate'];
 
 const isObject = value => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -109,8 +110,9 @@ function finishedSnapshot(product, submitted) {
   return snapshot;
 }
 
-function boardSnapshot(batch, submitted) {
+function boardSnapshot(batch, submitted, printFields = {}) {
   if (!isObject(submitted) || !exactKeys(submitted, boardFields)) throw fail('纸板标签字段无效');
+  if (!isObject(printFields) || !exactKeys(printFields, batchPrintFields)) throw fail('本次打印资料字段无效');
   const id = validateLabelId('paperboard-batch', batch.id);
   const snapshot = {
     batchId: id,
@@ -122,7 +124,8 @@ function boardSnapshot(batch, submitted) {
   };
   for (const [field, label] of [['customerName', '客户'], ['material', '材质/配纸'], ['printPlate', '印刷版名'], ['printColor', '颜色']]) {
     if (has(submitted, field)) {
-      const value = optionalText(batch[field], label);
+      const source = has(printFields, field) ? printFields[field] : batch[field];
+      const value = optionalText(source, label);
       if (value !== undefined) snapshot[field] = value;
     }
   }
@@ -182,7 +185,7 @@ function manualBoardSnapshot(submitted) {
   return snapshot;
 }
 
-function canonicalSnapshot(db, kind, data) {
+function canonicalSnapshot(db, kind, data, printFields = {}) {
   if (!labelKinds.has(kind)) throw fail('标签类型无效');
   if (!isObject(data)) throw fail('标签资料无效');
   if (kind === 'paperboard-manual') return manualBoardSnapshot(data);
@@ -195,7 +198,7 @@ function canonicalSnapshot(db, kind, data) {
   const id = validateLabelId(kind, data.batchId);
   const batch = db.listBoards().find(row => row.id === id);
   if (!batch) throw fail('纸板批次已删除或不存在，请重新选择', 409);
-  return boardSnapshot(batch, data);
+  return boardSnapshot(batch, data, printFields);
 }
 
 function profileSignature(profile) {
@@ -324,7 +327,9 @@ function createStore(file, clock = Date.now) {
       if (!isObject(input) || !/^[a-zA-Z0-9-]{16,100}$/.test(input.id || '') ||
           !['calibration', ...labelKinds].includes(input.kind) ||
           typeof input.profileId !== 'string' || !/^[A-Za-z0-9_-]{1,120}$/.test(input.profileId)) throw fail('打印任务格式无效');
-      const allowed = input.kind === 'calibration' ? ['id', 'kind', 'profileId', 'copies'] : ['id', 'kind', 'profileId', 'copies', 'data'];
+      const allowed = input.kind === 'calibration' ? ['id', 'kind', 'profileId', 'copies']
+        : input.kind === 'paperboard-batch' ? ['id', 'kind', 'profileId', 'copies', 'data', 'boardPrintFields']
+          : ['id', 'kind', 'profileId', 'copies', 'data'];
       if (!exactKeys(input, allowed)) throw fail('打印任务包含未知字段');
       if (!Number.isSafeInteger(input.copies) || input.copies < 1 || input.copies > 99) throw fail('打印份数必须为 1–99');
       if (input.kind === 'calibration' && input.copies !== 1) throw fail('校准任务只能打印一张');
@@ -455,7 +460,10 @@ function install(router, db, options = {}) {
     const deviceId = await clientId(req);
     const input = req.body || {};
     let data;
-    if (input.kind !== 'calibration') data = canonicalSnapshot(db, input.kind, input.data);
+    if (input.kind !== 'calibration') {
+      if (has(input, 'boardPrintFields') && input.kind !== 'paperboard-batch') throw fail('本次打印资料仅适用于纸板批次标签');
+      data = canonicalSnapshot(db, input.kind, input.data, input.boardPrintFields);
+    }
     return store.enqueue(deviceId, input, data);
   });
   route('get', '/remote-print/labels/jobs/:id', async req => store.status(await clientId(req), req.params.id));

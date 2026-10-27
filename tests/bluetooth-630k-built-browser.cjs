@@ -64,13 +64,14 @@ async function main() {
       date: dateValue(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)), paper: '241-93',
       items: [{ product_id: product.id, name: product.name, specification: product.specification, unit: product.unit, quantity: 12, price: product.price, remark: 'built preview fixture' }]
     });
-    assert.ok(saved.id && saved.number, 'fixture creates a persisted delivery note');
+    const shipped = db.shipPrintNote(saved.id);
+    assert.ok(saved.id && saved.number && shipped.outbound_at, 'fixture creates an outbound delivery note');
 
     const app = require('../backend/server');
     server = app.listen(0, '127.0.0.1');
     await new Promise(resolve => server.once('listening', resolve));
     const origin = `http://127.0.0.1:${server.address().port}`;
-    browser = await chromium.launch();
+    browser = await chromium.launch(process.env.CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.CHROMIUM_EXECUTABLE_PATH } : {});
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, locale: 'zh-CN' });
     await context.addInitScript(clientToken => {
       localStorage.setItem('warehouse_remote_print_pair_v1', JSON.stringify({ data: clientToken }));

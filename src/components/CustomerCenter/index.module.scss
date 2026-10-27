@@ -1,7 +1,7 @@
 .customerCenter {
   width: 100%;
   min-width: 0;
-  color: #eef3ef;
+  color: #172033;
   overflow-wrap: anywhere;
 }
 
@@ -19,24 +19,24 @@
   box-shadow: none;
 }
 .customerCenter :is(button, taro-button-core)::after { border: 0; }
-.customerCenter :is(button, taro-button-core):focus-visible { outline: 2PX solid #b2e8c3; outline-offset: 2PX; }
+.customerCenter :is(button, taro-button-core):focus-visible { outline: 2PX solid #1677ff; outline-offset: 2PX; }
 
 .intro {
   display: flex;
   flex-direction: column;
   gap: 5PX;
   padding: 0 0 18PX;
-  border-bottom: 1PX solid #414e44;
+  border-bottom: 1PX solid #e2e8f0;
 }
-.eyebrow { display: block; color: #a6dcb8; font-size: 12PX; letter-spacing: .04em; }
+.eyebrow { display: block; color: #1677ff; font-size: 12PX; letter-spacing: .04em; }
 .introTitle { display: block; font-size: 19PX; font-weight: 600; }
 
 .summary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 15PX 0;
-  border-top: 1PX solid #414e44;
-  border-bottom: 1PX solid #414e44;
+  border-top: 1PX solid #e2e8f0;
+  border-bottom: 1PX solid #e2e8f0;
 }
 .summaryItem {
   display: flex;
@@ -44,12 +44,12 @@
   flex-direction: column;
   gap: 4PX;
   padding: 10PX 12PX;
-  color: #a8b6ad;
+  color: #64748b;
   font-size: 11PX;
 }
-.summaryItem + .summaryItem { border-left: 1PX solid #414e44; }
+.summaryItem + .summaryItem { border-left: 1PX solid #e2e8f0; }
 .summaryItem strong {
-  color: #eef3ef;
+  color: #172033;
   font-size: 21PX;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -62,13 +62,13 @@
   justify-content: center;
   min-height: 39PX;
   padding: 8PX 12PX;
-  border: 1PX solid #526357;
+  border: 1PX solid #cbd5e1;
   border-radius: 5PX;
   font-size: 12PX;
   font-weight: 600;
 }
-.customerCenter .primaryAction { border-color: #a6dcb8; background: #a6dcb8; color: #1c3325; }
-.ordersAction, .secondaryAction { background: #2b332d; color: #d5eadb; }
+.customerCenter .primaryAction { border-color: #1677ff; background: #1677ff; color: #fff; }
+.ordersAction, .secondaryAction { border-color: #cbd5e1; background: #f8fafc; color: #334155; }
 .search {
   display: block;
   width: 100%;
@@ -76,15 +76,15 @@
   min-height: 42PX;
   margin: 12PX 0 9PX;
   padding: 10PX 11PX;
-  border: 1PX solid #526357;
+  border: 1PX solid #cbd5e1;
   border-radius: 5PX;
-  background: #1b231e;
-  color: #eef3ef;
+  background: #f8fafc;
+  color: #172033;
 }
-.search input { width: 100%; min-width: 0; height: 22PX; padding: 0; color: #eef3ef; font: inherit; }
-.search input::placeholder { color: #8c9b91; }
+.search input { width: 100%; min-width: 0; height: 22PX; padding: 0; color: #172033; font: inherit; }
+.search input::placeholder { color: #94a3b8; }
 
-.filters { display: flex; gap: 5PX; padding: 3PX; border-bottom: 1PX solid #414e44; }
+.filters { display: flex; gap: 5PX; padding: 3PX; border: 1PX solid #e2e8f0; border-radius: 6PX; background: #fff; }
 .customerCenter .filter, .customerCenter .filterActive {
   flex: 1 1 0;
   min-width: 0;
@@ -93,24 +93,24 @@
   border: 1PX solid transparent;
   border-radius: 4PX;
   background: transparent;
-  color: #b5c0b9;
+  color: #475569;
   font-size: 11PX;
   text-align: center;
 }
-.customerCenter .filterActive { border-color: #526357; background: #2b382f; color: #bce8c9; font-weight: 600; }
+.customerCenter .filterActive { border-color: #1677ff; background: #1677ff; color: #fff; font-weight: 600; }
 
 .list { min-width: 0; }
 .card {
   min-width: 0;
   margin-top: 12PX;
   padding: 13PX 0 14PX;
-  border-bottom: 1PX solid #46584b;
+  border-bottom: 1PX solid #e2e8f0;
 }
 .cardHeading { display: flex; align-items: flex-start; justify-content: space-between; gap: 9PX; min-width: 0; }
 .customerIdentity { display: flex; min-width: 0; flex-direction: column; gap: 3PX; }
-.customerName { display: block; color: #eef3ef; font-size: 17PX; font-weight: 650; line-height: 1.35; }
-.accountStatus, .draftStatus { color: #9eada2; font-size: 11PX; }
-.draftStatus { color: #e0b27c; }
+.customerName { display: block; color: #172033; font-size: 17PX; font-weight: 650; line-height: 1.35; }
+.accountStatus, .draftStatus { color: #64748b; font-size: 11PX; }
+.draftStatus { color: #b45309; }
 .cardActions { display: flex; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; gap: 5PX; }
 .customerCenter .cardActions .primaryAction, .customerCenter .cardActions .secondaryAction,
 .customerCenter .cardHeading > .primaryAction {
@@ -118,13 +118,13 @@
   padding: 6PX 8PX;
   font-size: 11PX;
 }
-.contactLine { display: flex; flex-wrap: wrap; gap: 3PX 13PX; margin-top: 9PX; color: #a8b6ad; font-size: 11PX; }
-.remark { display: block; margin-top: 6PX; color: #8fa096; font-size: 11PX; }
+.contactLine { display: flex; flex-wrap: wrap; gap: 3PX 13PX; margin-top: 9PX; color: #64748b; font-size: 11PX; }
+.remark { display: block; margin-top: 6PX; color: #64748b; font-size: 11PX; }
 
-.specs { min-width: 0; margin-top: 10PX; padding-top: 8PX; border-top: 1PX solid #35423a; }
+.specs { min-width: 0; margin-top: 10PX; padding-top: 8PX; border-top: 1PX solid #e2e8f0; }
 .specsHeading { display: flex; align-items: center; justify-content: space-between; gap: 8PX; padding-bottom: 3PX; }
-.specsTitle { color: #bce8c9; font-size: 12PX; font-weight: 600; }
-.specsCount { color: #8fa096; font-size: 10PX; white-space: nowrap; }
+.specsTitle { color: #1458b8; font-size: 12PX; font-weight: 600; }
+.specsCount { color: #64748b; font-size: 10PX; white-space: nowrap; }
 .specRow {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(76PX, auto);
@@ -132,29 +132,29 @@
   gap: 4PX 10PX;
   min-width: 0;
   padding: 8PX 0;
-  border-bottom: 1PX solid #35423a;
+  border-bottom: 1PX solid #e2e8f0;
 }
 .specMain { min-width: 0; }
-.specName { display: flex; align-items: center; flex-wrap: wrap; gap: 5PX; color: #eef3ef; font-size: 12PX; font-weight: 500; }
-.specKind { padding: 1PX 4PX; border: 1PX solid #80613e; border-radius: 3PX; color: #e0b27c; font-size: 9PX; font-weight: 400; }
-.specSize { display: block; margin-top: 3PX; color: #bce8c9; font-size: 13PX; font-variant-numeric: tabular-nums; }
-.specMeta { display: block; margin-top: 3PX; color: #8fa096; font-size: 10PX; }
-.specPrice { max-width: 125PX; color: #d5eadb; font-size: 11PX; line-height: 1.5; text-align: right; overflow-wrap: anywhere; }
-.specsEmpty { display: block; padding: 8PX 0; color: #8fa096; font-size: 11PX; }
+.specName { display: flex; align-items: center; flex-wrap: wrap; gap: 5PX; color: #172033; font-size: 12PX; font-weight: 500; }
+.specKind { padding: 1PX 4PX; border: 1PX solid #fdba74; border-radius: 3PX; color: #b45309; font-size: 9PX; font-weight: 400; }
+.specSize { display: block; margin-top: 3PX; color: #1677ff; font-size: 13PX; font-variant-numeric: tabular-nums; }
+.specMeta { display: block; margin-top: 3PX; color: #64748b; font-size: 10PX; }
+.specPrice { max-width: 125PX; color: #334155; font-size: 11PX; line-height: 1.5; text-align: right; overflow-wrap: anywhere; }
+.specsEmpty { display: block; padding: 8PX 0; color: #64748b; font-size: 11PX; }
 .customerCenter .specToggle {
   width: 100%;
   min-height: 33PX;
   margin-top: 6PX;
   padding: 6PX 8PX;
-  border: 1PX solid #46584b;
+  border: 1PX solid #cbd5e1;
   border-radius: 4PX;
-  background: #2b332d;
-  color: #bce8c9;
+  background: #f8fafc;
+  color: #334155;
   font-size: 11PX;
   text-align: left;
 }
-.empty { display: flex; flex-direction: column; gap: 6PX; padding: 30PX 8PX; color: #c0cbc3; font-size: 13PX; text-align: center; }
-.empty taro-text-core + taro-text-core { color: #8fa096; font-size: 11PX; }
+.empty { display: flex; flex-direction: column; gap: 6PX; padding: 30PX 8PX; color: #64748b; font-size: 13PX; text-align: center; }
+.empty taro-text-core + taro-text-core { color: #94a3b8; font-size: 11PX; }
 
 @media (min-width: 760PX) {
   .list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32PX; align-items: start; }

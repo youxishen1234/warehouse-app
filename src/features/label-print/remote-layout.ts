@@ -77,7 +77,7 @@ const PAPERBOARD_LABEL_STYLE = `
 html,body{background:#fff}
 body{font-family:PaperboardSourceHan,"Microsoft YaHei","PingFang SC",sans-serif;color:#000;-webkit-font-smoothing:antialiased}
 .warehouse-label{position:relative;overflow:hidden;background:#fff;transform-origin:top left}
-.paperboard-label{display:flex;flex-direction:column;overflow:hidden;padding:2.5mm 3mm}
+.paperboard-label{display:flex;flex-direction:column;overflow:hidden;padding:1mm 3mm}
 .paperboard-header{height:6mm;flex:0 0 auto;display:flex;align-items:flex-start;justify-content:space-between;border-bottom:.5mm solid #000;font-size:3.5mm;font-weight:900;letter-spacing:0}
 .paperboard-tag{font-size:2mm;letter-spacing:0;padding-top:.6mm;font-weight:500}
 .paperboard-major{flex:0 0 auto;padding:.8mm 0 .8mm;border-bottom:.25mm solid #000}
@@ -85,6 +85,7 @@ body{font-family:PaperboardSourceHan,"Microsoft YaHei","PingFang SC",sans-serif;
 .paperboard-value{font-size:7.25mm;font-weight:900;letter-spacing:0;line-height:1.15;max-height:2.5em;overflow:visible;overflow-wrap:anywhere;word-break:break-word}
 .paperboard-spec .paperboard-value{font-size:7.75mm}
 .paperboard-plate{border-bottom:.5mm solid #000}
+.paperboard-plate .paperboard-value{font-size:6.8mm}
 .paperboard-bottom{display:flex;gap:1.75mm;align-items:center;margin-top:auto;padding-top:0.5mm;min-height:24.5mm}
 .paperboard-details{flex:1;min-width:0;font-size:3.375mm;font-weight:500;line-height:1.55;overflow:hidden}
 .paperboard-batch{font-size:2.375mm;line-height:1.4;overflow-wrap:anywhere;word-break:break-word}
@@ -142,7 +143,7 @@ async function buildLargePaperboardLabel(
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src 'self' data:; base-uri 'none'">
 <style>${PAPERBOARD_LABEL_STYLE}
 .warehouse-label{width:${mm(widthMm)};height:${mm(heightMm)}}
-.paperboard-label{width:${mm(widthMm)};height:${mm(heightMm)};padding:${mm(profile.marginMm.top + 2.5)} ${mm(profile.marginMm.right + 3)} ${mm(profile.marginMm.bottom + 2.5)} ${mm(profile.marginMm.left + 3)}}
+.paperboard-label{width:${mm(widthMm)};height:${mm(heightMm)};padding:${mm(profile.marginMm.top + 1)} ${mm(profile.marginMm.right + 3)} ${mm(profile.marginMm.bottom + 1)} ${mm(profile.marginMm.left + 3)}}
 </style></head><body><div class="warehouse-label paperboard-label" data-page data-fit>
   <div class="paperboard-header"><span>纸板标签</span><span class="paperboard-tag">${manual ? '手填标签 · 生产识别' : '客户专用 · 生产识别'}</span></div>
   ${fields}
