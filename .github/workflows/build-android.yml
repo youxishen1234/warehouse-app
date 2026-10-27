@@ -51,7 +51,55 @@ jobs:
 
       - name: Build signed APK
         working-directory: android
-        run: ./gradlew assembleRelease --no-daemon
+        shell: bash
+        run: |
+          set -o pipefail
+          log_file="$RUNNER_TEMP/android-gradle.log"
+          for attempt in 1 2; do
+            echo "Android release build attempt $attempt/2"
+            if ./gradlew assembleRelease --no-daemon --console=plain 2>&1 | tee "$log_file"; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 1 ]; then
+              echo "::warning::Android Gradle build failed; retrying once"
+            fi
+          done
+          python3 - <<'PY'
+          import os
+          import pathlib
+
+          log = pathlib.Path(os.environ["RUNNER_TEMP"]) / "android-gradle.log"
+          lines = log.read_text(errors="replace").splitlines()
+          markers = (
+              "FAILURE:", "* What went wrong:", "Execution failed for task",
+              "Could not determine", "Could not resolve", "Could not find",
+              "Could not GET", "Could not HEAD", "UnknownHostException",
+              "ConnectException", "PKIX", "No space left", "OutOfMemoryError",
+              "DaemonDisappeared", "Daemon disappeared", "Compilation error",
+          )
+          matches = [index for index, line in enumerate(lines)
+                     if any(marker.lower() in line.lower() for marker in markers)]
+          if matches:
+              indexes = sorted({candidate for index in matches[-8:]
+                                for candidate in range(max(0, index - 1), min(len(lines), index + 2))})
+              excerpt = [lines[index] for index in indexes][-24:]
+          else:
+              excerpt = lines[-24:]
+          print("::group::Android Gradle failure diagnostics (secret masking active)")
+          for line in excerpt:
+              safe = " ".join(line.replace("\r", " ").replace("\n", " ").split())[:500]
+              print("Gradle> " + safe)
+              escaped_line = safe.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+              print("::error title=Android Gradle diagnostic::" + escaped_line)
+          print("::endgroup::")
+          summary = next((line.strip() for line in reversed(lines)
+                          if any(marker.lower() in line.lower() for marker in markers)),
+                         "Gradle build failed twice; inspect the grouped excerpt above.")
+          summary = " ".join(summary.split())[:500]
+          escaped = summary.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print("::error title=Android Gradle build failed::" + escaped)
+          raise SystemExit(1)
+          PY
 
       - name: Verify APK
         run: |
