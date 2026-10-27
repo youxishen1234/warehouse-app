@@ -44,10 +44,15 @@ function upload() {
   const { manifest } = validateLocalRelease(zip, manifestPath);
   if (!/^[a-f0-9]{40,64}$/.test(manifest.commit || '') || !Array.isArray(manifest.ancestors) || !Object.hasOwn(manifest, 'baseManifestSha256')) throw new Error('Missing release provenance; use the unified publish workflow');
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
-  const dirty = execFileSync('git', ['status', '--porcelain', '--untracked-files=normal', '--', 'src', 'config', 'prototypes', 'scripts', 'package.json', 'package-lock.json'], { cwd: root, encoding: 'utf8' }).trim();
+  const dirty = execFileSync('git', ['status', '--porcelain', '--untracked-files=normal', '--', 'src', 'config', 'deploy', 'prototypes', 'scripts', 'package.json', 'package-lock.json'], { cwd: root, encoding: 'utf8' }).trim();
   if (dirty) throw new Error('Release source has uncommitted changes; publish committed main source through CI');
   const latest = execFileSync('git', ['ls-remote', 'origin', 'refs/heads/main'], { cwd: root, encoding: 'utf8' }).trim().split(/\s+/)[0];
   if (manifest.commit !== head || head !== latest) throw new Error('Source is no longer the latest main commit; rebuild through the publish workflow');
+  const changed = execFileSync('git', ['diff-tree', '--no-commit-id', '--name-only', '-r', `${head}^`, head], { cwd: root, encoding: 'utf8' })
+    .split(/\r?\n/).filter(Boolean);
+  if (changed.includes('deploy/nginx-production.conf')) {
+    process.stdout.write(require('./deploy-nginx-config.cjs').deploy());
+  }
   const c = connection(), staging = c.directory + '/.incoming-' + crypto.randomUUID();
   ssh(`mkdir -p ${shellQuote(staging)}`);
   try {

@@ -9,14 +9,13 @@ const dailyBackup = require('./daily-backup').createDailyBackup(db);
 const updates = require('./updates');
 const installGracefulShutdown = require('./graceful-shutdown');
 const { consumeRateLimit } = require('./rate-limit');
+const { CONTENT_SECURITY_POLICY, EMBEDDED_CONTENT_SECURITY_POLICY, isEmbeddedViewPath } = require('./security-policy');
 
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
 const APP_DOWNLOADS_RATE_LIMIT = Math.max(2, Math.min(1000, Number(process.env.WAREHOUSE_APP_DOWNLOADS_RATE_LIMIT) || 20));
 const appDownloadsBuckets = new Map();
 const appUpdateReportBuckets = new Map();
-const CONTENT_SECURITY_POLICY = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'nonce-sg-bootstrap'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://youxishen.online http://localhost:* https://localhost:* http://127.0.0.1:*; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://youxishen.online capacitor://localhost http://localhost:* https://localhost:* http://127.0.0.1:*; worker-src 'self' blob:;";
-
 const trustedProxyRules = String(process.env.WAREHOUSE_TRUSTED_PROXY_CIDRS || '127.0.0.1/32,::1/128')
   .split(',').map(value => value.trim()).filter(Boolean);
 let isTrustedProxy;
@@ -52,12 +51,13 @@ app.set('trust proxy', ip => isTrustedProxy(ip));
 // 原生 Capacitor App 的页面来源是 capacitor://localhost；为 API 和更新包允许跨域访问。
 app.use((req, res, next) => {
   const requestId = req.get('X-Request-Id') || require('crypto').randomUUID();
+  const embeddedView = isEmbeddedViewPath(req.path);
   res.setHeader('X-Request-Id', requestId);
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
+  if (!embeddedView) res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=()');
-  res.setHeader('Content-Security-Policy', CONTENT_SECURITY_POLICY);
+  res.setHeader('Content-Security-Policy', embeddedView ? EMBEDDED_CONTENT_SECURITY_POLICY : CONTENT_SECURITY_POLICY);
   req.warehouseClientIp = clientIp(req);
   const origin = req.get('Origin');
   if (origin && allowedOrigin(origin)) {
@@ -145,6 +145,9 @@ app.use(express.static(WEB_ROOT));
 app.use('/workspace', express.static(WEB_ROOT));
 // Paperboard labels open a direct SPA route, including after a browser reload.
 app.get(/^\/pages\/[a-z-]+\/index$/, (req, res) => res.sendFile(path.join(WEB_ROOT, 'index.html')));
+// The desktop browser can host this route in an iframe. Its response policy only
+// admits the local Codex shell; normal site routes remain protected above.
+app.get(/^\/embed(?:\/.*)?$/, (req, res) => res.sendFile(path.join(WEB_ROOT, 'index.html')));
 
 // ============ App 热更新服务 ============
 // 版本检查：客户端启动时带 设备ID/平台/原生版本/当前热更版本 来询
