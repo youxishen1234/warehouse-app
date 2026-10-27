@@ -67,7 +67,7 @@ async function main() {
   await new Promise(resolve => server.once('listening', resolve));
   const origin = 'http://127.0.0.1:' + server.address().port;
   const engine = process.env.PRINT_BROWSER || 'chromium';
-  const browser = await (engine === 'webkit' ? webkit : chromium).launch();
+  const browser = await (engine === 'webkit' ? webkit : chromium).launch(engine === 'webkit' || !process.env.PRINT_BROWSER_EXECUTABLE ? {} : { executablePath: process.env.PRINT_BROWSER_EXECUTABLE });
   const artifacts = path.resolve(process.env.PRINT_ARTIFACTS || 'release/print-center-01a1211e/check', 'native-flow');
   fs.mkdirSync(artifacts, { recursive: true });
 
@@ -182,12 +182,18 @@ async function main() {
 
     await button('编辑单据').click();
     await expect(footerButton('已保存')).toBeDisabled();
-    await expect(footerButton('预览打印')).toBeVisible();
-    await footerButton('预览打印').click();
+    await expect(footerButton('确认出库并打印')).toBeEnabled();
+    await page.getByLabel('送货人', { exact: true }).fill('李师傅');
+    await expect(footerButton('仅保存')).toBeEnabled();
+    // The primary action saves, ships, then opens preview. Paper is never sent
+    // before the inventory and receivable transaction succeeds.
+    await footerButton('确认出库并打印').click();
+    await expect.poll(() => db.listPrintNotes().find(note => note.id === saved.id)?.sender).toBe('李师傅');
+    await expect.poll(() => db.listPrintNotes().find(note => note.id === saved.id)?.outbound_at).toBeTruthy();
     await expect(preview()).toBeVisible();
-    await page.screenshot({ path: path.join(artifacts, 'native-preview-unpaired.png'), fullPage: true });
+    await wait(1200);
+    assert.equal(postedJobs.length, 0, 'default-off outbound flow stays manual and never auto-sends');
     await expect(button('扫码连接打印电脑')).toBeVisible();
-    await expect(page.getByLabel('打印电脑配对码')).toHaveCount(0);
     const fileChooserPromise = page.waitForEvent('filechooser');
     await button('扫码连接打印电脑').click();
     const fileChooser = await fileChooserPromise;
@@ -199,27 +205,7 @@ async function main() {
     await expect(remotePanel()).toHaveAttribute('open', '');
     await expect(preview().getByRole('button', { name: '发送到630K', exact: true })).toBeEnabled();
     await expect(remotePanel()).toContainText('店里电脑');
-    await wait(1200);
-    assert.equal(postedJobs.length, 0, 'ordinary preview stays manual after pairing and never auto-sends');
-    await page.screenshot({ path: path.join(artifacts, 'native-preview-paired.png'), fullPage: true });
-    await button('返回单据').click();
-
-    await expect(footerButton('已保存')).toBeDisabled();
-    await expect(footerButton('打印到630K')).toBeEnabled();
-    await button('当前单据').click();
-    await expect(page.getByRole('heading', { name: '单据详情' })).toBeVisible();
-    await expect(autoPrint).not.toBeChecked();
-    await expect(autoPrint).toBeEnabled();
-    await button('编辑单据').click();
-    await expect(footerButton('已保存')).toBeDisabled();
-    await page.getByLabel('送货人', { exact: true }).fill('李师傅');
-    await expect(footerButton('仅保存')).toBeEnabled();
-    await expect(footerButton('保存并打印')).toBeEnabled();
-    // Save-and-print is a single explicit action: saving opens preview and
-    // automatically sends exactly once without requiring another tap.
-    await footerButton('保存并打印').click();
-    await expect.poll(() => db.listPrintNotes().find(note => note.id === saved.id)?.sender).toBe('李师傅');
-    await expect(preview()).toBeVisible();
+    await preview().getByRole('button', { name: '发送到630K', exact: true }).click();
     const remoteDetails = remotePanel();
     await expect.poll(() => postedJobs.filter(job => job.note_id === saved.id).length).toBe(1);
     await expect(remoteDetails.getByRole('status')).toContainText('等待打印电脑接收');
@@ -235,9 +221,7 @@ async function main() {
     // recovers the existing task. It must not silently create a second copy.
     await button('当前单据').click();
     await expect(page.getByRole('heading', { name: '单据详情' })).toBeVisible();
-    await button('编辑单据').click();
-    await expect(footerButton('打印到630K')).toBeEnabled();
-    await footerButton('打印到630K').click();
+    await button('再次打印').click();
     await expect(preview()).toBeVisible();
     await expect(preview().getByRole('button', { name: '再打印一份', exact: true })).toBeEnabled({ timeout: 12000 });
     await expect(page.getByRole('group', { name: '确认重新打印' })).toHaveCount(0);
@@ -287,23 +271,8 @@ async function main() {
     assert.equal(copied.outbound_at ?? null, null, 'copy-as-new remains unshipped');
     await page.screenshot({ path: path.join(artifacts, 'copy-as-new-draft.png'), fullPage: true });
 
-    // With the persisted default still off, shipping must open the preview but
-    // must not silently create a remote task or print.
-    await button('历史单据').click();
-    await expect(page.locator('main[data-print-view="history"]')).toBeVisible();
-    await page.getByRole('button', { name: new RegExp(saved.number) }).first().click();
-    await expect(page.getByRole('heading', { name: '单据详情' })).toBeVisible();
-    await expect(autoPrint).not.toBeChecked();
-    await expect(button('确认出库')).toBeVisible();
-    await expect(button('确认出库并打印')).toHaveCount(0);
-    await button('确认出库').click();
-    await expect(preview()).toBeVisible();
-    await wait(1200);
-    assert.equal(postedJobs.length, 2, 'default-off outbound flow must not auto-submit a third print job');
-    await expect(preview().getByRole('button', { name: /发送到630K|再打印一份/, exact: true })).toBeEnabled();
-    await button('返回单据').click();
     const shipped = db.listPrintNotes().find(note => note.id === saved.id);
-    assert.ok(shipped.outbound_at, 'the test shipped the original linked note');
+    assert.ok(shipped.outbound_at, 'the primary action shipped the original linked note');
     assert.equal(db.getProduct(product.id).stock, 900);
     const shippedOriginalStock = db.getProduct(product.id).stock;
     assert.equal(copied.outbound_at ?? null, null, 'shipping the original does not ship its copy');
@@ -318,7 +287,8 @@ async function main() {
     await button('编辑单据').click();
     const deviceQueriesBeforeRetry = deviceQueryCount;
     failNextDeviceQuery = true;
-    await footerButton('打印到630K').click();
+    await footerButton('确认出库并打印').click();
+    await expect.poll(() => db.listPrintNotes().find(note => note.id === copied.id)?.outbound_at).toBeTruthy();
     await expect(preview()).toBeVisible();
     await expect(preview().getByRole('button', { name: '重试连接', exact: true })).toBeEnabled();
     await expect.poll(() => deviceQueryCount).toBe(deviceQueriesBeforeRetry + 1);
@@ -327,14 +297,14 @@ async function main() {
     await preview().getByRole('button', { name: '重试连接', exact: true }).click();
     await expect.poll(() => deviceQueryCount, { timeout: 2000 }).toBeGreaterThan(deviceQueriesAtRetryClick);
     await expect(remotePanel()).toContainText('店里电脑');
-    // Direct-print automatically makes the first attempt; this fixture drops
-    // it before the server receives it, and the user retries once only after
-    // status recovery confirms the original id was never accepted.
+    // The first manual attempt is lost before reaching the server. Recovery must
+    // keep the same durable task id and retry only after status lookup.
+    await preview().getByRole('button', { name: '发送到630K', exact: true }).click();
     await expect.poll(() => submissionAttempts.filter(job => job.note_id === copied.id).length).toBe(1);
     await expect(remotePanel().getByRole('alert').filter({ hasText: '服务器尚未收到该任务' })).toBeVisible();
     await expect(preview().getByRole('button', { name: '发送到630K', exact: true })).toBeEnabled();
     await wait(1000);
-    assert.equal(submissionAttempts.filter(job => job.note_id === copied.id).length, 1, 'a failed direct attempt is not retried in a background loop');
+    assert.equal(submissionAttempts.filter(job => job.note_id === copied.id).length, 1, 'a failed attempt is not retried in a background loop');
     const retryAttempts = submissionAttempts.filter(job => job.note_id === copied.id);
     assert.equal(retryAttempts.length, 1, 'the first retry-fixture request was sent once before connection loss');
     await preview().getByRole('button', { name: '发送到630K', exact: true }).click();
@@ -387,7 +357,7 @@ async function main() {
     await expect(preview()).toBeHidden({ timeout: 15000 });
     assert.equal(submissionAttempts.filter(job => job.note_id === autoPrintNote.id).length, 1, 'enabled outbound auto-print creates exactly one remote task');
     assert.ok(db.listPrintNotes().find(note => note.id === autoPrintNote.id).outbound_at);
-    assert.equal(db.getProduct(product.id).stock, 890);
+    assert.equal(db.getProduct(product.id).stock, 790);
     assert.deepEqual(agentErrors, []);
 
     assert.deepEqual(errors, []);
@@ -395,7 +365,7 @@ async function main() {
     assert.equal(physicalPrints, 0, 'the fixture queues remote jobs but does not invoke a physical printer');
     console.log(JSON.stringify({
       engine,
-      nativeFooter: ['已保存 / 预览打印', '仅保存 / 保存并打印', '已保存 / 打印到630K'],
+      nativeFooter: ['确认出库并打印', '仅保存 / 确认出库并打印', '再次打印 / 确认出库并打印'],
       pairedRemoteJobs: postedJobs.map(job => job.id),
       agentClaimAndAck: agentJobs,
       lostResponseRetry: { attempts: completedRetryAttempts.length, sameId: completedRetryAttempts[0].id === completedRetryAttempts[1].id },

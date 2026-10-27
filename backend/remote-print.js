@@ -171,6 +171,7 @@ function install(router, db, options = {}) {
     store.device(client(req));
     const note = db.listPrintNotes().find(row => row.id === req.body?.note_id);
     if (!note) throw fail('请先保存送货单');
+    if (!(Number(note.outbound_at) > 0)) throw fail('请先确认出库并同步库存后再打印');
     if (note.version !== req.body.version) throw fail('送货单已更新，请重新打开后打印',409);
     return store.enqueue(client(req),req.body,note);
   });

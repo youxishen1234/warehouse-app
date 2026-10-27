@@ -19,12 +19,13 @@ async function main() {
   require('../backend/remote-print').createStore(process.env.WAREHOUSE_REMOTE_PRINT_FILE).claim(pair.agent,true);
   const customer = db.addCustomer({ name: '华兴包装（演示）', contact: '王先生', phone: '13800000000', address: '河北省沧州市东光县工业园', specs: [{ id: 'spec-demo', goods: '五层瓦楞纸箱', specification: '30x20*15mm', material: '五层', unit: '箱', price: 3.5 }] });
   db.updateCustomer(customer.id, { specs: [{ id: 'spec-demo', goods: '五层瓦楞纸箱', specification: '30x20*15mm', unit: '个', price: 3.5 }] });
+  const product = db.addProduct({ name: '五层瓦楞纸箱', specification: '30×20×15', unit: '个', stock: 1000, price: 3.5 });
   db.addCustomer({ name: '宏远纸业（演示）', contact: '李女士', phone: '13900000000', address: '东光县开发区' });
   const server = app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
   const origin = 'http://127.0.0.1:' + server.address().port;
   const engine = process.env.PRINT_BROWSER || 'chromium';
-  const browser = await (engine === 'webkit' ? webkit : chromium).launch();
+  const browser = await (engine === 'webkit' ? webkit : chromium).launch(engine === 'webkit' || !process.env.PRINT_BROWSER_EXECUTABLE ? {} : { executablePath: process.env.PRINT_BROWSER_EXECUTABLE });
   const artifacts = path.resolve(process.env.PRINT_ARTIFACTS || 'release/print-center-01a1211e/check', engine);
   fs.mkdirSync(artifacts, { recursive: true });
   const errors = [];
@@ -96,7 +97,6 @@ async function main() {
     await page.getByLabel('第1项规格尺寸').pressSequentially('5');
     await expect(button('两位数')).toHaveCount(0);
     await expect(button('三位数')).toHaveCount(0);
-    await page.getByLabel('第1项产品名称').fill('');
     await page.getByLabel('第1项数量').fill('100');
     await page.getByLabel('送货人', { exact: true }).fill('张师傅');
     await page.getByLabel('第1项备注').fill('请轻拿轻放');
@@ -139,7 +139,7 @@ async function main() {
     await expect.poll(() => db.listPrintNotes().length).toBe(1);
     await expect(button('已保存')).toBeDisabled();
     let saved = db.listPrintNotes()[0]; assert.equal(saved.total, 350);
-    assert.equal(saved.items[0].name, '');
+    assert.equal(saved.items[0].name, product.name);
     await button('历史单据').click();
     await expect(page.getByLabel('搜索历史单据')).toBeVisible();
     await page.getByLabel('搜索历史单据').fill('华兴');
@@ -174,13 +174,16 @@ async function main() {
     await button('＋ 新建').click(); await expect(page.getByRole('dialog', { name: '保留未保存内容' })).toBeVisible();
     await button('继续编辑').click(); await expect(page.getByLabel('第1项数量')).toHaveValue('125');
     await page.getByLabel('第1项数量').fill('120');
-    await button('保存单据').click(); await expect(button('已保存')).toBeDisabled();
-    await button('预览打印').click();
+    await button('确认出库并打印').click();
+    await expect.poll(() => db.listPrintNotes()[0].outbound_at).toBeTruthy();
+    assert.equal(db.getProduct(product.id).stock, 880);
+    assert.equal(db.getCustomer(customer.id).debt, 420);
+    await expect.poll(() => db.listTx().filter(row => row.type === 'out').length).toBe(1);
     await expect(button('打印送货单')).toBeEnabled();
     const frame = () => page.frameLocator('iframe[title="送货单纸张预览"]');
     await expect(frame().getByRole('heading', { name: '送 货 单' })).toBeVisible();
     await expect(frame().getByText('30×20×15')).toBeVisible();
-    await expect(frame().locator('tr[data-line] td:nth-child(2)')).toHaveText('');
+    await expect(frame().locator('tr[data-line] td:nth-child(2)')).toHaveText(product.name);
     const remoteStore=require('../backend/remote-print').createStore(process.env.WAREHOUSE_REMOTE_PRINT_FILE);
     remoteStore.claim(pair.agent,true);
     await page.getByText(/远程打印到店里/).click();
@@ -196,7 +199,7 @@ async function main() {
     await button('发送到630K').click();
     await expect(page.getByRole('dialog', { name: '送货单预览' }).getByRole('status')).toContainText('等待打印电脑接收');
     const remoteClaim=remoteStore.claim(pair.agent,true).job;
-    assert.equal(remoteClaim.note.items[0].name,'');
+    assert.equal(remoteClaim.note.items[0].name,product.name);
     remoteStore.acknowledge(pair.agent,remoteClaim.id,{lease:remoteClaim.lease,status:'queued'});
     await expect(page.getByRole('dialog', { name: '送货单预览' }).getByRole('status')).toContainText('已送入630K打印队列');
     await button('再打印一份').click();
@@ -208,7 +211,7 @@ async function main() {
     assert.notEqual(reprint.id,remoteClaim.id,'confirmed reprint gets a new job');
     remoteStore.acknowledge(pair.agent,reprint.id,{lease:reprint.lease,status:'queued'});
     await expect(page.getByRole('dialog', { name: '送货单预览' }).getByRole('status')).toContainText('已送入630K打印队列');
-    await button('返回单据').click();await button('预览打印').click();
+    await button('返回单据').click();await button('再次打印').click();
     await page.getByText(/远程打印到店里/).click();
     await expect(button('再打印一份')).toBeEnabled();
     assert.equal(JSON.parse(fs.readFileSync(process.env.WAREHOUSE_REMOTE_PRINT_FILE)).jobs.length,2,'reopening preview only queries the last job');
@@ -237,8 +240,7 @@ async function main() {
     await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
     await expect(page.locator('[data-dot-matrix-print-root]')).toHaveCount(0);
     await button('返回单据').click();
-    await button('当前单据').click();
-    await button('编辑单据').click();
+    await button('＋ 新建').click();
     for (const width of [320, 375, 430, 1280]) { await page.setViewportSize({ width, height: 900 }); await noOverflow(); await actionsFollowForm(); }
     await page.setViewportSize({ width: 320, height: 480 });
     await page.getByLabel('第1项备注').focus();
@@ -249,7 +251,31 @@ async function main() {
     await page.screenshot({ path: path.join(artifacts, 'desktop-editor.png'), fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
     saved = db.listPrintNotes()[0];
-    const multi = db.savePrintNote({ ...saved, customer_name: '多页送货客户', items: Array.from({ length: 12 }, (_, index) => ({ ...saved.items[0], name: '纸箱 ' + (index + 1), remark: '多页测试', quantity: 10, price: 1.23456 })) });
+    const multiProducts = Array.from({ length: 12 }, (_, index) => db.addProduct({
+      name: '多页纸箱 ' + (index + 1),
+      specification: '600×400×' + (100 + index),
+      unit: '个', stock: 20, price: 1.23456
+    }));
+    const multi = db.savePrintNote({
+      company: saved.company,
+      customer_id: saved.customer_id,
+      customer_name: '多页送货客户',
+      address: saved.address,
+      phone: saved.phone,
+      receiver: saved.receiver,
+      sender: saved.sender,
+      date: saved.date,
+      paper: saved.paper,
+      items: multiProducts.map((item, index) => ({
+        product_id: item.id,
+        name: item.name,
+        specification: item.specification,
+        unit: '个',
+        quantity: 10,
+        price: 1.23456,
+        remark: '多页测试 ' + (index + 1)
+      }))
+    });
     await button('当前单据').click(); failHistory = true; await button('历史单据').click();
     await expect(page.getByRole('alert')).toContainText('测试历史加载失败');
     await button('重试').click(); await page.getByRole('button', { name: /多页送货客户/ }).click();
@@ -261,7 +287,19 @@ async function main() {
     await main.evaluate(element=>{element.scrollTop=element.scrollHeight;});
     const multiEndLayout = await actionLayout();
     assert.ok(multiEndLayout.bottom <= multiEndLayout.viewportBottom - multiEndLayout.paddingBottom + 1, 'multi-item form keeps its final actions above bottom navigation');
-    await button('预览打印').click(); await expect(button('打印送货单')).toBeEnabled();
+    await page.getByLabel('第1项备注').fill('我的待保存修改');
+    db.savePrintNote({ ...multi, sender: '另一个设备' }, multi.id);
+    await button('保存单据').click(); await expect(page.getByRole('alert')).toBeVisible();
+    await expect(page.getByLabel('第1项备注')).toHaveValue('我的待保存修改');
+    assert.equal(db.listPrintNotes().find(note => note.id === multi.id).sender, '另一个设备');
+    await button('＋ 新建').click(); await button('放弃并继续').click();
+    await page.goto(origin + '/#/pages/print-center/index'); await page.reload();
+    await page.locator('.team-boot').waitFor({ state: 'hidden' });
+    await button('查找单据').click(); await page.getByRole('button', { name: /多页送货客户/ }).click();
+    await button('编辑单据').click();
+    await button('确认出库并打印').click();
+    await expect.poll(() => db.listPrintNotes().find(note => note.id === multi.id).outbound_at).toBeTruthy();
+    await expect(button('打印送货单')).toBeEnabled();
     await expect(frame().locator('tr[data-line]')).toHaveCount(12);
     await expect(frame().locator('.sheet')).toHaveCount(3);
     await button('打印送货单').click();
@@ -271,11 +309,6 @@ async function main() {
       assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 3);
     }
     await page.evaluate(() => window.dispatchEvent(new Event('afterprint'))); await button('返回单据').click();
-    await page.getByLabel('第1项备注').fill('我的待保存修改');
-    db.savePrintNote({ ...multi, sender: '另一个设备' }, multi.id);
-    await button('保存单据').click(); await expect(page.getByRole('alert')).toBeVisible();
-    await expect(page.getByLabel('第1项备注')).toHaveValue('我的待保存修改');
-    assert.equal(db.listPrintNotes().find(note => note.id === multi.id).sender, '另一个设备');
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ engine, savedEditReload: 'passed', customersAndStaleSearch: 'passed', saveFailure: 'passed', conflict: 'passed', mobileWidths: [320, 375, 390, 430], twoDigitSpecification: 'passed', previewZoom: 'passed', paperSelector: 'removed', multipage: 12, screenshots: artifacts }));
   } catch (error) {

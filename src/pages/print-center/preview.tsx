@@ -25,9 +25,10 @@ function readPreferredPrintTransport(bluetoothSupported: boolean): PrintTranspor
 function savePreferredPrintTransport(value: PrintTransport): void { Taro.setStorageSync(TRANSPORT_KEY, value); }
 
 
-export default function PrintPreview({ note, saved, reprintIntent = false, autoSend = false, onClose }: {
+export default function PrintPreview({ note, saved, postedSource = false, reprintIntent = false, autoSend = false, onClose }: {
   note: PrintNoteInput;
   saved?: SavedPrintNote;
+  postedSource?: boolean;
   reprintIntent?: boolean;
   autoSend?: boolean;
   onClose: () => void;
@@ -61,6 +62,8 @@ export default function PrintPreview({ note, saved, reprintIntent = false, autoS
   const selectedPrinter = printers.find(printer => printer.name === printerName);
   const mobileNotices = useMobilePrintNotifications();
   const savedMatch = useMemo(() => saved && JSON.stringify(printDocument(saved, saved)) === JSON.stringify(doc) ? saved : undefined, [doc, saved]);
+  const printableSaved = savedMatch?.outbound_at ? savedMatch : undefined;
+  const printAllowed = postedSource || !!printableSaved;
   const bluetoothSupported = native && isBluetooth630KSupported();
   const [transport, setTransport] = useState<PrintTransport>(() => readPreferredPrintTransport(bluetoothSupported));
   const selectedTransport: PrintTransport = bluetoothSupported ? transport : 'network';
@@ -79,7 +82,7 @@ export default function PrintPreview({ note, saved, reprintIntent = false, autoS
   const pendingTransport: PrintTransport | undefined = printPending.bluetooth ? 'bluetooth' : printPending.network ? 'network' : undefined;
   const activeTransport = pendingTransport || selectedTransport;
   const canChangeTransport = bluetoothSupported && !pendingTransport && !printPending.issue;
-  const remote = useRemotePrint(savedMatch, paper, !bluetoothSupported || activeTransport === 'network');
+  const remote = useRemotePrint(printableSaved, paper, !bluetoothSupported || activeTransport === 'network');
   const [remoteOpen, setRemoteOpen] = useState(false);
   const autoSubmitted = useRef(false);
   const close = useRef(onClose);
@@ -112,15 +115,15 @@ export default function PrintPreview({ note, saved, reprintIntent = false, autoS
     if (native && activeTransport === 'network' && autoSend && (remote.message || remote.jobError)) setRemoteOpen(true);
   }, [native, activeTransport, autoSend, remote.message, remote.jobError]);
 
-  // Automatic dispatch is limited to explicit direct-print and opted-in outbound
-  // intents. It starts only after layout and task recovery. Existing tasks are
+  // Automatic dispatch is limited to the explicit outbound auto-print opt-in.
+  // It starts only after layout and task recovery. Existing tasks are
   // observed, never replaced by an automatic second copy; one failed attempt is
   // left for the user to retry, retaining its persisted task id.
   useEffect(() => {
-    if (!native || activeTransport !== 'network' || !autoSend || !ready || !canSend || remoteJob || autoSubmitted.current) return;
+    if (!native || activeTransport !== 'network' || !autoSend || !printAllowed || !ready || !canSend || remoteJob || autoSubmitted.current) return;
     autoSubmitted.current = true;
     void sendRemote();
-  }, [native, activeTransport, autoSend, ready, canSend, remoteJob, sendRemote]);
+  }, [native, activeTransport, autoSend, printAllowed, ready, canSend, remoteJob, sendRemote]);
   const autoCloseId = native && activeTransport === 'network' && remote.job?.id === remote.lastSentId
     && ['processing', 'queued'].includes(remote.job.status) ? remote.job.id : '';
   useEffect(() => {
@@ -152,12 +155,12 @@ export default function PrintPreview({ note, saved, reprintIntent = false, autoS
   useEffect(() => {
     const clear = () => { cleanupPrint.current?.(); cleanupPrint.current = null; };
     const before = () => {
-      if (native || !ready || cleanupPrint.current || !frame.current?.contentDocument) return;
+      if (native || !printAllowed || !ready || cleanupPrint.current || !frame.current?.contentDocument) return;
       cleanupPrint.current = mountDotMatrixPrintDocument(frame.current.contentDocument, settings, document);
     };
     window.addEventListener('beforeprint', before); window.addEventListener('afterprint', clear);
     return () => { window.removeEventListener('beforeprint', before); window.removeEventListener('afterprint', clear); clear(); };
-  }, [native, ready, settings]);
+  }, [native, printAllowed, ready, settings]);
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || busy.current) return;
@@ -175,7 +178,7 @@ export default function PrintPreview({ note, saved, reprintIntent = false, autoS
     } catch (issue) { setError(issue instanceof Error ? issue.message : '排版失败，请调整纸张'); setLoaded(''); }
   };
   const print = async () => {
-    if (!ready || busy.current) return;
+    if (!printAllowed || !ready || busy.current) return;
     busy.current = true; setPrinting(true); setMessage('');
     try {
       if (bridge) {
@@ -203,7 +206,8 @@ export default function PrintPreview({ note, saved, reprintIntent = false, autoS
       disabled: remote.busy,
       run: () => void remote.pair()
     };
-    if (!savedMatch) return { label: '保存后才能打印', disabled: true, run: () => {} };
+    if (!printAllowed) return { label: '确认出库后才能打印', disabled: true, run: () => {} };
+    if (!printableSaved) return { label: '原单仅支持本机打印', disabled: true, run: () => {} };
     if (remote.busy) return { label: '正在发送…', disabled: true, run: () => {} };
     if (remote.job?.status === 'uncertain') return { label: '待核对出纸', disabled: false, run: () => setRemoteOpen(true) };
     if (remote.pending) return { label: '任务处理中…', disabled: true, run: () => {} };
@@ -223,7 +227,7 @@ export default function PrintPreview({ note, saved, reprintIntent = false, autoS
     </nav>}
     {transportMessage && <p role='alert' className={styles.error}>{transportMessage}</p>}
     {printPending.issue && <p role='alert' className={styles.error}>{printPending.issue} 已暂停发送和通道切换。</p>}
-    {bluetoothSupported && activeTransport === 'bluetooth' && <Bluetooth630KPrint enabled ready={ready} saved={savedMatch} document={doc} settings={settings} autoSend={autoSend} onReadyChange={setBluetoothReady} onPendingChange={notifyPendingChange} />}
+    {bluetoothSupported && activeTransport === 'bluetooth' && <Bluetooth630KPrint enabled ready={ready} saved={printableSaved} document={doc} settings={settings} autoSend={autoSend && printAllowed} onReadyChange={setBluetoothReady} onPendingChange={notifyPendingChange} />}
     <div className={styles.previewHeader}><h2>送货单预览</h2><button type='button' className={styles.textButton} disabled={printing} onClick={onClose}>关闭</button></div>
     {bridge && <div className={styles.previewControls}><select aria-label='打印机' value={printerName} disabled={printerLoading || printing} onChange={event => setPrinterName(event.target.value)}><option value=''>{printerLoading ? '正在读取打印机…' : '请选择打印机'}</option>{printers.map(printer => <option key={printer.name} value={printer.name} disabled={printer.unavailable}>{printer.displayName}{printer.unavailable ? '（不可用）' : ''}</option>)}</select><button type='button' disabled={printerLoading || printing} onClick={() => setPrinterRetry(value => value + 1)}>刷新</button></div>}
     {printerError && <p role='alert' className={styles.error}>{printerError}</p>}{error && <p role='alert' className={styles.error}>{error}</p>}
@@ -231,6 +235,7 @@ export default function PrintPreview({ note, saved, reprintIntent = false, autoS
     {activeTransport === 'network' && <RemotePrint remote={remote} open={remoteOpen} onOpenChange={setRemoteOpen} showSendAction={!native} />}
     <p className={styles.muted}>{ready ? `共 ${layout.pages} 页 · 规格使用 × · 单位为个` : '正在排版…'}</p>
     {message && <p role='status' className={styles.notice}>{message}</p>}
-    <div className={styles.previewActions}><button type='button' className={styles.secondary} disabled={printing} onClick={zoomed ? () => setZoomed(false) : onClose}>{zoomed ? '缩小预览' : '返回单据'}</button>{native && activeTransport === 'bluetooth' ? <span className={styles.muted} role='status'>{bluetoothReady ? '630K 蓝牙打印机已连接' : '连接630K蓝牙打印电脑后发送'}</span> : native ? <button type='button' className={styles.primary} disabled={!ready || mobileAction.disabled} onClick={mobileAction.run}>{mobileAction.label}</button> : <button type='button' className={styles.primary} disabled={!ready || printing || (!!bridge && (printerLoading || !!printerError || !selectedPrinter || selectedPrinter.unavailable))} onClick={() => void print()}>{printing ? '正在发送…' : selectedPrinter?.isPdf ? '保存 PDF' : '打印送货单'}</button>}</div>
+    {!printAllowed && <p role='alert' className={styles.error}>确认出库后才能发送送货单打印。</p>}
+    <div className={styles.previewActions}><button type='button' className={styles.secondary} disabled={printing} onClick={zoomed ? () => setZoomed(false) : onClose}>{zoomed ? '缩小预览' : '返回单据'}</button>{native && activeTransport === 'bluetooth' ? <span className={styles.muted} role='status'>{!printAllowed ? '确认出库后才能打印' : bluetoothReady ? '630K 蓝牙打印机已连接' : '连接630K蓝牙打印电脑后发送'}</span> : native ? <button type='button' className={styles.primary} disabled={!printAllowed || !ready || mobileAction.disabled} onClick={mobileAction.run}>{mobileAction.label}</button> : <button type='button' className={styles.primary} disabled={!printAllowed || !ready || printing || (!!bridge && (printerLoading || !!printerError || !selectedPrinter || selectedPrinter.unavailable))} onClick={() => void print()}>{!printAllowed ? '确认出库后才能打印' : printing ? '正在发送…' : selectedPrinter?.isPdf ? '保存 PDF' : '打印送货单'}</button>}</div>
   </section></div>, document.body);
 }

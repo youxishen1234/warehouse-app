@@ -23,6 +23,7 @@ import styles from './index.module.scss';
 const currency = (value: number) => Number.isFinite(value) ? value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
 const messageOf = (error: unknown) => error instanceof Error ? error.message : '暂时无法完成，请重试';
 type PrintTab = 'home' | 'edit' | 'history' | 'detail';
+type SourceStatus = 'none' | 'loading' | 'ready' | 'error';
 
 function PrintIcon({ kind }: { kind: 'printer' | 'plus' | 'search' | 'arrow' }) {
   const paths = {
@@ -43,7 +44,7 @@ export default function PrintCenterPage() {
   const [tab, setTab] = useState<PrintTab>(() => params.transaction_id || params.mode === 'edit' ? 'edit' : 'home');
   const [printerStatus, setPrinterStatus] = useState<{ label: string; ready: boolean }>(() => ({ label: readPrintPair() ? '正在检查打印电脑' : '电脑打印未连接', ready: false }));
   const [preview, setPreview] = useState<PrintNoteInput>();
-  const [previewIntent, setPreviewIntent] = useState<'preview' | 'direct' | 'reprint' | 'auto'>('preview');
+  const [previewIntent, setPreviewIntent] = useState<'preview' | 'reprint' | 'auto'>('preview');
   const [paired, setPaired] = useState(() => !!readPrintPair());
   const [printAfterOutbound, setPrintAfterOutbound] = useState(readPrintAfterOutbound);
   const closePreview = useCallback(() => {
@@ -92,6 +93,22 @@ export default function PrintCenterPage() {
   const historySequence = useRef(0);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const pendingNavigation = useRef<(() => void) | null>(null);
+  const routeSourceId = Object.prototype.hasOwnProperty.call(params, 'transaction_id') ? String(params.transaction_id ?? '') : undefined;
+  const [sourceId, setSourceId] = useState<string | undefined>(() => {
+    if (routeSourceId !== undefined) return routeSourceId;
+    try {
+      const pending = Taro.getStorageSync('sg_print_transaction_id');
+      if (pending) {
+        Taro.removeStorageSync('sg_print_transaction_id');
+        return String(pending);
+      }
+    } catch { /* storage is optional in previews */ }
+    return undefined;
+  });
+  const [sourceStatus, setSourceStatus] = useState<SourceStatus>(() => sourceId === undefined ? 'none' : 'loading');
+  const [sourceRetry, setSourceRetry] = useState(0);
+  const sourceSequence = useRef(0);
+  const sourceActive = sourceId !== undefined;
 
   const change = (patch: Partial<NoteDraft>) => { setDraft(previous => ({ ...previous, ...patch })); setDirty(true); setError(''); setNotice(''); };
   const changeItem = (key: string, patch: Partial<ItemDraft>) => {
@@ -108,7 +125,17 @@ export default function PrintCenterPage() {
     if (!dirty) { action(); return; }
     pendingNavigation.current = action; setConfirmDiscard(true);
   };
-  const startNew = () => guard(() => { setDraft(newNote()); setSaved(undefined); setChosenCustomer(undefined); setDirty(false); setTab('edit'); setError(''); setNotice(''); });
+  const createNew = () => {
+    sourceSequence.current++;
+    setSourceId(undefined); setSourceStatus('none');
+    busyRef.current = false; setBusy(false);
+    setDraft(newNote()); setSaved(undefined); setPreview(undefined); setChosenCustomer(undefined);
+    setDirty(false); setTab('edit'); setError(''); setNotice('');
+  };
+  const startNew = () => {
+    if (sourceActive && sourceStatus === 'loading') { createNew(); return; }
+    guard(createNew);
+  };
   const openHistory = () => guard(() => setTab('history'));
 
   useEffect(() => {
@@ -153,40 +180,64 @@ export default function PrintCenterPage() {
   const refresh = useCallback(() => { if (tab === 'history' || tab === 'home') void loadHistory(); }, [tab, loadHistory]);
   useSharedRefresh(refresh);
 
-  // Preserve links from outbound/records, loading every line of the selected document.
+  // Transaction links are already-posted outbound records. Keep them read-only and
+  // preview-only so printing cannot deduct stock or add a receivable a second time.
   useEffect(() => {
-    let id = params.transaction_id;
-    if (!id) {
-      try {
-        const pending = Taro.getStorageSync('sg_print_transaction_id');
-        if (pending) Taro.removeStorageSync('sg_print_transaction_id');
-        id = pending ? String(pending) : undefined;
-      } catch { /* storage is optional in previews */ }
-    }
-    if (!id || !/^\d+$/.test(id)) return;
-    setTab('edit');
-    let active = true, started = false; busyRef.current = true; setBusy(true); setError('');
+    if (sourceId === undefined) { setSourceStatus('none'); return; }
+    const requestSequence = sourceSequence;
+    const generation = ++requestSequence.current;
+    setSaved(undefined); setPreview(undefined); setDraft(newNote()); setChosenCustomer(undefined);
+    setDirty(false); setTab('edit'); setSourceStatus('loading'); setError(''); setNotice('');
+    let active = true, started = false; busyRef.current = true; setBusy(true);
     const load = async () => {
       if (started || !session()) return;
       started = true;
       try {
+        if (!/^\d+$/.test(sourceId) || !Number.isSafeInteger(Number(sourceId)) || Number(sourceId) < 1) throw new Error('原出库单编号无效，请返回重新选择');
         const records = await getTransactions({ include_voided: true });
-        const first = records.find(row => row.id === Number(id));
+        const first = records.find(row => row.id === Number(sourceId));
         if (!first) throw new Error('原单据不存在，请返回重新选择');
+        if (first.type !== 'out') throw new Error('所选原单据不是出库记录，不能作为打印来源');
         const lines = records.filter(row => transactionPrintKey(row) === transactionPrintKey(first));
+        if (lines.some(row => row.voided_at)) throw new Error('原出库单已作废，请返回重新选择');
+        if (lines.some(row => row.unit !== '个')) throw new Error('原出库单含有非“个”单位明细，不能按送货单预览');
         documentFromTransactions(lines);
         const customer = first.customer_id ? await getCustomer(first.customer_id) : undefined;
-        if (active) { setDraft(draftFromTransactions(lines, customer)); setChosenCustomer(customer); setDirty(true); setNotice('已带入原单明细，核对后即可保存送货单'); }
-      } catch (issue) { if (active) setError(messageOf(issue)); }
-      finally { if (active) { busyRef.current = false; setBusy(false); } }
+        if (active && generation === requestSequence.current) {
+          setDraft(draftFromTransactions(lines, customer));
+          setChosenCustomer(customer); setDirty(false); setSourceStatus('ready');
+          setNotice('原出库单已验证，仅可预览打印');
+        }
+      } catch (issue) {
+        if (active && generation === requestSequence.current) {
+          setSourceStatus('error'); setError(messageOf(issue));
+        }
+      } finally {
+        if (active && generation === requestSequence.current) {
+          busyRef.current = false; setBusy(false);
+        }
+      }
     };
     const stop = watchSession(() => void load());
-    void load(); return () => { active = false; stop(); };
-  }, [params.transaction_id]);
+    void load();
+    return () => {
+      active = false; stop();
+      if (generation === requestSequence.current) requestSequence.current++;
+    };
+  }, [sourceId, sourceRetry]);
 
   const openNote = (id: number, reprint = false) => guard(() => {
+    sourceSequence.current++;
     busyRef.current = true; setBusy(true); setError(''); setNotice('');
-    getPrintNote(id).then(note => { setSaved(note); setDraft(noteDraft(note)); setDirty(false); setChosenCustomer(undefined); if(reprint){setPreviewIntent('reprint');setPreview(note);}else setTab('detail'); })
+    getPrintNote(id).then(note => {
+      setSourceId(undefined); setSourceStatus('none');
+      setSaved(note); setDraft(noteDraft(note)); setDirty(false); setChosenCustomer(undefined);
+      if (reprint && note.outbound_at) { setPreviewIntent('reprint'); setPreview(note); }
+      else {
+        setTab('detail');
+        if (reprint) setError('这张送货单尚未出库，请确认出库后再打印');
+      }
+    })
       .catch(issue => setError(messageOf(issue))).finally(() => { busyRef.current = false; setBusy(false); });
   });
   // Reuse an existing note as a new delivery: the customer and lines are copied,
@@ -194,40 +245,55 @@ export default function PrintCenterPage() {
   const copyNote = (id: number) => guard(() => {
     busyRef.current = true; setBusy(true); setError(''); setNotice('');
     getPrintNote(id).then(note => {
+      setSourceId(undefined); setSourceStatus('none');
       setSaved(undefined); setChosenCustomer(undefined);
       setDraft(copyNoteDraft(note));
       setDirty(true); setTab('edit');
       setNotice(`已按 ${note.number} 带入客户和明细，核对后保存为新单`);
     }).catch(issue => setError(messageOf(issue))).finally(() => { busyRef.current = false; setBusy(false); });
   });
-  const save = async (thenPreview?: 'direct') => {
-    if (busyRef.current) return;
+  const save = async () => {
+    if (busyRef.current || shipping.current || sourceActive) return;
     let data: PrintNoteInput;
     try { data = validateDraft(draft); } catch (issue) { setError(messageOf(issue)); return; }
     busyRef.current = true; setBusy(true); setError('');
     try {
       const note = await savePrintNote(data, saved);
       setSaved(note); setDraft(noteDraft(note)); setDirty(false);
-      if (thenPreview) { setPreviewIntent(thenPreview); setPreview(note); setNotice(''); }
-      else setNotice(saved ? '修改已保存' : '送货单已保存');
+      setNotice(saved ? '修改已保存' : '送货单已保存');
     } catch (issue) { setError(messageOf(issue)); }
     finally { busyRef.current = false; setBusy(false); }
   };
-  const saveAndPrint = () => {
-    if (busyRef.current) return;
-    if (saved && !dirty) { setPreviewIntent('direct'); setPreview(saved); return; }
-    void save('direct');
-  };
   const showPreview = () => { try { setPreviewIntent('preview'); setPreview(validateDraft(draft)); setError(''); } catch (issue) { setError(messageOf(issue)); } };
   const shipAndPrint = async () => {
-    if (!saved || shipping.current || busyRef.current || dirty) { if (dirty) setError('请先保存送货单，再确认出库'); return; }
-    shipping.current = true; setShipBusy(true); setError('');
+    if (sourceActive || shipping.current || busyRef.current) return;
+    let data: PrintNoteInput;
+    try { data = validateDraft(draft); } catch (issue) { setError(messageOf(issue)); return; }
+    busyRef.current = true; shipping.current = true;
+    setBusy(true); setShipBusy(true); setError(''); setNotice('');
+    let note = saved;
+    let savedDuringAttempt = false;
     try {
-      const note = await shipPrintNote(saved.id);
-      setSaved(note); setDraft(noteDraft(note)); setNotice('已出库，库存和客户应收已更新；现在打开打印预览');
+      if (!note || dirty) {
+        note = await savePrintNote(data, note);
+        setSaved(note); setDraft(noteDraft(note)); setDirty(false);
+        savedDuringAttempt = true;
+        setNotice('送货单已保存，正在确认出库');
+      }
+      if (!note.outbound_at) note = await shipPrintNote(note.id);
+      setSaved(note); setDraft(noteDraft(note)); setDirty(false); setTab('detail');
+      setNotice(note.customer_id ? '已出库，库存和客户应收已更新；现在打开打印预览' : '已出库，库存已更新；未关联客户，未增加客户应收');
       setPreviewIntent(native && paired && printAfterOutbound ? 'auto' : 'preview'); setPreview(note);
-    } catch (issue) { setError(messageOf(issue)); }
-    finally { shipping.current = false; setShipBusy(false); }
+    } catch (issue) {
+      if (savedDuringAttempt && note && !note.outbound_at) {
+        setSaved(note); setDraft(noteDraft(note)); setDirty(false); setTab('detail');
+        setNotice('送货单已保存，但出库未完成；可在详情中重试出库');
+      }
+      setError(messageOf(issue));
+    } finally {
+      busyRef.current = false; shipping.current = false;
+      setBusy(false); setShipBusy(false);
+    }
   };
   const chooseCustomer = (customer: Customer) => {
     setDraft(previous => selectCustomer(previous, customer)); setChosenCustomer(customer); setCustomerOpen(false); setDirty(true); setError(''); setNotice('');
@@ -255,10 +321,10 @@ export default function PrintCenterPage() {
   return <main className={styles.page} data-print-view={tab}>
     <div className={styles.shell}>
       <PrintNotifications onOpenNote={id => openNote(id, true)} />
-      {tab !== 'home' && <><header className={styles.toolbar}><button type='button' className={styles.back} aria-label='返回' onClick={() => guard(() => setTab('home'))}>‹</button><div><h1>打印中心</h1><p>送货单</p></div><button type='button' className={styles.newButton} onClick={startNew} disabled={busy}>＋ 新建</button></header>
+      {tab !== 'home' && <><header className={styles.toolbar}><button type='button' className={styles.back} aria-label='返回' onClick={() => guard(() => setTab('home'))}>‹</button><div><h1>打印中心</h1><p>送货单</p></div><button type='button' className={styles.newButton} onClick={startNew} disabled={busy && !sourceActive}>＋ 新建</button></header>
       {printModes}
       <nav className={styles.tabs} aria-label='打印中心页面'><button type='button' aria-pressed={tab !== 'history'} onClick={() => setTab(saved && !dirty ? 'detail' : 'edit')}>当前单据</button><button type='button' aria-pressed={tab === 'history'} onClick={() => setTab('history')}>历史单据</button></nav></>}
-      {error && <div ref={errorBox} className={styles.error} role='alert'>{error}</div>}
+      {error && <div ref={errorBox} className={styles.error} role='alert'>{error}{sourceActive && sourceStatus === 'error' && <button type='button' onClick={() => setSourceRetry(value => value + 1)}>重试读取原单</button>}</div>}
       {notice && <div className={styles.notice} role='status'>{notice}</div>}
       {tab === 'home' ? <section className={styles.workspace} data-print-workbench='half'>
         <header className={styles.workspaceHeader}>
@@ -322,8 +388,8 @@ export default function PrintCenterPage() {
         </label>}
         <footer className={styles.actions}><button type='button' className={styles.secondary} onClick={() => { setTab('edit'); setNotice(''); }} disabled={!!saved.outbound_at || shipBusy}>编辑单据</button>{saved.outbound_at ? <button type='button' className={styles.primary} onClick={() => { setPreviewIntent('reprint'); setPreview(saved); }}>再次打印</button> : <button type='button' className={styles.primary} onClick={shipAndPrint} disabled={shipBusy || dirty}>{shipBusy ? '出库中…' : native ? paired && printAfterOutbound ? '确认出库并打印' : '确认出库' : '确认出库并打印'}</button>}</footer>
       </> : <>
-        <div className={styles.documentStatus}><span>{saved?.number || '新送货单'}</span><span>{busy ? '正在处理…' : dirty ? '待保存' : saved ? '已保存' : '填写后保存'}</span></div>
-        <fieldset disabled={busy} className={styles.form}>
+        <div className={styles.documentStatus} data-source-status={sourceActive ? sourceStatus : undefined}><span>{sourceActive ? '原出库单' : saved?.number || '新送货单'}</span><span>{sourceStatus === 'loading' ? '正在读取…' : sourceActive ? sourceStatus === 'ready' ? '已出库 · 只读' : '读取失败' : busy ? '正在处理…' : dirty ? '待保存' : saved ? '已保存' : '填写后保存'}</span></div>
+        <fieldset disabled={busy || sourceActive} className={styles.form}>
           <section className={styles.card}><div className={styles.sectionHeading}><h2>收货信息</h2><button type='button' className={styles.textButton} onClick={() => { setCustomerQuery(''); setCustomerOpen(true); }}>搜索客户</button></div>
             <label className={styles.field}>收货单位<input aria-label='收货单位' placeholder='输入名称，或点右上角搜索客户' maxLength={100} value={draft.customer_name} onChange={event => { change({ customer_name: event.target.value, customer_id: null }); setChosenCustomer(undefined); }} /></label>
             {input('address', '收货地址', 200)}
@@ -341,19 +407,18 @@ export default function PrintCenterPage() {
           </section>
           <details className={styles.settings}><summary>公司抬头</summary><div className={styles.settingsBody}>{input('company', '公司抬头', 50)}</div></details>
         </fieldset>
-        <footer className={styles.actions}>{paired && native ? <>
-          <button type='button' className={styles.secondary} disabled={busy || (!!saved && !dirty)} onClick={() => void save()}>{busy ? '保存中…' : saved && !dirty ? '已保存' : '仅保存'}</button>
-          <button type='button' className={styles.primary} disabled={busy} onClick={saveAndPrint}>{busy ? '处理中…' : saved && !dirty ? '打印到630K' : '保存并打印'}</button>
+        <footer className={styles.actions}>{sourceActive ? <>
+          <button type='button' className={styles.primary} disabled={busy || sourceStatus !== 'ready'} onClick={showPreview}>{sourceStatus === 'loading' ? '正在读取原单…' : '预览打印'}</button>
         </> : <>
-          <button type='button' className={styles.secondary} disabled={busy || (!!saved && !dirty)} onClick={() => void save()}>{busy ? '保存中…' : saved && !dirty ? '已保存' : '保存单据'}</button>
-          <button type='button' className={styles.primary} disabled={busy} onClick={showPreview}>预览打印</button>
+          <button type='button' className={styles.secondary} disabled={busy || (!!saved && !dirty)} onClick={() => void save()}>{busy ? '保存中…' : saved && !dirty ? '已保存' : native ? '仅保存' : '保存单据'}</button>
+          <button type='button' className={styles.primary} disabled={busy} onClick={() => void shipAndPrint()}>{busy ? '处理中…' : '确认出库并打印'}</button>
         </>}</footer>
       </>}
     </div>
     {specificationOpen && <SpecificationPicker customerId={draft.customer_id} customerName={draft.customer_name} items={draft.items} onAdd={addSpecifications} onClose={() => setSpecificationOpen(false)} />}
     {customerOpen && <div className={styles.backdrop} onClick={() => setCustomerOpen(false)}><section role='dialog' aria-modal='true' aria-label='搜索客户' className={styles.dialog} onClick={event => event.stopPropagation()}><div className={styles.sectionHeading}><h2>选择客户</h2><button type='button' className={styles.textButton} onClick={() => setCustomerOpen(false)}>关闭</button></div><input autoFocus type='search' aria-label='搜索客户名称或电话' placeholder='客户名称 / 联系人 / 电话' value={customerQuery} onChange={event => setCustomerQuery(event.target.value)} /><div className={styles.customerResults}>{customerLoading ? <p className={styles.muted}>正在查找…</p> : customerError ? <div className={styles.error} role='alert'>{customerError}<button type='button' onClick={() => setCustomerRetry(value => value + 1)}>重试</button></div> : customers.length ? customers.map(customer => <button type='button' className={styles.customer} key={customer.id} onClick={() => chooseCustomer(customer)}><strong>{customer.name}</strong><span>{[customer.contact, customer.phone].filter(Boolean).join(' · ') || '暂无联系人'}</span>{customer.address && <small>{customer.address}</small>}</button>) : <p className={styles.muted}>没有找到客户，可关闭后直接填写收货单位</p>}</div></section></div>}
     {confirmDiscard && <div className={styles.backdrop}><section role='dialog' aria-modal='true' aria-label='保留未保存内容' className={styles.dialog}><h2>当前内容还没有保存</h2><p>离开后，本次修改将不会保留。</p><div className={styles.confirmActions}><button type='button' className={styles.secondary} onClick={() => { setConfirmDiscard(false); pendingNavigation.current = null; }}>继续编辑</button><button type='button' className={styles.primary} onClick={() => { const action = pendingNavigation.current; pendingNavigation.current = null; setConfirmDiscard(false); setDirty(false); setDraft(saved ? noteDraft(saved) : newNote()); setNotice(''); action?.(); }}>放弃并继续</button></div></section></div>}
-    {preview && <PrintPreview key={`${saved?.id || 'draft'}:${saved?.version || 0}:${previewIntent}`} note={preview} saved={saved} reprintIntent={previewIntent === 'reprint'} autoSend={previewIntent === 'auto' || previewIntent === 'direct'} onClose={closePreview} />}
+    {preview && <PrintPreview key={`${saved?.id || 'draft'}:${saved?.version || 0}:${previewIntent}`} note={preview} saved={saved} postedSource={sourceActive && sourceStatus === 'ready'} reprintIntent={previewIntent === 'reprint'} autoSend={previewIntent === 'auto'} onClose={closePreview} />}
   </main>;
 }
 
