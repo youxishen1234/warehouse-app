@@ -63,7 +63,7 @@ test('K3 and phone preview share 70×100 business fields, source fonts, QR and e
   assertApprovedFieldOrder(phone.html);
   assert.match(phone.html, /数量：0 张/);
   assert.match(phone.html, /font-src 'self' data:/);
-  assert.match(phone.html, /font-family:PaperboardSourceHan;src:url\("data:font\/woff2;base64,TEST_SourceHanSansSC-Heavy.woff2"\)/);
+  assert.match(phone.html, /font-family:PaperboardSourceHan;src:url\("data:font\/woff2;base64,TEST_SourceHanSansSC-Heavy\.gb2312-l1\.woff2"\)/);
   assert.match(phone.html, /width:24mm;height:24mm/);
 });
 

@@ -110,6 +110,36 @@
             } catch (e) {}
           };
 
+          // Reuse the package URL between attempts so the native plugin can
+          // resume any retained partial download. Keep the JS deadline above
+          // responseTimeout so its native error reaches the caller first.
+          var downloadBundle = async function(url, version, curV, nativeV) {
+            for (var attempt = 1; attempt <= 2; attempt++) {
+              report('download_attempt', {
+                current: curV,
+                native_version: nativeV,
+                to_version: version,
+                message: url + ' (attempt ' + attempt + '/2)'
+              });
+              try {
+                var result = await withDeadline(function() {
+                  return TU.download({ url: url, version: version });
+                }, 190000, '更新下载超时');
+                if (result && result.id) return result;
+                throw new Error('empty bundle id');
+              } catch (e) {
+                report('download_failed', {
+                  current: curV,
+                  native_version: nativeV,
+                  to_version: version,
+                  message: ((e && e.message) || 'download error') + ' (attempt ' + attempt + '/2)'
+                });
+                if (attempt < 2) await new Promise(function(resolve) { setTimeout(resolve, 1500); });
+              }
+            }
+            return null;
+          };
+
           // 简单版本号比较：a<b 返回 -1，a>b 返回 1
           var cmpVer = function(a, b) {
             var pa = String(a).split('.').map(function(x) { return parseInt(x, 10) || 0; });
@@ -179,12 +209,11 @@
             var bid = hit ? hit.id : null;
             if (!bid) {
               toast('发现新版本，正在自动更新…');
-              var res = await withDeadline(function() { return TU.download({ url: FILES + m.url + '?t=' + Date.now(), version: m.version }); }, 45000, '更新下载超时').catch(function(e) {
-                report('download_failed', { current: curV, native_version: nativeV, to_version: m.version, message: (e && e.message) || 'download error' });
+              var res = await downloadBundle(FILES + m.url + '?t=' + Date.now(), m.version, curV, nativeV);
+              if (!res) {
                 toast('更新下载失败，请检查网络后重试');
-                return null;
-              });
-              if (!res) return;
+                return;
+              }
               bid = res.id;
               report('downloaded', { current: curV, native_version: nativeV, to_version: m.version });
             }

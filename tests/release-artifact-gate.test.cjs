@@ -66,3 +66,11 @@ test('release gate rejects stale archives, source maps, and credential-like valu
   await fs.writeFile(path.join(dist, 'secret.txt'), 'Authorization: Bearer abcdefghijklmnopqrstuvwxyz1234567890');
   assert.throws(() => run(['--dist', dist]), /credential-like/);
 });
+
+test('release gate rejects hot-update archives that cannot reliably download on iOS', async () => {
+  const { root, dist } = await fixture();
+  const zip = path.join(root, 'oversized.zip');
+  await fs.writeFile(zip, '');
+  await fs.truncate(zip, 6 * 1024 * 1024 + 1);
+  assert.throws(() => run(['--dist', dist, '--zip', zip]), /archive is too large/);
+});

@@ -4,6 +4,7 @@ const { createHash } = require('node:crypto');
 const { readArchive } = require('./prepare-download.cjs');
 
 const textExtensions = new Set(['.css', '.html', '.js', '.json', '.svg', '.txt']);
+const MAX_HOTUPDATE_ZIP_BYTES = 6 * 1024 * 1024;
 const secretPatterns = [
   /-----BEGIN(?: [A-Z]+)? PRIVATE KEY-----/,
   /\bAKIA[0-9A-Z]{16}\b/,
@@ -61,6 +62,10 @@ async function verifyDirectory(directory) {
 }
 
 async function verifyZip(zipPath, directoryInfo) {
+  const archiveStat = await fs.stat(zipPath);
+  if (archiveStat.size > MAX_HOTUPDATE_ZIP_BYTES) {
+    throw new Error(`hot-update archive is too large: ${archiveStat.size} bytes (limit ${MAX_HOTUPDATE_ZIP_BYTES})`);
+  }
   const archive = await readArchive(zipPath, () => true);
   const normalizedArchive = new Map();
   const zipNames = new Set();
@@ -118,4 +123,4 @@ if (require.main === module) {
   main().catch(error => { console.error(`release artifact verification failed: ${error.message}`); process.exitCode = 1; });
 }
 
-module.exports = { main, verifyDirectory, verifyZip };
+module.exports = { main, verifyDirectory, verifyZip, MAX_HOTUPDATE_ZIP_BYTES };

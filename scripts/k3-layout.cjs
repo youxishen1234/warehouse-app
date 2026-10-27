@@ -20,8 +20,8 @@ const when = value => text(value);
 
 function boardLabelFonts() {
   const fontDirectory = path.resolve(__dirname, '../src/assets/label-fonts');
-  const heavy = fs.readFileSync(path.join(fontDirectory, 'SourceHanSansSC-Heavy.woff2')).toString('base64');
-  const medium = fs.readFileSync(path.join(fontDirectory, 'SourceHanSansSC-Medium.woff2')).toString('base64');
+  const heavy = fs.readFileSync(path.join(fontDirectory, 'SourceHanSansSC-Heavy.gb2312-l1.woff2')).toString('base64');
+  const medium = fs.readFileSync(path.join(fontDirectory, 'SourceHanSansSC-Medium.gb2312-l1.woff2')).toString('base64');
   return `
 @font-face{font-family:PaperboardSourceHan;src:url(data:font/woff2;base64,${heavy}) format("woff2");font-style:normal;font-weight:900;font-display:block}
 @font-face{font-family:PaperboardSourceHan;src:url(data:font/woff2;base64,${medium}) format("woff2");font-style:normal;font-weight:500;font-display:block}
@@ -67,7 +67,7 @@ async function buildLargePaperboardLabel({ data, profile, width, height, margin,
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{background:#fff}
 ${fontCss}
-body{font-family:PaperboardSourceHan,sans-serif;color:#000;-webkit-font-smoothing:antialiased}
+body{font-family:PaperboardSourceHan,"Microsoft YaHei","PingFang SC",sans-serif;color:#000;-webkit-font-smoothing:antialiased}
 .warehouse-label{position:relative;overflow:hidden;background:#fff}
 .paperboard-label{display:flex;flex-direction:column;overflow:hidden;padding:${px(2.5)}px ${px(3)}px}
 .paperboard-header{height:${px(6)}px;flex:0 0 auto;display:flex;align-items:flex-start;justify-content:space-between;border-bottom:${px(.5)}px solid #000;font-size:${px(3.5)}px;font-weight:900;letter-spacing:0}

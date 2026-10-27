@@ -1,8 +1,8 @@
 import QRCode from 'qrcode';
 import type { MediaProfile } from './native';
 import type { LabelSnapshot, ManualBoardLabelSnapshot, RemotePrintableLabelKind } from './model';
-import sourceHanHeavy from '../../assets/label-fonts/SourceHanSansSC-Heavy.woff2';
-import sourceHanMedium from '../../assets/label-fonts/SourceHanSansSC-Medium.woff2';
+import sourceHanHeavy from '../../assets/label-fonts/SourceHanSansSC-Heavy.gb2312-l1.woff2';
+import sourceHanMedium from '../../assets/label-fonts/SourceHanSansSC-Medium.gb2312-l1.woff2';
 
 const DOTS_PER_MM = 8;
 const mm = (value: number) => `${value}mm`;
@@ -74,7 +74,7 @@ const PAPERBOARD_LABEL_STYLE = `
 @font-face{font-family:PaperboardSourceHan;src:url("${sourceHanMedium}") format("woff2");font-style:normal;font-weight:500;font-display:block}
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{background:#fff}
-body{font-family:PaperboardSourceHan,sans-serif;color:#000;-webkit-font-smoothing:antialiased}
+body{font-family:PaperboardSourceHan,"Microsoft YaHei","PingFang SC",sans-serif;color:#000;-webkit-font-smoothing:antialiased}
 .warehouse-label{position:relative;overflow:hidden;background:#fff;transform-origin:top left}
 .paperboard-label{display:flex;flex-direction:column;overflow:hidden;padding:2.5mm 3mm}
 .paperboard-header{height:6mm;flex:0 0 auto;display:flex;align-items:flex-start;justify-content:space-between;border-bottom:.5mm solid #000;font-size:3.5mm;font-weight:900;letter-spacing:0}

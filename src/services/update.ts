@@ -1,6 +1,7 @@
 import Taro from '@tarojs/taro';
 import { getBaseUrl } from '@/services/request';
 import { deviceId, PUBLIC_ORIGIN } from '@/services/session';
+import { downloadBundleWithRetry, UPDATE_DOWNLOAD_TIMEOUT } from './update-download';
 import { isNewerVersion } from './update-version';
 
 // ============================================
@@ -18,7 +19,6 @@ interface NativeUpdater {
 // Native updater calls are bridge operations. A stalled WKWebView bridge must
 // never leave the Mine page's update dialog in "检查中" forever.
 const UPDATER_CURRENT_TIMEOUT = 8000;
-const UPDATER_DOWNLOAD_TIMEOUT = 45000;
 const UPDATER_NEXT_TIMEOUT = 8000;
 
 function withTimeout<T>(promise: Promise<T>, timeout: number, message: string): Promise<T> {
@@ -149,20 +149,30 @@ export async function checkAndUpdate(): Promise<CheckUpdateResult> {
   let bid = '';
   const downloadOrigin = base || PUBLIC_ORIGIN;
   const downloadUrl = `${downloadOrigin}/appupdate/${(info?.url || 'www.zip').replace(/^\//, '')}?t=${now}`;
-  report('download_attempt', cur, latest, downloadUrl);
-  try {
-    const res = await withTimeout(tu.download({
-      url: downloadUrl,
-      version: latest
-    }), UPDATER_DOWNLOAD_TIMEOUT, '更新包下载超时');
-    bid = (res && res.id) || '';
-  } catch (e: any) {
-    report('download_failed', cur, latest, String(e?.message || 'download error'));
-    return { hasUpdate: true, message: '更新包下载失败，请检查网络后重试' };
-  }
+  const downloaded = await downloadBundleWithRetry(
+    async attempt => {
+      report('download_attempt', cur, latest, `${downloadUrl} (attempt ${attempt})`);
+      return withTimeout(
+        tu.download({ url: downloadUrl, version: latest }),
+        UPDATE_DOWNLOAD_TIMEOUT,
+        '更新包下载超时'
+      );
+    },
+    failure => report(
+      'download_failed',
+      cur,
+      latest,
+      `${failure.message} (attempt ${failure.attempt}/${failure.maxAttempts})`
+    )
+  );
+  bid = downloaded.bundle?.id || '';
   if (!bid) {
-    report('download_failed', cur, latest, 'empty bundle id');
-    return { hasUpdate: true, message: '更新包下载失败，请稍后重试' };
+    return {
+      hasUpdate: true,
+      message: downloaded.emptyBundle
+        ? '更新包下载失败，请稍后重试'
+        : '更新包下载失败，请检查网络后重试'
+    };
   }
   report('downloaded', cur, latest);
 

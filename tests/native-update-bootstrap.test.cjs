@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 
-function bootstrap(preferred, stalled = '') {
+function bootstrap(preferred, stalled = '', downloadFailures = 0) {
   const html = fs.readFileSync('src/index.html', 'utf8');
   const script = [...html.matchAll(/<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/g)].map(item => item[1]).find(code => code.includes('var TU'));
   const storage = new Map(preferred === undefined ? [] : [['sg_custom_base', preferred]]);
@@ -15,7 +15,11 @@ function bootstrap(preferred, stalled = '') {
     notifyAppReady: async () => {},
     current: stalled === 'current' ? never : async () => ({ bundle: { version: '20261010011625' } }),
     list: stalled === 'list' ? never : async () => ({ bundles: [] }),
-    download: async options => { downloads.push(options); return { id: 'fixture-bundle' }; },
+    download: async options => {
+      downloads.push(options);
+      if (downloads.length <= downloadFailures) throw new Error('fixture download timeout');
+      return { id: 'fixture-bundle' };
+    },
     next: async () => { finish(); return true; }
   };
   vm.runInNewContext(script, {
@@ -51,3 +55,10 @@ test('stalled native metadata and bundle list do not prevent the startup update 
     if (stalled === 'check') assert(result.requests.some(item => item.url.includes('/manifest.json')));
   }
 });
+
+test('native startup retries one timed-out bundle download', async () => {
+  const result = bootstrap(JSON.stringify({ data: 'https://youxishen.online' }), '', 1);
+  await result.scheduled;
+  assert.equal(result.downloads.length, 2);
+  assert(result.requests.some(item => String(item.body || '').includes('download_failed')));
+},{ concurrency: false });
