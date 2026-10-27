@@ -20,6 +20,30 @@ HARNESS = ROOT / "tests/label-font-ios-harness.swift"
 RENDERER = ROOT / "ios/App/App/LabelTemplateRenderer.swift"
 
 
+class CommandTimeout(RuntimeError):
+    """A bounded native command did not return before its deadline."""
+
+
+class SimulatorLaunchTimeout(RuntimeError):
+    """The simulator launch timed out and produced no diagnostic report."""
+
+
+def with_launch_recovery(attempt, recover):
+    """Retry only an ambiguous simulator launch, never renderer assertions."""
+    try:
+        return attempt()
+    except SimulatorLaunchTimeout as first_error:
+        recover()
+        try:
+            return attempt()
+        except Exception as second_error:
+            raise second_error from first_error
+
+
+def github_escape(value):
+    return str(value).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+
 def validate_fixtures(fixtures):
     assert fixtures["schemaVersion"] == 1 and fixtures["testOnly"] is True
     profile = fixtures["screenshotProfile"]
@@ -206,19 +230,43 @@ def main():
     }
     log = output / "runner.log"
     udid = None
+    launch_attempts = []
 
     def run(*command, timeout=180, check=True):
         command = [str(x) for x in command]
+        started = time.monotonic()
         with log.open("a", encoding="utf-8") as handle:
             handle.write("$ " + " ".join(command) + "\n")
-        result = subprocess.run(command, cwd=ROOT, text=True, stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT, timeout=timeout)
+        try:
+            result = subprocess.run(command, cwd=ROOT, text=True, stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT, timeout=timeout)
+        except subprocess.TimeoutExpired as error:
+            partial = error.stdout or ""
+            if isinstance(partial, bytes):
+                partial = partial.decode(errors="replace")
+            with log.open("a", encoding="utf-8") as handle:
+                handle.write(partial + ("\n" if partial and not partial.endswith("\n") else ""))
+                handle.write("[timeout] %s elapsed after %ss\n" % (" ".join(command[:4]), timeout))
+            raise CommandTimeout("Command timed out: " + " ".join(command[:4])) from error
         with log.open("a", encoding="utf-8") as handle:
             handle.write(result.stdout + "\n")
+            handle.write("[exit %s] %.2fs\n" % (result.returncode, time.monotonic() - started))
         if check and result.returncode:
             print(result.stdout[-16000:])
             raise RuntimeError("Command failed: " + " ".join(command[:4]))
         return result.stdout.strip()
+
+    def cleanup_simulator():
+        nonlocal udid
+        if not udid:
+            return
+        current, udid = udid, None
+        for action in ("shutdown", "delete"):
+            try:
+                run("xcrun", "simctl", action, current, timeout=45, check=False)
+            except Exception as cleanup_error:
+                with log.open("a", encoding="utf-8") as handle:
+                    handle.write("[cleanup warning] %s %s: %s\n" % (action, current, cleanup_error))
 
     try:
         metadata["xcode"] = run("xcodebuild", "-version")
@@ -264,17 +312,52 @@ def main():
                 "-o", app / "FontDiagnostic", "-framework", "UIKit", "-framework", "CoreText",
                 "-framework", "CoreImage", timeout=300)
             run("codesign", "--force", "--sign", "-", app)
-            udid = run("xcrun", "simctl", "create", "K3-Font-" + stage.name, device["identifier"], runtime["identifier"])
-            metadata["simulatorUUID"] = udid
-            run("xcrun", "simctl", "boot", udid)
-            run("xcrun", "simctl", "bootstatus", udid, "-b", timeout=300)
-            run("xcrun", "simctl", "install", udid, app)
-            run("xcrun", "simctl", "launch", udid, bundle)
-            documents = pathlib.Path(run("xcrun", "simctl", "get_app_container", udid, bundle, "data")) / "Documents"
-            deadline = time.monotonic() + 90
-            while not (documents / "report.json").exists() and time.monotonic() < deadline:
-                time.sleep(1)
-            assert (documents / "report.json").exists(), "Native app did not finish writing report"
+
+            def launch_diagnostic_attempt():
+                nonlocal udid
+                udid = run("xcrun", "simctl", "create", "K3-Font-" + stage.name,
+                           device["identifier"], runtime["identifier"])
+                launch_attempts.append({"number": len(launch_attempts) + 1, "simulatorUUID": udid})
+                metadata["simulatorUUID"] = udid
+                run("xcrun", "simctl", "boot", udid)
+                run("xcrun", "simctl", "bootstatus", udid, "-b", timeout=300)
+                run("xcrun", "simctl", "install", udid, app)
+                launch_timed_out = False
+                try:
+                    run("xcrun", "simctl", "launch", udid, bundle)
+                except CommandTimeout:
+                    launch_timed_out = True
+
+                documents = None
+                if launch_timed_out:
+                    try:
+                        data_container = run("xcrun", "simctl", "get_app_container", udid, bundle, "data",
+                                             timeout=30)
+                        documents = pathlib.Path(data_container) / "Documents"
+                    except Exception:
+                        documents = None
+                else:
+                    data_container = run("xcrun", "simctl", "get_app_container", udid, bundle, "data")
+                    documents = pathlib.Path(data_container) / "Documents"
+
+                deadline = time.monotonic() + 90
+                while documents and not (documents / "report.json").exists() and time.monotonic() < deadline:
+                    time.sleep(1)
+                if documents and (documents / "report.json").exists():
+                    if launch_timed_out:
+                        launch_attempts[-1]["recoveredExistingReport"] = True
+                    return documents
+                if launch_timed_out:
+                    raise SimulatorLaunchTimeout("Simulator launch timed out without a diagnostic report")
+                raise AssertionError("Native app did not finish writing report")
+
+            def recover_simulator():
+                launch_attempts[-1]["recovery"] = "fresh-simulator"
+                cleanup_simulator()
+                time.sleep(5)
+
+            documents = with_launch_recovery(launch_diagnostic_attempt, recover_simulator)
+            metadata["launchAttempts"] = launch_attempts
             for file in documents.iterdir():
                 if file.suffix in (".json", ".png"):
                     shutil.copy2(file, output / file.name)
@@ -312,15 +395,19 @@ def main():
     except Exception as error:
         metadata["status"] = "diagnostic-runner-failed"
         metadata["error"] = str(error)
+        metadata["launchAttempts"] = launch_attempts
+        print("::error title=iOS font diagnostic::" + github_escape(str(error)))
         if udid:
-            run("xcrun", "simctl", "spawn", udid, "log", "show", "--last", "2m", "--style", "compact",
-                "--predicate", 'process == "FontDiagnostic"', check=False)
+            try:
+                run("xcrun", "simctl", "spawn", udid, "log", "show", "--last", "2m", "--style", "compact",
+                    "--predicate", 'process == "FontDiagnostic"', timeout=45, check=False)
+            except Exception as diagnostic_error:
+                with log.open("a", encoding="utf-8") as handle:
+                    handle.write("[diagnostic warning] %s\n" % diagnostic_error)
         raise
     finally:
         (output / "provenance.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
-        if udid:
-            run("xcrun", "simctl", "shutdown", udid, check=False)
-            run("xcrun", "simctl", "delete", udid, check=False)
+        cleanup_simulator()
 
 
 if __name__ == "__main__":

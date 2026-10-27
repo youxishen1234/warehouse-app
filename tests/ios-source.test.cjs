@@ -19,10 +19,19 @@ test('LCSign plain source points to the published IPA with stable identity', () 
   assert.throws(() => createSource({ ...metadata, sizeBytes: 0 }), /Invalid/);
 });
 
-test('both iOS upload branches include the source and publish it after the IPA', () => {
+test('the iOS workflow delegates publication to the bounded versioned uploader', () => {
   const workflow = fs.readFileSync('.github/workflows/build-ios.yml', 'utf8');
-  assert.equal(workflow.split('/tmp/shuguang-source.json /tmp/shuguang-download.html').length - 1, 2);
-  assert.ok(workflow.includes('cp release/download/source.json /tmp/shuguang-source.json'));
+  assert.ok(workflow.includes('run: node scripts/upload-ios.cjs'));
+  assert.ok(workflow.includes('timeout-minutes: 35'));
+  assert.ok(!workflow.includes('sshpass -p'));
   const publish = fs.readFileSync('scripts/publish-ios-files.sh', 'utf8');
   assert.ok(publish.indexOf('mv "$root/download/source.json.new"') > publish.indexOf('mv "$root/download/ipa.json.new"'));
+  assert.ok(publish.includes('flock 9'));
+  assert.ok(publish.includes('current_build'));
+});
+
+test('source uses the versioned IPA link emitted by prepared metadata', () => {
+  const { createSource } = require('../scripts/create-ios-source.cjs');
+  const source = createSource({ name: 'x', version: '1', build: '12', bundleId: 'com.x', sizeBytes: 10, url: '/download/shuguang-1-12-abc.ipa' });
+  assert.equal(source.apps[0].downloadURL, 'https://youxishen.online/download/shuguang-1-12-abc.ipa?build=12');
 });
