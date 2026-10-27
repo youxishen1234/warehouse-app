@@ -22,6 +22,10 @@ apply from: "variables.gradle"
 
 allprojects {
     repositories {
+        // Resolve Guava from its upstream repository before regional mirrors.
+        mavenCentral {
+            content { includeGroup 'com.google.guava' }
+        }
         maven { url 'https://maven.aliyun.com/repository/google' }
         maven { url 'https://maven.aliyun.com/repository/central' }
         google()
