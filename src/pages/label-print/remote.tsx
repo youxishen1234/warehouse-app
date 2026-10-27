@@ -426,34 +426,40 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewKey, copiesValid, activeKind]);
 
-  const checkFrameGeometry = useCallback(async () => {
+  const checkFrameGeometry = useCallback(() => {
     const document = frame.current?.contentDocument;
-    await document?.fonts.ready;
-    if (document !== frame.current?.contentDocument) return;
-    const labelPage = document?.querySelector<HTMLElement>('.warehouse-label');
-    const body = document?.querySelector<HTMLElement>('.label-body, .paperboard-label');
-    if (!labelPage || !body || !currentProfile) { setPreviewFits(false); return; }
-    labelPage.style.transform = 'none';
-    const pageBox = labelPage.getBoundingClientRect();
-    const expectedRatio = currentProfile.widthMm / currentProfile.heightMm;
-    const actualRatio = pageBox.width / Math.max(1, pageBox.height);
-    const tolerance = Math.max(2, pageBox.width * 0.025);
-    const fieldsFit = Array.from(document!.querySelectorAll<HTMLElement>('[data-fit]')).every(element => {
-      const maxHeight = parseFloat(document!.defaultView!.getComputedStyle(element).maxHeight);
-      const verticalOverflow = element.classList.contains('paperboard-value')
-        ? Number.isFinite(maxHeight) && element.scrollHeight > maxHeight + 2
-        : element.scrollHeight > element.clientHeight + 2;
-      return element.scrollWidth <= element.clientWidth + 2 && !verticalOverflow;
-    });
-    const fits = fieldsFit && Math.abs(actualRatio - expectedRatio) <= 0.04 &&
-      labelPage.scrollWidth <= labelPage.clientWidth + 2 && labelPage.scrollHeight <= labelPage.clientHeight + 2 &&
-      body.scrollWidth <= body.clientWidth + 2 && body.scrollHeight <= body.clientHeight + 2 &&
-      body.getBoundingClientRect().right <= labelPage.getBoundingClientRect().right + tolerance &&
-      body.getBoundingClientRect().bottom <= labelPage.getBoundingClientRect().bottom + tolerance;
-    const scale = frame.current ? frame.current.clientWidth / Math.max(1, pageBox.width) : 1;
-    labelPage.style.transformOrigin = 'top left';
-    labelPage.style.transform = `scale(${scale})`;
-    setPreviewFits(fits);
+    if (!document || !currentProfile) { setPreviewFits(false); return; }
+    const measure = () => {
+      if (document !== frame.current?.contentDocument) return;
+      const labelPage = document.querySelector<HTMLElement>('.warehouse-label');
+      const body = document.querySelector<HTMLElement>('.label-body, .paperboard-label');
+      if (!labelPage || !body) { setPreviewFits(false); return; }
+      labelPage.style.transform = 'none';
+      const pageBox = labelPage.getBoundingClientRect();
+      const expectedRatio = currentProfile.widthMm / currentProfile.heightMm;
+      const actualRatio = pageBox.width / Math.max(1, pageBox.height);
+      const tolerance = Math.max(2, pageBox.width * 0.025);
+      const fieldsFit = Array.from(document.querySelectorAll<HTMLElement>('[data-field][data-fit]')).every(element => {
+        const maxHeight = parseFloat(document.defaultView!.getComputedStyle(element).maxHeight);
+        const verticalOverflow = element.classList.contains('paperboard-value')
+          ? Number.isFinite(maxHeight) && element.scrollHeight > maxHeight + 2
+          : element.scrollHeight > element.clientHeight + 2;
+        return element.scrollWidth <= element.clientWidth + 2 && !verticalOverflow;
+      });
+      const fits = fieldsFit && Math.abs(actualRatio - expectedRatio) <= 0.04 &&
+        labelPage.scrollWidth <= labelPage.clientWidth + 2 && labelPage.scrollHeight <= labelPage.clientHeight + 2 &&
+        body.scrollWidth <= body.clientWidth + 2 && body.scrollHeight <= body.clientHeight + 2 &&
+        body.getBoundingClientRect().right <= labelPage.getBoundingClientRect().right + tolerance &&
+        body.getBoundingClientRect().bottom <= labelPage.getBoundingClientRect().bottom + tolerance;
+      const scale = frame.current ? frame.current.clientWidth / Math.max(1, pageBox.width) : 1;
+      labelPage.style.transformOrigin = 'top left';
+      labelPage.style.transform = `scale(${scale})`;
+      setPreviewFits(fits);
+    };
+    measure();
+    document.fonts?.ready.then(() => {
+      if (document === frame.current?.contentDocument) document.defaultView?.requestAnimationFrame(measure);
+    }).catch(() => undefined);
   }, [currentProfile]);
   useEffect(() => {
     const resize = () => { void checkFrameGeometry(); };
