@@ -351,6 +351,14 @@ async function main() {
     await expect(previewReady).toBeVisible({ timeout: 15000 });
     await expect.poll(() => sendBoard.getAttribute('disabled')).toBeNull();
 
+    const plateInput = page.locator('[aria-label="印刷版名（选填）"] input');
+    const colorInput = page.locator('[aria-label="颜色（选填）"] input');
+    await expect(plateInput).toHaveValue('包装A');
+    await plateInput.fill('本次打印A版');
+    await expect(previewFrame.locator('body')).toContainText('本次打印A版');
+    await expect(previewReady).toBeVisible({ timeout: 15000 });
+    await expect.poll(() => sendBoard.getAttribute('disabled')).toBeNull();
+
     // Model a server-side batch edit between the UI's fresh read and job submission.
     rejectNextBoardJob = true;
     await sendBoard.click();
@@ -360,7 +368,13 @@ async function main() {
       request.method === 'POST' && request.path === '/api/remote-print/labels/jobs' &&
       request.body.kind === 'paperboard-batch');
     assert.equal(boardPostsAfterConflict.length, 1, 'a 409 conflict does not trigger an automatic second POST');
+    assert.deepEqual(boardPostsAfterConflict[0].body.boardPrintFields, { printPlate: '本次打印A版' });
+    assert.equal(boardPostsAfterConflict[0].body.data.printPlate, '本次打印A版');
     assert.equal(boardPostsAfterConflict[0].body.data.printColor, '蓝黑', 'conflict request contains the previewed version');
+    await expect(previewReady).toBeVisible({ timeout: 15000 });
+    await expect.poll(() => sendBoard.getAttribute('disabled')).toBeNull();
+    await colorInput.fill('蓝金');
+    await expect(previewFrame.locator('body')).toContainText('蓝金');
     await expect(previewReady).toBeVisible({ timeout: 15000 });
     await expect.poll(() => sendBoard.getAttribute('disabled')).toBeNull();
     await sendBoard.click();
@@ -371,11 +385,14 @@ async function main() {
       request.method === 'POST' && request.body.kind === 'paperboard-batch').at(-1).body;
     assert.equal(boardJob.data.customerName, board.customerName);
     assert.equal(boardJob.data.material, board.material);
-    assert.equal(boardJob.data.printPlate, board.printPlate);
-    assert.equal(boardJob.data.printColor, '银黑');
+    assert.deepEqual(boardJob.boardPrintFields, { printPlate: '本次打印A版', printColor: '蓝金' });
+    assert.equal(boardJob.data.printPlate, '本次打印A版');
+    assert.equal(boardJob.data.printColor, '蓝金');
     assert.equal(boardJob.data.receivedQty, 800);
     assert.equal(boardJob.data.receivedDate, '2026-10-25');
     assert.equal(board.remainingQty, 0, 'label printing does not consume inventory');
+    assert.equal(board.printPlate, '包装A', 'print-only plate text does not write back to the batch');
+    assert.equal(board.printColor, '银黑', 'print-only colour does not write back to the batch');
     for (const width of [320,390,1280]) {
       await page.setViewportSize({width,height:900});
       assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));

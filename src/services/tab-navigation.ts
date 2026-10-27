@@ -40,6 +40,11 @@ export function installTabNavigation(nav: Navigation): () => void {
 
   const sync = () => {
     if (disposed) return;
+    if (['/pages/home/index', '/pages/business-center/index', '/pages/customers/index', '/pages/suppliers/index', '/pages/inventory/index'].includes(route())) {
+      root.setAttribute('data-workbench-shell', '');
+    } else {
+      root.removeAttribute('data-workbench-shell');
+    }
     // Taro's shade class normally clears at transitionend. Our full-screen
     // WebView disables those transitions, so returning from a subpage must also
     // reveal the acknowledged tab explicitly.
@@ -197,6 +202,7 @@ export function installTabNavigation(nav: Navigation): () => void {
   sync();
   return () => {
     disposed = true;
+    root.removeAttribute('data-workbench-shell');
     queued = null;
     cancel();
     cancelAnimationFrame(frame);

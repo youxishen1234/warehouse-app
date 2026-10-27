@@ -93,7 +93,7 @@ async function main() {
     assert.equal(db.listSuppliers()[0].payable, 176); assert.equal(db.listLedger().length, 1);
     assert.equal(db.listLedger()[0].attachments.length, 1);
     await go(first);
-    await button(workbench(first), '收付款').click();
+    await button(workbench(first), '账单中心').click();
     await button(workbench(first), '供货商账单').click(); await expect(first.getByText('当前待付款 ¥176.00', { exact: true })).toBeVisible();
     await button(workbench(first), '付款').click(); await first.locator('[aria-label="供货商付款金额"] input').fill('50'); await button(workbench(first), '确认付款').click();
     await expect(first.getByText('当前待付款 ¥126.00', { exact: true })).toBeVisible();

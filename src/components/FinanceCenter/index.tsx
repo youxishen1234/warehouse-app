@@ -71,11 +71,11 @@ function CustomerSpecs({ customer, specs, expanded, onToggle }: {
 }
 
 const appearance: Record<LedgerType, { icon: IconName; color: string; title: string }> = {
-  income: { icon: 'inbound', color: '#a6dcb8', title: '收入入账' },
-  expense: { icon: 'outbound', color: '#e0b27c', title: '支出记账' },
-  receivable: { icon: 'clock', color: '#9fc1e4', title: '新增应收' },
-  payable: { icon: 'clock', color: '#d8b879', title: '新增应付' },
-  settlement: { icon: 'check', color: '#c1c3d4', title: '往来结清' }
+  income: { icon: 'inbound', color: '#1677ff', title: '收入入账' },
+  expense: { icon: 'outbound', color: '#b45309', title: '支出记账' },
+  receivable: { icon: 'clock', color: '#1677ff', title: '新增应收' },
+  payable: { icon: 'clock', color: '#b45309', title: '新增应付' },
+  settlement: { icon: 'check', color: '#64748b', title: '往来结清' }
 };
 
 function entryCategory(entry: LedgerEntry) {
@@ -103,13 +103,13 @@ const LedgerListRow = React.memo(function LedgerListRow({ entry, onOpen }: Ledge
     <View className={styles.itemMain}>
       <Text className={styles.itemTitle}>{entry.party_current_name || entry.party_name || entry.remark || meta.title}</Text>
       <Text className={styles.itemMeta}>{formatTime(entry.created_at).slice(-5)} · {entry.remark || meta.title}</Text>
-      {Boolean(entry.attachments?.length) && <View className={styles.attachmentBadge}><Icon name='clipboard' color='#a6dcb8' /><Text>凭证 {entry.attachments!.length} 张</Text></View>}
+      {Boolean(entry.attachments?.length) && <View className={styles.attachmentBadge}><Icon name='clipboard' color='#1677ff' /><Text>凭证 {entry.attachments!.length} 张</Text></View>}
     </View>
     <View className={styles.itemRight}>
       <Text className={`${styles.itemAmount} ${styles[`${entry.type}Text`]}`}>{amountPrefix(entry.type)}{formatMoney(entry.amount)}</Text>
       <Text className={`${styles.itemCategory} ${styles[entry.type]} ${styles[`${entry.type}Text`]}`}>{entryCategory(entry)}</Text>
     </View>
-    <Icon name='chevron' color='#a8b6ad' className={styles.rowChevron} />
+    <Icon name='chevron' color='#94a3b8' className={styles.rowChevron} />
   </FinanceButton>;
 });
 
@@ -294,13 +294,13 @@ export default function FinanceCenter({
     }
     settleLock.current = true; setSettlementError('');
     try {
-      if (settling.type === 'customer') await settleCustomer(settling.id, value, '收付款 · 客户收款');
-      else await settleSupplier(settling.id, value, '收付款 · 供货商付款');
+      if (settling.type === 'customer') await settleCustomer(settling.id, value, '账单中心 · 客户收款');
+      else await settleSupplier(settling.id, value, '账单中心 · 供货商付款');
       const settledPartyType = settling.type;
       setSettling(null); setSettlementAmount('');
       Taro.showToast({ title: settledPartyType === 'customer' ? '收款已保存' : '付款已保存', icon: 'success' });
       await onReload();
-    } catch (error) { setSettlementError(error?.message || '收付款保存失败'); }
+    } catch (error) { setSettlementError(error?.message || '账单收款保存失败'); }
     finally { settleLock.current = false; }
   };
 
@@ -312,14 +312,14 @@ export default function FinanceCenter({
   const partyTitle = view === 'supplier' ? '供货商账单' : '客户账单';
 
   return <View className={styles.finance} data-testid='finance-center'>
-    <View className={styles.tabs} data-testid='finance-tabs' role='tablist' aria-label='收付款账单类型'>
+    <View className={styles.tabs} data-testid='finance-tabs' role='tablist' aria-label='账单中心分类'>
       {tabLabels.map(tab => <FinanceButton key={tab.id} role='tab' aria-selected={view === tab.id} aria-pressed={view === tab.id} data-testid={`finance-tab-${tab.id}`} className={`${styles.tab} ${view === tab.id ? styles.tabActive : ''}`} onClick={() => changeView(tab.id)}>{tab.label}</FinanceButton>)}
     </View>
 
     {view === 'ledger' && <View className={styles.ledgerView} data-testid='finance-ledger-view'>
       <View className={styles.toolbar}>
         <View className={styles.periodTabs}>{['本月', '上月', '全部时间'].map(value => <FinanceButton key={value} aria-pressed={period === value} className={`${styles.periodTab} ${period === value ? styles.periodActive : ''}`} onClick={() => choosePeriod(value)}>{value}</FinanceButton>)}</View>
-        <FinanceButton className={`${styles.rangeButton} ${period === '自定义' ? styles.rangeActive : ''}`} onClick={() => { setDraftRange(range); setRangeError(''); setRangeOpen(true); }}><Icon name='clock' color='#a6dcb8' /><Text>{period === '自定义' ? '已选日期' : '选日期'}</Text></FinanceButton>
+        <FinanceButton className={`${styles.rangeButton} ${period === '自定义' ? styles.rangeActive : ''}`} onClick={() => { setDraftRange(range); setRangeError(''); setRangeOpen(true); }}><Icon name='clock' color='#64748b' /><Text>{period === '自定义' ? '已选日期' : '选日期'}</Text></FinanceButton>
       </View>
       <View className={styles.summary} data-testid='finance-cash-summary'>
         <View className={styles.summaryTop}><Text>{period}收支净额</Text><Text className={styles.summaryTag}>{period === '自定义' ? '自选日期' : range.from ? range.from.slice(0, 7).replace('-', '.') : '全部日期'}</Text></View>
@@ -337,7 +337,7 @@ export default function FinanceCenter({
           <FinanceButton aria-label='刷新账单流水' disabled={loading} onClick={() => void onReload()}>{loading ? '更新中' : '刷新'}</FinanceButton>
           <FinanceButton aria-label='导出账单流水 CSV' disabled={loading || Boolean(loadError) || exporting || filtered.length === 0} onClick={() => void exportCsv()}>{exporting ? '导出中…' : '导出 CSV'}</FinanceButton>
         </View></View>
-        <View className={styles.search}><Icon name='search' color='#a6dcb8' /><Input aria-label='搜索账单流水' placeholder='搜索客户、供应商或备注' value={keyword} maxlength={100} onInput={e => setKeyword(e.detail.value)} /><FinanceButton aria-label='清空搜索' onClick={() => setKeyword('')} style={{ visibility: keyword ? 'visible' : 'hidden' }}>×</FinanceButton></View>
+        <View className={styles.search}><Icon name='search' color='#64748b' /><Input aria-label='搜索账单流水' placeholder='搜索客户、供应商或备注' value={keyword} maxlength={100} onInput={e => setKeyword(e.detail.value)} /><FinanceButton aria-label='清空搜索' onClick={() => setKeyword('')} style={{ visibility: keyword ? 'visible' : 'hidden' }}>×</FinanceButton></View>
         <View className={styles.typeTabs}>{ledgerTypes.map(item => <FinanceButton key={item.value || 'all'} aria-pressed={type === item.value} className={`${styles.typeTab} ${type === item.value ? styles.typeActive : ''}`} onClick={() => setType(item.value)}>{item.label}</FinanceButton>)}</View>
         {(selectedType || type || keyword.trim()) && <View className={styles.filterStatus}><Text>{selectedType ? `${selectedType === 'customer' ? '客户' : '供货商'} · #${selectedId}` : ''}{selectedType && type ? ' · ' : ''}{type ? `${ledgerTypes.find(item => item.value === type)?.label}流水` : ''}{keyword.trim() ? `${selectedType || type ? ' · ' : ''}“${keyword.trim()}”` : ''}</Text>
           <FinanceButton onClick={() => { if (selectedType) { setPartyFilter(null); setType(''); setKeyword(''); return; } setType(''); setKeyword(''); }}>{selectedType ? '清除对象筛选' : '重置'}</FinanceButton>
@@ -355,7 +355,7 @@ export default function FinanceCenter({
 
     {(view === 'customer' || view === 'supplier') && <View className={styles.partyView} data-testid={`finance-${view}-view`}>
       <View className={styles.partyToolbar}>
-        <FinanceButton className={`${styles.primary} ${styles.partyAddButton}`} data-testid={`finance-add-${view}`} onClick={() => onEditParty?.(view)}><Icon name='plus' color='#1c3325' /><Text>{`新增${view === 'customer' ? '客户' : '供货商'}`}</Text></FinanceButton>
+        <FinanceButton className={`${styles.primary} ${styles.partyAddButton}`} data-testid={`finance-add-${view}`} onClick={() => onEditParty?.(view)}><Icon name='plus' color='#fff' /><Text>{`新增${view === 'customer' ? '客户' : '供货商'}`}</Text></FinanceButton>
         <Input className={styles.partySearch} data-testid='finance-party-search' aria-label={view === 'customer' ? '搜索客户、规格或联系方式' : `搜索${partyTitle}`} placeholder={view === 'customer' ? '搜索客户、规格或联系方式' : `搜索${partyTitle}对象`} value={partySearch} onInput={e => setPartySearch(e.detail.value)} />
         <View className={styles.periodTabs}>{(['本月', '上月', '全部时间'] as PartyPeriod[]).map(value => <FinanceButton key={value} aria-pressed={partyPeriod === value} className={`${styles.periodTab} ${partyPeriod === value ? styles.periodActive : ''}`} onClick={() => choosePartyPeriod(value)}>{value}</FinanceButton>)}</View>
       </View>
@@ -447,7 +447,7 @@ export default function FinanceCenter({
     </View></View>}
 
     {settling && <View className={styles.overlay}><View className={styles.backdrop} aria-hidden='true' onClick={() => { if (!settleLock.current) setSettling(null); }} /><View className={styles.sheet} role='dialog' aria-modal='true' aria-label={settling.type === 'customer' ? '客户收款' : '供货商付款'}>
-      <View className={styles.sheetHeader}><Text>{settling.type === 'customer' ? '客户收款' : '供货商付款'}</Text><FinanceButton aria-label='关闭收付款' disabled={settleLock.current} onClick={() => setSettling(null)}>×</FinanceButton></View>
+      <View className={styles.sheetHeader}><Text>{settling.type === 'customer' ? '客户收款' : '供货商付款'}</Text><FinanceButton aria-label='关闭收付款弹窗' disabled={settleLock.current} onClick={() => setSettling(null)}>×</FinanceButton></View>
       <Text className={styles.sheetDescription}>{settling.type === 'customer' ? '收到' : '付给'} {settling.name} · 当前{settling.type === 'customer' ? '待收款' : '待付款'} {formatMoney(settling.balance)}</Text>
       <Text className={styles.fieldLabel}>{settling.type === 'customer' ? '本次收款金额' : '本次付款金额'}</Text>
       <View className={styles.amountField}><Text>¥</Text><Input aria-label={settling.type === 'customer' ? '客户收款金额' : '供货商付款金额'} type='digit' placeholder='0.00' value={settlementAmount} onInput={e => { setSettlementAmount(sanitizeNonNegativeMoneyInput(e.detail.value)); setSettlementError(''); }} /></View>

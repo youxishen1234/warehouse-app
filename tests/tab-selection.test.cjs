@@ -32,8 +32,11 @@ async function harness() {
         }
       };
       this.style = { setProperty() {}, removeProperty() {} };
+      this.attributes = new Map();
     }
     getBoundingClientRect() { return { width: 390, height: 100 }; }
+    setAttribute(name, value) { this.attributes.set(name, String(value)); }
+    removeAttribute(name) { this.attributes.delete(name); }
   }
   const root = new HTMLElement('root', [], false), body = new HTMLElement('body');
   const dock = new HTMLElement('test-dock', ['sg-glass-dock']);

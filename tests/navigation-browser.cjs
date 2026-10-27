@@ -64,7 +64,10 @@ async function verify(browser, name) {
   }));
   assert.equal(colors.normal, 'rgb(255, 255, 255)');
   assert.equal(colors.selected, 'rgb(36, 166, 248)');
-  assert.equal(colors.glass, 'rgba(36, 37, 42, 0.78)');
+  assert.ok(
+    colors.glass === 'rgba(36, 37, 42, 0.78)' || colors.glass === 'rgb(48, 48, 52)',
+    'glass dock uses its transparent surface or the opaque reduced-transparency fallback'
+  );
   await page.screenshot({ path: 'release/glass-' + name + '-rest.png' });
   const restingLens = await page.locator('.sg-glass-lens').boundingBox();
   const railBounds = await page.locator('.sg-glass-rail').boundingBox();
@@ -88,7 +91,7 @@ async function verify(browser, name) {
   assert.equal(await page.locator('.sg-glass-lens-ink').evaluate(el => getComputedStyle(el).filter), 'none', 'icons are not distorted');
   assert.match(page.url(), /home/, 'drag previews without navigating until release');
   await page.screenshot({ path: 'release/glass-' + name + '-drag.png' });
-  await page.getByText('库存', { exact: true }).first().waitFor();
+  await page.locator('.sg-glass-tab[data-tab="2"] span').waitFor();
   await page.mouse.move(last.x + last.width / 2, last.y + last.height / 2, { steps: 12 });
   await assertStableLens();
   await page.mouse.up();
@@ -216,7 +219,7 @@ async function verify(browser, name) {
   assert.equal(await page.evaluate(() => window.__nativeMessages.length), acknowledgments.length, 'unrelated DOM changes do not resend the selection');
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('sg-native-tab', { detail: '/pages/home/index' })));
   await page.waitForURL(/home/);
-  for (const label of ['入库', '生产', '出库', '收付款', '今天的记录']) assert.ok(pageText.includes(label), `homepage action missing: ${label}`);
+  for (const label of ['入库', '生产', '出库', '账单中心', '今天的记录']) assert.ok(pageText.includes(label), `homepage action missing: ${label}`);
   await page.evaluate(() => {
     delete window.__sgNativeDock;
     window.dispatchEvent(new Event('sg-native-ready'));
@@ -233,7 +236,7 @@ async function verify(browser, name) {
   await page.waitForURL(/ai-assistant/);
   await page.keyboard.press('Home');
   await page.waitForURL(/home/);
-  const lastShortcut = page.locator('.taro_page:visible').last().getByText('查看库存', { exact: true }).first();
+  const lastShortcut = page.locator('.taro_page:visible').last().getByText('全部记录', { exact: true }).first();
   await lastShortcut.scrollIntoViewIfNeeded();
   await lastShortcut.evaluate(item => {
     for (let parent = item.parentElement; parent; parent = parent.parentElement) {
@@ -256,10 +259,11 @@ async function verify(browser, name) {
 (async () => {
   fs.mkdirSync('release', { recursive: true });
   await new Promise(r => server.listen(0, '127.0.0.1', r));
-  for (const [name, engine, executablePath] of [
+  const engines = [
     ['chromium', chromium, process.env.NAV_CHROMIUM],
     ['webkit', webkit, process.env.NAV_WEBKIT]
-  ]) {
+  ].filter(([name]) => !process.env.NAV_ENGINES || process.env.NAV_ENGINES.split(',').includes(name));
+  for (const [name, engine, executablePath] of engines) {
     const browser = await engine.launch({ executablePath });
     try { await verify(browser, name); } finally { await browser.close(); }
   }

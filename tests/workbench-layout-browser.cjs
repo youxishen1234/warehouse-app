@@ -78,6 +78,7 @@ async function main() {
     await page.goto(origin + '/#/pages/business-center/index');
     await expect(page.getByText('办理业务', { exact: true })).toBeVisible();
     await expect(page.getByText('服务器数据已读取 · 多设备自动同步', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('workbench-version')).toHaveText('网页版本 1.1.137');
     await expect(page.getByTestId('workbench-today')).toContainText(longProductName);
     const activity = page.getByTestId('workbench-today').locator('taro-button-core').first();
 
@@ -155,16 +156,28 @@ async function main() {
     const bottomInset = await embeddedRoot.evaluate(element => ({
       clearance: parseFloat(getComputedStyle(element).paddingBottom),
       backingHeight: parseFloat(getComputedStyle(element, '::after').height),
-      backingPosition: getComputedStyle(element, '::after').position
+      backingContent: getComputedStyle(element, '::after').content
     }));
-    assert.ok(bottomInset.clearance >= 132, 'embedded home reserves space below content for the native tab bar');
-    assert.ok(bottomInset.backingHeight >= 104 && bottomInset.backingPosition === 'fixed', 'embedded home gives the translucent native dock a fixed backing that hides text underneath');
+    const shell = await page.evaluate(() => {
+      const activePage = Array.from(document.querySelectorAll('.taro_page'))
+        .find(element => getComputedStyle(element).display !== 'none');
+      return {
+        enabled: document.documentElement.hasAttribute('data-workbench-shell'),
+        background: getComputedStyle(document.documentElement).backgroundColor,
+        pagePaddingTop: activePage ? getComputedStyle(activePage).paddingTop : ''
+      };
+    });
+    assert.ok(bottomInset.clearance >= 104, 'embedded home reserves safe space below content for the native tab bar');
+    assert.equal(bottomInset.backingContent, 'none', 'embedded home no longer paints an opaque strip over the dock');
+    assert.equal(shell.enabled, true, 'workbench routes opt into the light scroll shell');
+    assert.equal(shell.background, 'rgb(244, 247, 251)', 'iOS overscroll reveals the workbench background, not white or green');
+    assert.equal(shell.pagePaddingTop, '0px', 'workbench masthead owns the top safe area without double padding');
     await page.screenshot({ path: path.join(artifacts, 'home-embedded-390.png'), fullPage: true });
 
     await page.goto(origin + '/#/pages/business-center/index');
     await page.reload();
     await expect(page.getByText('办理业务', { exact: true })).toBeVisible();
-    await button(home, '收付款').click();
+    await button(home, '账单中心').click();
     await expect(page.getByTestId('finance-center')).toBeVisible();
     await expect(page.getByTestId('finance-tab-ledger')).toBeVisible();
     await expect(page.getByTestId('finance-tab-customer')).toBeVisible();

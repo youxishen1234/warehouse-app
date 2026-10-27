@@ -46,7 +46,7 @@ async function main() {
       await page.goto(origin);
       await current('home');
     }
-    await page.locator('button[data-nav]').filter({ hasText: '收付款' }).click();
+    await page.locator('button[data-nav]').filter({ hasText: '账单中心' }).click();
     await current('business-center');
     await page.getByTestId('finance-center').waitFor();
     await page.getByTestId('finance-ledger-view').waitFor();
