@@ -722,12 +722,16 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
   };
   const switchEntryMode = (next: EntryMode) => {
     if (busy || next === entryMode) return;
+    const nextActiveKind: RemotePrintableLabelKind = next === 'manual' ? 'paperboard-manual' : kind;
+    const reusableProfile = currentProfile && profileMatchesKind(nextActiveKind, currentProfile)
+      ? currentProfile
+      : undefined;
     setEntryMode(next);
     setSelected(null);
     setQuery('');
     setPage(1);
-    setProfileId('');
-    setMedia(defaultMedia);
+    setProfileId(reusableProfile?.profileId || '');
+    if (!reusableProfile) setMedia(defaultMedia);
     setNotice('');
     setError('');
     if (next === 'manual') setKind('paperboard-batch');
@@ -765,14 +769,6 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
     }
     if (!currentProfile.calibrated) return '原任务纸张配置尚未完成校准';
     if (!attempt.data) return '原任务缺少冻结标签资料';
-    if (attempt.kind === 'paperboard-manual') {
-      try {
-        const canonical = buildManualBoardLabelSnapshot(manualFieldsFromAttempt(attempt));
-        if (JSON.stringify(canonical) !== JSON.stringify(attempt.data)) return '原任务手填标签资料已损坏';
-      } catch {
-        return '原任务手填标签资料已损坏';
-      }
-    }
     if (attempt.kind === 'finished-product' && !('productId' in attempt.data)) return '原任务商品标签资料无效';
     if (attempt.kind === 'paperboard-batch' && !('batchId' in attempt.data)) return '原任务纸板批次标签资料无效';
     return '';

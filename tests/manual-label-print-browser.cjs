@@ -275,6 +275,7 @@ async function main() {
     await expect(previewFrame.locator('body')).toContainText('不关联库存批次');
     await expect(previewFrame.locator('[data-qr], img')).toHaveCount(0);
     await expect(page.getByText('单张预览 70 × 100 mm，未发现内容溢出。', { exact: true })).toBeVisible();
+    await preview.screenshot({ path: path.join(output, 'manual-label-preview.png') });
 
     // Clearing required input, invalid dimensions/date and invalid copies each block printing.
     await field('客户 *').fill('');
