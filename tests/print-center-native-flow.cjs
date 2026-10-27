@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { chromium, webkit, expect } = require('@playwright/test');
+const QRCode = require('qrcode');
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const dateValue = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -178,11 +179,16 @@ async function main() {
     await footerButton('预览打印').click();
     await expect(preview()).toBeVisible();
     await page.screenshot({ path: path.join(artifacts, 'native-preview-unpaired.png'), fullPage: true });
-    await button('连接打印电脑').click();
-    const pairingField = page.getByLabel('打印电脑配对码');
-    await expect(pairingField).toBeVisible();
-    await pairingField.fill(pairing.client);
-    await remotePanel().getByRole('button', { name: '连接打印电脑', exact: true }).click();
+    await expect(button('扫码连接打印电脑')).toBeVisible();
+    await expect(page.getByLabel('打印电脑配对码')).toHaveCount(0);
+    const fileChooserPromise = page.waitForEvent('filechooser');
+    await button('扫码连接打印电脑').click();
+    const fileChooser = await fileChooserPromise;
+    await fileChooser.setFiles({
+      name: 'print-pair.png',
+      mimeType: 'image/png',
+      buffer: await QRCode.toBuffer(pairing.client, { width: 360, margin: 2 })
+    });
     await expect(remotePanel()).toHaveAttribute('open', '');
     await expect(preview().getByRole('button', { name: '发送到630K', exact: true })).toBeEnabled();
     await expect(remotePanel()).toContainText('店里电脑');

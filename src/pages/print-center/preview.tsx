@@ -150,11 +150,9 @@ export default function PrintPreview({ note, saved, reprintIntent = false, autoS
 
   const mobileAction = (() => {
     if (!remote.token) return {
-      label: '连接打印电脑', disabled: false,
-      run: () => {
-        setRemoteOpen(true);
-        setTimeout(() => document.querySelector<HTMLInputElement>('[aria-label="打印电脑配对码"]')?.focus(), 60);
-      }
+      label: remote.busy ? '正在验证连接…' : '扫码连接打印电脑',
+      disabled: remote.busy,
+      run: () => void remote.pair()
     };
     if (!savedMatch) return { label: '保存后才能打印', disabled: true, run: () => {} };
     if (remote.busy) return { label: '正在发送…', disabled: true, run: () => {} };

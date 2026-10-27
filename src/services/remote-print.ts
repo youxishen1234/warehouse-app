@@ -16,6 +16,55 @@ export const savePrintPair = (value: string) => {
   if (readPrintPair() !== value) Taro.setStorageSync(autoPrintKey, false);
   Taro.setStorageSync(key, value);
 };
+
+const printPairToken = /^[a-f0-9]{64}$/;
+
+/** Accept the receiver's raw token or a link carrying it in print_pair. */
+export function parsePrintPairToken(value: string): string {
+  const input = String(value || '').trim();
+  if (printPairToken.test(input)) return input;
+  const sources = [input];
+  try {
+    const url = new URL(input, 'https://warehouse.invalid');
+    sources.push(url.search, url.hash);
+  } catch { /* The raw text may still contain a route query. */ }
+  for (const source of sources) {
+    const marker = source.indexOf('?');
+    if (marker < 0) continue;
+    const query = source.slice(marker + 1).split('#', 1)[0];
+    const candidate = new URLSearchParams(query).get('print_pair')?.trim() || '';
+    if (printPairToken.test(candidate)) return candidate;
+  }
+  return '';
+}
+
+/** Remove pairing credentials from both ordinary and hash-router query strings. */
+export function cleanPrintPairUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    url.searchParams.delete('print_pair');
+    const marker = url.hash.indexOf('?');
+    if (marker >= 0) {
+      const route = url.hash.slice(0, marker);
+      const query = new URLSearchParams(url.hash.slice(marker + 1));
+      query.delete('print_pair');
+      const remainingQuery = query.toString();
+      url.hash = route + (remainingQuery ? `?${remainingQuery}` : '');
+    }
+    return url.toString();
+  } catch { return value; }
+}
+
+export function cleanPrintPairFromAddress(): void {
+  if (typeof window === 'undefined' || !window.location.href.includes('print_pair=')) return;
+  const cleaned = cleanPrintPairUrl(window.location.href);
+  if (cleaned !== window.location.href) window.history.replaceState(window.history.state, '', cleaned);
+}
+
+export function readPrintPairFromAddress(): string {
+  return typeof window === 'undefined' ? '' : parsePrintPairToken(window.location.href);
+}
+
 export const readPrintAfterOutbound = (): boolean => { try { return Taro.getStorageSync(autoPrintKey) === true; } catch { return false; } };
 export const savePrintAfterOutbound = (value: boolean) => Taro.setStorageSync(autoPrintKey, value);
 export const readPrintAttempt = (fingerprint: string): string => { try { return Taro.getStorageSync(key + ':' + fingerprint) || ''; } catch { return ''; } };
