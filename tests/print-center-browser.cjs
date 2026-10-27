@@ -302,13 +302,17 @@ async function main() {
     await expect(button('打印送货单')).toBeEnabled();
     await expect(frame().locator('tr[data-line]')).toHaveCount(12);
     await expect(frame().locator('.sheet')).toHaveCount(3);
+    await page.evaluate(() => { window.__printCalls = 0; window.print = () => window.__printCalls++; });
     await button('打印送货单').click();
+    assert.equal(await page.evaluate(() => window.__printCalls), 1);
     assert.equal(await page.locator('[data-dot-matrix-print-root] tr[data-line]').count(), 12);
     if (engine === 'chromium') {
       const pdf = await page.pdf({ path: path.join(artifacts, 'delivery-multipage.pdf'), preferCSSPageSize: true });
       assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 3);
     }
-    await page.evaluate(() => window.dispatchEvent(new Event('afterprint'))); await button('返回单据').click();
+    await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+    await expect(page.locator('[data-dot-matrix-print-root]')).toHaveCount(0);
+    await button('返回单据').click();
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ engine, savedEditReload: 'passed', customersAndStaleSearch: 'passed', saveFailure: 'passed', conflict: 'passed', mobileWidths: [320, 375, 390, 430], twoDigitSpecification: 'passed', previewZoom: 'passed', paperSelector: 'removed', multipage: 12, screenshots: artifacts }));
   } catch (error) {
