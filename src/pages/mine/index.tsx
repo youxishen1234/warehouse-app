@@ -5,6 +5,7 @@ import Icon from '@/components/Icon';
 
 import { autoBestBase, checkServerHealth, getBaseUrl, setBaseUrl } from '@/services/request';
 import { checkAndUpdate } from '@/services/update';
+import { WEB_DISPLAY_VERSION } from '@/config/release';
 import styles from './index.module.scss';
 
 import { PUBLIC_ORIGIN, TEAM_ORIGIN } from '@/services/session';
@@ -20,7 +21,6 @@ const MineContent: React.FC = () => {
   const [ipaProgress, setIpaProgress] = useState(0);
   const [ipaMessage, setIpaMessage] = useState('正在下载新版 IPA');
   const [ipaCompleted, setIpaCompleted] = useState(false);
-  const [webVersion, setWebVersion] = useState('获取中…');
   const [nativeVersion, setNativeVersion] = useState('');
   const [connection, setConnection] = useState('检测中');
   const [updateKind, setUpdateKind] = useState<'web' | 'ipa'>('web');
@@ -72,10 +72,8 @@ const MineContent: React.FC = () => {
     window.addEventListener('sg-native-ready', refresh);
     const updater = win.Capacitor?.Plugins?.CapacitorUpdater;
     if (updater) updater.current().then((current: any) => {
-      setWebVersion(current?.bundle?.version || 'builtin');
       if (!win.__sgNativeDock?.version && current?.native) setNativeVersion(current.native);
-    }).catch(() => setWebVersion('未知'));
-    else setWebVersion('浏览器');
+    }).catch(() => undefined);
     return () => window.removeEventListener('sg-native-ready', refresh);
   }, []);
 
@@ -221,7 +219,7 @@ const MineContent: React.FC = () => {
       <View className={styles.systemStack}>
         <View className={styles.systemCard} onClick={doCheck}>
           <View className={`${styles.systemIcon} ${styles.cyan}`}><Icon name="trend" color="#0f766e" className={styles.systemIconImg} /></View>
-          <View className={styles.systemCopy}><Text>检查更新</Text><Text>{checking ? '正在检查版本…' : `网页版本 ${webVersion}`}</Text></View>
+          <View className={styles.systemCopy}><Text>检查更新</Text><Text>{checking ? '正在检查版本…' : `网页版本 ${WEB_DISPLAY_VERSION}`}</Text></View>
           <Text className={styles.systemAction}>{checking ? '检查中' : '检查'}</Text>
         </View>
         <View className={styles.systemCard} onClick={() => setAddrOpen(true)}>

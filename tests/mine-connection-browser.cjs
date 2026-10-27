@@ -19,6 +19,16 @@ async function main() {
   let unhealthy = false;
   await context.addInitScript(() => {
     localStorage.setItem('sg_custom_base', JSON.stringify({ data: 'http://152.136.100.200:4000' }));
+    window.Capacitor = {
+      Plugins: {
+        CapacitorUpdater: {
+          current: async () => ({
+            bundle: { version: '20261027025127' },
+            native: '1.1.136'
+          })
+        }
+      }
+    };
     const original = window.fetch.bind(window);
     window.healthProbeCount = 0;
     window.fetch = (url, options) => {
@@ -49,6 +59,8 @@ async function main() {
     await page.goto(origin + '/#/pages/mine/index');
     await page.getByText('已连接', { exact: true }).waitFor();
     await page.locator('.team-boot').waitFor({ state: 'detached' });
+    await expect(page.getByText('网页版本 1.1.136', { exact: true })).toBeVisible();
+    await expect(page.getByText('20261027025127', { exact: true })).toHaveCount(0);
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('sg_custom_base')).data), 'https://youxishen.online');
     assert.equal(requests.some(item => item.path === '/api/stats'), false, 'connection must not depend on business statistics');
     const before = await page.evaluate(() => { window.stallHealth = true; return window.healthProbeCount; });
