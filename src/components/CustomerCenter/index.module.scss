@@ -157,9 +157,14 @@
 .empty taro-text-core + taro-text-core { color: #8fa096; font-size: 11PX; }
 
 @media (min-width: 760PX) {
+  .list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32PX; align-items: start; }
   .intro { flex-direction: row; align-items: flex-end; justify-content: space-between; }
   .card { padding-top: 16PX; padding-bottom: 18PX; }
   .specRow { padding: 10PX 0; }
+}
+
+@media (min-width: 1500PX) {
+  .list { grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 36PX; }
 }
 
 @media (max-width: 359PX) {

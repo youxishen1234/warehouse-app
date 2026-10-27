@@ -104,12 +104,15 @@
 .noticeTitle { display: block; color: #eef3ef; font-size: 16PX; font-weight: 500; }
 .noticeDetail { display: block; margin-top: 5PX; color: #b5c0b9; font-size: 13PX; overflow-wrap: anywhere; }
 .noticeAction { display: flex; align-items: center; flex-shrink: 0; color: #a6dcb8; font-size: 14PX; }
+.page.customerPage .surface { max-width: 1120PX; }
+.page.customerPage .content { padding-right: 40PX; padding-left: 40PX; }
 .page .photoRow { display: block; width: 100%; text-align: left; background: transparent; border: 0; border-bottom: 1PX solid #414e44; border-radius: 0; }
 .overlay { position: fixed; z-index: 100; inset: 0; overflow-y: auto; background: #0008; display: flex; align-items: flex-start; justify-content: center; padding: 18PX; }
 .dialog { width: 100%; max-width: 420PX; max-height: calc(100vh - 36PX); max-height: calc(100dvh - 36PX); overflow-y: auto; margin: auto 0; background: #222e26; border: 1PX solid #526357; color: #eef3ef; border-radius: 10PX; padding: 22PX; display: flex; flex-direction: column; gap: 12PX; }
 @media (max-width: 700PX) {
   .page { padding: 0; background: #222924; }
   .page.embedded { padding-bottom: calc(132PX + env(safe-area-inset-bottom)); }
+  .page.customerPage .content { padding-right: 20PX; padding-left: 20PX; }
   .surface { border: 0; border-radius: 0; min-height: 100vh; min-height: 100dvh; }
   .page.embedded .surface { min-height: calc(100vh - 132PX); min-height: calc(100dvh - 132PX); }
   .masthead { padding: calc(env(safe-area-inset-top) + 24PX) 20PX 20PX; }

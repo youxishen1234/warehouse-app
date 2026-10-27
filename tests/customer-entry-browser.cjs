@@ -161,13 +161,29 @@ async function main() {
     const editedCustomer = db.listCustomers().find(customer => customer.id === homeCustomer.id);
     assert.equal(editedCustomer.contact, '陈经理（更新）');
     assert.equal(db.listCustomers().filter(customer => customer.name === homeCustomer.name).length, 1, 'editing an existing customer must not create a duplicate');
-    for (const width of [320, 390, 1280]) {
+    const responsiveLayouts = [];
+    for (const width of [320, 390, 768, 1280, 1920]) {
       await noOverflow(width);
       await expect(customerCenterAdd).toBeInViewport();
       assert.equal(await customerCenterAdd.evaluate(addButton => {
         const firstCustomer = document.querySelector('[data-testid^="customer-management-card-"]');
         return !!firstCustomer && addButton.getBoundingClientRect().bottom <= firstCustomer.getBoundingClientRect().top;
       }), true, 'customer creation stays above the populated customer list');
+      if (width >= 760) {
+        const layout = await page.getByTestId('customer-center').evaluate(element => {
+          const list = element.querySelector('[class*="list"]');
+          const card = element.querySelector('[data-testid^="customer-management-card-"]');
+          return {
+            columns: getComputedStyle(list).gridTemplateColumns.split(' ').length,
+            listWidth: list.clientWidth,
+            cardWidth: card.clientWidth
+          };
+        });
+        assert.ok(layout.columns >= (width >= 1500 ? 3 : 2), `wide customer view should use enough columns: ${JSON.stringify(layout)}`);
+        assert.ok(layout.cardWidth > 280, `customer card should use the available width: ${JSON.stringify(layout)}`);
+        assert.ok(layout.listWidth > (width >= 1200 ? 900 : 600), `customer page should expand beyond the narrow workbench on wide screens: ${JSON.stringify(layout)}`);
+        responsiveLayouts.push({ width, ...layout });
+      }
       await page.screenshot({ path: path.join(evidence, `customer-management-${width}.png`), fullPage: true });
     }
     await page.setViewportSize({ width: 390, height: 900 });
@@ -240,6 +256,7 @@ async function main() {
       customerIds: [homeCustomer.id],
       order: { id: createdOrder.id, customer_id: createdOrder.customer_id, amount: createdOrder.amount },
       widths: [320, 390, 1280],
+      responsiveLayouts,
       pageErrors: errors,
       evidence
     }, null, 2));

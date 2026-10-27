@@ -213,7 +213,7 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
     else changePanel('records');
   };
   const chooseBatch = (id: string) => { setBatchId(id); setProductId(null); setName(''); setError(''); };
-  return <View className={embedded ? `${styles.page} ${styles.embedded}` : styles.page} data-testid='simple-workbench'><View className={styles.surface}>
+  return <View className={`${embedded ? `${styles.page} ${styles.embedded}` : styles.page} ${customerRoute ? styles.customerPage : ''}`} data-testid='simple-workbench'><View className={styles.surface}>
     <View className={styles.masthead}>
       <View className={styles.header}><View className={styles.heading}>
         {panel === 'home' ? <View className={styles.brand} aria-label={`${appName}标识`} data-testid='workbench-brand'><Text className={styles.brandCharacter}>{brandCharacter}</Text></View> : <Button aria-label='返回总台' className={styles.back} onClick={panel === 'customers' ? leaveCustomerCenter : () => changePanel('home')}>‹</Button>}
