@@ -201,6 +201,7 @@ taro-scroll-view-core.taro-scroll-view__scroll-y {
   padding-bottom: calc(var(--sg-page-bottom-space, 112px) + env(safe-area-inset-bottom, 0px)) !important; box-sizing: border-box;
 }
 /* Only a live v2 native handshake can suppress the web fallback. */
+html[data-tab-context]:not(.sg-native-ios) taro-tabbar.sg-glass-host { display: block !important; }
 html.sg-native-ios taro-tabbar { display: none !important; }
 html.sg-native-ios taro-scroll-view-core.taro-scroll-view__scroll-y {
   padding-bottom: calc(max(var(--sg-page-bottom-space, 112px), var(--sg-native-bottom-space, 84px)) + env(safe-area-inset-bottom, 0px)) !important;

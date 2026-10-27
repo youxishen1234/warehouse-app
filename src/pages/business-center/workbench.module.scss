@@ -1,6 +1,3 @@
-// Only this active route owns the four-tab shell; release the legacy shell on navigation.
-:global(body[data-simple-workbench-active]) :global(.taro-tabbar__panel) { margin-left: 0 !important; width: 100% !important; padding-bottom: 0 !important; }
-:global(body[data-simple-workbench-active]) :global(taro-tabbar), :global(body[data-simple-workbench-active]) :global(.sg-glass-dock) { display: none !important; }
 .page { min-height: 100vh; min-height: 100dvh; padding: 74PX 24PX 34PX; background-color: #f4f7fb; background-image: none; background-size: 20PX 20PX; color: #172033; font: 16PX/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif; box-sizing: border-box; }
 .page * { box-sizing: border-box; }
 .surface { width: 100%; max-width: 676PX; min-height: 900PX; margin: 0 auto; border: 1PX solid #e2e8f0; border-radius: 10PX; background: #fff; display: flex; flex-direction: column; overflow: clip; }
@@ -58,9 +55,6 @@
 .activityValue .activityStatus { margin-top: 5PX; font-size: 14PX; color: #1677ff; }
 .emptyToday { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 14PX; border-top: 1PX solid #e2e8f0; min-height: 240PX; text-align: center; color: #64748b; padding: 32PX 10PX; }
 .emptyToday > :last-child { font-size: 14PX; color: #64748b; }
-.nav { position: sticky; bottom: 0; z-index: 15; display: grid; grid-template-columns: repeat(4, 1fr); background: #fff; border-top: 1PX solid #e2e8f0; padding: 13PX 12PX calc(13PX + env(safe-area-inset-bottom)); }
-.nav :is(button, taro-button-core) { width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5PX; min-height: 58PX; padding: 4PX; border: 0; border-radius: 6PX; background: transparent; color: #64748b; font-size: 15PX; }
-.nav :is(button, taro-button-core)[aria-pressed=true] { color: #1677ff; }
 .footer { display: flex; flex-wrap: wrap; gap: 8PX 16PX; padding: 12PX 30PX; border-top: 1PX solid #e2e8f0; background: #f8fafc; color: #64748b; font-size: 12PX; }
 .page .back { min-width: 44PX; min-height: 44PX; padding: 0 8PX 0 0; background: transparent; border: 0; color: #1677ff; font-size: 32PX; }
 .page .button, .page .primary, .page .selected { border-radius: 6PX; padding: 10PX 14PX; border: 1PX solid #bfdbfe; background: #eff6ff; color: #1458b8; }
@@ -103,8 +97,11 @@
 .page .photoRow { display: block; width: 100%; text-align: left; background: transparent; border: 0; border-bottom: 1PX solid #e2e8f0; border-radius: 0; color: #172033; }
 .overlay { position: fixed; z-index: 100; inset: 0; overflow-y: auto; background: #0008; display: flex; align-items: flex-start; justify-content: center; padding: 18PX; }
 .dialog { width: 100%; max-width: 420PX; max-height: calc(100vh - 36PX); max-height: calc(100dvh - 36PX); overflow-y: auto; margin: auto 0; background: #fff; border: 1PX solid #d1dbe8; color: #172033; border-radius: 10PX; padding: 22PX; display: flex; flex-direction: column; gap: 12PX; box-shadow: 0 12PX 36PX #0f172a22; }
+@media (max-width: 1023PX) {
+  .page { padding-bottom: calc(132PX + env(safe-area-inset-bottom)); }
+}
 @media (max-width: 700PX) {
-  .page { padding: 0; background: #f4f7fb; }
+  .page { padding: 0 0 calc(132PX + env(safe-area-inset-bottom)); background: #f4f7fb; }
   .page.embedded { padding-bottom: calc(max(104PX, var(--sg-native-bottom-space, 84PX) + 20PX) + env(safe-area-inset-bottom)); }
   .page.customerPage .content { padding-right: 20PX; padding-left: 20PX; }
   .surface { border: 0; border-radius: 0; min-height: 100vh; min-height: 100dvh; }
