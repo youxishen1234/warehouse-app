@@ -9,14 +9,14 @@ import { documentFromTransactions, moneyUpper, transactionPrintKey } from '@/uti
 import { previewAmount } from '@/utils/stock-math';
 import { useSharedRefresh } from '@/services/shared-refresh';
 import { session, watchSession } from '@/services/session';
-import { blankItem, draftFromTransactions, draftTotal, newNote, normalizeSpecification, noteDraft, selectCustomer, validateDraft } from './model';
+import { blankItem, copyNoteDraft, draftFromTransactions, draftTotal, newNote, normalizeSpecification, noteDraft, selectCustomer, validateDraft } from './model';
 import type { ItemDraft, NoteDraft } from './model';
 import { formatSpecificationInput } from './specification-input';
 import PrintPreview from './preview';
 import SpecificationPicker from './specification-picker';
 import { addSpecificationOptions, buildSpecificationOptions } from './specification-library';
 import type { SpecificationOption } from './specification-library';
-import { getRemoteDevice, getRemotePrintHistory, readPrintPair } from '@/services/remote-print';
+import { getRemoteDevice, getRemotePrintHistory, readPrintAfterOutbound, readPrintPair, savePrintAfterOutbound } from '@/services/remote-print';
 import PrintNotifications from '@/components/PrintNotifications';
 import styles from './index.module.scss';
 
@@ -36,14 +36,22 @@ function PrintIcon({ kind }: { kind: 'printer' | 'plus' | 'search' | 'arrow' }) 
 
 export default function PrintCenterPage() {
   const { params } = useRouter();
+  const native = typeof window !== 'undefined' && !!(window as any).Capacitor?.isNativePlatform?.();
   const [draft, setDraft] = useState<NoteDraft>(newNote);
   const [saved, setSaved] = useState<SavedPrintNote>();
   const [dirty, setDirty] = useState(false);
   const [tab, setTab] = useState<PrintTab>(() => params.transaction_id || params.mode === 'edit' ? 'edit' : 'home');
   const [printerStatus, setPrinterStatus] = useState<{ label: string; ready: boolean }>(() => ({ label: readPrintPair() ? '正在检查打印电脑' : '电脑打印未连接', ready: false }));
   const [preview, setPreview] = useState<PrintNoteInput>();
+  const [previewIntent, setPreviewIntent] = useState<'preview' | 'direct' | 'reprint' | 'auto'>('preview');
+  const [paired, setPaired] = useState(() => !!readPrintPair());
+  const [printAfterOutbound, setPrintAfterOutbound] = useState(readPrintAfterOutbound);
+  const closePreview = useCallback(() => {
+    setPreview(undefined); setPaired(!!readPrintPair()); setPrintAfterOutbound(readPrintAfterOutbound());
+  }, []);
   const [printTimes,setPrintTimes]=useState<Record<number,number>>({});
   const [printTimeError,setPrintTimeError]=useState('');
+  useEffect(() => { setPaired(!!readPrintPair()); setPrintAfterOutbound(readPrintAfterOutbound()); }, [tab, preview]);
   useEffect(()=>{if(tab!=='history'||!readPrintPair())return;let active=true;setPrintTimeError('');getRemotePrintHistory().then(rows=>{if(active)setPrintTimes(Object.fromEntries(rows.map(row=>[row.note_id,row.printed_at])));}).catch(()=>{if(active)setPrintTimeError('打印时间暂时无法获取，请稍后刷新');});return()=>{active=false;};},[tab]);
   useEffect(() => {
     if (tab !== 'home') return;
@@ -65,6 +73,7 @@ export default function PrintCenterPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [shipBusy, setShipBusy] = useState(false);
+  const shipping = useRef(false);
   const errorBox = useRef<HTMLDivElement>(null);
   const [customerOpen, setCustomerOpen] = useState(false);
   const [specificationOpen, setSpecificationOpen] = useState(false);
@@ -95,7 +104,7 @@ export default function PrintCenterPage() {
     setDirty(true); setError(''); setNotice('');
   };
   const guard = (action: () => void) => {
-    if (busyRef.current) return;
+    if (busyRef.current || shipping.current) return;
     if (!dirty) { action(); return; }
     pendingNavigation.current = action; setConfirmDiscard(true);
   };
@@ -177,30 +186,48 @@ export default function PrintCenterPage() {
 
   const openNote = (id: number, reprint = false) => guard(() => {
     busyRef.current = true; setBusy(true); setError(''); setNotice('');
-    getPrintNote(id).then(note => { setSaved(note); setDraft(noteDraft(note)); setDirty(false); setChosenCustomer(undefined); if(reprint)setPreview(note);else setTab('detail'); })
+    getPrintNote(id).then(note => { setSaved(note); setDraft(noteDraft(note)); setDirty(false); setChosenCustomer(undefined); if(reprint){setPreviewIntent('reprint');setPreview(note);}else setTab('detail'); })
       .catch(issue => setError(messageOf(issue))).finally(() => { busyRef.current = false; setBusy(false); });
   });
-  const save = async () => {
+  // Reuse an existing note as a new delivery: the customer and lines are copied,
+  // the note number and outbound state are not.
+  const copyNote = (id: number) => guard(() => {
+    busyRef.current = true; setBusy(true); setError(''); setNotice('');
+    getPrintNote(id).then(note => {
+      setSaved(undefined); setChosenCustomer(undefined);
+      setDraft(copyNoteDraft(note));
+      setDirty(true); setTab('edit');
+      setNotice(`已按 ${note.number} 带入客户和明细，核对后保存为新单`);
+    }).catch(issue => setError(messageOf(issue))).finally(() => { busyRef.current = false; setBusy(false); });
+  });
+  const save = async (thenPreview?: 'direct') => {
     if (busyRef.current) return;
     let data: PrintNoteInput;
     try { data = validateDraft(draft); } catch (issue) { setError(messageOf(issue)); return; }
     busyRef.current = true; setBusy(true); setError('');
     try {
       const note = await savePrintNote(data, saved);
-      setSaved(note); setDraft(noteDraft(note)); setDirty(false); setNotice(saved ? '修改已保存' : '送货单已保存');
+      setSaved(note); setDraft(noteDraft(note)); setDirty(false);
+      if (thenPreview) { setPreviewIntent(thenPreview); setPreview(note); setNotice(''); }
+      else setNotice(saved ? '修改已保存' : '送货单已保存');
     } catch (issue) { setError(messageOf(issue)); }
     finally { busyRef.current = false; setBusy(false); }
   };
-  const showPreview = () => { try { setPreview(validateDraft(draft)); setError(''); } catch (issue) { setError(messageOf(issue)); } };
+  const saveAndPrint = () => {
+    if (busyRef.current) return;
+    if (saved && !dirty) { setPreviewIntent('direct'); setPreview(saved); return; }
+    void save('direct');
+  };
+  const showPreview = () => { try { setPreviewIntent('preview'); setPreview(validateDraft(draft)); setError(''); } catch (issue) { setError(messageOf(issue)); } };
   const shipAndPrint = async () => {
-    if (!saved || shipBusy || dirty) { if (dirty) setError('请先保存送货单，再确认出库'); return; }
-    setShipBusy(true); setError('');
+    if (!saved || shipping.current || busyRef.current || dirty) { if (dirty) setError('请先保存送货单，再确认出库'); return; }
+    shipping.current = true; setShipBusy(true); setError('');
     try {
       const note = await shipPrintNote(saved.id);
       setSaved(note); setDraft(noteDraft(note)); setNotice('已出库，库存和客户应收已更新；现在打开打印预览');
-      setPreview(note);
+      setPreviewIntent(native && paired && printAfterOutbound ? 'auto' : 'preview'); setPreview(note);
     } catch (issue) { setError(messageOf(issue)); }
-    finally { setShipBusy(false); }
+    finally { shipping.current = false; setShipBusy(false); }
   };
   const chooseCustomer = (customer: Customer) => {
     setDraft(previous => selectCustomer(previous, customer)); setChosenCustomer(customer); setCustomerOpen(false); setDirty(true); setError(''); setNotice('');
@@ -252,24 +279,48 @@ export default function PrintCenterPage() {
           <div className={styles.recentHeading}><div><h2>最近单据</h2><p>{totalRecords ? `共 ${totalRecords} 张` : '送货单记录'}</p></div><button type='button' onClick={openHistory}>全部单据 <PrintIcon kind='arrow' /></button></div>
           {historyError && <div role='alert' className={styles.error}>{historyError}<button type='button' onClick={() => void loadHistory()}>重试</button></div>}
           {!history.length && !historyLoading && !historyError && <div className={styles.recentEmpty}><span>暂无送货单</span><button type='button' onClick={startNew}>新建第一张</button></div>}
-          {history.slice(0, 5).map(note => <button type='button' className={styles.recentNote} key={note.id} disabled={busy} onClick={() => openNote(note.id)}>
-            <span className={styles.recentIcon}><PrintIcon kind='printer' /></span>
-            <span className={styles.recentContent}><strong>{note.customer_name}</strong><small>{note.date} · {note.items.length} 项 · {note.number}</small></span>
-            <span className={styles.recentValue}><strong>¥ {currency(note.total)}</strong><small>{note.outbound_at ? '已出库' : '待出库'}</small></span>
-          </button>)}
+          {history.slice(0, 5).map(note => <div className={native ? styles.recentEntry : undefined} key={note.id}>
+            <button type='button' className={styles.recentNote} disabled={busy} onClick={() => openNote(note.id)}>
+              <span className={styles.recentIcon}><PrintIcon kind='printer' /></span>
+              <span className={styles.recentContent}><strong>{note.customer_name}</strong><small>{note.date} · {note.items.length} 项 · {note.number}</small></span>
+              <span className={styles.recentValue}><strong>¥ {currency(note.total)}</strong><small>{note.outbound_at ? '已出库' : '待出库'}</small></span>
+            </button>
+            {native && <button type='button' className={styles.recentCopy} disabled={busy} aria-label={`照${note.number}再来一单`} onClick={() => copyNote(note.id)}>再来一单</button>}
+          </div>)}
           {historyLoading && <p className={styles.muted} role='status'>正在加载最近单据…</p>}
         </section>
       </section> : tab === 'history' ? <section className={styles.history}>
         <div className={styles.historySearch}><input type='search' aria-label='搜索历史单据' placeholder='搜索客户、单号、商品或规格' value={query} onChange={event => setQuery(event.target.value)} /><button type='button' onClick={() => void loadHistory()} disabled={historyLoading}>刷新</button></div>
         {historyError && <div role='alert' className={styles.error}>{historyError}<button type='button' onClick={() => void loadHistory()}>重试</button></div>}
         {!history.length && !historyLoading && !historyError && <div className={styles.empty}><strong>{query ? '没有找到单据' : '还没有送货单'}</strong><p>{query ? '换个客户名称、单号或规格试试' : '新建第一张，之后随时查看和修改'}</p>{!query && <button type='button' onClick={startNew}>新建送货单</button>}</div>}
-        {printTimeError&&<p role='alert' className={styles.error}>{printTimeError}</p>}{!readPrintPair()&&<p className={styles.muted}>连接打印电脑后可查看远程打印时间。</p>}{history.map(note => <article className={styles.historyEntry} key={note.id}><button type='button' className={styles.historyCard} key={note.id} disabled={busy} onClick={() => openNote(note.id)}><span><strong>{note.customer_name}</strong><small>{note.date} · {note.items.length} 项</small><small>{note.number}</small><span className={styles.historyItems}>{note.items.map(item => item.name).join('、')}</span></span><span className={styles.historyAmount}>¥ {currency(note.total)}<small>查看详情 ›</small></span></button><div className={styles.historyPrint}><span>{printTimes[note.id] ? '打印时间：'+new Date(printTimes[note.id]).toLocaleString('zh-CN', { hour12: false }) : '暂无远程打印记录'}<small>以送入电脑打印队列的时间为准</small></span><button type='button' className={styles.secondary} disabled={busy} onClick={()=>openNote(note.id,true)}>重新打印</button></div></article>)}
+        {printTimeError && <p role='alert' className={styles.error}>{printTimeError}</p>}
+        {!readPrintPair() && <p className={styles.muted}>连接打印电脑后可查看远程打印时间。</p>}
+        {history.map(note => <article className={styles.historyEntry} key={note.id}>
+          <button type='button' className={styles.historyCard} disabled={busy} onClick={() => openNote(note.id)}>
+            <span><strong>{note.customer_name}</strong><small>{note.date} · {note.items.length} 项</small><small>{note.number}</small><span className={styles.historyItems}>{note.items.map(item => item.name).join('、')}</span></span>
+            <span className={styles.historyAmount}>¥ {currency(note.total)}<small>查看详情 ›</small></span>
+          </button>
+          <div className={styles.historyPrint}>
+            <span>{printTimes[note.id] ? '打印时间：' + new Date(printTimes[note.id]).toLocaleString('zh-CN', { hour12: false }) : '暂无远程打印记录'}<small>以送入电脑打印队列的时间为准</small></span>
+            <div className={styles.historyButtons}>
+              <button type='button' className={styles.secondary} disabled={busy} onClick={() => openNote(note.id, true)}>重新打印</button>
+              {native && <button type='button' className={styles.secondary} disabled={busy} onClick={() => copyNote(note.id)}>再来一单</button>}
+            </div>
+          </div>
+        </article>)}
         {historyLoading && <p className={styles.muted} role='status'>正在加载单据…</p>}
         {!historyLoading && history.length < totalRecords && <button type='button' className={styles.addButton} onClick={() => void loadHistory(historyPage + 1)}>加载更多</button>}
       </section> : tab === 'detail' && saved ? <>
         <section className={styles.card}><div className={styles.sectionHeading}><h2>单据详情</h2><span className={styles.saved}>已保存</span></div><h3>{saved.customer_name}</h3><p className={styles.muted}>{saved.number} · {saved.date}</p><dl className={styles.details}><dt>收货地址</dt><dd>{saved.address || '未填写'}</dd><dt>收货人</dt><dd>{saved.receiver || '未填写'}{saved.phone ? ` · ${saved.phone}` : ''}</dd><dt>送货人</dt><dd>{saved.sender || '未填写'}</dd><dt>公司抬头</dt><dd>{saved.company}</dd></dl></section>
         <section className={styles.card}><div className={styles.sectionHeading}><h2>货物明细</h2><span>{saved.items.length} 项</span></div>{saved.items.map((item, index) => <div key={index} className={styles.detailItem}><div><strong>{index + 1}. {item.name}</strong><span>{item.specification || '未填规格'} · {item.quantity} 个 × ¥ {item.price}</span>{item.remark && <small>{item.remark}</small>}</div><strong>¥ {currency(item.amount)}</strong></div>)}<div className={styles.total}><span>合计</span><strong>¥ {currency(saved.total)}</strong></div><p className={styles.upper}>{moneyUpper(saved.total)}</p></section>
-        <footer className={styles.actions}><button type='button' className={styles.secondary} onClick={() => { setTab('edit'); setNotice(''); }} disabled={!!saved.outbound_at}>编辑单据</button>{saved.outbound_at ? <button type='button' className={styles.primary} onClick={showPreview}>再次打印</button> : <button type='button' className={styles.primary} onClick={shipAndPrint} disabled={shipBusy || dirty}>{shipBusy ? '出库中…' : '确认出库并打印'}</button>}</footer>
+        {native && !saved.outbound_at && <label className={styles.autoPrint}>
+          <input type='checkbox' checked={printAfterOutbound} disabled={!paired || shipBusy} onChange={event => {
+            try { savePrintAfterOutbound(event.target.checked); setPrintAfterOutbound(event.target.checked); }
+            catch { setError('打印设置未保存，请重试'); }
+          }} />
+          <span>出库后自动打印</span>
+        </label>}
+        <footer className={styles.actions}><button type='button' className={styles.secondary} onClick={() => { setTab('edit'); setNotice(''); }} disabled={!!saved.outbound_at || shipBusy}>编辑单据</button>{saved.outbound_at ? <button type='button' className={styles.primary} onClick={() => { setPreviewIntent('reprint'); setPreview(saved); }}>再次打印</button> : <button type='button' className={styles.primary} onClick={shipAndPrint} disabled={shipBusy || dirty}>{shipBusy ? '出库中…' : native ? paired && printAfterOutbound ? '确认出库并打印' : '确认出库' : '确认出库并打印'}</button>}</footer>
       </> : <>
         <div className={styles.documentStatus}><span>{saved?.number || '新送货单'}</span><span>{busy ? '正在处理…' : dirty ? '待保存' : saved ? '已保存' : '填写后保存'}</span></div>
         <fieldset disabled={busy} className={styles.form}>
@@ -290,13 +341,19 @@ export default function PrintCenterPage() {
           </section>
           <details className={styles.settings}><summary>公司抬头</summary><div className={styles.settingsBody}>{input('company', '公司抬头', 50)}</div></details>
         </fieldset>
-        <footer className={styles.actions}><button type='button' className={styles.secondary} disabled={busy || (!!saved && !dirty)} onClick={() => void save()}>{busy ? '保存中…' : saved && !dirty ? '已保存' : '保存单据'}</button><button type='button' className={styles.primary} disabled={busy} onClick={showPreview}>预览打印</button></footer>
+        <footer className={styles.actions}>{paired && native ? <>
+          <button type='button' className={styles.secondary} disabled={busy || (!!saved && !dirty)} onClick={() => void save()}>{busy ? '保存中…' : saved && !dirty ? '已保存' : '仅保存'}</button>
+          <button type='button' className={styles.primary} disabled={busy} onClick={saveAndPrint}>{busy ? '处理中…' : saved && !dirty ? '打印到630K' : '保存并打印'}</button>
+        </> : <>
+          <button type='button' className={styles.secondary} disabled={busy || (!!saved && !dirty)} onClick={() => void save()}>{busy ? '保存中…' : saved && !dirty ? '已保存' : '保存单据'}</button>
+          <button type='button' className={styles.primary} disabled={busy} onClick={showPreview}>预览打印</button>
+        </>}</footer>
       </>}
     </div>
     {specificationOpen && <SpecificationPicker customerId={draft.customer_id} customerName={draft.customer_name} items={draft.items} onAdd={addSpecifications} onClose={() => setSpecificationOpen(false)} />}
     {customerOpen && <div className={styles.backdrop} onClick={() => setCustomerOpen(false)}><section role='dialog' aria-modal='true' aria-label='搜索客户' className={styles.dialog} onClick={event => event.stopPropagation()}><div className={styles.sectionHeading}><h2>选择客户</h2><button type='button' className={styles.textButton} onClick={() => setCustomerOpen(false)}>关闭</button></div><input autoFocus type='search' aria-label='搜索客户名称或电话' placeholder='客户名称 / 联系人 / 电话' value={customerQuery} onChange={event => setCustomerQuery(event.target.value)} /><div className={styles.customerResults}>{customerLoading ? <p className={styles.muted}>正在查找…</p> : customerError ? <div className={styles.error} role='alert'>{customerError}<button type='button' onClick={() => setCustomerRetry(value => value + 1)}>重试</button></div> : customers.length ? customers.map(customer => <button type='button' className={styles.customer} key={customer.id} onClick={() => chooseCustomer(customer)}><strong>{customer.name}</strong><span>{[customer.contact, customer.phone].filter(Boolean).join(' · ') || '暂无联系人'}</span>{customer.address && <small>{customer.address}</small>}</button>) : <p className={styles.muted}>没有找到客户，可关闭后直接填写收货单位</p>}</div></section></div>}
-    {confirmDiscard && <div className={styles.backdrop}><section role='dialog' aria-modal='true' aria-label='保留未保存内容' className={styles.dialog}><h2>当前内容还没有保存</h2><p>离开后，本次修改将不会保留。</p><div className={styles.confirmActions}><button type='button' className={styles.secondary} onClick={() => { setConfirmDiscard(false); pendingNavigation.current = null; }}>继续编辑</button><button type='button' className={styles.primary} onClick={() => { const action = pendingNavigation.current; pendingNavigation.current = null; setConfirmDiscard(false); action?.(); }}>放弃并继续</button></div></section></div>}
-    {preview && <PrintPreview note={preview} saved={saved} onClose={() => setPreview(undefined)} />}
+    {confirmDiscard && <div className={styles.backdrop}><section role='dialog' aria-modal='true' aria-label='保留未保存内容' className={styles.dialog}><h2>当前内容还没有保存</h2><p>离开后，本次修改将不会保留。</p><div className={styles.confirmActions}><button type='button' className={styles.secondary} onClick={() => { setConfirmDiscard(false); pendingNavigation.current = null; }}>继续编辑</button><button type='button' className={styles.primary} onClick={() => { const action = pendingNavigation.current; pendingNavigation.current = null; setConfirmDiscard(false); setDirty(false); setDraft(saved ? noteDraft(saved) : newNote()); setNotice(''); action?.(); }}>放弃并继续</button></div></section></div>}
+    {preview && <PrintPreview key={`${saved?.id || 'draft'}:${saved?.version || 0}:${previewIntent}`} note={preview} saved={saved} reprintIntent={previewIntent === 'reprint'} autoSend={previewIntent === 'auto' || previewIntent === 'direct'} onClose={closePreview} />}
   </main>;
 }
 

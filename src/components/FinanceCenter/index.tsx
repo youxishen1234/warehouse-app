@@ -4,6 +4,7 @@ import Taro from '@tarojs/taro';
 import Icon, { IconName } from '@/components/Icon';
 import { addLedger, deleteLedger, getLedger, settleCustomer, settleSupplier } from '@/services/api';
 import type { Customer, DeliveryNote, LedgerAttachment, LedgerEntry, LedgerType, Supplier } from '@/types';
+import type { DimensionCustomer } from '@/services/customer-dimensions';
 import { formatMoney, formatTime } from '@/utils/format';
 import { downloadCsv } from '@/services/download';
 import { parseMoneyInput, previewMoneyInput, sanitizeNonNegativeMoneyInput } from '@/utils/form-input';
@@ -14,6 +15,10 @@ import {
 import type { PhotoDraft } from '@/services/ledger-photos';
 import LedgerAttachments from '@/pages/ledger/attachments';
 import FinanceButton from '@/pages/ledger/button';
+import {
+  buildCustomerManagementRows, MAX_VISIBLE_CUSTOMER_SPECS, specificationSearchText
+} from '@/components/CustomerCenter/model';
+import type { CustomerSpecView } from '@/components/CustomerCenter/model';
 import {
   filterPartyLedgerEntries, inferredPartyType, partyPeriodLabel, summarizePartyLedger,
   summarizeProductionInbound
@@ -31,13 +36,39 @@ type FinanceCenterProps = {
   ledger: LedgerEntry[];
   customers: Customer[];
   suppliers: Supplier[];
+  dimensionCustomers?: DimensionCustomer[];
+  inactiveCustomerNames?: string[];
   deliveryNotes: DeliveryNote[];
   loading: boolean;
   loadError: string;
   onReload: () => Promise<void>;
   onViewChange?: (view: FinanceView) => void;
-  onEditParty?: (type: PartyType, id?: number) => void;
+  onEditParty?: (type: PartyType, id?: number, initialName?: string) => void;
 };
+
+function CustomerSpecs({ customer, specs, expanded, onToggle }: {
+  customer: string;
+  specs: CustomerSpecView[];
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const visible = expanded ? specs : specs.slice(0, MAX_VISIBLE_CUSTOMER_SPECS);
+  return <View className={styles.customerSpecs} data-testid={`customer-specs-${customer}`}>
+    <View className={styles.customerSpecsHeading}><Text>常用规格</Text><Text className={styles.customerSpecsCount}>{specs.length} 种</Text></View>
+    {visible.map(spec => <View className={styles.customerSpecRow} key={spec.key} data-testid={`customer-spec-${customer}-${spec.key}`}>
+      <View className={styles.customerSpecBody}>
+        <View className={styles.customerSpecTitle}><Text>{spec.goods}</Text>{spec.kind === '纸板' && <Text className={styles.customerSpecKind}>纸板</Text>}</View>
+        <Text className={styles.customerSpecSize}>{spec.specification}</Text>
+        <Text className={styles.customerSpecMeta}>材质：{spec.material || '未记录'} · 单位：{spec.unit}</Text>
+      </View>
+      <Text className={styles.customerSpecPrice}>{spec.price == null ? '价格未记录' : `${formatMoney(spec.price)}/${spec.unit}`}</Text>
+    </View>)}
+    {!specs.length && <Text className={styles.customerSpecsEmpty}>暂无规格资料</Text>}
+    {specs.length > MAX_VISIBLE_CUSTOMER_SPECS && <FinanceButton className={styles.customerSpecsToggle} aria-expanded={expanded} data-testid={`customer-specs-toggle-${customer}`} onClick={onToggle}>
+      {expanded ? '收起规格' : `查看全部 ${specs.length} 种规格`}
+    </FinanceButton>}
+  </View>;
+}
 
 const appearance: Record<LedgerType, { icon: IconName; color: string; title: string }> = {
   income: { icon: 'inbound', color: '#a6dcb8', title: '收入入账' },
@@ -83,7 +114,7 @@ const LedgerListRow = React.memo(function LedgerListRow({ entry, onOpen }: Ledge
 });
 
 export default function FinanceCenter({
-  initialView = 'ledger', partyType, partyId, entryId, ledger, customers, suppliers, deliveryNotes,
+  initialView = 'ledger', partyType, partyId, entryId, ledger, customers, suppliers, dimensionCustomers = [], inactiveCustomerNames = [], deliveryNotes,
   loading, loadError, onReload, onViewChange, onEditParty
 }: FinanceCenterProps) {
   const [view, setView] = useState<FinanceView>(initialView);
@@ -107,6 +138,7 @@ export default function FinanceCenter({
   const [exporting, setExporting] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [expandedSpecs, setExpandedSpecs] = useState<Record<string, boolean>>({});
   const [partySearch, setPartySearch] = useState('');
   const [partyPeriod, setPartyPeriod] = useState<PartyPeriod>('全部时间');
   const [partyRange, setPartyRange] = useState({ from: '', to: '' });
@@ -171,8 +203,15 @@ export default function FinanceCenter({
   const groups = useMemo(() => groupLedger(filtered), [filtered]);
   const amountPreview = useMemo(() => previewMoneyInput(amount), [amount]);
   const partyRangeText = partyPeriod === '全部时间' ? { from: '', to: '' } : partyDates;
-  const customerRows = useMemo(() => customers.filter(party => !party.deleted_at && (!selectedId || selectedType !== 'customer' || party.id === selectedId) &&
-    (!partySearch.trim() || `${party.name} ${party.contact || ''} ${party.phone || ''}`.toLowerCase().includes(partySearch.trim().toLowerCase()))), [customers, partySearch, selectedId, selectedType]);
+  const allCustomerRows = useMemo(() => buildCustomerManagementRows(customers, dimensionCustomers, inactiveCustomerNames), [customers, dimensionCustomers, inactiveCustomerNames]);
+  const customerReceivable = useMemo(() => allCustomerRows.reduce((sum, row) => sum + Number(row.account?.debt || 0), 0), [allCustomerRows]);
+  const customerRows = useMemo(() => {
+    const query = specificationSearchText(partySearch);
+    return allCustomerRows.filter(row =>
+      (!selectedId || selectedType !== 'customer' || row.account?.id === selectedId) &&
+      (!query || row.searchText.includes(query))
+    );
+  }, [allCustomerRows, partySearch, selectedId, selectedType]);
   const supplierRows = useMemo(() => suppliers.filter(party => !party.deleted_at && (!selectedId || selectedType !== 'supplier' || party.id === selectedId) &&
     (!partySearch.trim() || `${party.name} ${party.contact || ''} ${party.phone || ''}`.toLowerCase().includes(partySearch.trim().toLowerCase()))), [partySearch, selectedId, selectedType, suppliers]);
 
@@ -316,14 +355,23 @@ export default function FinanceCenter({
 
     {(view === 'customer' || view === 'supplier') && <View className={styles.partyView} data-testid={`finance-${view}-view`}>
       <View className={styles.partyToolbar}>
-        <Input className={styles.partySearch} aria-label={`搜索${partyTitle}`} placeholder={`搜索${partyTitle}对象`} value={partySearch} onInput={e => setPartySearch(e.detail.value)} />
+        <FinanceButton className={`${styles.primary} ${styles.partyAddButton}`} data-testid={`finance-add-${view}`} onClick={() => onEditParty?.(view)}><Icon name='plus' color='#1c3325' /><Text>{`新增${view === 'customer' ? '客户' : '供货商'}`}</Text></FinanceButton>
+        <Input className={styles.partySearch} data-testid='finance-party-search' aria-label={view === 'customer' ? '搜索客户、规格或联系方式' : `搜索${partyTitle}`} placeholder={view === 'customer' ? '搜索客户、规格或联系方式' : `搜索${partyTitle}对象`} value={partySearch} onInput={e => setPartySearch(e.detail.value)} />
         <View className={styles.periodTabs}>{(['本月', '上月', '全部时间'] as PartyPeriod[]).map(value => <FinanceButton key={value} aria-pressed={partyPeriod === value} className={`${styles.periodTab} ${partyPeriod === value ? styles.periodActive : ''}`} onClick={() => choosePartyPeriod(value)}>{value}</FinanceButton>)}</View>
       </View>
-      <View className={styles.partySummary}>
-        <View><Text>{view === 'customer' ? '当前待收款合计' : '当前待付款合计'}</Text><strong>{formatMoney((view === 'customer' ? customerRows : supplierRows).reduce((sum, party) => sum + Number(view === 'customer' ? party.debt || 0 : party.payable || 0), 0))}</strong></View>
+      <View className={styles.partySummary} data-testid='finance-party-summary'>
+        <View><Text>{view === 'customer' ? '当前待收款合计' : '当前待付款合计'}</Text><strong>{formatMoney(view === 'customer' ? customerReceivable : supplierRows.reduce((sum, supplier) => sum + Number(supplier.payable || 0), 0))}</strong></View>
         <Text>{partyPeriod === '全部时间' ? '按全部业务日期汇总 · 当前余额为实时数' : `${partyRange.from} 至 ${partyRange.to} · 当前余额为实时数`}</Text>
       </View>
-      {view === 'customer' && customerRows.map(customer => {
+      {view === 'customer' && customerRows.map(row => {
+        if (!row.account) return <View key={row.key} className={styles.partyCard} data-testid={`customer-specs-only-${row.key}`}>
+          <View className={styles.partyCardHead}><View><Text className={styles.partyName}>{row.name}</Text><Text className={styles.dimensionOnlyStatus}>规格客户 · 未建立客户资料</Text></View><View className={styles.partyButtons}>
+            <FinanceButton className={styles.primary} aria-label={`建立客户资料 ${row.name}`} data-testid={`customer-create-from-dimension-${row.key}`} onClick={() => onEditParty?.('customer', undefined, row.name)}>建立客户资料</FinanceButton>
+          </View></View>
+          <CustomerSpecs customer={row.key} specs={row.specs} expanded={Boolean(expandedSpecs[row.key])} onToggle={() => setExpandedSpecs(current => ({ ...current, [row.key]: !current[row.key] }))} />
+          <Text className={styles.dimensionOnlyNote}>建立客户资料后，可登记应收、收款和自产入库账单。</Text>
+        </View>;
+        const customer = row.account;
         const notes = summarizeProductionInbound(deliveryNotes, customer.id, partyRangeText.from, partyRangeText.to);
         const balance = Number(customer.debt || 0);
         const expandedKey = `customer-${customer.id}`;
@@ -337,6 +385,7 @@ export default function FinanceCenter({
             <FinanceButton className={styles.primary} aria-label={`收款客户 ${customer.name}`} data-testid={`finance-settle-customer-${customer.id}`} onClick={() => { setSettling({ id: customer.id, name: customer.name, type: 'customer', balance }); setSettlementAmount(''); setSettlementError(''); }}>收款</FinanceButton>
             <FinanceButton aria-label={`编辑客户 ${customer.name}`} onClick={() => onEditParty?.('customer', customer.id)}>编辑</FinanceButton>
           </View></View>
+          <CustomerSpecs customer={String(customer.id)} specs={row.specs} expanded={Boolean(expandedSpecs[expandedKey])} onToggle={() => setExpandedSpecs(current => ({ ...current, [expandedKey]: !current[expandedKey] }))} />
           <View className={styles.metrics}>
             <View><Text>{partyPeriodLabel(partyPeriod)}自产入库金额</Text><strong>{formatMoney(notes.total)}</strong></View>
             <View><Text>{partyPeriodLabel(partyPeriod)}已收款</Text><strong>{formatMoney(summary.settled)}</strong></View>
@@ -377,7 +426,6 @@ export default function FinanceCenter({
         </View>;
       })}
       {(view === 'customer' ? customerRows.length : supplierRows.length) === 0 && <View className={styles.empty}><Text>{partySearch ? '没有找到匹配对象' : `还没有${view === 'customer' ? '客户' : '供货商'}资料`}</Text></View>}
-      <View className={styles.partyActions}><FinanceButton className={styles.primary} data-testid={`finance-add-${view}`} onClick={() => onEditParty?.(view)}>{`＋ 新增${view === 'customer' ? '客户' : '供货商'}`}</FinanceButton></View>
     </View>}
 
     {rangeOpen && <View className={styles.overlay}><View className={styles.backdrop} aria-hidden='true' onClick={() => setRangeOpen(false)} /><View className={styles.sheet} role='dialog' aria-modal='true' aria-label='筛选账单日期'>

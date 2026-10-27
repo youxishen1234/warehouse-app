@@ -40,6 +40,9 @@
 .recentIcon { display: grid; place-items: center; width: 34PX; height: 34PX; flex: 0 0 auto; border-radius: 10PX; background: #edf5f6; color: #347586; }.recentIcon svg { width: 18PX; height: 18PX; }
 .recentContent { display: flex; flex-direction: column; gap: 3PX; min-width: 0; flex: 1; }.recentContent strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13PX; }.recentContent small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #8a9aa4; font-size: 11PX; }
 .recentValue { display: flex; flex-direction: column; align-items: flex-end; gap: 2PX; flex: 0 0 auto; }.recentValue strong { font-size: 13PX; font-variant-numeric: tabular-nums; }.recentValue small { color: #7d919b; font-size: 10PX; }
+.recentEntry { display: flex; align-items: center; gap: 6PX; border-top: 1PX solid #edf1f3; }
+.page .recentEntry .recentNote { flex: 1; min-width: 0; border-top: 0; }
+.page .recentCopy { flex: 0 0 auto; min-height: 44PX; padding: 7PX 8PX; border-radius: 8PX; background: #eef5f6; color: #2e6879; font-size: 12PX; white-space: nowrap; }
 .recentEmpty { display: flex; align-items: center; justify-content: space-between; gap: 10PX; min-height: 76PX; border-top: 1PX solid #edf1f3; color: #82939d; font-size: 12PX; }.page .recentEmpty button { background: #eef5f6; color: #2e6879; padding: 7PX 11PX; min-height: 36PX; font-size: 12PX; }
 .toolbar p { margin: 2PX 0 0; color: #80909b; font-size: 12PX; }
 .page .back { background: white; color: #344958; font-size: 28PX; width: 44PX; padding: 0; border: 1PX solid #e4e8ec; }
@@ -83,6 +86,8 @@
 // Keep actions after the complete document instead of floating over editable fields.
 .actions { position: static; display: flex; gap: 12PX; background: #f4f6f8; padding: 14PX 0 0; margin: 16PX 0 0; border-top: 1PX solid #e4e9ed; }
 .actions [type=button] { flex: 1; min-width: 0; min-height: 49PX; font-weight: 600; font-size: 15PX; }
+.autoPrint { display: flex; align-items: center; gap: 10PX; min-height: 44PX; margin: 10PX 0; color: #415f6d; font-size: 14PX; }
+.page .autoPrint input { width: 20PX; min-width: 20PX; height: 20PX; margin: 0; padding: 0; accent-color: #245f72; }
 .page .primary, .backdrop .primary { background: #245f72; color: #fff; }
 .page .secondary, .backdrop .secondary { background: white; border: 1PX solid #d2dee4; color: #315769; }
 .error { background: #fff1ed; color: #a74028; border-radius: 10PX; padding: 12PX 14PX; margin-bottom: 14PX; font-size: 13PX; overflow-wrap: anywhere; }
@@ -94,6 +99,7 @@
 .page .historyEntry .historyCard { margin: 0; border: 0; border-radius: 0; }
 .historyPrint { display: flex; align-items: center; justify-content: space-between; gap: 12PX; padding: 12PX 16PX; border-top: 1PX solid #edf0f3; color: #647c89; font-size: 12PX; }
 .historyPrint > span { min-width: 0; overflow-wrap: anywhere; }.historyPrint small { display: block; margin-top: 3PX; font-size: 11PX; color: #8b9ba5; }.historyPrint [type=button] { flex-shrink: 0; }
+.historyButtons { display: flex; gap: 8PX; flex-shrink: 0; flex-wrap: wrap; }
 .historySearch [aria-label]:is([maxlength], [type=search]) { flex: 1; }
 .historySearch [type=button] { color: #416779; background: #e7eef1; flex-shrink: 0; }
 .page .historyCard { display: flex; justify-content: space-between; gap: 16PX; width: 100%; text-align: left; padding: 20PX; margin-bottom: 12PX; border: 1PX solid #e4e9ed; background: white; color: #223c4a; border-radius: 14PX; }
@@ -129,6 +135,7 @@
 .frameShell { display: block; position: relative; margin: 0 auto; }
 .frameShell iframe { position: absolute; top: 0; left: 0; border: 0; transform-origin: top left; display: block; }
 .previewActions { display: flex; gap: 12PX; justify-content: flex-end; margin-top: 16PX; }
+.previewDialog[data-mobile='true'] .previewActions { position: sticky; bottom: -16PX; z-index: 1; padding: 12PX 0 16PX; margin-bottom: -16PX; background: #f4f6f8; }
 @media (max-width: 520PX) {
   .page { padding-left: 14PX; padding-right: 14PX; padding-top: 14PX; }
   .workspaceHeader h1 { font-size: 25PX; }.workspaceHeader { align-items: flex-start; flex-direction: column; gap: 8PX; }.printerState { max-width: 100%; justify-content: flex-start; text-align: left; }
@@ -138,6 +145,7 @@
   .toolbar { margin-bottom: 18PX; }.card { padding: 18PX 16PX; }.grid { gap: 0 10PX; }.sectionHeading { margin-bottom: 12PX; }
   .backdrop { padding: 12PX; align-items: center; }.dialog { padding: 20PX 16PX; }.previewDialog { padding: 16PX 12PX; border-radius: 14PX; }.historyCard { padding: 16PX !important; }
   .actions { gap: 10PX; }.previewActions [type=button] { flex: 1; }.previewControls select { flex-basis: 100%; }
+  .historyPrint { flex-wrap: wrap; }.historyPrint > span { flex: 1 1 100%; }.historyButtons { width: 100%; }.historyButtons button { flex: 1; min-width: 0; }
 }
 @media (max-width: 350PX) {
   .page { padding-top: 12PX; }

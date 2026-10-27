@@ -23,6 +23,35 @@ async function main() {
   const other = db.addCustomer({ name: '另一客户独立报价', specs: [{ ...spec, price: 5 }] });
   db.updateCustomer(customer.id, { specs: [spec] });
   db.updateCustomer(other.id, { specs: [{ ...spec, price: 5 }] });
+  const dimensions = db.getCustomerDimensions();
+  dimensions.customers.push({
+    id: 'dimension-linked-customer',
+    name: customer.name,
+    specs: [
+      { id: 'duplicate-quote', goods: spec.goods, size: '30×20×15', sizeUnit: 'cm', material: spec.material, unit: '个', kind: '成品' },
+      { id: 'large-carton', goods: '尺寸本大包装', size: '45×30×25', sizeUnit: 'cm', material: '五层纸板', unit: '个', kind: '成品' },
+      { id: 'paperboard', goods: '', size: '160×110', sizeUnit: 'cm', material: '', unit: '张', kind: '纸板' },
+      { id: 'stacked-carton', goods: '堆码纸箱', size: '50×40×30', sizeUnit: 'cm', material: '加硬纸板', unit: '个', kind: '成品' }
+    ]
+  });
+  dimensions.customers.push({
+    id: 'dimension-only-customer',
+    name: '尺寸本独立客户',
+    specs: [
+      { id: 'dimension-only-a', goods: '', size: '51×36×28', sizeUnit: 'cm', material: '', unit: '个', kind: '成品' },
+      { id: 'dimension-only-b', goods: '', size: '51×29×29', sizeUnit: 'cm', material: '', unit: '个', kind: '成品' }
+    ]
+  });
+  dimensions.customers.push({
+    id: 'inactive-dimension-customer',
+    name: '已停用规格客户',
+    specs: [
+      { id: 'inactive-dimension-spec', goods: '', size: '60×40×35', sizeUnit: 'cm', material: '', unit: '个', kind: '成品' }
+    ]
+  });
+  db.updateCustomerDimensions(dimensions);
+  const inactiveCustomer = db.addCustomer({ name: '已停用规格客户' });
+  db.deleteCustomer(inactiveCustomer.id);
   const supplier = db.addSupplier({ name: '纸板测试供货商', payable: 50 });
   const carton = db.addProduct({ name: '客户自产纸箱', category: '纸箱', specification: spec.specification, material: spec.material, unit: '个', price: 9, stock: 0 });
   const requests = [];
@@ -80,6 +109,7 @@ async function main() {
       await new Promise(resolve => setTimeout(resolve, Math.min(25, quietUntil - Date.now())));
     }
   };
+  let failDimensions = false;
   await context.route('**/*', route => {
     const request = route.request();
     const requestUrl = request.url();
@@ -87,6 +117,9 @@ async function main() {
       const url = new URL(requestUrl);
       if (url.pathname.startsWith('/api/')) {
         if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+        if (failDimensions && url.pathname === '/api/customer-dimensions') {
+          return route.fulfill({ status: 503, headers: cors, contentType: 'application/json', body: JSON.stringify({ success: false, message: '测试：规格服务暂时不可用' }) });
+        }
         const response = await route.fetch({ url: origin + url.pathname + url.search });
         return route.fulfill({ response, headers: { ...response.headers(), ...cors } });
       }
@@ -177,11 +210,91 @@ async function main() {
     historical.ledger.find(row => row.party_type === 'supplier' && row.party_id === supplier.id).created_at = new Date(`${priorDate}T12:00:00+08:00`).getTime();
     db.restoreData(historical);
 
-    await go('/pages/business-center/index?section=finance&view=customer');
+    await go('/pages/customers/index');
+    await expect(page.getByTestId('customer-center')).toBeVisible();
+    await expect(page.getByTestId('finance-center')).toHaveCount(0);
+    const customerProfileCard = page.getByTestId(`customer-management-card-${customer.id}`);
+    await expect(customerProfileCard).toBeVisible();
+    const customerSpecs = page.getByTestId(`customer-specs-${customer.id}`);
+    await expect(customerSpecs).toContainText('常用规格');
+    await expect(customerSpecs).toContainText('客户自产纸箱');
+    await expect(customerSpecs).toContainText('30×20×15 cm');
+    await expect(customerSpecs).toContainText('¥2.00/个');
+    await expect(customerSpecs.locator('[data-testid^="customer-spec-"]')).toHaveCount(3);
+    await expect(customerSpecs).toContainText('160×110 cm');
+    await expect(customerSpecs).toContainText('纸板');
+    await expect(customerSpecs).toContainText('价格未记录');
+    await expect(customerSpecs).not.toContainText('50×40×30 cm', { timeout: 1000 });
+    await page.getByTestId(`customer-specs-toggle-${customer.id}`).click();
+    await expect(customerSpecs.locator('[data-testid^="customer-spec-"]')).toHaveCount(4);
+    await expect(customerSpecs).toContainText('50×40×30 cm');
+    await page.getByTestId(`customer-specs-toggle-${customer.id}`).click();
+    await expect(customerSpecs).not.toContainText('50×40×30 cm', { timeout: 1000 });
+    const dimensionOnlyCard = page.getByTestId('customer-specs-only-dimension:1');
+    await expect(dimensionOnlyCard).toContainText('尺寸本独立客户');
+    await expect(dimensionOnlyCard).toContainText('51×36×28 cm');
+    await expect(dimensionOnlyCard).toContainText('待建立客户资料');
+    await expect(page.getByTestId('customer-create-from-dimension-dimension:1')).toBeVisible();
+    await expect(page.getByText('已停用规格客户', { exact: true })).toHaveCount(0);
+    const accountsBeforeDimensionConversion = db.listCustomers().length;
+    await page.getByTestId('customer-create-from-dimension-dimension:1').click();
+    const dimensionEditor = page.getByTestId('customer-editor');
+    await expect(dimensionEditor).toBeVisible();
+    await expect(dimensionEditor.getByLabel('公司名称').locator('input')).toHaveValue('尺寸本独立客户');
+    await dimensionEditor.getByText('取消', { exact: true }).click();
+    await expect(dimensionEditor).toHaveCount(0);
+    assert.equal(db.listCustomers().length, accountsBeforeDimensionConversion, 'canceling account setup must not create a customer');
+    await dimensionOnlyCard.screenshot({ path: path.join(evidence, 'customer-specs-only-390.png') });
+    const partySearch = page.getByTestId('customer-center-search').locator('input');
+    await partySearch.fill('45x30x25');
+    await expect(customerProfileCard).toBeVisible();
+    await expect(dimensionOnlyCard).toHaveCount(0);
+    await partySearch.fill('');
+    failDimensions = true;
+    const failedDimensions = page.waitForResponse(response =>
+      new URL(response.url()).pathname === '/api/customer-dimensions' && response.status() === 503
+    );
+    await page.getByLabel('刷新服务器数据').click();
+    await failedDimensions;
+    await expect(customerProfileCard).toBeVisible();
+    await expect(dimensionOnlyCard).toHaveCount(0);
+    failDimensions = false;
+    const restoredDimensions = page.waitForResponse(response =>
+      new URL(response.url()).pathname === '/api/customer-dimensions' && response.status() === 200
+    );
+    await page.getByLabel('刷新服务器数据').click();
+    await restoredDimensions;
+    await expect(dimensionOnlyCard).toBeVisible();
+    await expect(page.getByText(/测试.*规格服务/)).toBeHidden({ timeout: 5000 });
+
+    await page.getByTestId('customer-create-from-dimension-dimension:1').click();
+    const conversionEditor = page.getByTestId('customer-editor');
+    await expect(conversionEditor.getByLabel('公司名称').locator('input')).toHaveValue('尺寸本独立客户');
+    await conversionEditor.getByText('保存客户', { exact: true }).click();
+    await expect(conversionEditor).toHaveCount(0);
+    let convertedCustomer;
+    await expect.poll(() => {
+      convertedCustomer = db.listCustomers().find(row => row.name === '尺寸本独立客户');
+      return convertedCustomer?.id;
+    }).toBeTruthy();
+    await expect(page.getByTestId('customer-specs-only-dimension:1')).toHaveCount(0);
+    const convertedProfileCard = page.getByTestId(`customer-management-card-${convertedCustomer.id}`);
+    await expect(convertedProfileCard).toContainText('51×36×28 cm');
+    await expect(convertedProfileCard).toContainText('价格未记录');
+
+    await page.getByTestId(`customer-view-bills-${customer.id}`).click();
+    await expect(page).toHaveURL(new RegExp(`/pages/business-center/index\\?section=finance&view=customer&party_type=customer&party_id=${customer.id}`));
+    await expect(page.getByTestId('customer-center')).toHaveCount(0);
     await expect(page.getByTestId('finance-center')).toBeVisible();
-    await page.getByTestId('finance-tab-customer').click();
     const customerCard = page.getByTestId(`customer-bill-${customer.id}`);
     await expect(customerCard).toContainText('500.00');
+    const partySummary = page.getByTestId('finance-party-summary');
+    await expect(partySummary).toContainText('500.00');
+    const financeSearch = page.getByTestId('finance-party-search').locator('input');
+    await financeSearch.fill('45x30x25');
+    await expect(customerCard).toBeVisible();
+    await expect(partySummary).toContainText('500.00');
+    await financeSearch.fill('');
     await page.getByTestId(`customer-bill-details-${customer.id}`).click();
     await expect(page.getByTestId(`production-inbound-${first.id}`)).toContainText('300.00');
     await expect(page.getByTestId(`production-inbound-${second.id}`)).toContainText('200.00');
@@ -191,8 +304,11 @@ async function main() {
     await expect(page.getByTestId(`production-inbound-${first.id}`)).toHaveCount(0);
     await page.getByRole('button', { name: '全部时间', exact: true }).click();
     await expect(page.getByTestId(`production-inbound-${first.id}`)).toContainText('300.00');
-    await assertNoOverflow(320); await assertNoOverflow(390);
-    await customerCard.screenshot({ path: path.join(evidence, 'customer-bill-500.png') });
+    for (const width of [320, 390, 1280]) {
+      await assertNoOverflow(width);
+      await customerCard.screenshot({ path: path.join(evidence, `customer-bill-500-${width}.png`) });
+    }
+    await page.setViewportSize({ width: 390, height: 900 });
 
     // Exact receipt and settlement UI assertions are deliberately separate from
     // server checks: neither side may manufacture a second running balance.
@@ -234,7 +350,7 @@ async function main() {
     assert.doesNotThrow(() => db.validateBackup(db.backupData()));
     assert.deepEqual(errors, []);
     assert.equal(requests.filter(row => row.method === 'POST' && row.path === '/delivery-notes').length, 2);
-    successMessage = `PASS: customer inbound 300+200=500, price snapshots, customer separation, settlement 100 leaves400, no double billing on shipment, unified finance tabs, legacy route and responsive layouts. Evidence: ${evidence}`;
+    successMessage = `PASS: customer specs from quotes and dimensions, account conversion, inbound 300+200=500, price snapshots, settlement 100 leaves400, no double billing, unified finance tabs, legacy route and responsive layouts. Evidence: ${evidence}`;
   } catch (error) {
     primaryError = error;
     await page.screenshot({ path: path.join(evidence, 'failure.png'), fullPage: true }).catch(() => {});

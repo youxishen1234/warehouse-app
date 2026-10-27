@@ -24,7 +24,8 @@ import {
 import type {
   RemoteLabelAttempt, RemoteLabelDevice, RemoteLabelJob, RemoteLabelJobInput
 } from '@/services/remote-label-print';
-import { readPrintPair, savePrintPair } from '@/services/remote-print';
+import { cleanPrintPairFromAddress, parsePrintPairToken, readPrintPair, readPrintPairFromAddress, savePrintPair } from '@/services/remote-print';
+import { scanPrintPairQr } from '@/services/print-pair-scan';
 import styles from './remote.module.scss';
 
 type RecordChoice = { kind: 'finished-product'; data: Product } | { kind: 'paperboard-batch'; data: BoardBatch };
@@ -182,7 +183,6 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
   const [manualBoardFields, setManualBoardFields] = useState<ManualBoardFields>(() => manualFieldsFromAttempt(readRemoteLabelAttempt()));
   const [frozenAt, setFrozenAt] = useState(() => new Date().toISOString());
   const [token, setToken] = useState(readPrintPair);
-  const [pairCode, setPairCode] = useState('');
   const [pairError, setPairError] = useState('');
   const [device, setDevice] = useState<RemoteLabelDevice>();
   const [deviceError, setDeviceError] = useState('');
@@ -211,6 +211,9 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
   const listGeneration = useRef(0);
   const previewGeneration = useRef(0);
   const activeKind: RemotePrintableLabelKind = entryMode === 'manual' ? 'paperboard-manual' : kind;
+  const linkedPair = useRef(readPrintPairFromAddress());
+  const hadPairLink = useRef(typeof window !== 'undefined' && window.location.href.includes('print_pair='));
+  const pairLinkHandled = useRef(false);
   const currentProfile = useMemo(() => device?.profiles.find(item =>
     item.profileId === profileId && item.printerName === device.printer && profileMatchesKind(activeKind, item)), [device, profileId, activeKind]);
   const largeBoardTemplate = Boolean(currentProfile &&
@@ -458,20 +461,22 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
     return () => window.removeEventListener('resize', resize);
   }, [checkFrameGeometry]);
 
-  const pair = async () => {
+  const pair = useCallback(async (raw?: string) => {
     if (actionLock.current) return;
     actionLock.current = true;
-    setAction('正在验证配对码…');
+    setAction('正在验证连接…');
     setPairError('');
     try {
-      const candidate = pairCode.trim();
-      if (!/^[a-f0-9]{64}$/.test(candidate)) throw new Error('请输入店里打印电脑提供的 64 位配对码');
+      const scanned = raw === undefined ? await scanPrintPairQr() : raw;
+      if (!scanned) return;
+      const candidate = parsePrintPairToken(scanned);
+      if (!candidate) throw new Error('没有识别到有效的打印连接二维码，请重新扫码或打开连接链接');
       const result = await getRemoteLabelDevice(candidate);
       if (!alive.current) return;
+      cleanPrintPairFromAddress();
       savePrintPair(candidate);
       setToken(candidate);
       setDevice(result);
-      setPairCode('');
       setPairError('');
     } catch (issue) {
       if (alive.current) setPairError(remoteLabelErrorMessage(issue));
@@ -479,7 +484,14 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
       actionLock.current = false;
       if (alive.current) setAction('');
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (pairLinkHandled.current) return;
+    pairLinkHandled.current = true;
+    if (linkedPair.current) void pair(linkedPair.current);
+    else if (hadPairLink.current) setPairError('打印连接链接无效，请重新扫描电脑上的二维码');
+  }, [pair]);
 
   const validateMedia = () => {
     const fields = Object.values(media).map(value => value.trim());
@@ -833,9 +845,8 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
 
     {!token ? <View className={styles.card}>
       <Text className={styles.sectionTitle}>连接店里打印电脑</Text>
-      <Text className={styles.help}>在店里电脑的打印接收程序中复制配对码，再粘贴到这里。配对码仅随 HTTPS 请求头发送，不会写进链接。</Text>
-      <Input ariaLabel='打印电脑配对码' type='text' value={pairCode} onInput={event => setPairCode(event.detail.value)} placeholder='粘贴 64 位配对码' />
-      <Button className={styles.primaryButton} disabled={disabledIf(Boolean(action))} onClick={() => void pair()}>{action || '验证并连接打印电脑'}</Button>
+      <Text className={styles.help}>扫描店里打印电脑上的连接二维码，即可连接标签打印；也可直接打开电脑提供的连接链接。</Text>
+      <Button className={styles.primaryButton} disabled={disabledIf(Boolean(action))} onClick={() => void pair()}>{action || '扫描连接二维码'}</Button>
       {pairError && <Text className={styles.error}>{pairError}</Text>}
       {entryMode === 'inventory' && <>
       <Text className={styles.sectionSubTitle}>可先浏览标签记录</Text>

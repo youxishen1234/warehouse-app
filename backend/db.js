@@ -934,6 +934,12 @@ function listCustomers(f={}) {
   return l;
 }
 function getCustomer(id) { return cache.customers.find(c => c.id===id) || null; }
+function listInactiveCustomerNames() {
+  return [...new Set(cache.customers
+    .filter(customer => customer.deleted_at)
+    .map(customer => String(customer.name || '').trim())
+    .filter(Boolean))];
+}
 function addCustomer(d) {
   if (!d.name || !String(d.name).trim()) throw new Error('客户名称不能为空');
   const debt = d.debt === undefined ? 0 : moneyValue(d.debt, '期初应收');
@@ -1838,6 +1844,6 @@ function listProduction() { return (cache.production_records || []).slice().reve
 function completeProduction(raw, operator) { return atomicMutation(() => { const record = require('./business-workflow').complete(cache, raw, operator, stockIn, addProduct); persist(); return record; }); }
 module.exports = { listBusinessSpecifications, listProduction, completeProduction, listPrintNotes, savePrintNote, shipPrintNote, getCustomerDimensions, updateCustomerDimensions, listBoards, receiveBoard, moveBoard, updateBoard, deleteBoard, listProducts, getProduct, addProduct, updateProduct, deleteProduct,
   getLedgerAttachments, addLedgerAttachment, readLedgerAttachment, listCustomerAttachments, addCustomerAttachment, readCustomerAttachment, prepareLedgerAttachment: ledgerAttachments.prepare, prepareCustomerAttachment, validateBackup,
-  listCustomers, getCustomer, addCustomer, updateCustomer, deleteCustomer,
+  listCustomers, getCustomer, listInactiveCustomerNames, addCustomer, updateCustomer, deleteCustomer,
   listSuppliers, getSupplier, addSupplier, updateSupplier, deleteSupplier,
   stockIn, stockOut, stockOutBatch, orderToOutbound, listTx, streamTx, updateTransaction, deleteTransaction, listLedger, streamLedger, addLedger, deleteLedger, listOrders, listOrderEvents, addOrder, updateOrder, addStocktake, listStocktakes, listDeliveryNotes, getDeliveryNote, addDeliveryNote, voidDeliveryNote, backupData, restoreData, health, stats, transact, revision, audit, receipt, settleParty };

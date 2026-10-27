@@ -196,8 +196,10 @@ async function main() {
       await field('材质 / 配纸 *').fill('五层 BC 瓦楞纸板');
     };
 
-    await page.goto(`${origin}/#/pages/label-print/index`);
+    await page.goto(`${origin}/#/pages/label-print/index?print_pair=${token}`);
     await expect(manualMode).toHaveClass(/tabActive/, 'manual entry is the default');
+    await expect(page.getByText(`在线 · ${printerName}`, { exact: true })).toBeVisible();
+    assert.ok(!page.url().includes(token), 'pair token is removed from the page URL');
     await page.waitForTimeout(400);
     assert.equal(boardRequests.length, 0, 'default manual entry does not query inventory batches');
     assert.equal(requests.filter(item =>
@@ -229,12 +231,6 @@ async function main() {
     await expect(field('数量（张，选填）')).toHaveValue('0');
     await expect(field('日期（选填）')).toHaveValue(todayLocal());
 
-    // The manual draft remains editable before the printer computer is paired.
-    await expect(page.getByLabel('打印电脑配对码').locator('input')).toBeVisible();
-    const input = page.getByLabel('打印电脑配对码').locator('input');
-    await input.fill(token);
-    await page.getByText('验证并连接打印电脑', { exact: true }).click();
-    await expect(page.getByText(`在线 · ${printerName}`, { exact: true })).toBeVisible();
     assert.ok(requests.some(item => item.path === '/api/remote-print/labels/device' && item.method === 'GET'), 'pairing verifies the remote device');
 
     const profilePostsBeforeInvalidSize = requests.filter(item =>

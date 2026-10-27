@@ -6,6 +6,8 @@ import CustomerEditor from '@/components/CustomerEditor';
 import { addStocktake, getCustomers, getSuppliers, getProducts, getTransactions, getLedger, getDeliveryNotes, getOrders, getStats } from '@/services/api';
 import { getBoards, boardSpec, cartonSpec, today as currentDate } from '@/services/boards';
 import { completeProduction, getProduction } from '@/services/business-workflow';
+import { getCustomerDimensions } from '@/services/customer-dimensions';
+import type { DimensionDocument } from '@/services/customer-dimensions';
 import { useRemoteData } from '@/hooks/useRemoteData';
 import { useSharedRefresh } from '@/services/shared-refresh';
 import { invalidateProducts, loadProducts } from '@/services/product-store';
@@ -14,19 +16,40 @@ import { formatMoney, formatTime } from '@/utils/format';
 import type { CustomerOrder, Product, Stats } from '@/types';
 import FinanceCenter from '@/components/FinanceCenter';
 import type { FinanceView } from '@/components/FinanceCenter';
+import CustomerCenter from '@/components/CustomerCenter';
 import styles from './workbench.module.scss';
 import { dailyRecords, localDay, DailyRecord } from './daily-records';
 
-type Panel = 'home' | 'inbound' | 'stock' | 'records' | 'photos' | 'production' | 'finance';
+type Panel = 'home' | 'inbound' | 'stock' | 'records' | 'photos' | 'production' | 'finance' | 'customers';
 type WorkbenchProps = {
   embedded?: boolean;
   initial?: Panel;
 };
-const load = async () => {
-  const [boards, products, customers, suppliers, transactions, ledger, deliveryNotes, production, orders] = await Promise.all([getBoards(), getProducts(), getCustomers(), getSuppliers(), getTransactions(), getLedger(), getDeliveryNotes(), getProduction(), getOrders()]);
-  return { boards, products, customers, suppliers, transactions, ledger, deliveryNotes, production, orders };
+const emptyCustomerDimensions: DimensionDocument = {
+  schemaVersion: 1,
+  revision: 0,
+  customers: [],
+  inactiveCustomerNames: [],
+  theme: { title: '客户尺寸本', accent: '#468cfb', bg: '#101319', card: '#202630' }
 };
-const empty = { boards: [], products: [], customers: [], suppliers: [], transactions: [], ledger: [], deliveryNotes: [], production: [], orders: [] } as Awaited<ReturnType<typeof load>>;
+const loadCustomerDimensions = async () => {
+  try {
+    const dimensions = await getCustomerDimensions();
+    if (!Array.isArray(dimensions?.customers)) return emptyCustomerDimensions;
+    return {
+      ...dimensions,
+      inactiveCustomerNames: Array.isArray(dimensions.inactiveCustomerNames) ? dimensions.inactiveCustomerNames : []
+    };
+  } catch (error) {
+    console.error('[Workbench] customer dimensions load failed', error);
+    return emptyCustomerDimensions;
+  }
+};
+const load = async () => {
+  const [boards, products, customers, suppliers, transactions, ledger, deliveryNotes, production, orders, customerDimensions] = await Promise.all([getBoards(), getProducts(), getCustomers(), getSuppliers(), getTransactions(), getLedger(), getDeliveryNotes(), getProduction(), getOrders(), loadCustomerDimensions()]);
+  return { boards, products, customers, suppliers, transactions, ledger, deliveryNotes, production, orders, customerDimensions };
+};
+const empty = { boards: [], products: [], customers: [], suppliers: [], transactions: [], ledger: [], deliveryNotes: [], production: [], orders: [], customerDimensions: emptyCustomerDimensions } as Awaited<ReturnType<typeof load>>;
 const open = (url: string) => void (url === '/pages/print-center/index' ? Taro.switchTab({ url }) : Taro.navigateTo({ url }));
 const cartonProduct = (p: Product) => p.category !== '纸板' && (p.category === '纸箱' || /\d\s*[×xX*]\s*\d.*[×xX*]/.test(p.specification || ''));
 const routeFinanceView = (params: Record<string, string | undefined>): FinanceView =>
@@ -34,19 +57,24 @@ const routeFinanceView = (params: Record<string, string | undefined>): FinanceVi
     ? params.view
     : params.party_type === 'supplier' ? 'supplier'
       : params.party_type === 'customer' ? 'customer' : 'ledger';
-const initialPanel = (section?: string, detail?: string, route = ''): Panel =>
-  section === 'finance' || section === 'customers' || section === 'suppliers' ? 'finance'
-    : route === '/pages/customers/index' ? 'home'
-      : section === 'stock' || route === '/pages/inventory/index' ? 'stock'
-        : route === '/pages/suppliers/index' ? 'finance'
-        : section === 'records' || detail === '1' ? 'records'
-          : 'home';
+const normalizedRoutePath = (route: string) => route.replace(/^\/+/, '').split('?')[0];
+const initialPanel = (section?: string, detail?: string, route = ''): Panel => {
+  const routePath = normalizedRoutePath(route);
+  return section === 'customers' ? 'customers'
+    : section === 'finance' || section === 'suppliers' ? 'finance'
+      : routePath === 'pages/customers/index' || routePath === 'customers/index' ? 'customers'
+        : section === 'stock' || routePath === 'pages/inventory/index' || routePath === 'inventory/index' ? 'stock'
+          : routePath === 'pages/suppliers/index' || routePath === 'suppliers/index' ? 'finance'
+            : section === 'records' || detail === '1' ? 'records'
+              : 'home';
+};
 
 export default function Workbench({ embedded = false, initial }: WorkbenchProps) {
   const { params, path } = useRouter();
   const remote = useRemoteData(load, empty), { data, reload } = remote;
   const [panel, setPanel] = useState<Panel>(() => initial || initialPanel(params.section, params.detail, path));
   const [financeView, setFinanceView] = useState<FinanceView>(() => routeFinanceView(params));
+  const [financePartyId, setFinancePartyId] = useState<number | undefined>(() => params.party_id ? Number(params.party_id) : undefined);
   const [financeEntryId, setFinanceEntryId] = useState<number | undefined>(() => params.entry ? Number(params.entry) : undefined);
   const [stats, setStats] = useState<Stats | null>(null);
   const [lowStock, setLowStock] = useState<Product[]>([]);
@@ -62,7 +90,7 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
   const [quantity, setQuantity] = useState('');
   const [remark, setRemark] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const [editor, setEditor] = useState<{ id?: number; supplier: boolean; returnToCustomerBills?: boolean } | null>(null);
+  const [editor, setEditor] = useState<{ id?: number; supplier: boolean; initialName?: string; lockName?: boolean } | null>(null);
   const [recordView, setRecordView] = useState<'activity' | 'orders'>(() => params.detail === '1' ? 'orders' : 'activity');
   const [orderStatus, setOrderStatus] = useState<'全部' | CustomerOrder['status']>('全部');
   const [stocktake, setStocktake] = useState<{ product: Product } | null>(null);
@@ -70,6 +98,7 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
   const [stocktakeDate, setStocktakeDate] = useState('');
   const [stocktakeRemark, setStocktakeRemark] = useState('');
   const locked = useRef(false), shown = useRef(false);
+  const customerRoute = ['pages/customers/index', 'customers/index'].includes(normalizedRoutePath(path));
   const loadHomeSummary = useCallback(async () => {
     try {
       const [nextStats, products] = await Promise.all([getStats(), loadProducts(true)]);
@@ -116,6 +145,21 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
   const visibleStockCount = kind === 'board' ? visibleBoards.length : visibleCartons.length;
   const changePanel = (next: Panel) => { setPanel(next); setQuery(''); setError(''); if (next !== 'records') setRecordView('activity'); };
   const openFinance = (view: FinanceView, entry?: number) => { setFinanceView(view); setFinanceEntryId(entry); changePanel('finance'); };
+  const leaveCustomerCenter = () => {
+    if (!customerRoute) { changePanel('home'); return; }
+    if (Taro.getCurrentPages().length > 1) void Taro.navigateBack({ delta: 1 });
+    else void Taro.redirectTo({ url: '/pages/business-center/index' });
+  };
+  const openCustomerBills = (id: number) => {
+    if (!customerRoute) {
+      setFinancePartyId(id);
+      setFinanceEntryId(undefined);
+      setFinanceView('customer');
+      changePanel('finance');
+      return;
+    }
+    void Taro.redirectTo({ url: `/pages/business-center/index?section=finance&view=customer&party_type=customer&party_id=${encodeURIComponent(String(id))}` });
+  };
   const activeLedger = useMemo(() => data.ledger.filter(entry => !entry.voided_at), [data.ledger]);
   const action = (label: string, fn: () => void, primary = false) => <Button className={primary ? styles.primary : styles.button} disabled={busy || undefined} onClick={fn}>{label}</Button>;
   const status = remote.loadError ? (hasSnapshot ? '服务器读取失败 · 当前显示上次成功数据' : '服务器读取失败') : remote.loading ? (hasSnapshot ? '正在同步服务器 · 当前数据仍可查看' : '正在同步服务器') : '服务器数据已读取 · 多设备自动同步';
@@ -157,7 +201,7 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
     } },
     { title: '收付款', guide: '查看账单流水、客户和供货商账单', icon: 'wallet', fn: () => openFinance('ledger') }
   ];
-  const title = { home: '业务总台', inbound: '入库', stock: '查看库存', records: '业务记录与存根', photos: '票据原件', production: '生产完工', finance: '收付款' }[panel];
+  const title = { home: '业务总台', inbound: '入库', stock: '查看库存', records: '业务记录与存根', photos: '票据原件', production: '生产完工', finance: '收付款', customers: '客户管理' }[panel];
   const appName = getCopy('appName');
   const brandCharacter = Array.from(appName.trim())[0] || '曙';
   const day = localDay(now);
@@ -169,10 +213,10 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
     else changePanel('records');
   };
   const chooseBatch = (id: string) => { setBatchId(id); setProductId(null); setName(''); setError(''); };
-  return <View className={embedded ? `${styles.page} ${styles.embedded}` : styles.page} data-testid='simple-workbench'><View className={styles.surface}>
+  return <View className={`${embedded ? `${styles.page} ${styles.embedded}` : styles.page} ${customerRoute ? styles.customerPage : ''}`} data-testid='simple-workbench'><View className={styles.surface}>
     <View className={styles.masthead}>
       <View className={styles.header}><View className={styles.heading}>
-        {panel === 'home' ? <View className={styles.brand} aria-label={`${appName}标识`} data-testid='workbench-brand'><Text className={styles.brandCharacter}>{brandCharacter}</Text></View> : <Button aria-label='返回总台' className={styles.back} onClick={() => changePanel('home')}>‹</Button>}
+        {panel === 'home' ? <View className={styles.brand} aria-label={`${appName}标识`} data-testid='workbench-brand'><Text className={styles.brandCharacter}>{brandCharacter}</Text></View> : <Button aria-label='返回总台' className={styles.back} onClick={panel === 'customers' ? leaveCustomerCenter : () => changePanel('home')}>‹</Button>}
         <View className={styles.headingText}><Text className={styles.brandName}>{appName}</Text><Text className={styles.title}>{title}</Text></View>
       </View><Button className={styles.refresh} aria-label='刷新服务器数据' disabled={remote.loading} onClick={refresh}>{remote.loading ? '读取中' : '刷新'}</Button></View>
       <View className={styles.status}><Text>{now.getFullYear()}年{now.getMonth() + 1}月{now.getDate()}日 周{'日一二三四五六'[now.getDay()]}</Text><Text>{now.toLocaleTimeString('zh-CN', { hour12: false })}</Text></View>
@@ -182,7 +226,7 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
     {!hasSnapshot && remote.loading && panel !== 'finance' && <View className={styles.empty} role='status' data-testid='workbench-initial-loading'>正在读取业务数据，请稍候…</View>}
     {/* Retain the last successful snapshot during refreshes and failures.
         This also keeps finance details and unsaved photo drafts mounted. */}
-    {(hasSnapshot || panel === 'finance') && <View>
+    {(hasSnapshot || panel === 'finance' || panel === 'customers') && <View>
       {panel === 'home' && <View>
         {embedded && <View className={styles.summary} data-testid='workbench-summary'>
           <View className={styles.summaryItem}><Text>今日入库</Text><strong>{stats ? stats.todayIn : '--'}</strong></View>
@@ -190,10 +234,8 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
           <View className={styles.summaryItem}><Text>库存预警</Text><strong className={lowStock.length ? styles.alertValue : undefined}>{stats ? stats.lowStock : '--'}</strong></View>
         </View>}
         <View className={styles.customerToolbar} data-testid='workbench-customer-toolbar'>
-          <View className={styles.customerToolbarCopy}><Text className={styles.customerToolbarTitle}>客户资料</Text></View>
           <View className={styles.customerToolbarActions}>
-            <Button className={styles.customerToolbarButton} data-testid='workbench-add-customer' onClick={() => setEditor({ supplier: false, returnToCustomerBills: true })}><Icon name='plus' color='#a6dcb8' strokeWidth={1.8} style={{ width: 19, height: 19 }} /><Text>新增客户</Text></Button>
-            <Button className={styles.customerToolbarButton} data-testid='workbench-customer-bills' onClick={() => openFinance('customer')}><Icon name='notebook' color='#a6dcb8' strokeWidth={1.6} style={{ width: 19, height: 19 }} /><Text>客户管理 / 账单</Text></Button>
+            <Button className={styles.customerToolbarButton} data-testid='workbench-customer-management' onClick={() => open('/pages/customers/index')}><Icon name='notebook' color='#a6dcb8' strokeWidth={1.6} style={{ width: 19, height: 19 }} /><Text>客户管理</Text></Button>
           </View>
         </View>
         <View className={styles.workflow} data-testid='workbench-factory-flow'>
@@ -218,6 +260,15 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
           <View className={styles.noticeAction}>查看库存<Icon name='chevron' color='#a6dcb8' strokeWidth={1.5} style={{ width: 16, height: 16 }} /></View>
         </Button>}
       </View>}
+      {panel === 'customers' && hasSnapshot && <CustomerCenter
+        customers={data.customers}
+        dimensionCustomers={data.customerDimensions.customers}
+        inactiveCustomerNames={data.customerDimensions.inactiveCustomerNames || []}
+        onEditParty={(type, id, initialName) => setEditor({ id, supplier: type !== 'customer', initialName, lockName: Boolean(initialName) })}
+        onViewBills={openCustomerBills}
+        onOpenOrders={() => open('/pages/orders/index')}
+      />}
+      {panel === 'customers' && !hasSnapshot && !remote.loading && <View className={styles.empty}>客户资料暂不可用</View>}
       {panel === 'inbound' && <View><Text className={styles.sectionTitle}>这次入库的是什么？</Text><View className={styles.choices}>{[
         { title: '纸板入库', note: '采购原料到货 · 增纸板库存，记供货商应付', path: '/pages/board-receive/index' },
         { title: '纸箱入库', note: '补录自产成品 · 已登记生产完工的同批货不再录', path: '/pages/inbound/index?kind=carton' }
@@ -227,17 +278,19 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
       {panel === 'finance' && <FinanceCenter
         initialView={financeView}
         partyType={params.party_type === 'customer' || params.party_type === 'supplier' ? params.party_type : undefined}
-        partyId={params.party_id ? Number(params.party_id) : undefined}
+        partyId={financePartyId}
         entryId={financeEntryId}
         ledger={data.ledger}
         customers={data.customers}
         suppliers={data.suppliers}
+        dimensionCustomers={data.customerDimensions.customers}
+        inactiveCustomerNames={data.customerDimensions.inactiveCustomerNames}
         deliveryNotes={data.deliveryNotes}
         loading={remote.loading}
         loadError={remote.loadError}
         onReload={reload}
         onViewChange={setFinanceView}
-        onEditParty={(type, id) => setEditor({ id, supplier: type === 'supplier' })}
+        onEditParty={(type, id, initialName) => setEditor({ id, supplier: type === 'supplier', initialName, lockName: Boolean(initialName) })}
       />}
       {panel === 'records' && <View><View className={styles.segment}><Button aria-pressed={recordView === 'activity'} className={recordView === 'activity' ? styles.selected : styles.button} onClick={() => setRecordView('activity')}>出入库 / 生产</Button><Button aria-pressed={recordView === 'orders'} className={recordView === 'orders' ? styles.selected : styles.button} onClick={() => setRecordView('orders')}>规格与订单</Button></View>
         {recordView === 'activity' && <View><View className={styles.tools}>{action('打印存根', () => open('/pages/print-center/index'))}{action('收款 / 付款记录', () => openFinance('ledger'))}</View>{data.production.map(p => <View className={styles.record} key={p.id}><strong>生产完工 · {p.product_name}</strong><Text>纸板 {p.specification_snapshot.board.join(' × ')} cm → 纸箱 {p.specification_snapshot.carton.join(' × ')} cm</Text><Text>领用 {p.consumed_quantity} 张 · 完工 {p.quantity} {p.unit}</Text><Text>{formatTime(p.created_at)} · {p.operator}</Text><Text>{p.id}</Text></View>)}{data.boards.map(b => <View className={styles.record} key={b.id}><strong>纸板入库 · {boardSpec(b)} cm</strong><Text>对应纸箱 {cartonSpec(b)} cm · 实收 {b.receivedQty} 张</Text><Text>送货日期 {b.date} · {b.supplier}</Text><Text>登记时间 {formatTime(b.createdAt)}</Text>{action('批次存根', () => open('/pages/board-detail/index?id=' + b.id))}</View>)}{data.transactions.filter(t => !t.production_id && !t.voided_at).slice(0, 30).map(t => <View className={styles.record} key={t.id}><strong>{t.type === 'in' ? '入库' : t.type === 'out' ? '出库' : '盘点'} · {t.product_name}</strong><Text>{t.specification} · {t.quantity} {t.unit}</Text><Text>{formatTime(t.created_at)}</Text></View>)}{action('全部出入库记录', () => open('/pages/records/index'))}</View>}
@@ -246,18 +299,9 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
       {panel === 'photos' && <View><Text className={styles.note}>原件照片按业务账单保存；选择一笔账单，可上传送货单、签收单或付款凭证。</Text>{activeLedger.map(l => <Button className={styles.photoRow} key={l.id} onClick={() => openFinance('ledger', l.id)}><strong>{l.party_name || l.remark}</strong><Text>{formatTime(l.created_at)} · {formatMoney(l.amount)}</Text><Text>{l.attachments?.length ? l.attachments.length + ' 张原件照片' : '上传原件照片 ›'}</Text></Button>)}{!activeLedger.length && <Text className={styles.empty}>入库或出库保存后，账单会出现在这里。</Text>}</View>}
     </View>}
     </View>
-    {!embedded && <View className={styles.nav}>{([{ key: 'home', text: '总台', icon: 'home' }, { key: 'stock', text: '库存', icon: 'boxes' }, { key: 'records', text: '记录', icon: 'notebook' }, { key: 'photos', text: '票据', icon: 'photos' }] as const).map(n => <Button key={n.key} aria-pressed={panel === n.key} onClick={() => changePanel(n.key)}><Icon name={n.icon} color={panel === n.key ? '#a6dcb8' : '#a8b6ad'} strokeWidth={1.5} style={{ width: 21, height: 21 }} /><Text>{n.text}</Text></Button>)}</View>}
+    {!embedded && <View className={styles.nav}>{([{ key: 'home', text: '总台', icon: 'home' }, { key: 'stock', text: '库存', icon: 'boxes' }, { key: 'records', text: '记录', icon: 'notebook' }, { key: 'photos', text: '票据', icon: 'photos' }] as const).map(n => <Button key={n.key} aria-pressed={panel === n.key} onClick={() => n.key === 'home' && panel === 'customers' ? leaveCustomerCenter() : changePanel(n.key)}><Icon name={n.icon} color={panel === n.key || (n.key === 'home' && panel === 'customers') ? '#a6dcb8' : '#a8b6ad'} strokeWidth={1.5} style={{ width: 21, height: 21 }} /><Text>{n.text}</Text></Button>)}</View>}
     <View className={styles.footer} role='status' data-testid='workbench-sync-status'><Text>{status}</Text>{lastSyncedAt !== null && <Text>上次同步 {new Date(lastSyncedAt).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}</Text>}<Text>{editor ? '资料编辑中' : '照片上传需确认保存'}</Text></View>
     {stocktake && <View className={styles.overlay}><View className={styles.dialog} role='dialog' aria-label='库存盘点'><strong>{stocktake.product.name}</strong><View className={styles.stocktakeSummary}><Text>{stocktake.product.specification || '规格未填写'}</Text><Text>当前 {stocktake.product.stock} {stocktake.product.unit}</Text></View><Text className={styles.label}>新库存</Text><Input aria-label='实盘库存' className={styles.input} type='digit' placeholder='填写实际盘点数量' value={stocktakeValue} onInput={e => setStocktakeValue(e.detail.value)} /><Text className={styles.label}>盘点日期</Text><Picker mode='date' end={currentDate()} value={stocktakeDate} onChange={e => setStocktakeDate(e.detail.value)}><View aria-label='盘点日期' className={styles.input}>{stocktakeDate || '请选择日期'}</View></Picker><Input aria-label='盘点备注' className={styles.input} placeholder='备注（选填，如盘亏原因）' value={stocktakeRemark} onInput={e => setStocktakeRemark(e.detail.value)} />{stocktakeValue.trim() && /^\d+(?:\.\d{1,6})?$/.test(stocktakeValue.trim()) && <Text className={styles.note}>调整后库存 {stocktakeValue.trim()} {stocktake.product.unit}，盘点流水会同步保存。</Text>}{error && <View role='alert' className={styles.error}>{error}</View>}<View className={styles.tools}>{action('取消', () => { setStocktake(null); setError(''); })}{action(busy ? '保存中…' : '确认盘点', () => void submitStocktake(), true)}</View></View></View>}
-    {editor && <CustomerEditor id={editor.id} supplier={editor.supplier} onClose={() => setEditor(null)} onSaved={async () => {
-      const returnToCustomerBills = editor.returnToCustomerBills;
-      setEditor(null);
-      await reload();
-      if (returnToCustomerBills) {
-        setFinanceEntryId(undefined);
-        setFinanceView('customer');
-        changePanel('finance');
-      }
-    }} />}
+    {editor && <CustomerEditor id={editor.id} supplier={editor.supplier} initialName={editor.initialName} lockName={editor.lockName} onClose={() => setEditor(null)} onSaved={async () => { setEditor(null); await reload(); }} />}
   </View></View>;
 }

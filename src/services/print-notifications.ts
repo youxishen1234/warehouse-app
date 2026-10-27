@@ -95,8 +95,17 @@ function normalizeJob(job: any): RemoteJob | undefined {
     status: job.status,
     message: job.message,
     ...(Number.isFinite(job.created_at) ? { created_at: job.created_at } : {}),
-    ...(Number.isFinite(job.updated_at) ? { updated_at: job.updated_at } : {})
+    ...(Number.isFinite(job.updated_at) ? { updated_at: job.updated_at } : {}),
+    ...(Number.isFinite(job.confirmed_printed_at) ? { confirmed_printed_at: job.confirmed_printed_at } : {})
   };
+}
+
+// The timestamp is authoritative for new server responses. The message check
+// keeps already-persisted notices and older servers readable after an app update.
+export function isPrintConfirmed(job?: RemoteJob): boolean {
+  if (!job || job.status !== 'queued') return false;
+  return Number.isFinite(job.confirmed_printed_at)
+    || /人工核对|人工确认/.test(job.message);
 }
 
 function normalizeRecord(value: any): PrintNoticeRecord | undefined {
@@ -556,8 +565,12 @@ export function describePrintNotice(record: PrintNoticeRecord, state: PrintNotic
     };
   }
   if (job.status === 'queued') {
-    if (/人工核对|人工确认/.test(job.message)) {
-      return { title: '经人工确认实际出纸', message: job.message, tone: 'success' };
+    if (isPrintConfirmed(job)) {
+      return {
+        title: '已确认实际出纸',
+        message: job.message || '已在打印机旁确认纸张正常输出。',
+        tone: 'success'
+      };
     }
     return {
       title: '已送入打印队列',
@@ -589,10 +602,20 @@ export function usePrintNotices(): PrintNoticeSnapshot {
 }
 
 export async function resolvePrintNotice(id: string, outcome: 'printed' | 'missing') {
-  if (!records.some(row => row.id === id)) throw new Error('找不到待确认的打印任务');
+  syncPairing();
+  const current = records.find(row => row.id === id);
+  if (!current) throw new Error('找不到待确认的打印任务');
   if (!currentToken) throw new Error('请先连接打印电脑');
+  if (outcome === 'missing' && current?.job?.status !== 'uncertain') {
+    throw new Error('只有打印结果待核对的任务可以确认未出纸');
+  }
+  if (outcome === 'printed' && !['uncertain', 'queued'].includes(current?.job?.status || '')) {
+    throw new Error('任务还未送入打印队列，暂不能确认出纸');
+  }
+  if (outcome === 'printed' && current.job && isPrintConfirmed(current.job)) return current.job;
   const generation = pairGeneration, fingerprint = pairFingerprint;
   const job = await resolveRemotePrintJob(id, outcome, currentToken);
+  syncPairing();
   if (generation === pairGeneration && fingerprint === pairFingerprint) updatePrintNotice(job);
   return job;
 }

@@ -6,7 +6,7 @@ export interface DimensionSpec {
 }
 export interface DimensionCustomer { id: string; name: string; specs: DimensionSpec[] }
 export interface DimensionDocument {
-  schemaVersion: number; revision: number; customers: DimensionCustomer[];
+  schemaVersion: number; revision: number; customers: DimensionCustomer[]; inactiveCustomerNames?: string[];
   theme: { title: string; accent: string; bg: string; card: string };
 }
 export const getCustomerDimensions = () => request<DimensionDocument>({ url: '/api/customer-dimensions' });

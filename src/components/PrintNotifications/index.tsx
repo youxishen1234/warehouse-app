@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import Taro from '@tarojs/taro';
 import {
-  describePrintNotice, dismissPrintNotice, refreshPrintNotices, resolvePrintNotice,
+  describePrintNotice, dismissPrintNotice, isPrintConfirmed, refreshPrintNotices, resolvePrintNotice,
   startPrintNoticeMonitor, usePrintNotices
 } from '@/services/print-notifications';
 import { useMobilePrintNotifications } from '@/services/mobile-print-notifications';
@@ -62,6 +62,7 @@ export default function PrintNotifications({ onOpenNote, global = false }: {
   if (global && /pages\/print-center/.test(route)) return null;
   const description = describePrintNotice(latest, snapshot);
   const uncertain = latest.job?.status === 'uncertain';
+  const queuedNeedsPaperCheck = latest.job?.status === 'queued' && !isPrintConfirmed(latest.job);
   const busy = !!resolving || snapshot.checking;
   const open = () => {
     dismissPrintNotice(latest.id);
@@ -94,6 +95,10 @@ export default function PrintNotifications({ onOpenNote, global = false }: {
         </button>
         <button type='button' className={styles.resolveButton} disabled={busy} onClick={() => void resolve('missing')}>
           {resolving === 'missing' ? '确认中…' : '未出纸'}
+        </button>
+      </> : queuedNeedsPaperCheck ? <>
+        <button type='button' className={styles.resolveButton} disabled={busy} onClick={() => void resolve('printed')}>
+          {resolving === 'printed' ? '确认中…' : '已出纸'}
         </button>
       </> : <button type='button' className={styles.iconButton} aria-label='刷新通知状态' title='刷新通知状态'
         disabled={busy} onClick={() => void refreshPrintNotices()}>

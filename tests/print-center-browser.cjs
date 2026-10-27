@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { chromium, webkit, expect } = require('@playwright/test');
+const QRCode = require('qrcode');
 
 async function main() {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'warehouse-delivery-browser-'));
@@ -140,6 +141,7 @@ async function main() {
     let saved = db.listPrintNotes()[0]; assert.equal(saved.total, 350);
     assert.equal(saved.items[0].name, '');
     await button('历史单据').click();
+    await expect(page.getByLabel('搜索历史单据')).toBeVisible();
     await page.getByLabel('搜索历史单据').fill('华兴');
     await page.getByRole('button', { name: /查看详情/ }).click();
     await expect(page.getByRole('heading', { name: '单据详情' })).toBeVisible();
@@ -182,8 +184,15 @@ async function main() {
     const remoteStore=require('../backend/remote-print').createStore(process.env.WAREHOUSE_REMOTE_PRINT_FILE);
     remoteStore.claim(pair.agent,true);
     await page.getByText(/远程打印到店里/).click();
-    await page.getByLabel('打印电脑配对码').fill(pair.client);
-    await button('连接打印电脑').click();
+    await expect(page.getByLabel('打印电脑配对码')).toHaveCount(0);
+    const fileChooserPromise = page.waitForEvent('filechooser');
+    await button('扫描连接二维码').click();
+    const fileChooser = await fileChooserPromise;
+    await fileChooser.setFiles({
+      name: 'print-pair.png',
+      mimeType: 'image/png',
+      buffer: await QRCode.toBuffer(pair.client, { width: 360, margin: 2 })
+    });
     await button('发送到630K').click();
     await expect(page.getByRole('dialog', { name: '送货单预览' }).getByRole('status')).toContainText('等待打印电脑接收');
     const remoteClaim=remoteStore.claim(pair.agent,true).job;

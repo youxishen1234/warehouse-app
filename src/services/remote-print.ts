@@ -8,10 +8,65 @@ export type RemotePrintRecovery = {
   last_kind: 'receiver' | 'spooler';
   repaired: boolean;
 };
-export type RemoteJob = { id: string; status: 'waiting' | 'processing' | 'queued' | 'failed' | 'uncertain' | 'expired'; message: string; created_at?: number; updated_at?: number };
+export type RemoteJob = { id: string; status: 'waiting' | 'processing' | 'queued' | 'failed' | 'uncertain' | 'expired'; message: string; created_at?: number; updated_at?: number; confirmed_printed_at?: number };
 const key = 'warehouse_remote_print_pair_v1';
+const autoPrintKey = 'warehouse_print_after_outbound_v1';
 export const readPrintPair = (): string => { try { return Taro.getStorageSync(key) || ''; } catch { return ''; } };
-export const savePrintPair = (value: string) => Taro.setStorageSync(key, value);
+export const savePrintPair = (value: string) => {
+  if (readPrintPair() !== value) Taro.setStorageSync(autoPrintKey, false);
+  Taro.setStorageSync(key, value);
+};
+
+const printPairToken = /^[a-f0-9]{64}$/;
+
+/** Accept the receiver's raw token or a link carrying it in print_pair. */
+export function parsePrintPairToken(value: string): string {
+  const input = String(value || '').trim();
+  if (printPairToken.test(input)) return input;
+  const sources = [input];
+  try {
+    const url = new URL(input, 'https://warehouse.invalid');
+    sources.push(url.search, url.hash);
+  } catch { /* The raw text may still contain a route query. */ }
+  for (const source of sources) {
+    const marker = source.indexOf('?');
+    if (marker < 0) continue;
+    const query = source.slice(marker + 1).split('#', 1)[0];
+    const candidate = new URLSearchParams(query).get('print_pair')?.trim() || '';
+    if (printPairToken.test(candidate)) return candidate;
+  }
+  return '';
+}
+
+/** Remove pairing credentials from both ordinary and hash-router query strings. */
+export function cleanPrintPairUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    url.searchParams.delete('print_pair');
+    const marker = url.hash.indexOf('?');
+    if (marker >= 0) {
+      const route = url.hash.slice(0, marker);
+      const query = new URLSearchParams(url.hash.slice(marker + 1));
+      query.delete('print_pair');
+      const remainingQuery = query.toString();
+      url.hash = route + (remainingQuery ? `?${remainingQuery}` : '');
+    }
+    return url.toString();
+  } catch { return value; }
+}
+
+export function cleanPrintPairFromAddress(): void {
+  if (typeof window === 'undefined' || !window.location.href.includes('print_pair=')) return;
+  const cleaned = cleanPrintPairUrl(window.location.href);
+  if (cleaned !== window.location.href) window.history.replaceState(window.history.state, '', cleaned);
+}
+
+export function readPrintPairFromAddress(): string {
+  return typeof window === 'undefined' ? '' : parsePrintPairToken(window.location.href);
+}
+
+export const readPrintAfterOutbound = (): boolean => { try { return Taro.getStorageSync(autoPrintKey) === true; } catch { return false; } };
+export const savePrintAfterOutbound = (value: boolean) => Taro.setStorageSync(autoPrintKey, value);
 export const readPrintAttempt = (fingerprint: string): string => { try { return Taro.getStorageSync(key + ':' + fingerprint) || ''; } catch { return ''; } };
 export const savePrintAttempt = (fingerprint: string, id: string) => Taro.setStorageSync(key + ':' + fingerprint, id);
 
@@ -60,8 +115,8 @@ export const getRemoteDevice = (token = readPrintPair()) => remoteRequest<Remote
 export const getRemotePrintHistory = () => remoteRequest<{ note_id: number; printed_at: number }[]>('history', readPrintPair());
 export const submitRemotePrint = (data: { id: string; note_id: number; version: number; paper: string }, token = readPrintPair()) => remoteRequest<RemoteJob>('jobs', token, data);
 export const getRemotePrintJob = (id: string, token = readPrintPair()) => remoteRequest<RemoteJob>('jobs/' + encodeURIComponent(id), token);
-// Only a person at the printer knows whether paper came out, so this is the one
-// place the app asks instead of guessing. It clears the device queue block.
+// A paper confirmation never submits another task. Only uncertain jobs accept
+// "missing"; a queued job may still be physically printing.
 export const resolveRemotePrintJob = (id: string, outcome: 'printed' | 'missing', token = readPrintPair()) =>
   remoteRequest<RemoteJob>('jobs/' + encodeURIComponent(id) + '/resolve', token, { outcome });
 export const getRemotePrintRecovery = (token = readPrintPair()) => remoteRequest<RemotePrintRecovery>('recovery', token);

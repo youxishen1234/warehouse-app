@@ -78,7 +78,8 @@ async function main() {
       else if (url.pathname === '/api/remote-print/history') data = [];
       else if (url.pathname === '/api/remote-print/jobs/remote-task-mobile/resolve') {
         resolveCalls++;
-        data = { id: 'remote-task-mobile', status: 'queued', message: '已人工确认实际出纸', updated_at: Date.now() };
+        const confirmedAt = Date.now();
+        data = { id: 'remote-task-mobile', status: 'queued', message: '已确认实际出纸', confirmed_printed_at: confirmedAt, updated_at: confirmedAt };
       } else if (url.pathname === '/api/remote-print/jobs/remote-task-mobile') {
         data = { id: 'remote-task-mobile', status: jobStatus, message: jobStatus === 'queued' ? '已送入LQ-630K打印队列，请以实际出纸为准' : jobStatus === 'uncertain' ? '打印机未返回明确结果' : '打印中', created_at: 1_800_000_000_000, updated_at: 1_800_000_000_000 };
       } else if (url.pathname === '/api/remote-print/jobs') {
@@ -125,8 +126,36 @@ async function main() {
     assert.equal(submissions, 0, 'refreshing status must never create a print job');
     assert.equal(resolveCalls, 0);
 
-    jobStatus = 'uncertain';
+    jobStatus = 'queued';
     await page.getByRole('button', { name: '刷新通知状态' }).click();
+    await page.waitForFunction(() => {
+      const banner = document.querySelector('[data-print-notice="remote-task-mobile"]');
+      return banner?.getAttribute('data-tone') === 'info' && /已送入打印队列/.test(banner.innerText);
+    });
+    const queuedNotice = page.locator('[data-print-notice="remote-task-mobile"]');
+    await queuedNotice.getByRole('button', { name: '已出纸' }).click();
+    await page.waitForFunction(() => document.querySelector('[data-print-notice="remote-task-mobile"]')?.getAttribute('data-tone') === 'success');
+    assert.equal(resolveCalls, 1, 'confirming a queued job records the actual-paper confirmation once');
+    assert.equal(submissions, 0, 'confirming paper must not submit or reprint a task');
+    assert.match(await queuedNotice.innerText(), /已确认实际出纸/);
+    const storedAfterConfirmation = await page.evaluate(() => JSON.parse(localStorage.getItem('warehouse_print_notices_v1')).data.records[0].job.confirmed_printed_at);
+    assert.ok(Number.isFinite(storedAfterConfirmation), 'the confirmed-print timestamp is persisted locally');
+    await page.screenshot({ path: path.join(qa, 'queued-confirmed-390.png') });
+    await page.reload();
+    await page.waitForFunction(() => document.querySelector('[data-print-notice="remote-task-mobile"]')?.getAttribute('data-tone') === 'success');
+    const restoredQueuedNotice = page.locator('[data-print-notice="remote-task-mobile"]');
+    assert.equal(await restoredQueuedNotice.getByRole('button', { name: '已出纸', exact: true }).count(), 0, 'a confirmed job stays confirmed after reload and no longer asks for paper confirmation');
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('warehouse_print_notices_v1')).data.records[0].job.confirmed_printed_at), storedAfterConfirmation);
+
+    jobStatus = 'uncertain';
+    await page.evaluate(() => {
+      const raw = JSON.parse(localStorage.getItem('warehouse_print_notices_v1'));
+      raw.data.records[0].job.status = 'uncertain';
+      delete raw.data.records[0].job.confirmed_printed_at;
+      raw.data.records[0].dismissed = false;
+      localStorage.setItem('warehouse_print_notices_v1', JSON.stringify(raw));
+    });
+    await page.reload();
     await page.waitForTimeout(600);
     await page.waitForFunction(() => document.querySelector('[data-print-notice="remote-task-mobile"]')?.getAttribute('data-tone') === 'danger');
     const uncertain = page.locator('[data-print-notice="remote-task-mobile"]');
@@ -135,9 +164,9 @@ async function main() {
     await page.screenshot({ path: path.join(qa, 'uncertain-390.png') });
     await uncertain.getByRole('button', { name: '已出纸' }).click();
     await page.waitForFunction(() => document.querySelector('[data-print-notice="remote-task-mobile"]')?.getAttribute('data-tone') === 'success');
-    assert.equal(resolveCalls, 1);
+    assert.equal(resolveCalls, 2);
     assert.equal(submissions, 0, 'manual reconciliation must not submit a new job');
-    assert.match(await page.locator('[data-print-notice="remote-task-mobile"]').innerText(), /经人工确认实际出纸/);
+    assert.match(await page.locator('[data-print-notice="remote-task-mobile"]').innerText(), /已确认实际出纸/);
 
     await page.locator('[data-print-notice="remote-task-mobile"]').getByRole('button', { name: '关闭打印通知' }).click();
     await page.waitForFunction(() => !document.querySelector('[data-print-notice="remote-task-mobile"]'));
@@ -145,6 +174,7 @@ async function main() {
     await page.evaluate(() => {
       const raw = JSON.parse(localStorage.getItem('warehouse_print_notices_v1'));
       raw.data.records[0].job.status = 'uncertain';
+      delete raw.data.records[0].job.confirmed_printed_at;
       raw.data.records[0].dismissed = false;
       localStorage.setItem('warehouse_print_notices_v1', JSON.stringify(raw));
     });
@@ -179,7 +209,7 @@ async function main() {
     await page.waitForTimeout(180);
     assert.equal(await page.locator('[data-print-notice="remote-task-mobile"]').count(), 0, 'desktop must not show mobile print notices');
     assert.deepEqual(errors, []);
-    console.log('PASS: mobile print notifications at 320/375/390/430, manual reconciliation, no resubmission, cross-page banner, desktop hidden.');
+    console.log('PASS: mobile print notifications at 320/375/390/430, queued actual-paper confirmation, uncertain reconciliation, no resubmission, cross-page banner, desktop hidden.');
   } finally {
     await browser.close();
     server.close();

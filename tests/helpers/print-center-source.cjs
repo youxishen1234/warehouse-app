@@ -34,7 +34,7 @@ module.exports = function sourcePreview(db) {
         }
         deps[name] = raw; continue;
       }
-      const dependency = [raw, raw + '.ts', raw + '.tsx', raw + '.js', path.join(raw, 'index.ts')].find(candidate => fs.existsSync(candidate) && fs.statSync(candidate).isFile());
+      const dependency = [raw, raw + '.ts', raw + '.tsx', raw + '.js', path.join(raw, 'index.ts'), path.join(raw, 'index.tsx')].find(candidate => fs.existsSync(candidate) && fs.statSync(candidate).isFile());
       if (!dependency) throw new Error('Unknown preview import: ' + name);
       deps[name] = dependency; visit(dependency);
     }

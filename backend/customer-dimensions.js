@@ -35,7 +35,11 @@ function validateDocument(raw) {
 function install(router, db) {
   const read = () => db.getCustomerDimensions();
   const route = (method, url, fn) => router[method](url, (req, res, next) => { try { fn(req, res); } catch (e) { next(e); } });
-  route('get', '/customer-dimensions', (req, res) => res.json({ success: true, data: read() }));
+  route('get', '/customer-dimensions', (req, res) => {
+    const data = read();
+    const inactiveCustomerNames = typeof db.listInactiveCustomerNames === 'function' ? db.listInactiveCustomerNames() : [];
+    res.json({ success: true, data: { ...data, inactiveCustomerNames } });
+  });
   route('put', '/customer-dimensions', (req, res) => {
     if (req.user.role === 'viewer') throw fail('只读账号不能修改', 403);
     // Existing clients use the dimensions revision. A key additionally lets

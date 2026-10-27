@@ -14,6 +14,9 @@ export const noteDraft = (note: PrintNoteInput): NoteDraft => ({ ...note, items:
 export const selectCustomer = (draft: NoteDraft, customer: Customer): NoteDraft => ({ ...draft, customer_id: customer.id, customer_name: customer.name, address: customer.address || '', phone: customer.phone || '', receiver: customer.contact || '' });
 export const draftTotal = (draft: NoteDraft) => draft.items.reduce((sum, item) => sum + Math.round(previewAmount(item.quantity, item.price) * 100), 0) / 100;
 export const validateDraft = (draft: NoteDraft): PrintNoteInput => validateNote(draft);
+export const copyNoteDraft = (note: SavedPrintNote): NoteDraft => ({
+  ...noteDraft(validateNote(note)), date: localDate()
+});
 export const printSettings = (note: Pick<PrintNoteInput, 'company' | 'paper'>) => normalizePrintSettings({ ...DEFAULT_PRINT_SETTINGS, template: 'delivery-note', company: note.company, paper: note.paper, offsetX: 0, offsetY: 0 });
 export function printDocument(note: PrintNoteInput, saved?: SavedPrintNote): PrintDocument {
   return { key: `delivery-${saved?.id || 'draft'}`, number: saved?.number || '送货单预览', title: '送 货 单',
