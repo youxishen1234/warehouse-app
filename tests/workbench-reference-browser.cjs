@@ -93,7 +93,8 @@ async function main() {
     await expect(page.getByTestId('simple-workbench').filter({ visible: true }).last()).toBeVisible();
     await expect(page.getByTestId('finance-center').filter({ visible: true }).last()).toBeVisible();
     await expect(page.getByTestId('simple-workbench').filter({ visible: true }).last()).toHaveAttribute('data-tab-route', '/pages/home/index');
-    await expect(page.locator('taro-tabbar.sg-glass-host')).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('data-tab-modal', '');
+    await expect(page.locator('taro-tabbar.sg-glass-host')).toBeHidden();
     await expect(page.locator('body')).not.toHaveAttribute('data-simple-workbench-active', '');
     await go(page); await button(page.getByTestId('simple-workbench'), '全部记录').click();
     await expect(page.getByText('业务记录与存根', { exact: true })).toBeVisible();

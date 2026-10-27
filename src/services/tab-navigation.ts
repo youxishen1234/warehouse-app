@@ -50,6 +50,8 @@ export function installTabNavigation(nav: Navigation): () => void {
 
   const sync = () => {
     if (disposed) return;
+    const modal = modalOpen();
+    root.toggleAttribute('data-tab-modal', modal);
     if (['/pages/home/index', '/pages/business-center/index', '/pages/customers/index', '/pages/suppliers/index', '/pages/inventory/index'].includes(route())) {
       root.setAttribute('data-workbench-shell', '');
     } else {
@@ -84,7 +86,7 @@ export function installTabNavigation(nav: Navigation): () => void {
     // A route is acknowledged only after its navigation settles. Sending the
     // previous route during selection makes UIKit snap its glass lens back.
     if (capability && bridge && !busy && !queued) {
-      const message = { route: owner, ready: true, modal: modalOpen(), requestId: acknowledgedRequest, navigationFailed };
+      const message = { route: owner, ready: true, modal, requestId: acknowledgedRequest, navigationFailed };
       const serialized = JSON.stringify(message);
       if (serialized !== lastNativeState) {
         lastNativeState = serialized;
@@ -231,6 +233,7 @@ export function installTabNavigation(nav: Navigation): () => void {
     observer.disconnect();
     dock?.destroy();
     root.removeAttribute('data-tab-context');
+    root.removeAttribute('data-tab-modal');
     window.removeEventListener('touchstart', start, true);
     window.removeEventListener('touchmove', move, true);
     window.removeEventListener('touchend', end, true);
