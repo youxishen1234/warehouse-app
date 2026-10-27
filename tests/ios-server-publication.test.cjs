@@ -1,6 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { cancelSuperseded, uniqueStage, verifyPrepared } = require('../scripts/upload-ios.cjs');
+const {
+  cancelSuperseded, releaseAssetUrl, remoteDownloadCommand, uniqueStage, verifyPrepared,
+} = require('../scripts/upload-ios.cjs');
 
 const sha = 'a'.repeat(40);
 const nonce = '12345678-1234-1234-1234-123456789abc';
@@ -9,6 +11,19 @@ test('iOS staging is unique and tied to the workflow attempt', () => {
   const stage = uniqueStage({ GITHUB_RUN_ID: '4046', GITHUB_RUN_ATTEMPT: '2' }, nonce);
   assert.equal(stage, '/tmp/warehouse-ios-4046-2-' + nonce);
   assert.throws(() => uniqueStage({ GITHUB_RUN_ID: '../4046' }, nonce), /staging identity/);
+});
+
+test('the server downloads the exact public GitHub release asset', () => {
+  const env = { GITHUB_REPOSITORY: 'owner/warehouse-app', GITHUB_RUN_NUMBER: '282' };
+  const assetUrl = releaseAssetUrl(env);
+  assert.equal(assetUrl, 'https://github.com/owner/warehouse-app/releases/download/build-282/shuguang.ipa');
+  const command = remoteDownloadCommand('/tmp/warehouse-ios-40506722329-1-' + nonce, assetUrl);
+  assert.match(command, /^curl --fail --location/);
+  assert.match(command, /--max-time 1200/);
+  assert.ok(command.includes("'" + assetUrl + "'"));
+  assert.throws(() => releaseAssetUrl({ ...env, GITHUB_REPOSITORY: '../escape/repo' }), /release identity/);
+  assert.throws(() => remoteDownloadCommand('/tmp/untrusted', assetUrl), /staging directory/);
+  assert.throws(() => remoteDownloadCommand('/tmp/warehouse-ios-1-1-' + nonce, 'https://example.com/shuguang.ipa'), /asset URL/);
 });
 
 test('published metadata must match the exact workflow build, source and versioned IPA', () => {

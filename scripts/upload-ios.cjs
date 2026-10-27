@@ -25,6 +25,31 @@ function uniqueStage(env, nonce = crypto.randomUUID()) {
   return `/tmp/warehouse-ios-${run}-${attempt}-${nonce}`;
 }
 
+function releaseAssetUrl(env) {
+  const repo = required(env, 'GITHUB_REPOSITORY');
+  const build = required(env, 'GITHUB_RUN_NUMBER');
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo) || !/^\d+$/.test(build)) {
+    throw new Error('Invalid GitHub release identity');
+  }
+  return `https://github.com/${repo}/releases/download/build-${build}/shuguang.ipa`;
+}
+
+function shellQuote(value) {
+  return "'" + String(value).replaceAll("'", "'\"'\"'") + "'";
+}
+
+function remoteDownloadCommand(stage, assetUrl) {
+  if (!/^\/tmp\/warehouse-ios-\d+-\d+-[a-f0-9-]{36}$/.test(stage)) {
+    throw new Error('Invalid iOS staging directory');
+  }
+  if (!/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/releases\/download\/build-\d+\/shuguang\.ipa$/.test(assetUrl)) {
+    throw new Error('Invalid iOS release asset URL');
+  }
+  return 'curl --fail --location --silent --show-error --retry 3 --retry-delay 2 ' +
+    '--connect-timeout 20 --max-time 1200 --output ' + shellQuote(stage + '/shuguang.ipa') +
+    ' ' + shellQuote(assetUrl);
+}
+
 function verifyPrepared(metadata, env) {
   if (!metadata || metadata.build !== env.GITHUB_RUN_NUMBER) throw new Error('IPA build does not match workflow run');
   if (metadata.sourceCommit !== env.GITHUB_SHA) throw new Error('IPA source commit does not match workflow checkout');
@@ -104,6 +129,7 @@ async function upload(env = process.env, dependencies = {}) {
   const metadata = await prepare(path.join(root, 'ios/App/shuguang.ipa'), output);
   if (previousSha !== env.GITHUB_SHA) throw new Error('Workflow source changed during iOS publication');
   verifyPrepared(metadata, env);
+  const assetUrl = releaseAssetUrl(env);
 
   const auth = authEnv(env);
   const knownHosts = auth.key ? auth.key + '.known_hosts' : path.join(os.tmpdir(), 'warehouse-ios-known-hosts');
@@ -115,14 +141,23 @@ async function upload(env = process.env, dependencies = {}) {
   const sshCommon = ['-p', auth.port, ...common];
 
   runStep('create remote staging directory', () => execute(auth, 'ssh', [...sshCommon, auth.target, 'mkdir -p ' + stage], 30000));
-  runStep('upload IPA', () => execute(auth, 'scp', [...scpCommon, path.join(root, 'ios/App/shuguang.ipa'), auth.target + ':' + stage + '/shuguang.ipa'], 1500000));
   runStep('upload metadata', () => execute(auth, 'scp', [...scpCommon,
     path.join(output, 'ipa.json'), path.join(output, 'source.json'), path.join(output, 'index.html'), path.join(output, 'app-icon.png'),
     path.join(root, 'scripts/publish-ios-files.sh'), auth.target + ':' + stage + '/'], 120000));
+  let transfer = 'github-release';
+  try {
+    runStep('download IPA from GitHub release', () => execute(auth, 'ssh', [...sshCommon, auth.target,
+      remoteDownloadCommand(stage, assetUrl)], 1260000));
+  } catch (downloadError) {
+    transfer = 'scp-fallback';
+    console.warn('iOS publish: server-side release download failed; using bounded SCP fallback: ' + downloadError.message);
+    runStep('upload IPA', () => execute(auth, 'scp', [...scpCommon, path.join(root, 'ios/App/shuguang.ipa'),
+      auth.target + ':' + stage + '/shuguang.ipa'], 1620000));
+  }
   runStep('publish atomically', () => execute(auth, 'ssh', [...sshCommon, auth.target,
     `sudo -n sh ${stage}/publish-ios-files.sh ${stage}`], 180000));
   runStep('remove staging directory', () => execute(auth, 'ssh', [...sshCommon, auth.target, `rm -rf ${stage}`], 30000));
-  return { stage, build: metadata.build, version: metadata.version, sourceCommit: metadata.sourceCommit };
+  return { stage, build: metadata.build, version: metadata.version, sourceCommit: metadata.sourceCommit, transfer };
 }
 
 if (require.main === module) {
@@ -130,4 +165,6 @@ if (require.main === module) {
     .catch(error => { console.error('iOS publication failed: ' + error.message); process.exitCode = 1; });
 }
 
-module.exports = { authEnv, cancelSuperseded, uniqueStage, upload, verifyPrepared };
+module.exports = {
+  authEnv, cancelSuperseded, releaseAssetUrl, remoteDownloadCommand, uniqueStage, upload, verifyPrepared,
+};

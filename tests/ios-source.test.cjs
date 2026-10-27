@@ -22,7 +22,8 @@ test('LCSign plain source points to the published IPA with stable identity', () 
 test('the iOS workflow delegates publication to the bounded versioned uploader', () => {
   const workflow = fs.readFileSync('.github/workflows/build-ios.yml', 'utf8');
   assert.ok(workflow.includes('run: node scripts/upload-ios.cjs'));
-  assert.ok(workflow.includes('timeout-minutes: 35'));
+  assert.ok(workflow.includes('timeout-minutes: 52'));
+  assert.ok(workflow.includes('timeout-minutes: 100'));
   assert.ok(!workflow.includes('sshpass -p'));
   const publish = fs.readFileSync('scripts/publish-ios-files.sh', 'utf8');
   assert.ok(publish.indexOf('mv "$root/download/source.json.new"') > publish.indexOf('mv "$root/download/ipa.json.new"'));

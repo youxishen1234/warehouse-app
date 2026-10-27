@@ -7,7 +7,7 @@ on:
 jobs:
   build:
     runs-on: macos-15
-    timeout-minutes: 75
+    timeout-minutes: 100
     concurrency:
       group: build-ios-${{ github.ref }}
       cancel-in-progress: false
@@ -138,7 +138,7 @@ jobs:
         run: node scripts/publish-ios-release.cjs
       - name: Upload IPA to server
         if: ${{ !cancelled() && steps.ipa_artifact.outcome == 'success' }}
-        timeout-minutes: 35
+        timeout-minutes: 52
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
