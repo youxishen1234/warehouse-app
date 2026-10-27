@@ -1,7 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const {
-  cancelSuperseded, releaseAssetUrl, remoteDownloadCommand, uniqueStage, verifyPrepared,
+  cancelSuperseded, splitFile, uniqueStage, verifyPrepared,
 } = require('../scripts/upload-ios.cjs');
 
 const sha = 'a'.repeat(40);
@@ -13,17 +16,20 @@ test('iOS staging is unique and tied to the workflow attempt', () => {
   assert.throws(() => uniqueStage({ GITHUB_RUN_ID: '../4046' }, nonce), /staging identity/);
 });
 
-test('the server downloads the exact public GitHub release asset', () => {
-  const env = { GITHUB_REPOSITORY: 'owner/warehouse-app', GITHUB_RUN_NUMBER: '282' };
-  const assetUrl = releaseAssetUrl(env);
-  assert.equal(assetUrl, 'https://github.com/owner/warehouse-app/releases/download/build-282/shuguang.ipa');
-  const command = remoteDownloadCommand('/tmp/warehouse-ios-40506722329-1-' + nonce, assetUrl);
-  assert.match(command, /^curl --fail --location/);
-  assert.match(command, /--max-time 1200/);
-  assert.ok(command.includes("'" + assetUrl + "'"));
-  assert.throws(() => releaseAssetUrl({ ...env, GITHUB_REPOSITORY: '../escape/repo' }), /release identity/);
-  assert.throws(() => remoteDownloadCommand('/tmp/untrusted', assetUrl), /staging directory/);
-  assert.throws(() => remoteDownloadCommand('/tmp/warehouse-ios-1-1-' + nonce, 'https://example.com/shuguang.ipa'), /asset URL/);
+test('parallel upload parts preserve the IPA byte order', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'warehouse-ios-parts-'));
+  try {
+    const source = path.join(directory, 'source.ipa');
+    const bytes = Buffer.from(Array.from({ length: 37 }, (_, index) => index));
+    fs.writeFileSync(source, bytes);
+    const parts = splitFile(source, path.join(directory, 'parts'), 4);
+    assert.equal(parts.length, 4);
+    assert.deepEqual(Buffer.concat(parts.map(filename => fs.readFileSync(filename))), bytes);
+    assert.ok(parts.every(filename => path.basename(filename).startsWith('shuguang.part.')));
+    assert.throws(() => splitFile(source, directory, 1), /between 2 and 16/);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test('published metadata must match the exact workflow build, source and versioned IPA', () => {

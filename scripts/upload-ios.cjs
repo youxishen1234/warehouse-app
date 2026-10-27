@@ -1,11 +1,13 @@
-const { execFileSync } = require('node:child_process');
+const { execFile, execFileSync } = require('node:child_process');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { promisify } = require('node:util');
 const { prepareDownload } = require('./prepare-download.cjs');
 
 const root = path.resolve(__dirname, '..');
+const execFileAsync = promisify(execFile);
 const sshOptions = [
   '-o', 'ConnectTimeout=15', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=4',
   '-o', 'StrictHostKeyChecking=yes',
@@ -25,29 +27,22 @@ function uniqueStage(env, nonce = crypto.randomUUID()) {
   return `/tmp/warehouse-ios-${run}-${attempt}-${nonce}`;
 }
 
-function releaseAssetUrl(env) {
-  const repo = required(env, 'GITHUB_REPOSITORY');
-  const build = required(env, 'GITHUB_RUN_NUMBER');
-  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo) || !/^\d+$/.test(build)) {
-    throw new Error('Invalid GitHub release identity');
+function splitFile(filePath, outputDir, partCount = 8) {
+  if (!Number.isInteger(partCount) || partCount < 2 || partCount > 16) {
+    throw new Error('IPA part count must be between 2 and 16');
   }
-  return `https://github.com/${repo}/releases/download/build-${build}/shuguang.ipa`;
-}
-
-function shellQuote(value) {
-  return "'" + String(value).replaceAll("'", "'\"'\"'") + "'";
-}
-
-function remoteDownloadCommand(stage, assetUrl) {
-  if (!/^\/tmp\/warehouse-ios-\d+-\d+-[a-f0-9-]{36}$/.test(stage)) {
-    throw new Error('Invalid iOS staging directory');
+  const data = fs.readFileSync(filePath);
+  if (data.length < partCount) throw new Error('IPA is too small to split');
+  const partSize = Math.ceil(data.length / partCount);
+  fs.mkdirSync(outputDir, { recursive: true });
+  const parts = [];
+  for (let index = 0, offset = 0; offset < data.length; index++, offset += partSize) {
+    const name = `shuguang.part.${String(index).padStart(2, '0')}`;
+    const filename = path.join(outputDir, name);
+    fs.writeFileSync(filename, data.subarray(offset, Math.min(offset + partSize, data.length)));
+    parts.push(filename);
   }
-  if (!/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/releases\/download\/build-\d+\/shuguang\.ipa$/.test(assetUrl)) {
-    throw new Error('Invalid iOS release asset URL');
-  }
-  return 'curl --fail --location --silent --show-error --retry 3 --retry-delay 2 ' +
-    '--connect-timeout 20 --max-time 1200 --output ' + shellQuote(stage + '/shuguang.ipa') +
-    ' ' + shellQuote(assetUrl);
+  return parts;
 }
 
 function verifyPrepared(metadata, env) {
@@ -84,10 +79,10 @@ function transportArgs(auth, base, input) {
   return { command: auth.mode === 'password' ? 'sshpass' : base, args };
 }
 
-function runStep(name, operation) {
+async function runStep(name, operation) {
   const started = Date.now();
   console.log('iOS publish: ' + name);
-  const result = operation();
+  const result = await operation();
   console.log(`iOS publish: ${name} completed in ${Date.now() - started}ms`);
   return result;
 }
@@ -98,6 +93,26 @@ function execute(auth, base, args, timeout, extraEnv = {}) {
     cwd: root, encoding: 'utf8', timeout, stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, ...(auth.env || {}), ...extraEnv },
   });
+}
+
+async function executeAsync(auth, base, args, timeout) {
+  const transport = transportArgs(auth, base, args);
+  const result = await execFileAsync(transport.command, transport.args, {
+    cwd: root, encoding: 'utf8', timeout, maxBuffer: 1024 * 1024,
+    env: { ...process.env, ...(auth.env || {}) },
+  });
+  return result.stdout;
+}
+
+async function uploadParts(auth, scpCommon, target, stage, parts, timeout) {
+  const results = await Promise.allSettled(parts.map(filename => executeAsync(auth, 'scp', [
+    ...scpCommon, filename, target + ':' + stage + '/' + path.basename(filename),
+  ], timeout)));
+  const failed = results.filter(result => result.status === 'rejected');
+  if (failed.length) {
+    const reasons = failed.map(result => result.reason instanceof Error ? result.reason.message : String(result.reason));
+    throw new Error(`${failed.length} of ${parts.length} IPA parts failed: ${reasons.slice(0, 2).join('; ')}`);
+  }
 }
 
 async function cancelSuperseded(runId, runNumber, env, fetchImpl) {
@@ -129,7 +144,7 @@ async function upload(env = process.env, dependencies = {}) {
   const metadata = await prepare(path.join(root, 'ios/App/shuguang.ipa'), output);
   if (previousSha !== env.GITHUB_SHA) throw new Error('Workflow source changed during iOS publication');
   verifyPrepared(metadata, env);
-  const assetUrl = releaseAssetUrl(env);
+  const parts = splitFile(path.join(root, 'ios/App/shuguang.ipa'), path.join(output, 'parts'), 8);
 
   const auth = authEnv(env);
   const knownHosts = auth.key ? auth.key + '.known_hosts' : path.join(os.tmpdir(), 'warehouse-ios-known-hosts');
@@ -137,27 +152,23 @@ async function upload(env = process.env, dependencies = {}) {
   if (!scan.trim()) throw new Error('SSH host key scan returned no keys');
   fs.writeFileSync(knownHosts, scan, { mode: 0o600 });
   const common = [...sshOptions, ...(auth.key ? ['-i', auth.key, '-o', 'BatchMode=yes'] : []), '-o', 'UserKnownHostsFile=' + knownHosts];
-  const scpCommon = ['-P', auth.port, ...common];
+  const scpCommon = ['-O', '-P', auth.port, ...common];
   const sshCommon = ['-p', auth.port, ...common];
 
-  runStep('create remote staging directory', () => execute(auth, 'ssh', [...sshCommon, auth.target, 'mkdir -p ' + stage], 30000));
-  runStep('upload metadata', () => execute(auth, 'scp', [...scpCommon,
+  await runStep('create remote staging directory', () => execute(auth, 'ssh', [...sshCommon, auth.target, 'mkdir -p ' + stage], 30000));
+  await runStep('upload metadata', () => execute(auth, 'scp', [...scpCommon,
     path.join(output, 'ipa.json'), path.join(output, 'source.json'), path.join(output, 'index.html'), path.join(output, 'app-icon.png'),
     path.join(root, 'scripts/publish-ios-files.sh'), auth.target + ':' + stage + '/'], 120000));
-  let transfer = 'github-release';
-  try {
-    runStep('download IPA from GitHub release', () => execute(auth, 'ssh', [...sshCommon, auth.target,
-      remoteDownloadCommand(stage, assetUrl)], 1260000));
-  } catch (downloadError) {
-    transfer = 'scp-fallback';
-    console.warn('iOS publish: server-side release download failed; using bounded SCP fallback: ' + downloadError.message);
-    runStep('upload IPA', () => execute(auth, 'scp', [...scpCommon, path.join(root, 'ios/App/shuguang.ipa'),
-      auth.target + ':' + stage + '/shuguang.ipa'], 1620000));
-  }
-  runStep('publish atomically', () => execute(auth, 'ssh', [...sshCommon, auth.target,
+  await runStep('upload IPA parts', () => uploadParts(auth, scpCommon, auth.target, stage, parts, 900000));
+  await runStep('assemble IPA', () => execute(auth, 'ssh', [...sshCommon, auth.target,
+    `cd ${stage} && cat shuguang.part.* > shuguang.ipa && rm -f shuguang.part.*`], 120000));
+  await runStep('publish atomically', () => execute(auth, 'ssh', [...sshCommon, auth.target,
     `sudo -n sh ${stage}/publish-ios-files.sh ${stage}`], 180000));
-  runStep('remove staging directory', () => execute(auth, 'ssh', [...sshCommon, auth.target, `rm -rf ${stage}`], 30000));
-  return { stage, build: metadata.build, version: metadata.version, sourceCommit: metadata.sourceCommit, transfer };
+  await runStep('remove staging directory', () => execute(auth, 'ssh', [...sshCommon, auth.target, `rm -rf ${stage}`], 30000));
+  return {
+    stage, build: metadata.build, version: metadata.version, sourceCommit: metadata.sourceCommit,
+    transfer: `parallel-scp-${parts.length}`,
+  };
 }
 
 if (require.main === module) {
@@ -166,5 +177,5 @@ if (require.main === module) {
 }
 
 module.exports = {
-  authEnv, cancelSuperseded, releaseAssetUrl, remoteDownloadCommand, uniqueStage, upload, verifyPrepared,
+  authEnv, cancelSuperseded, splitFile, uniqueStage, upload, verifyPrepared,
 };
