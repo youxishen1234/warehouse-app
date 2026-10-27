@@ -166,6 +166,11 @@ async function main() {
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => console.log('PAGE_CONSOLE', message.type(), message.text()));
+  page.on('requestfailed', request => console.log('REQUEST_FAILED', request.url(), request.failure()?.errorText));
+  page.on('response', response => {
+    if (response.url().includes('.woff2')) console.log('FONT_RESPONSE', response.status(), response.url(), response.headers()['content-type']);
+  });
   try {
     // Keep this regression on the prior finished-product inventory flow now
     // that the label page opens in manual paperboard mode by default.
@@ -291,6 +296,50 @@ async function main() {
       await expect(previewFrame.locator('body')).toContainText(value);
     }
     const previewReady = page.getByText('单张预览 70 × 100 mm，未发现内容溢出。', { exact: true });
+    await expect.poll(() => previewFrame.locator('body').evaluate(() => document.fonts.status), { timeout: 30000 }).toBe('loaded');
+    const previewMetrics = await previewFrame.locator('body').evaluate(() => {
+      const pageElement = document.querySelector('.warehouse-label');
+      const body = document.querySelector('.label-body, .paperboard-label');
+      const fields = [...document.querySelectorAll('[data-fit]')].map(element => {
+        const style = getComputedStyle(element);
+        const maxHeight = parseFloat(style.maxHeight);
+        const verticalOverflow = element.classList.contains('paperboard-value')
+          ? Number.isFinite(maxHeight) && element.scrollHeight > maxHeight + 2
+          : element.scrollHeight > element.clientHeight + 2;
+        return {
+          className: element.className,
+          clientWidth: element.clientWidth,
+          scrollWidth: element.scrollWidth,
+          clientHeight: element.clientHeight,
+          scrollHeight: element.scrollHeight,
+          maxHeight,
+          horizontalOverflow: element.scrollWidth > element.clientWidth + 2,
+          verticalOverflow,
+          font: style.font,
+          rect: element.getBoundingClientRect().toJSON()
+        };
+      });
+      return {
+        fontsStatus: document.fonts.status,
+        fontFaces: [...document.fonts].map(face => ({
+          family: face.family,
+          weight: face.weight,
+          status: face.status
+        })),
+        fontChecks: {
+          heavy: document.fonts.check('900 1em PaperboardSourceHan', '客户甲'),
+          medium: document.fonts.check('500 1em PaperboardSourceHan', '客户甲')
+        },
+        page: pageElement?.getBoundingClientRect().toJSON(),
+        pageClient: [pageElement?.clientWidth, pageElement?.clientHeight],
+        pageScroll: [pageElement?.scrollWidth, pageElement?.scrollHeight],
+        body: body?.getBoundingClientRect().toJSON(),
+        bodyClient: [body?.clientWidth, body?.clientHeight],
+        bodyScroll: [body?.scrollWidth, body?.scrollHeight],
+        fields
+      };
+    });
+    console.log('PREVIEW_METRICS', JSON.stringify(previewMetrics));
     await expect(previewReady).toBeVisible();
     // Taro's custom button is not always interpreted as a native button by Playwright.
     // Wait for the component's actual disabled attribute to be absent before clicking.

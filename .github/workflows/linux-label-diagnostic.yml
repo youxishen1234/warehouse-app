@@ -1,0 +1,33 @@
+name: Linux label diagnostic
+
+on:
+  push:
+    branches:
+      - codex/linux-label-diagnostic-20261027
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    env:
+      TARO_OUTPUT_DIR: dist-label-diagnostic
+      TARO_PUBLIC_PATH: ./
+      WAREHOUSE_BUILD_STAGE: release/stage-label-diagnostic
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+      - name: Build H5 bundle
+        run: |
+          mkdir -p www
+          npm run build:h5
+          npm run test:artifacts
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Measure Linux label geometry
+        env:
+          LABEL_PRINT_WEB_ROOT: dist-label-diagnostic
+          REMOTE_LABEL_CHECK_DIR: release/remote-label-diagnostic
+        run: node tests/remote-label-print-browser.cjs
