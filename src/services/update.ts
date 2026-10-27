@@ -3,6 +3,7 @@ import { getBaseUrl } from '@/services/request';
 import { deviceId, PUBLIC_ORIGIN } from '@/services/session';
 import { downloadBundleWithRetry, UPDATE_DOWNLOAD_TIMEOUT } from './update-download';
 import { isNewerVersion } from './update-version';
+import { WEB_DISPLAY_VERSION } from '@/config/release';
 
 // ============================================
 // App 内「检查更新」：点击即检查，发现新版本自动下载并在下次启动时应用
@@ -139,8 +140,8 @@ export async function checkAndUpdate(): Promise<CheckUpdateResult> {
     return { hasUpdate: false, message: '获取更新信息失败，请检查服务器地址或网络' };
   }
   if (!isNewerVersion(latest, cur)) {
-    console.log(`[UPDATE] 已是最新版本 v${latest}`);
-    return { hasUpdate: false, message: `已是最新版本 v${latest}` };
+    console.log(`[UPDATE] 已是最新版本 v${WEB_DISPLAY_VERSION}`);
+    return { hasUpdate: false, message: `已是最新版本 v${WEB_DISPLAY_VERSION}` };
   }
 
   console.log(`[UPDATE] 发现新版本 v${cur} -> v${latest}，开始自动更新…`);

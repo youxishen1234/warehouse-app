@@ -464,7 +464,6 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
         if (generation === previewFitGeneration.current) setPreviewFits(false);
       }
     };
-
     const waitForCurrentDocument = () => {
       if (generation !== previewFitGeneration.current) return;
       const frameDocument = frame.current?.contentDocument;
@@ -492,15 +491,13 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
         if (completed || generation !== previewFitGeneration.current) return;
         completed = true;
         window.clearTimeout(fontTimeout);
-        frameDocument.defaultView?.requestAnimationFrame(() => {
-          if (generation !== previewFitGeneration.current) return;
-          if (frameDocument !== frame.current?.contentDocument) {
-            documentAttempts = 0;
-            waitForCurrentDocument();
-            return;
-          }
-          measure(frameDocument);
-        });
+        if (frameDocument !== frame.current?.contentDocument) {
+          documentAttempts = 0;
+          waitForCurrentDocument();
+          return;
+        }
+        // The preview iframe may be throttled while offscreen, so do not wait on its animation frame.
+        measure(frameDocument);
       };
       if (frameDocument.fonts) {
         frameDocument.fonts.ready.then(finish).catch(() => {

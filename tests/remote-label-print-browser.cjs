@@ -43,6 +43,10 @@ async function main() {
   const jobs = new Map();
   const profiles = new Map();
   const requests = [];
+  let holdPaperboardFonts = false;
+  let releasePaperboardFonts;
+  const paperboardFontsPending = new Set();
+  const paperboardFontGate = new Promise(resolve => { releasePaperboardFonts = resolve; });
   let deviceOnline = true;
   let deviceReady = true;
   let lostLabelResponse = false;
@@ -54,10 +58,19 @@ async function main() {
   const errors = [];
   await context.addInitScript(() => {
     localStorage.setItem('sg_getting_started_seen_v1', JSON.stringify({ data: true }));
+    if (window !== window.parent) {
+      window.__remoteLabelTestRafDisabled = true;
+      window.requestAnimationFrame = () => 0;
+    }
   });
   await context.route('**/*', async route => {
     const request = route.request();
     const url = new URL(request.url());
+    if (holdPaperboardFonts && url.pathname.includes('/label-fonts/') && url.pathname.endsWith('.woff2')) {
+      paperboardFontsPending.add(url.pathname);
+      await paperboardFontGate;
+      return route.continue();
+    }
     if (url.origin === origin) return route.continue();
     if (url.origin !== apiOrigin || !url.pathname.startsWith('/api/')) return route.abort();
     if (request.method() === 'OPTIONS') {
@@ -252,6 +265,7 @@ async function main() {
     assert.equal(requests.filter(item => item.path === '/api/remote-print/labels/jobs' && item.method === 'POST').length, 2,
       'manual paper confirmation records a result without resubmitting the label');
 
+    holdPaperboardFonts = true;
     await page.goto(origin + '/#/pages/label-print/index?kind=paperboard-batch&id=' + board.id);
     const sendBoard = page.locator('taro-button-core').filter({ hasText: /^(复核最新资料并发送到 K3|请先完成一次校准)$/ });
     const densityThreeBoardProfile = page.locator('taro-button-core').filter({ hasText: /^70 × 100 mm · 浓度 3 · 已校准$/ });
@@ -290,11 +304,36 @@ async function main() {
     for (const value of ['客户甲', '牛卡高瓦', '包装A', '红黑']) {
       await expect(previewFrame.locator('body')).toContainText(value);
     }
+    const previewReady = page.getByText('单张预览 70 × 100 mm，未发现内容溢出。', { exact: true });
+    const previewChecking = page.getByText('正在核对实际尺寸…', { exact: true });
+    const previewElement = page.locator('iframe[title="K3 标签预览"]');
+    await expect.poll(() => paperboardFontsPending.size, 'paperboard web fonts are held while the iframe preview is first measured').toBeGreaterThan(0);
+    const pendingFontState = await previewElement.evaluate(element => ({
+      fonts: element.contentDocument?.fonts?.status,
+      rAFDisabled: element.contentWindow?.__remoteLabelTestRafDisabled === true && element.contentWindow.requestAnimationFrame(() => {}) === 0,
+      rootOverflowsWhileFontsPending: (() => {
+        const document = element.contentDocument;
+        const root = document?.querySelector('.warehouse-label');
+        if (!document || !root) return false;
+        const nativeScrollHeight = Object.getOwnPropertyDescriptor(document.defaultView.Element.prototype, 'scrollHeight').get;
+        Object.defineProperty(root, 'scrollHeight', {
+          configurable: true,
+          get() { return document.fonts.status === 'loading' ? this.clientHeight + 50 : nativeScrollHeight.call(this); }
+        });
+        element.dispatchEvent(new Event('load'));
+        return root.scrollHeight > root.clientHeight + 2;
+      })()
+    }));
+    assert.equal(pendingFontState.fonts, 'loading', 'the iframe remains in its waiting state while the embedded font is pending');
+    assert.equal(pendingFontState.rAFDisabled, true, 'the regression simulates a throttled offscreen iframe animation frame');
+    assert.equal(pendingFontState.rootOverflowsWhileFontsPending, true, 'the fixture would overflow if measured before its web font finishes loading');
+    await expect(previewChecking).toBeVisible();
+    releasePaperboardFonts();
+    holdPaperboardFonts = false;
     await expect.poll(
       () => previewFrame.locator('body').evaluate(() => document.fonts.status),
       { timeout: 15000 }
     ).toBe('loaded');
-    const previewReady = page.getByText('单张预览 70 × 100 mm，未发现内容溢出。', { exact: true });
     await expect(previewReady).toBeVisible({ timeout: 15000 });
     // Taro's custom button is not always interpreted as a native button by Playwright.
     // Wait for the component's actual disabled attribute to be absent before clicking.
@@ -398,6 +437,7 @@ async function main() {
     console.error('Remote label preview diagnostics:', JSON.stringify(geometry));
     throw error;
   } finally {
+    releasePaperboardFonts();
     await context.close();
     await browser.close();
     await new Promise(resolve => server.close(resolve));
