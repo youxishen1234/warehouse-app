@@ -21,13 +21,15 @@ import { emptyWorkbenchData as empty, useWorkbenchData, WorkbenchSource } from '
 import { attentionOrders, dashboardTasks, isStockWarning, HomeTask, OrderAttention } from '@/pages/home/dashboard-model';
 import styles from './workbench.module.scss';
 import { dailyRecords, DailyRecord } from './daily-records';
+import { openBusinessPage } from '@/services/business-navigation';
+import StockList from './stock-list';
 
 type Panel = 'home' | 'inbound' | 'stock' | 'records' | 'photos' | 'production' | 'finance' | 'customers' | 'suppliers';
 type WorkbenchProps = {
   embedded?: boolean;
   initial?: Panel;
 };
-const open = (url: string) => void (url === '/pages/print-center/index' ? Taro.switchTab({ url }) : Taro.navigateTo({ url }));
+const open = (url: string) => void openBusinessPage(url);
 const cartonProduct = (p: Product) => p.category !== '纸板' && (p.category === '纸箱' || /\d\s*[×xX*]\s*\d.*[×xX*]/.test(p.specification || ''));
 const routeFinanceView = (params: Record<string, string | undefined>): FinanceView =>
   params.view === 'customer' || params.view === 'supplier' || params.view === 'ledger'
@@ -57,6 +59,7 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
   const summaryRemote = useRemoteData<Stats | null>(getStats, null), stats = summaryRemote.data;
   const reloadSummary = summaryRemote.reload;
   const [kind, setKind] = useState<'board' | 'carton'>('board');
+  const [business, setBusiness] = useState<'sales' | 'stock'>('sales');
   const [query, setQuery] = useState('');
   const [now, setNow] = useState(new Date());
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
@@ -96,8 +99,8 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
   const batch = data.boards.find(b => b.id === batchId);
   const matches = useCallback((value: string) => value.toLowerCase().replace(/[ ×xX*]/g, '').includes(query.toLowerCase().replace(/[ ×xX*]/g, '')), [query]);
   const cartonProducts = useMemo(() => data.products.filter(cartonProduct), [data.products]);
-  const visibleBoards = useMemo(() => data.boards.filter(board => matches(boardSpec(board) + cartonSpec(board) + board.supplier)), [data.boards, matches]);
-  const visibleCartons = useMemo(() => (stockWarningsOnly ? data.products.filter(isStockWarning) : cartonProducts).filter(product => matches(product.name + (product.specification || ''))), [data.products, stockWarningsOnly, cartonProducts, matches]);
+  const visibleBoards = useMemo(() => data.boards.filter(board => matches([boardSpec(board), cartonSpec(board), board.supplier, board.customerName, board.location, board.material, board.printPlate, board.printColor].join(' '))), [data.boards, matches]);
+  const visibleCartons = useMemo(() => (stockWarningsOnly ? data.products.filter(isStockWarning) : cartonProducts).filter(product => matches([product.name, product.specification, product.customer_name, ...data.transactions.filter(row => row.product_id === product.id && !row.voided_at).map(row => [row.customer_name, row.supplier_name].join(' '))].join(' '))), [data.products, data.transactions, stockWarningsOnly, cartonProducts, matches]);
   const stockCount = kind === 'board' ? data.boards.length : stockWarningsOnly ? data.products.filter(isStockWarning).length : cartonProducts.length;
   const visibleStockCount = kind === 'board' ? visibleBoards.length : visibleCartons.length;
   const returnToTop = useCallback(() => {
@@ -114,7 +117,7 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
   const leaveCustomerCenter = () => {
     if (!customerRoute && !supplierRoute) { changePanel('home'); return; }
     if (Taro.getCurrentPages().length > 1) void Taro.navigateBack({ delta: 1 });
-    else void Taro.redirectTo({ url: '/pages/business-center/index' });
+    else void Taro.switchTab({ url: '/pages/home/index' });
   };
   const openCustomerBills = (id: number) => {
     if (!customerRoute) {
@@ -161,11 +164,7 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
     { title: '新增订单', guide: '登记客户订单', icon: 'notebook', fn: () => open('/pages/orders/index?create=1') },
     { title: '纸板入库', guide: '采购原料到货', icon: 'package-plus', fn: () => open('/pages/board-receive/index') },
     { title: '生产纸箱并入库', guide: '选择客户常用货物', icon: 'factory', fn: () => open('/pages/inbound/index?kind=carton') },
-    { title: '客户出库', guide: '从现有库存发货', icon: 'truck', fn: () => {
-      const host = typeof document !== 'undefined' ? document.querySelector<HTMLElement>('taro-tabbar') : null;
-      if (host && getComputedStyle(host).display !== 'none') void Taro.switchTab({ url: '/pages/outbound/index' });
-      else open('/pages/outbound/index');
-    } }
+    { title: '客户出库', guide: '从现有库存发货', icon: 'truck', fn: () => open('/pages/outbound/index') }
   ];
   const title = { home: '业务总台', inbound: '入库', stock: '查看库存', records: '业务记录与存根', photos: '票据原件', production: '生产完工', finance: '账单中心', customers: '客户管理', suppliers: '供货商管理' }[panel];
   const appName = getCopy('appName');
@@ -197,7 +196,20 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
     else changePanel('records');
   };
   const chooseBatch = (id: string) => { setBatchId(id); setProductId(null); setName(''); setError(''); };
-  return <View className={`${embedded ? `${styles.page} ${styles.embedded}` : styles.page} ${customerRoute ? styles.customerPage : ''}`} data-panel={panel} data-testid='simple-workbench' data-tab-route={embedded ? undefined : '/pages/home/index'}><View className={styles.surface}>
+  const salesSteps = [
+    { title: '客户下单', fn: () => open('/pages/orders/index?create=1') },
+    { title: '查看库存', fn: () => changePanel('stock') },
+    { title: '客户出库', fn: () => open('/pages/outbound/index') },
+    { title: '对账收款', fn: () => openFinance('customer') }
+  ];
+  const stockSteps = [
+    { title: '采购纸板', fn: () => open('/pages/suppliers/index') },
+    { title: '纸板入库', fn: () => open('/pages/board-receive/index') },
+    { title: '领纸板生产', fn: () => changePanel('production') },
+    { title: '成品入库', fn: () => changePanel('production') }
+  ];
+  const nextOrders = data.orders.filter(order => !['已完成', '已取消', '已发货'].includes(order.status)).slice(0, 3);
+  return <View className={`${embedded ? `${styles.page} ${styles.embedded}` : styles.page} ${customerRoute ? styles.customerPage : ''}`} data-ui-version='web-workbench-v2' data-panel={panel} data-testid='simple-workbench' data-tab-route={embedded ? undefined : panel === 'stock' ? '/pages/inventory/index' : '/pages/home/index'}><View className={styles.surface}>
     <View className={styles.masthead}>
       <View className={styles.header}><View className={styles.heading}>
         {panel === 'home' ? <View className={styles.brand} aria-label={`${appName}标识`} data-testid='workbench-brand'><Text className={styles.brandCharacter}>{brandCharacter}</Text></View> : <Button aria-label='返回总台' className={styles.back} onClick={panel === 'customers' || panel === 'suppliers' ? leaveCustomerCenter : () => changePanel('home')}>‹</Button>}
@@ -219,6 +231,20 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
           {taskState.loading && <View role='status' className={styles.sectionHint}>待办正在同步…</View>}
           {!tasks.length && !taskState.loading && !taskState.error && <Text className={styles.sectionHint}>今天暂无待办</Text>}
         </View>
+        <View className={styles.businessTabs} role='group' aria-label='业务类型'>
+          {(['sales', 'stock'] as const).map(value => <Button key={value} aria-pressed={business === value} className={business === value ? styles.businessActive : styles.businessTab} onClick={() => setBusiness(value)}>{value === 'sales' ? '销售业务' : '备货业务'}</Button>)}
+        </View>
+        <View className={styles.businessFlow} data-testid='workbench-business-flow' role='tabpanel' aria-label={business === 'sales' ? '销售业务' : '备货业务'}>
+          <Text className={styles.sectionTitle}>{business === 'sales' ? '从客户开单开始' : '先备货，随时接单'}</Text>
+          <View className={styles.flowSteps}>{(business === 'sales' ? salesSteps : stockSteps).map((step, index) => <Button key={step.title} className={styles.flowStep} onClick={step.fn}><Text className={styles.flowNumber}>{index + 1}</Text><Text>{step.title}</Text></Button>)}</View>
+          <View className={styles.flowActions}>{business === 'sales' ? action('客户开单', salesSteps[0].fn, true) : <>{action('纸板入库', stockSteps[1].fn)}{action('生产入库', stockSteps[2].fn, true)}{action('纸箱入库', () => open('/pages/inbound/index?kind=carton'))}</>}</View>
+        </View>
+        <View className={styles.recentHeading}><Text className={styles.sectionTitle}>{business === 'sales' ? '接下来要做' : '备货提醒'}</Text><Button className={styles.textAction} onClick={() => business === 'sales' ? open('/pages/orders/index') : openStockWarnings()}>{business === 'sales' ? '全部订单' : '库存预警'}<Icon name='chevron' color='#2469ee' style={{ width: 14, height: 14 }} /></Button></View>
+        {business === 'sales' ? <View data-testid='workbench-next-orders'>{nextOrders.map(order => <View className={styles.nextOrder} key={order.id}>
+          <View className={styles.orderHeading}><strong>{order.customer_name}</strong><Text className={styles.orderBadge}>{order.status}</Text></View>
+          <Text className={styles.orderSpec}>{order.specification || '规格未填写'} · {order.quantity} {order.unit}</Text>
+          <View className={styles.orderNext}><Text>{order.delivery_date || '未设交期'} · {formatMoney(order.amount)}</Text>{action(order.status === '待发货' ? '核对出库' : '查看订单', () => { if (order.status === '待发货') { Taro.setStorageSync('sg_outbound_order', order.id); open('/pages/outbound/index'); } else open('/pages/orders/index'); })}</View>
+        </View>)}{!nextOrders.length && !remote.sources.orders.loading && <View className={styles.sectionHint}>暂无待处理订单</View>}</View> : <View>{data.products.filter(isStockWarning).slice(0, 3).map(product => <View className={styles.nextOrder} key={product.id}><View className={styles.orderHeading}><strong>{product.name}</strong><Text className={styles.orderBadge}>待补货</Text></View><Text className={styles.orderSpec}>{product.specification} · 现存 {product.stock} {product.unit}</Text><View className={styles.orderNext}><Text>安全库存 {product.safety_stock} {product.unit}</Text>{action('安排生产', () => { setProductId(product.id); changePanel('production'); })}</View></View>)}{!data.products.some(isStockWarning) && <View className={styles.sectionHint}>当前暂无库存预警</View>}</View>}
         <View className={styles.homeHeading}><Text className={styles.sectionTitle}>经营摘要</Text></View>
         <View className={styles.summary} data-testid='workbench-summary'>
           <Button className={styles.summaryItem} onClick={() => openOrders()}><Text>待发货</Text><strong>{pendingShipments}</strong></Button>
@@ -252,8 +278,8 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
         <Button className={styles.flowToggle} aria-expanded={workflowOpen} onClick={() => setWorkflowOpen(value => !value)}>{workflowOpen ? '收起流程' : '查看流程'}</Button>
         {workflowOpen && <View className={styles.workflow} data-testid='workbench-factory-flow'>
           <Text className={styles.workflowTitle}>工厂业务流程</Text>
-          <Text className={styles.workflowSteps}>采购纸板 → 纸板入库 → 生产纸箱入库 → 客户下订单 → 出库</Text>
-          <Text className={styles.workflowHint}>先备成品库存，再接客户订单；生产入库不等于采购纸箱。</Text>
+          <Text className={styles.workflowSteps}>备货：采购纸板 → 纸板入库 → 领纸板生产 → 成品入库</Text>
+          <Text className={styles.workflowSteps}>销售：客户下单 → 查看可用库存 → 客户出库 → 对账收款</Text>
           <Button className={styles.button} data-testid='workbench-customer-orders' onClick={() => open('/pages/orders/index')}>客户下订单 / 查看订单</Button>
         </View>}
       </View>}
@@ -277,7 +303,14 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
         { title: '纸板入库', note: '采购原料到货 · 增纸板库存，记供货商应付', path: '/pages/board-receive/index' },
         { title: '纸箱入库', note: '补录自产成品 · 已登记生产完工的同批货不再录', path: '/pages/inbound/index?kind=carton' }
       ].map(item => <Button key={item.title} className={styles.choice} onClick={() => open(item.path)}><Icon name='package-plus' color='#1677ff' strokeWidth={1.5} style={{ width: 24, height: 24 }} /><View><strong>{item.title}</strong><Text>{item.note}</Text></View><Icon name='chevron' color='#94a3b8' style={{ width: 16, height: 16 }} /></Button>)}</View><Text className={styles.note}>正常生产请点“生产纸箱并入库”：同时扣纸板、增纸箱，不需要先有客户订单；同批纸箱只入库一次。</Text><View className={styles.tools}>{action('生产纸箱并入库', () => changePanel('production'), true)}{action('查看已有库存', () => changePanel('stock'))}{action('供货商 / 付款', () => openFinance('supplier'))}</View></View>}
-      {panel === 'stock' && <View>{stockWarningsOnly && <View className={styles.filterNotice}><Text>库存预警 · 全部商品</Text><Button className={styles.textAction} onClick={() => setStockWarningsOnly(false)}>清除筛选</Button></View>}<View className={styles.stockHeading}><Text className={styles.note}>{kind === 'board' ? '纸板库存 · ' + data.boards.reduce((sum, b) => sum + b.remainingQty, 0) + ' 张' : '纸箱库存 · ' + data.products.filter(cartonProduct).length + ' 种规格'}</Text>{action('新增入库', () => changePanel('inbound'))}</View><View className={styles.segment}>{(['board', 'carton'] as const).map(k => <Button key={k} aria-pressed={kind === k} className={kind === k ? styles.selected : styles.button} onClick={() => { setKind(k); setStockWarningsOnly(false); }}>{k === 'board' ? '纸板' : '纸箱'}</Button>)}</View><Input className={styles.input} placeholder='搜索尺寸、货名或供货商' aria-label='搜索库存' value={query} onInput={e => setQuery(e.detail.value)} />{kind === 'board' ? visibleBoards.map(b => <View className={styles.row} key={b.id} data-testid='workbench-board'><View><strong>{boardSpec(b)} cm</strong><Text>成箱 {cartonSpec(b)} cm</Text><Text>{b.supplier} · {b.fluteType}楞 · {b.layers}层 · {b.location || '未设库位'}</Text><Text>{b.date} · {b.deliveryNo || b.id}</Text></View><View><strong>{b.remainingQty} 张</strong>{action('查看 / 同规格入库', () => open('/pages/board-detail/index?id=' + b.id))}{action('生产', () => { chooseBatch(b.id); changePanel('production'); })}</View></View>) : visibleCartons.map(p => <View key={p.id} className={styles.row} data-testid='workbench-carton'><View><strong>{p.name}</strong><Text>{p.specification || '规格未填写'}</Text></View><View><strong>{p.stock} {p.unit}</strong>{action('盘点 / 调整库存', () => openStocktake(p), true)}{action('入库', () => { Taro.setStorageSync('sg_transit', { product_id: p.id }); open('/pages/inbound/index?kind=carton'); })}</View></View>)}{!visibleStockCount && <View className={styles.empty} data-testid='workbench-stock-empty'><Text>{stockCount ? '没有找到匹配库存' : `还没有${kind === 'board' ? '纸板' : '纸箱'}库存记录`}</Text>{stockCount > 0 && action('清空搜索', () => setQuery(''))}</View>}</View>}
+      {panel === 'stock' && <View>
+        {stockWarningsOnly && <View className={styles.filterNotice}><Text>库存预警 · 全部商品</Text><Button className={styles.textAction} onClick={() => setStockWarningsOnly(false)}>清除筛选</Button></View>}
+        <View className={styles.stockHeading}><Text className={styles.note}>{kind === 'board' ? '纸板库存 · ' + data.boards.reduce((sum, b) => sum + b.remainingQty, 0) + ' 张' : '纸箱库存 · ' + cartonProducts.length + ' 种规格'}</Text>{action('新增入库', () => changePanel('inbound'))}</View>
+        <View className={styles.segment}>{(['board', 'carton'] as const).map(k => <Button key={k} aria-pressed={kind === k} className={kind === k ? styles.selected : styles.button} onClick={() => { setKind(k); setStockWarningsOnly(false); }}>{k === 'board' ? '纸板' : '纸箱'}</Button>)}{action('扫码查库存', () => open('/pages/board-scan/index'))}{action('商品资料', () => open('/pages/products/index'))}</View>
+        <Input className={styles.input} placeholder='搜索尺寸、货名、客户或供货商' aria-label='搜索库存' value={query} onInput={e => setQuery(e.detail.value)} />
+        <StockList kind={kind} boards={visibleBoards} cartons={visibleCartons} transactions={data.transactions} onProduce={id => { chooseBatch(id); changePanel('production'); }} onStocktake={openStocktake} onInbound={product => { Taro.setStorageSync('sg_transit', { product_id: product.id }); open('/pages/inbound/index?kind=carton'); }} />
+        {!visibleStockCount && <View className={styles.empty} data-testid='workbench-stock-empty'><Text>{stockCount ? '没有找到匹配库存' : `还没有${kind === 'board' ? '纸板' : '纸箱'}库存记录`}</Text>{stockCount > 0 && action('清空搜索', () => setQuery(''))}</View>}
+      </View>}
       {panel === 'production' && <View className={styles.form}><Text className={styles.note} data-testid='production-stock-guide'>先采购纸板并入库，再在这里登记生产：扣减实际领用纸板，同时增加完工纸箱库存。无需客户或订单，后续客户下单再出库；同批纸箱不必再登记入库。</Text><Text className={styles.label}>领用哪批纸板</Text><Picker range={['请选择纸板批次', ...data.boards.map(b => boardSpec(b) + ' cm · ' + b.supplier + ' · 余 ' + b.remainingQty + ' 张')]} value={data.boards.findIndex(b => b.id === batchId) + 1} onChange={e => chooseBatch(data.boards[Number(e.detail.value) - 1]?.id || '')}><View className={styles.input}>{batch ? boardSpec(batch) + ' cm · ' + batch.supplier : '选择纸板批次 ›'}</View></Picker>{batch && <View className={styles.spec} data-testid='production-spec'><strong>纸板 {boardSpec(batch)} cm</strong><Text>成箱 {cartonSpec(batch)} cm · {batch.layers}层 {batch.fluteType}楞</Text><Text>当前可领用 {batch.remainingQty} 张</Text></View>}<Text className={styles.label}>入库纸箱商品</Text><Picker range={['新建纸箱（规格自动带入）', ...data.products.filter(cartonProduct).map(p => p.name + ' · ' + p.specification)]} value={data.products.filter(cartonProduct).findIndex(p => p.id === productId) + 1} onChange={e => setProductId(data.products.filter(cartonProduct)[Number(e.detail.value) - 1]?.id || null)}><View className={styles.input}>{data.products.find(p => p.id === productId)?.name || '新建纸箱（规格自动带入）'} ›</View></Picker>{!productId && <Input aria-label='纸箱名称' className={styles.input} placeholder='纸箱名称' value={name} onInput={e => setName(e.detail.value)} />}<View className={styles.twoFields}><View><Text className={styles.label}>领用纸板（张）</Text><Input aria-label='领用纸板数' className={styles.input} type='number' value={consumed} onInput={e => setConsumed(e.detail.value)} /></View><View><Text className={styles.label}>合格纸箱（个 / 只 / 件）</Text><Input aria-label='合格纸箱数' className={styles.input} type='number' value={quantity} onInput={e => setQuantity(e.detail.value)} /></View></View><Input aria-label='生产备注' className={styles.input} placeholder='备注（选填）' value={remark} onInput={e => setRemark(e.detail.value)} /><Text className={styles.note}>按实际用量填写，不默认一张纸板等于一个纸箱。</Text>{error && <View role='alert' className={styles.error}>{error}</View>}{action(busy ? '保存中…' : '确认完工 · 扣纸板并入纸箱', () => void submitProduction(), true)}</View>}
       {panel === 'finance' && <FinanceCenter
         initialView={financeView}
@@ -301,7 +334,7 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
       />}
       {panel === 'records' && <View>{orderAttention && <View className={styles.filterNotice}><Text>{orderAttention === 'overdue' ? '逾期订单' : '未来三天交期'}</Text><Button className={styles.textAction} onClick={() => setOrderAttention(null)}>清除筛选</Button></View>}<View className={styles.segment}><Button aria-pressed={recordView === 'activity'} className={recordView === 'activity' ? styles.selected : styles.button} onClick={() => setRecordView('activity')}>出入库 / 生产</Button><Button aria-pressed={recordView === 'orders'} className={recordView === 'orders' ? styles.selected : styles.button} onClick={() => setRecordView('orders')}>规格与订单</Button></View>
         {recordView === 'activity' && <View><View className={styles.tools}>{action('打印存根', () => open('/pages/print-center/index'))}{action('账单流水与收款', () => openFinance('ledger'))}{action('票据原件', () => changePanel('photos'))}</View>{data.production.map(p => <View className={styles.record} key={p.id}><strong>生产完工 · {p.product_name}</strong><Text>纸板 {p.specification_snapshot.board.join(' × ')} cm → 纸箱 {p.specification_snapshot.carton.join(' × ')} cm</Text><Text>领用 {p.consumed_quantity} 张 · 完工 {p.quantity} {p.unit}</Text><Text>{formatTime(p.created_at)} · {p.operator}</Text><Text>{p.id}</Text></View>)}{data.boards.map(b => <View className={styles.record} key={b.id}><strong>纸板入库 · {boardSpec(b)} cm</strong><Text>对应纸箱 {cartonSpec(b)} cm · 实收 {b.receivedQty} 张</Text><Text>送货日期 {b.date} · {b.supplier}</Text><Text>登记时间 {formatTime(b.createdAt)}</Text>{action('批次存根', () => open('/pages/board-detail/index?id=' + b.id))}</View>)}{data.transactions.filter(t => !t.production_id && !t.voided_at).slice(0, 30).map(t => <View className={styles.record} key={t.id}><strong>{t.type === 'in' ? '入库' : t.type === 'out' ? '出库' : '盘点'} · {t.product_name}</strong><Text>{t.specification} · {t.quantity} {t.unit}</Text><Text>{formatTime(t.created_at)}</Text></View>)}{action('全部出入库记录', () => open('/pages/records/index'))}</View>}
-        {recordView === 'orders' && <View><Input className={styles.input} aria-label='搜索订单' placeholder='搜索客户、规格或订单号' value={query} onInput={e => setQuery(e.detail.value)} /><View className={styles.segment}>{(['全部', '待发货', '待生产', '生产中', '已发货', '已完成', '已取消'] as const).map(value => <Button key={value} aria-pressed={orderStatus === value} className={orderStatus === value ? styles.selected : styles.button} onClick={() => setOrderStatus(value)}>{value}</Button>)}</View>{visibleOrders.filter(order => matches([order.order_no, order.customer_name, order.specification, order.material, order.status, order.remark].join(' '))).map(order => <View key={order.id} className={styles.record} data-testid='workbench-order'><strong>{order.customer_name} · {order.specification || '未填规格'}</strong><Text>{order.quantity} {order.unit} × {formatMoney(order.unit_price)} · 合计 {formatMoney(order.amount)}</Text><Text>交期 {order.delivery_date || '未设置'} · {order.status}</Text><Text>{order.order_no} · {formatTime(order.created_at)}</Text><View className={styles.tools}>{action('打印存根', () => open('/pages/print-center/index'))}{action('核对出库', () => { Taro.setStorageSync('sg_outbound_order', order.id); const host = typeof document !== 'undefined' ? document.querySelector<HTMLElement>('taro-tabbar') : null; if (host && getComputedStyle(host).display !== 'none') void Taro.switchTab({ url: '/pages/outbound/index' }); else open('/pages/outbound/index'); }, true)}</View></View>)}{!visibleOrders.filter(order => matches([order.order_no, order.customer_name, order.specification, order.material, order.status, order.remark].join(' '))).length && <Text className={styles.empty}>没有找到匹配订单</Text>}</View>}
+        {recordView === 'orders' && <View><Input className={styles.input} aria-label='搜索订单' placeholder='搜索客户、规格或订单号' value={query} onInput={e => setQuery(e.detail.value)} /><View className={styles.segment}>{(['全部', '待发货', '待生产', '生产中', '已发货', '已完成', '已取消'] as const).map(value => <Button key={value} aria-pressed={orderStatus === value} className={orderStatus === value ? styles.selected : styles.button} onClick={() => setOrderStatus(value)}>{value}</Button>)}</View>{visibleOrders.filter(order => matches([order.order_no, order.customer_name, order.specification, order.material, order.status, order.remark].join(' '))).map(order => <View key={order.id} className={styles.record} data-testid='workbench-order'><strong>{order.customer_name} · {order.specification || '未填规格'}</strong><Text>{order.quantity} {order.unit} × {formatMoney(order.unit_price)} · 合计 {formatMoney(order.amount)}</Text><Text>交期 {order.delivery_date || '未设置'} · {order.status}</Text><Text>{order.order_no} · {formatTime(order.created_at)}</Text><View className={styles.tools}>{action('打印存根', () => open('/pages/print-center/index'))}{action('核对出库', () => { Taro.setStorageSync('sg_outbound_order', order.id); open('/pages/outbound/index'); }, true)}</View></View>)}{!visibleOrders.filter(order => matches([order.order_no, order.customer_name, order.specification, order.material, order.status, order.remark].join(' '))).length && <Text className={styles.empty}>没有找到匹配订单</Text>}</View>}
       </View>}
       {panel === 'photos' && <View><Text className={styles.note}>原件照片按业务账单保存；选择一笔账单，可上传送货单、签收单或付款凭证。</Text>{activeLedger.map(l => <Button className={styles.photoRow} key={l.id} onClick={() => openFinance('ledger', l.id)}><strong>{l.party_name || l.remark}</strong><Text>{formatTime(l.created_at)} · {formatMoney(l.amount)}</Text><Text>{l.attachments?.length ? l.attachments.length + ' 张原件照片' : '上传原件照片 ›'}</Text></Button>)}{!activeLedger.length && <Text className={styles.empty}>入库或出库保存后，账单会出现在这里。</Text>}</View>}
     </View>}

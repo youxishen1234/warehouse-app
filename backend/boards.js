@@ -25,7 +25,11 @@ const batchLabelText = (value, label, max = 120) => {
 const round = (value, digits = 2) => roundDecimal(value, digits);
 function validateSpec(raw) {
   const spec = {};
-  for (const field of ['boardLength', 'boardWidth', 'cartonLength', 'cartonWidth', 'cartonHeight']) spec[field] = number(raw[field], field.startsWith('board') ? '纸板尺寸（cm）' : '纸箱尺寸（cm）', true);
+  for (const field of ['boardLength', 'boardWidth', 'cartonLength', 'cartonWidth', 'cartonHeight']) spec[field] = number(raw[field], field.startsWith('board') ? '纸板尺寸（cm）' : '纸箱尺寸（cm）', !(field.startsWith('board') && raw.boardDimensionsPending === true));
+  if (raw.boardDimensionsPending === true) {
+    if (spec.boardLength !== 0 || spec.boardWidth !== 0) fail('待补纸板尺寸必须同时留空');
+    spec.boardDimensionsPending = true;
+  }
   for (const field of ['faceGsm', 'linerGsm', 'flutingGsm']) spec[field] = number(raw[field] ?? 0, '克重');
   spec.fluteType = text(raw.fluteType, '楞型', true, 12).toUpperCase();
   if (!/^[A-Z]{1,4}$/.test(spec.fluteType)) fail('楞型请填写字母，例如 B、AB 或 BC');
@@ -52,14 +56,18 @@ function receive(data, raw) {
   const supplier = text(raw.supplier, '板厂');
   const orderedQty = number(raw.orderedQty, '订购数', true, true);
   const receivedQty = number(raw.receivedQty, '实收数', true, true);
-  const billedArea = number(raw.billedArea, '计费平米', true);
+  const amountMode = raw.amountMode || 'area';
+  if (!['area', 'manual', 'pending'].includes(amountMode)) fail('纸板金额方式无效');
+  const billedArea = number(raw.billedArea, '计费平米', amountMode === 'area');
   const unitPrice = number(raw.unitPrice, '每平米单价');
-  const amount = round(billedArea * unitPrice);
+  const amount = amountMode === 'manual' ? round(number(raw.manualAmount, '本批金额')) : amountMode === 'pending' ? 0 : round(billedArea * unitPrice);
+  if (amountMode === 'pending' && billedArea > 0 && unitPrice > 0) fail('已知面积与单价时请计算货款');
   if (amount > 100000000) fail('货款超出支持范围');
   const date = text(raw.date, '送货日期', true, 10);
   if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date) fail('送货日期无效');
   if (date > localDate()) fail('送货日期不能晚于今天');
   const batch = { ...spec, id: `BOARD-${date.replace(/-/g, '')}-${crypto.randomBytes(6).toString('hex').toUpperCase()}`, specKey: specKey(spec), supplier, customerName: batchLabelText(raw.customerName, '客户'), material: batchLabelText(raw.material, '材质 / 配纸'), printPlate: batchLabelText(raw.printPlate, '印刷版名'), printColor: batchLabelText(raw.printColor, '印刷颜色'), orderedQty, receivedQty, remainingQty: receivedQty, giftQty: Math.max(0, receivedQty - orderedQty), shortageQty: Math.max(0, orderedQty - receivedQty), billedArea, unitPrice, amount, freight: round(number(raw.freight ?? 0, '运费')), date, deliveryNo: text(raw.deliveryNo, '送货单号'), location: text(raw.location, '库位'), remark: text(raw.remark, '备注', false, 500), warningQty: number(raw.warningQty ?? 0, '预警数量', false, true), createdAt: Date.now() };
+  if (amountMode !== 'area') batch.amountMode = amountMode;
   data.board_batches ||= []; data.board_movements ||= [];
   data.board_batches.push(batch);
   data.board_movements.push({ id: crypto.randomUUID(), batchId: batch.id, type: 'in', quantity: receivedQty, balance: receivedQty, date, remark: batch.remark, createdAt: batch.createdAt });
@@ -98,9 +106,12 @@ function validate(data) {
     for (const [field, label] of [['customerName', '客户'], ['material', '材质 / 配纸'], ['printPlate', '印刷版名'], ['printColor', '印刷颜色']]) {
       if (b[field] !== undefined) batchLabelText(b[field], label);
     }
-    number(b.billedArea, '计费平米', true); number(b.unitPrice, '每平米单价'); number(b.warningQty, '预警数量', false, true);
+    const mode = b.amountMode || 'area';
+    if (!['area', 'manual', 'pending'].includes(mode)) fail('纸板金额方式无效');
+    number(b.billedArea, '计费平米', mode === 'area'); number(b.unitPrice, '每平米单价'); number(b.warningQty, '预警数量', false, true);
     if (b.freight !== undefined) number(b.freight, '运费');
-    if (b.amount !== round(b.billedArea * b.unitPrice) || b.giftQty !== Math.max(0, b.receivedQty - b.orderedQty) || b.shortageQty !== Math.max(0, b.orderedQty - b.receivedQty)) fail('纸板金额或赠送数量不一致');
+    number(b.amount, '本批金额');
+    if ((mode === 'area' && b.amount !== round(b.billedArea * b.unitPrice)) || (mode === 'pending' && (b.amount !== 0 || (b.billedArea > 0 && b.unitPrice > 0))) || b.giftQty !== Math.max(0, b.receivedQty - b.orderedQty) || b.shortageQty !== Math.max(0, b.orderedQty - b.receivedQty)) fail('纸板金额或赠送数量不一致');
     if (typeof b.date !== 'string' || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(b.date) || !Number.isFinite(Date.parse(b.date)) || new Date(b.date).toISOString().slice(0, 10) !== b.date) fail('纸板批次日期无效');
     let balance = 0; let inbound = 0;
     for (const m of byBatch.get(b.id) || []) {
@@ -119,12 +130,20 @@ function update(data, id, raw) {
   const batch = state(data).batches.find(b => b.id === id);
   if (!batch) fail('找不到这批纸板', 404);
   const movements = state(data).movements.filter(m => m.batchId === id);
-  if (movements.some(m => m.type !== 'in')) fail('已有领料或盘点记录，不能编辑入库单，请使用盘点功能调整库存');
+  const moved = movements.some(m => m.type !== 'in');
+  if (moved && batch.amountMode !== 'pending') fail('已有领料或盘点记录，不能编辑入库单，请使用盘点功能调整库存');
   const draft = {};
   const next = receive(draft, raw);
   for (const field of ['customerName', 'material', 'printPlate', 'printColor']) {
     if (!Object.prototype.hasOwnProperty.call(raw, field) && batch[field] !== undefined) next[field] = batch[field];
   }
+  if (moved) {
+    const fixedFields = ['specKey', 'boardDimensionsPending', 'supplier', 'customerName', 'material', 'printPlate', 'printColor', 'orderedQty', 'receivedQty', 'date', 'deliveryNo', 'location', 'warningQty'];
+    if (fixedFields.some(field => next[field] !== batch[field]) || (raw.supplier_id != null && Number(raw.supplier_id) !== Number(batch.supplier_id))) fail('已有领料或盘点记录，只能补录待补金额，不能更改数量、规格或往来单位');
+    next.remainingQty = batch.remainingQty;
+  }
+  delete batch.boardDimensionsPending;
+  delete batch.amountMode;
   Object.assign(batch, next, { id, createdAt: batch.createdAt });
   Object.assign(movements[0], { quantity: next.receivedQty, balance: next.receivedQty, date: next.date, remark: next.remark });
   return list(data).find(b => b.id === id);

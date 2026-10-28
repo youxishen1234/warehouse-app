@@ -10,6 +10,7 @@ import { formatMoney, formatShortTime } from '@/utils/format';
 import type { Transaction, Product, Customer, Supplier } from '@/types';
 import styles from './index.module.scss';
 import { useRemoteData } from '@/hooks/useRemoteData';
+import BusinessHeader from '@/components/BusinessHeader';
 
 type RecordListRowProps = {
   transaction: Transaction;
@@ -74,10 +75,11 @@ const RecordsPage: React.FC = () => {
   // 从客户管理页跳转时携带客户筛选
   const filterCustomerId = router.params.customer_id ? Number(router.params.customer_id) : null;
   const filterSupplierId = router.params.supplier_id ? Number(router.params.supplier_id) : null;
+  const filterProductId = router.params.product_id ? Number(router.params.product_id) : null;
   const filterCustomerName = router.params.customer_name ? decodeURIComponent(router.params.customer_name) : '';
 
-  const [type, setType] = useState('');
-  const [typeIndex, setTypeIndex] = useState(0);
+  const [type, setType] = useState(() => ['in', 'out'].includes(router.params.type || '') ? router.params.type! : '');
+  const [typeIndex, setTypeIndex] = useState(() => router.params.type === 'in' ? 1 : router.params.type === 'out' ? 2 : 0);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [includeVoided, setIncludeVoided] = useState(false);
@@ -111,7 +113,7 @@ const RecordsPage: React.FC = () => {
             , from: fromDate ? new Date(`${fromDate}T00:00:00`).getTime() : undefined
             , to: toDate ? new Date(`${toDate}T00:00:00`).getTime() : undefined
           }), loadProducts()]);
-        return { list: tx, products: prods };
+        return { list: filterProductId ? tx.filter(row => row.product_id === filterProductId) : tx, products: prods };
       } catch (_error) {
         // Keep the records page error surface Chinese and actionable even when
         // a proxy or mocked API returns an internal English/path-bearing error.
@@ -120,7 +122,7 @@ const RecordsPage: React.FC = () => {
     })();
     inFlight.current = run;
     try { return await run; } finally { if (inFlight.current === run) inFlight.current = null; }
-  }, [type, filterCustomerId, filterSupplierId, fromDate, toDate, includeVoided]);
+  }, [type, filterCustomerId, filterSupplierId, filterProductId, fromDate, toDate, includeVoided]);
 
   const remote = useRemoteData(loadRecords, { list: [] as Transaction[], products: [] as Product[] });
   // useRemoteData owns the loadSequence/requestId stale-response guard: if (current !== loadSequence.current), it discards the response and invalidates on unload.
@@ -218,6 +220,7 @@ const RecordsPage: React.FC = () => {
   return (
     <View className={styles.page}>
     <ScrollView scrollY className={styles.container} onRefresherRefresh={load} refresherEnabled refresherTriggered={false}>
+      <BusinessHeader title='出入库单据' />
       <View className={styles.filterBox}>
         <View className={styles.exportBtn} onClick={exportCsv}>导出 CSV</View>
         <Picker mode="selector" range={types} value={typeIndex} onChange={e => {

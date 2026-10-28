@@ -11,6 +11,7 @@ import type { Product, ProductForm } from '@/types';
 import SwipeRow from '@/components/SwipeRow';
 import styles from './index.module.scss';
 import { useRemoteData } from '@/hooks/useRemoteData';
+import BusinessHeader from '@/components/BusinessHeader';
 
 const units = ['件', '箱', '个', '千克'];
 const emptyForm = {
@@ -220,6 +221,7 @@ const ProductsPage: React.FC = () => {
 
   return (
     <ScrollView scrollY className={styles.container} onRefresherRefresh={load} refresherEnabled refresherTriggered={false}>
+      <BusinessHeader title='商品资料' />
       <View className={styles.toolbar}><View className={styles.addBtn} onClick={handleAdd}>+ 新增</View></View>
 
       {loading ? (

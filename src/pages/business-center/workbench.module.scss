@@ -114,6 +114,27 @@
 .page .photoRow { display: block; width: 100%; text-align: left; background: transparent; border: 0; border-bottom: 1PX solid #e2e8f0; border-radius: 0; color: #172033; }
 .overlay { position: fixed; z-index: 100; inset: 0; overflow-y: auto; background: #0008; display: flex; align-items: flex-start; justify-content: center; padding: 18PX; }
 .dialog { width: 100%; max-width: 420PX; max-height: calc(100vh - 36PX); max-height: calc(100dvh - 36PX); overflow-y: auto; margin: auto 0; background: #fff; border: 1PX solid #d1dbe8; color: #172033; border-radius: 10PX; padding: 22PX; display: flex; flex-direction: column; gap: 12PX; box-shadow: 0 12PX 36PX #0f172a22; }
+.businessTabs { display: flex; gap: 4PX; padding: 4PX; background: #e9eef6; border-radius: 8PX; margin: 0 0 18PX; }
+.page .businessTab, .page .businessActive { flex: 1; min-height: 44PX; padding: 10PX; border: 0; border-radius: 6PX; background: transparent; color: #718198; font-size: 14PX; font-weight: 600; }
+.page .businessActive { background: #fff; color: #2469ee; }
+.businessFlow { padding: 0 0 20PX; border-bottom: 1PX solid #e9eef5; margin-bottom: 12PX; }
+.flowSteps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4PX; margin: 18PX 0; }
+.page .flowStep { display: flex; flex-direction: column; align-items: center; gap: 8PX; padding: 6PX 0; min-height: 72PX; border: 0; background: transparent; color: #718198; font-size: 12PX; }
+.flowNumber { display: grid; place-items: center; width: 30PX; height: 30PX; border-radius: 8PX; background: #edf3ff; color: #2469ee; font-size: 13PX; font-weight: 600; }
+.flowActions { display: flex; flex-wrap: wrap; gap: 10PX; }
+.flowActions > * { flex: 1 1 110PX; min-height: 46PX; }
+.nextOrder { padding: 16PX; margin: 0 0 10PX; border: 1PX solid #e9eef5; border-radius: 8PX; background: #fff; }
+.orderHeading, .orderNext { display: flex; align-items: center; justify-content: space-between; gap: 10PX; }
+.orderHeading strong { min-width: 0; overflow-wrap: anywhere; font-size: 15PX; font-weight: 600; }
+.orderBadge { padding: 3PX 7PX; border-radius: 4PX; background: #edf8f3; color: #338369; font-size: 11PX; flex-shrink: 0; }
+.orderSpec { display: block; margin: 12PX 0; color: #64748b; font-size: 13PX; overflow-wrap: anywhere; }
+.orderNext { border-top: 1PX solid #edf1f6; padding-top: 10PX; color: #8290a4; font-size: 11PX; }
+.orderNext > :first-child { min-width: 0; overflow-wrap: anywhere; }
+.page .orderNext .button { flex-shrink: 0; font-size: 12PX; padding: 8PX 12PX; }
+.page[data-panel='home'] .surface { border-radius: 8PX; }
+.page[data-panel='home'] .homeHeading { margin-top: 22PX; }
+.page[data-panel='home'] .tasks { border-radius: 8PX; }
+.page[data-panel='home'] .recentHeading { margin-top: 22PX; }
 @media (max-width: 1023PX) {
   .page { padding-bottom: calc(132PX + env(safe-area-inset-bottom)); }
 }

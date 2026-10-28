@@ -923,6 +923,7 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
   return <View className={styles.page}>
     <nav className={styles.printModes} aria-label='打印类型'>
       <button type='button' aria-pressed='false' onClick={() => void Taro.switchTab({ url: '/pages/print-center/index' })}>送货单</button>
+      <button type='button' aria-pressed='false' onClick={() => void Taro.navigateTo({ url: '/pages/business-center/index?section=finance&view=customer' })}>对账单</button>
       <button type='button' aria-pressed='true'>标签打印</button>
     </nav>
     <View className={styles.topBar}>

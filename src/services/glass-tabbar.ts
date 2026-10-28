@@ -12,7 +12,7 @@ const titles = ['总台', 'AI助手', '库存', '打印', '我的'];
 const MAX_TAB = titles.length - 1;
 // 桌面侧边栏的“业务中心”快捷入口（仅 ≥1024px 显示，手机端 CSS 隐藏）
 const bizNav = [
-  { title: '纸板库存', path: '/pages/board-stock/index' },
+  { title: '库存管理', path: '/pages/inventory/index' },
   { title: '客户管理', path: '/pages/customers/index' },
   { title: '订单出库', path: '/pages/orders/index' },
   { title: '账单中心', path: '/pages/business-center/index?section=finance&view=ledger' },

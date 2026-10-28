@@ -90,6 +90,8 @@ jobs:
         env:
           PHASE_ONE_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
         run: node tests/phase-one-mobile-browser.cjs
+      - name: Audit all web business entry points
+        run: node tests/web-entry-audit-browser.cjs
       - name: Validate ledger photo workflows
         env:
           LEDGER_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}

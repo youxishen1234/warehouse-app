@@ -190,11 +190,11 @@ async function main() {
     await choose('货物 1 客户常用规格', /客户自产纸箱 · 30×20×15 cm · 牛皮纸 · 个 ·/);
     await expect(input('货物 1 入库单价')).toHaveValue('3');
     const first = await saveReceipt('CUSTOMER-INBOUND-300', 3);
-    assert.equal(db.getCustomer(customer.id).debt, 300);
+    assert.equal(db.getCustomer(customer.id).debt, 0);
     db.updateCustomer(customer.id, { specs: [{ ...spec, price: 2 }] });
     await openCarton();
     const second = await saveReceipt('CUSTOMER-INBOUND-200', 2);
-    assert.equal(db.getCustomer(customer.id).debt, 500);
+    assert.equal(db.getCustomer(customer.id).debt, 0);
     assert.equal(db.getDeliveryNote(first.id).lines[0].unit_price, 3, 'saved prices are immutable snapshots');
     assert.equal(db.getProduct(carton.id).price, 9, 'customer price must not overwrite stock base price');
     assert.equal(first.lines[0].product_id, carton.id, '无歧义的历史同规格 SKU 应认领给客户，避免重复库存');
@@ -290,11 +290,11 @@ async function main() {
     const customerCard = page.getByTestId(`customer-bill-${customer.id}`);
     await expect(customerCard).toContainText('500.00');
     const partySummary = page.getByTestId('finance-party-summary');
-    await expect(partySummary).toContainText('500.00');
+    await expect(partySummary).toContainText('0.00');
     const financeSearch = page.getByTestId('finance-party-search').locator('input');
     await financeSearch.fill('45x30x25');
     await expect(customerCard).toBeVisible();
-    await expect(partySummary).toContainText('500.00');
+    await expect(partySummary).toContainText('0.00');
     await financeSearch.fill('');
     await page.getByTestId(`customer-bill-details-${customer.id}`).click();
     await expect(page.getByTestId(`production-inbound-${first.id}`)).toContainText('300.00');
@@ -313,17 +313,19 @@ async function main() {
 
     // Exact receipt and settlement UI assertions are deliberately separate from
     // server checks: neither side may manufacture a second running balance.
+    const shipped = db.stockOut(first.lines[0].product_id, 200, 'E2E', '备货纸箱发货', customer.id, { unit_price: 2, specification: spec.specification });
+    assert.equal(shipped.transaction.receivable_amount, 400);
+    assert.equal(db.getCustomer(customer.id).debt, 400, 'charge the customer when cartons leave inventory');
+    await page.getByLabel('刷新服务器数据').click();
+    await expect(customerCard).toContainText('400.00');
     await page.getByTestId(`finance-settle-customer-${customer.id}`).click();
     await input('客户收款金额').fill('100');
     await click('确认收款');
-    await expect.poll(() => db.getCustomer(customer.id).debt).toBe(400);
-    await expect(customerCard).toContainText('400.00');
+    await expect.poll(() => db.getCustomer(customer.id).debt).toBe(300);
+    await expect(customerCard).toContainText('300.00');
     await expect(customerCard).toContainText('500.00');
-    const shipped = db.stockOut(first.lines[0].product_id, 200, 'E2E', '已入库计账纸箱发货', customer.id, { unit_price: 2, specification: spec.specification });
-    assert.equal(shipped.transaction.receivable_amount, 0);
-    assert.equal(db.getCustomer(customer.id).debt, 400, 'shipping the billed cartons must not charge again');
     await page.getByLabel('刷新服务器数据').click();
-    await expect(customerCard).toContainText('400.00');
+    await expect(customerCard).toContainText('300.00');
     if (!(await page.getByTestId(`production-inbound-${first.id}`).count())) await page.getByTestId(`customer-bill-details-${customer.id}`).click();
     await expect(page.getByTestId(`production-inbound-${first.id}`)).toContainText('300.00');
     await page.screenshot({ path: path.join(evidence, 'customer-bill-paid100.png'), fullPage: true });
@@ -351,7 +353,7 @@ async function main() {
     assert.doesNotThrow(() => db.validateBackup(db.backupData()));
     assert.deepEqual(errors, []);
     assert.equal(requests.filter(row => row.method === 'POST' && row.path === '/delivery-notes').length, 2);
-    successMessage = `PASS: customer specs from quotes and dimensions, account conversion, inbound 300+200=500, price snapshots, settlement 100 leaves400, no double billing, unified finance tabs, legacy route and responsive layouts. Evidence: ${evidence}`;
+    successMessage = `PASS: customer specs, inbound costs 300+200 without customer debt, outbound receivable400, settlement100 leaves300, snapshots, unified finance and responsive layouts. Evidence: ${evidence}`;
   } catch (error) {
     primaryError = error;
     await page.screenshot({ path: path.join(evidence, 'failure.png'), fullPage: true }).catch(() => {});

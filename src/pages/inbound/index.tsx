@@ -150,7 +150,7 @@ export default function InboundPage() {
         const confirmation = await Taro.showModal({ title: '实际入库超过计划', content: '超出计划的部分也计入本次库存，金额按实际入库数量计算。是否继续？' });
         if (!confirmation.confirm) return;
       }
-      const note = await addDeliveryNote({ date, work_order_no: workOrder.trim(),
+      const note = await addDeliveryNote({ date, work_order_no: workOrder.trim(), ...(cartonOnly ? { billing_mode: 'on_outbound' as const } : {}),
         ...(cartonOnly ? { source_type: 'production' as const, party_type: billingCustomer ? 'customer' as const : null, customer_id: billingCustomer?.id ?? null, customer_name: billingCustomer?.name || '', supplier_id: null, supplier_name: '', driver_phone: '', vehicle_no: '', freight: 0 }
           : { party_type: party ? 'supplier' as const : null, customer_id: null, customer_name: '', supplier_id: party?.id ?? null, supplier_name: party?.name || '', driver_phone: driverPhone.trim(), vehicle_no: vehicleNo.trim(), freight: numberValue(freight, '运费') }),
         remark: remark.trim(), lines: payload, operator: operator.trim() });
@@ -170,6 +170,7 @@ export default function InboundPage() {
   };
   return <StockEntryLayout title={cartonOnly ? '纸箱生产入库' : '采购入库'} subtitle='选择已有对象和常用货物，核对资料，填写本次数量。' onRefresh={() => { void load(true); }} busy={saving}>
     <View className={styles.page}>
+      {cartonOnly && <Text className={styles.hint}>入库金额记成本；关联客户用于区分货物，客户出库后再生成应收。</Text>}
       {loadError && <View role='alert' className={styles.error}>{loadError}<Button className={styles.textButton} disabled={saving} onClick={() => { void load(true); }}>重新读取</Button></View>}
       <View className={styles.field}><Text className={styles.fieldLabel}>{cartonOnly ? '客户（选填）' : '供货商（选填）'}</Text>
         <PartySearchPanel partyType={cartonOnly ? 'customer' : 'supplier'} parties={cartonOnly ? customers : parties} selectedId={cartonOnly ? billingCustomerId : partyId} disabled={saving || !ready} onSelect={item => { void changeParty(item?.id ?? null); }} />
@@ -192,7 +193,7 @@ export default function InboundPage() {
           {!product && line.goods && <View className={styles.field}><Text className={styles.hint}>请选择对应现有商品。未找到时可明确创建并关联，系统不会自动建商品。</Text><Button disabled={saving || line.create_product} className={styles.addLine} onClick={() => { void confirmCreate(line); }}>{line.create_product ? '已确认：入库时创建并关联商品' : '创建并关联商品'}</Button></View>}
           <View className={styles.grid}>
             <View><Text className={styles.fieldLabel}>{cartonOnly ? '本次完工数量' : '实际入库数量'}（{line.unit || '单位未记录'}）</Text><Input aria-label={`货物 ${index + 1} ${cartonOnly ? '本次完工数量' : '实际入库数量'}`} disabled={saving} className={styles.input} type='digit' value={line.delivered_qty} onInput={event => updateLine(line.key, { delivered_qty: sanitizeDecimalInput(event.detail.value, 6) })} /></View>
-            <View><Text className={styles.fieldLabel}>{cartonOnly ? '客户单价' : '采购单价'}（元）</Text><Input aria-label={`货物 ${index + 1} ${cartonOnly ? '入库单价' : '单价'}`} disabled={saving || (cartonOnly && Boolean(line.customer_spec_id) && billingCustomer?.specs?.find(item => item.id === line.customer_spec_id)?.price != null)} className={styles.input} type='digit' value={line.unit_price} onInput={event => updateLine(line.key, { unit_price: sanitizeDecimalInput(event.detail.value, 2) })} /></View>
+            <View><Text className={styles.fieldLabel}>{cartonOnly ? '入库单价' : '采购单价'}（元）</Text><Input aria-label={`货物 ${index + 1} ${cartonOnly ? '入库单价' : '单价'}`} disabled={saving} className={styles.input} type='digit' value={line.unit_price} onInput={event => updateLine(line.key, { unit_price: sanitizeDecimalInput(event.detail.value, 2) })} /></View>
           </View>
           <View className={styles.amountNote} data-testid={`inbound-line-amount-${index + 1}`}><Text>入库金额（自动）</Text><Text>{amountText(amount)}</Text></View>
           {!line.unit_price && <Text className={styles.hint}>价格未记录，单价与金额保持空白；确认入库前请填写本次单价。</Text>}

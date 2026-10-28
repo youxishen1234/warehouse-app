@@ -372,6 +372,7 @@ export function NativeLabelPrintPage({ onComputer }: { onComputer?: () => void }
   return <View className={styles.page}>
     <nav className={styles.printModes} aria-label='打印类型'>
       <button type='button' aria-pressed='false' disabled={busy} onClick={() => void returnToDelivery()}>送货单</button>
+      <button type='button' aria-pressed='false' disabled={busy} onClick={() => void Taro.navigateTo({ url: '/pages/business-center/index?section=finance&view=customer' })}>对账单</button>
       <button type='button' aria-pressed='true'>标签打印</button>
     </nav>
     <View className={styles.hero}><Text className={styles.eyebrow}>仓库 · 标签</Text><Text className={styles.title}>标签工作台</Text><Text className={styles.subtitle}>选记录、核对字段，再用精臣 K3 打印。标签不会改变库存。</Text></View>

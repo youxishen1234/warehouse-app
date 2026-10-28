@@ -4,7 +4,7 @@ import Taro, { useDidShow, useRouter } from '@tarojs/taro';
 import { getCustomer, getCustomers, getTransactions } from '@/services/api';
 import { deletePrintNote, getPrintNote, getPrintNotes, savePrintNote, shipPrintNote, temporaryPrintNote } from '@/services/print-notes';
 import type { PrintNoteInput, SavedPrintNote } from '@/services/print-notes';
-import type { Customer } from '@/types';
+import type { Customer, Transaction } from '@/types';
 import { documentFromTransactions, moneyUpper, transactionPrintKey } from '@/utils/dot-matrix-print';
 import { previewAmount } from '@/utils/stock-math';
 import { useSharedRefresh } from '@/services/shared-refresh';
@@ -88,6 +88,11 @@ export default function PrintCenterPage() {
   const [customerRetry, setCustomerRetry] = useState(0);
   const [chosenCustomer, setChosenCustomer] = useState<Customer>();
   const [query, setQuery] = useState('');
+  const [outboundOpen, setOutboundOpen] = useState(false);
+  const [outbounds, setOutbounds] = useState<Transaction[]>([]);
+  const [outboundLoading, setOutboundLoading] = useState(false);
+  const [outboundError, setOutboundError] = useState('');
+  const [outboundQuery, setOutboundQuery] = useState('');
   const [history, setHistory] = useState<SavedPrintNote[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState('');
@@ -143,6 +148,18 @@ export default function PrintCenterPage() {
   };
   const startTemporary = () => guard(() => createNew(true));
   const openHistory = () => guard(() => setTab('history'));
+  const openOutbounds = () => guard(() => {
+    setOutboundOpen(true); setOutboundLoading(true); setOutboundError(''); setOutboundQuery('');
+    getTransactions({ type: 'out' }).then(rows => {
+      const seen = new Set<string>();
+      setOutbounds(rows.filter(row => {
+        const key = transactionPrintKey(row);
+        if (row.voided_at || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }));
+    }).catch(issue => setOutboundError(messageOf(issue))).finally(() => setOutboundLoading(false));
+  });
 
   useEffect(() => {
     if (error) errorBox.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -382,6 +399,9 @@ export default function PrintCenterPage() {
   const amount = draftTotal(draft);
   const printModes = <nav className={styles.tabs} aria-label='打印类型'>
     <button type='button' aria-pressed='true'>送货单</button>
+    <button type='button' aria-pressed='false' disabled={busy || shipBusy} onClick={() => guard(() => {
+      void Taro.navigateTo({ url: '/pages/business-center/index?section=finance&view=customer' });
+    })}>对账单</button>
     <button type='button' aria-pressed='false' disabled={busy || shipBusy} onClick={() => {
       if (busyRef.current || shipBusy) return;
       void Taro.navigateTo({ url: '/pages/label-print/index?from=print-center' }).catch(issue => setError(messageOf(issue)));
@@ -389,7 +409,7 @@ export default function PrintCenterPage() {
   </nav>;
   const input = (key: keyof Omit<NoteDraft, 'items' | 'customer_id' | 'paper'>, label: string, limit: number, type = 'text') => <label className={styles.field}>{label}{type === 'date' ? <span className={styles.dateControl}><span aria-hidden='true'>{draft[key].replace(/-/g, '/')}</span><input aria-label={label} type='date' value={draft[key]} onChange={event => change({ [key]: event.target.value })} /></span> : <input aria-label={label} type={type} value={draft[key]} maxLength={limit} onChange={event => change({ [key]: event.target.value })} />}</label>;
 
-  return <main className={styles.page} data-print-view={tab}>
+  return <main className={styles.page} data-ui-version='web-workbench-v2' data-print-view={tab}>
     <div className={styles.shell}>
       <PrintNotifications onOpenNote={id => openNote(id, true)} />
       {tab !== 'home' && <><header className={styles.toolbar}><button type='button' className={styles.back} aria-label='返回' onClick={() => guard(() => setTab('home'))}>‹</button><div><h1>打印中心</h1><p>送货单</p></div><button type='button' className={styles.newButton} onClick={startNew} disabled={busy && !sourceActive}>＋ 新建</button></header>
@@ -409,12 +429,13 @@ export default function PrintCenterPage() {
           <div className={styles.paperLines} aria-hidden='true'><i /><i /><i /></div>
         </section>
         <nav className={styles.quickActions} aria-label='打印快捷操作'>
+          <button type='button' className={styles.autoAction} aria-label='从出库单自动开单' onClick={openOutbounds}><PrintIcon kind='printer' /><span><strong>从出库单自动开单</strong><small>选择已保存的出库单</small></span></button>
           <button type='button' className={styles.primaryAction} aria-label='新建送货单' onClick={startNew}><PrintIcon kind='plus' /><span><strong>新建送货单</strong><small>填写客户、货物并打印</small></span></button>
           <button type='button' className={styles.secondaryAction} aria-label='查找单据' onClick={openHistory}><PrintIcon kind='search' /><span><strong>查找单据</strong><small>按客户、单号或规格</small></span></button>
-          <button type='button' className={styles.temporaryAction} aria-label='临时打印' onClick={startTemporary}><PrintIcon kind='printer' /><span><strong>临时打印</strong><small>货品未入库也能先出单，不扣库存</small></span></button>
+          <button type='button' className={styles.temporaryAction} aria-label='临时打印' onClick={startTemporary}><PrintIcon kind='printer' /><span><strong>手动填写送货单</strong><small>临时打印 · 不扣库存</small></span></button>
         </nav>
         <section className={styles.recent}>
-          <div className={styles.recentHeading}><div><h2>最近单据</h2><p>{totalRecords ? `共 ${totalRecords} 张` : '送货单记录'}</p></div><button type='button' onClick={openHistory}>全部单据 <PrintIcon kind='arrow' /></button></div>
+          <div className={styles.recentHeading}><div><h2>我的单据</h2><p>{totalRecords ? `共 ${totalRecords} 张` : '送货单记录'}</p></div><button type='button' onClick={openHistory}>全部单据 <PrintIcon kind='arrow' /></button></div>
           {historyError && <div role='alert' className={styles.error}>{historyError}<button type='button' onClick={() => void loadHistory()}>重试</button></div>}
           {!history.length && !historyLoading && !historyError && <div className={styles.recentEmpty}><span>暂无送货单</span><button type='button' onClick={startNew}>新建第一张</button></div>}
           {history.slice(0, 5).map(note => <div className={native ? styles.recentEntry : undefined} key={note.id}>
@@ -494,6 +515,7 @@ export default function PrintCenterPage() {
       </>}
     </div>
     {specificationOpen && <SpecificationPicker customerId={draft.customer_id} customerName={draft.customer_name} items={draft.items} onAdd={addSpecifications} onClose={() => setSpecificationOpen(false)} />}
+    {outboundOpen && <div className={styles.backdrop} onClick={() => setOutboundOpen(false)}><section role='dialog' aria-modal='true' aria-label='选择出库单' className={styles.dialog} onClick={event => event.stopPropagation()}><div className={styles.sectionHeading}><h2>选择出库单</h2><button type='button' className={styles.textButton} onClick={() => setOutboundOpen(false)}>关闭</button></div><input type='search' aria-label='搜索出库单' placeholder='客户、单号或规格' value={outboundQuery} onChange={event => setOutboundQuery(event.target.value)} />{outboundLoading ? <p role='status'>正在读取出库单…</p> : outboundError ? <div role='alert' className={styles.error}>{outboundError}<button type='button' onClick={openOutbounds}>重试</button></div> : <div className={styles.customerResults}>{outbounds.filter(row => [row.customer_name, row.outbound_no, row.product_name, row.specification].join(' ').toLowerCase().includes(outboundQuery.trim().toLowerCase())).map(row => <button type='button' className={styles.customer} key={row.id} onClick={() => { setOutboundOpen(false); setSourceId(String(row.id)); setSourceRetry(value => value + 1); }}><strong>{row.customer_name || '未关联客户'} · {row.outbound_no || `出库 #${row.id}`}</strong><span>{row.product_name} · {row.specification}</span><small>{new Date(row.created_at).toLocaleString('zh-CN', { hour12: false })}</small></button>)}{!outbounds.length && <p className={styles.muted}>暂无出库单</p>}</div>}</section></div>}
     {customerOpen && <div className={styles.backdrop} onClick={() => setCustomerOpen(false)}><section role='dialog' aria-modal='true' aria-label='搜索客户' className={styles.dialog} onClick={event => event.stopPropagation()}><div className={styles.sectionHeading}><h2>选择客户</h2><button type='button' className={styles.textButton} onClick={() => setCustomerOpen(false)}>关闭</button></div><input autoFocus type='search' aria-label='搜索客户名称或电话' placeholder='客户名称 / 联系人 / 电话' value={customerQuery} onChange={event => setCustomerQuery(event.target.value)} /><div className={styles.customerResults}>{customerLoading ? <p className={styles.muted}>正在查找…</p> : customerError ? <div className={styles.error} role='alert'>{customerError}<button type='button' onClick={() => setCustomerRetry(value => value + 1)}>重试</button></div> : customers.length ? customers.map(customer => <button type='button' className={styles.customer} key={customer.id} onClick={() => chooseCustomer(customer)}><strong>{customer.name}</strong><span>{[customer.contact, customer.phone].filter(Boolean).join(' · ') || '暂无联系人'}</span>{customer.address && <small>{customer.address}</small>}</button>) : <p className={styles.muted}>没有找到客户，可关闭后直接填写收货单位</p>}</div></section></div>}
     {confirmDiscard && <div className={styles.backdrop}><section role='dialog' aria-modal='true' aria-label='保留未保存内容' className={styles.dialog}><h2>当前内容还没有保存</h2><p>离开后，本次修改将不会保留。</p><div className={styles.confirmActions}><button type='button' className={styles.secondary} onClick={() => { setConfirmDiscard(false); pendingNavigation.current = null; }}>继续编辑</button><button type='button' className={styles.primary} onClick={() => { const action = pendingNavigation.current; pendingNavigation.current = null; setConfirmDiscard(false); setDirty(false); setDraft(saved ? noteDraft(saved) : newNote()); setNotice(''); action?.(); }}>放弃并继续</button></div></section></div>}
     {preview && <PrintPreview key={`${saved?.id || 'draft'}:${saved?.version || 0}:${previewIntent}`} note={preview} saved={saved} postedSource={sourceActive && sourceStatus === 'ready'} reprintIntent={previewIntent === 'reprint'} autoSend={previewIntent === 'auto'} onClose={closePreview} />}

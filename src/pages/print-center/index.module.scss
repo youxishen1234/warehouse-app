@@ -15,6 +15,16 @@
 .page :focus-visible, .backdrop :focus-visible { outline: 2PX solid #2a8194; outline-offset: 3PX; }
 .toolbar { display: flex; align-items: center; gap: 12PX; margin-bottom: 22PX; }
 .workspace { display: flex; flex-direction: column; gap: 16PX; }
+.page .quickActions .autoAction { grid-column: 1 / -1; background: #2469ee; color: #fff; min-height: 56PX; border-radius: 8PX; }
+.page .printBrief { background: #edf3ff; color: #162741; border-radius: 8PX; min-height: 128PX; box-shadow: none; }
+.page .briefTop, .page .briefBody span { color: #718198; }
+.page .briefTop strong, .page .briefBody strong { color: #162741; }
+.page .paperLines { display: none; }
+.page .primaryAction { background: #2469ee; color: #fff; }
+.page .tabs { border-radius: 8PX; }
+.page .recent { border: 0; border-radius: 0; padding: 16PX 0; background: transparent; }
+.page .card { border-radius: 0; border: 0; border-bottom: 1PX solid #e9eef5; padding: 20PX 16PX; }
+.page .quickActions button { border-radius: 8PX; }
 .workspaceHeader { display: flex; align-items: flex-end; justify-content: space-between; gap: 14PX; min-width: 0; margin: 2PX 2PX 2PX; }
 .workspaceHeader > div { min-width: 0; }
 .eyebrow { display: block; margin-bottom: 4PX; color: #778895; font-size: 11PX; font-weight: 600; letter-spacing: 0; }
@@ -33,7 +43,7 @@
 .page .quickActions button > span { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; gap: 3PX; text-align: left; }.quickActions strong, .quickActions small { display: block; max-width: 100%; overflow-wrap: anywhere; }.quickActions strong { font-size: 14PX; line-height: 1.35; }.quickActions small { font-size: 11PX; line-height: 1.35; opacity: .72; }
 .page[data-print-view='home'] .shell { padding-bottom: calc(max(var(--sg-native-bottom-space, 84PX), 84PX) + env(safe-area-inset-bottom, 0PX) + 30PX); }
 .page .primaryAction { background: #276979; color: #fff; box-shadow: 0 8PX 20PX #2769791a; }.page .secondaryAction { background: #fff; color: #315663; border: 1PX solid #e0e7eb; }
-.page .quickActions .temporaryAction { grid-column: 1 / -1; min-height: 56PX; background: #fff8ec; color: #7a5328; border: 1PX dashed #e5c895; }
+.page .quickActions .temporaryAction { grid-column: 1 / -1; min-height: 56PX; background: #edf3ff; color: #2469ee; border: 1PX solid #dce7fa; }
 .page .quickActions .temporaryAction:hover { background: #fff3df; }
 .recent { padding: 18PX 16PX 8PX; border: 1PX solid #e4e9ed; border-radius: 16PX; background: #fff; }
 .recentHeading { display: flex; align-items: center; justify-content: space-between; gap: 12PX; margin: 0 2PX 8PX; }.recentHeading h2 { font-size: 16PX; }.recentHeading p { margin: 2PX 0 0; color: #8999a3; font-size: 11PX; }

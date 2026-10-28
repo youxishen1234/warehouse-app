@@ -37,7 +37,7 @@ async function main() {
       await current(route);
     }
     assert.equal(await page.locator('.sg-glass-items').evaluate(el => getComputedStyle(el).maskImage), 'none');
-    for (const name of ['board-stock', 'customers', 'orders', 'print-center']) {
+    for (const name of ['inventory', 'customers', 'orders', 'print-center']) {
       await page.locator(`button[data-nav="/pages/${name}/index"]`).click();
       if (name === 'customers') {
         await current('customers');

@@ -188,6 +188,7 @@ async function main() {
     await page.locator('.sg-glass-items [data-tab="2"]').click();
     await page.waitForURL(/pages\/inventory\/index/);
     const inventory = page.getByTestId('simple-workbench').filter({ visible: true }).last();
+    await expect(inventory).toHaveAttribute('data-panel', 'stock');
     await expect(inventory.getByText('查看库存', { exact: true })).toBeVisible();
     await button(inventory, '纸箱').click();
     await page.setViewportSize({ width: 320, height: 320 });

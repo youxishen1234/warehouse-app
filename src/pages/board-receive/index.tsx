@@ -14,11 +14,12 @@ import { formatSpecificationInput } from '../print-center/specification-input';
 import { parseDimensionSpecification, preserveDimensionGrouping, shouldPreserveDimensionGrouping, specificationFromDimensions } from './specification-input';
 import './simple-entry.scss';
 const initial = { supplier: '', customerName: '', material: '', printPlate: '', printColor: '', date: today(), boardLength: '', boardWidth: '', cartonLength: '', cartonWidth: '', cartonHeight: '', fluteType: 'B', layers: '3', faceGsm: '', linerGsm: '', flutingGsm: '', orderedQty: '', receivedQty: '', billedArea: '', unitPrice: '', freight: '', warningQty: '0', location: '', deliveryNo: '', remark: '' };
-type BoardDraft = Record<string, string | number | null>;
+type BoardDraft = Record<string, string | number | boolean | null>;
 export default function BoardReceive() {
   const [form, setForm] = useState(() => ({ ...initial, date: today() })); const [selected, setSelected] = useState<BoardBatch | null>(null); const [templates, setTemplates] = useState<BoardBatch[]>([]); const [error, setError] = useState(''); const [busy, setBusy] = useState(false); const saving = useRef(false);
   const [boardSpecification, setBoardSpecification] = useState('');
   const [cartonSpecification, setCartonSpecification] = useState('');
+  const [manualAmount, setManualAmount] = useState('');
   const [specsOpen, setSpecsOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [customField, setCustomField] = useState('');
@@ -50,6 +51,7 @@ export default function BoardReceive() {
     if (saving.current) return;
     draftChanged.current = true;
     setSelected(null);
+    setManualAmount('');
     const text = (value: unknown) => value == null ? '' : String(value);
     setBoardSpecification(spec.boardLength && spec.boardWidth ? specificationFromDimensions([spec.boardLength, spec.boardWidth]) : spec.specification || '');
     setCartonSpecification(spec.cartonLength && spec.cartonWidth && spec.cartonHeight ? specificationFromDimensions([spec.cartonLength, spec.cartonWidth, spec.cartonHeight]) : '');
@@ -66,11 +68,12 @@ export default function BoardReceive() {
     if (saving.current) return;
     draftChanged.current = true;
     setSelected(null); setSpecsOpen(false);
+    setManualAmount('');
     const boardSize = spec.board ? specificationFromDimensions(spec.board) : '';
     const cartonSize = spec.carton ? specificationFromDimensions(spec.carton) : '';
     setBoardSpecification(boardSize);
     setCartonSpecification(cartonSize);
-    setForm(f => ({ ...f, ...(spec.board ? { boardLength: String(spec.board[0]), boardWidth: String(spec.board[1]) } : { boardLength: '', boardWidth: '' }), ...(spec.carton ? { cartonLength: String(spec.carton[0]), cartonWidth: String(spec.carton[1]), cartonHeight: String(spec.carton[2]) } : { cartonLength: '', cartonWidth: '', cartonHeight: '' }), ...(spec.fluteType ? { fluteType: spec.fluteType } : {}), ...(spec.layers ? { layers: String(spec.layers) } : {}) }));
+    setForm(f => ({ ...f, customerName: spec.customer_name || f.customerName, material: spec.material || f.material, ...(spec.board ? { boardLength: String(spec.board[0]), boardWidth: String(spec.board[1]) } : { boardLength: '', boardWidth: '' }), ...(spec.carton ? { cartonLength: String(spec.carton[0]), cartonWidth: String(spec.carton[1]), cartonHeight: String(spec.carton[2]) } : { cartonLength: '', cartonWidth: '', cartonHeight: '' }), ...(spec.fluteType ? { fluteType: spec.fluteType } : {}), ...(spec.layers ? { layers: String(spec.layers) } : {}) }));
   };
   const changeSpecification = (kind: 'board' | 'carton', value: string) => {
     if (saving.current) return;
@@ -95,7 +98,7 @@ export default function BoardReceive() {
     if (key === 'orderedQty') orderedQuantityEdited.current = true;
     setForm(f => ({ ...f, [key]: value, ...(key === 'receivedQty' && !orderedQuantityEdited.current ? { orderedQty: value } : {}) }));
   };
-  const fill = useCallback((b: BoardBatch) => { if (saving.current) return; draftChanged.current = true; orderedQuantityEdited.current = false; setSelected(b); setSpecsOpen(false); setError(''); setBoardSpecification(specificationFromDimensions([b.boardLength, b.boardWidth])); setCartonSpecification(specificationFromDimensions([b.cartonLength, b.cartonWidth, b.cartonHeight])); setForm(() => { const next = { ...initial, date: today() }; for (const k of ['customerName', 'material', 'boardLength', 'boardWidth', 'cartonLength', 'cartonWidth', 'cartonHeight', 'fluteType', 'layers', 'faceGsm', 'linerGsm', 'flutingGsm', 'unitPrice', 'warningQty', 'location']) next[k] = String(b[k] ?? ''); return next; }); }, []);
+  const fill = useCallback((b: BoardBatch) => { if (saving.current) return; draftChanged.current = true; orderedQuantityEdited.current = false; setSelected(b); setSpecsOpen(false); setManualAmount(''); setError(''); setBoardSpecification(b.boardDimensionsPending ? '' : specificationFromDimensions([b.boardLength, b.boardWidth])); setCartonSpecification(specificationFromDimensions([b.cartonLength, b.cartonWidth, b.cartonHeight])); setForm(() => { const next = { ...initial, date: today() }; for (const k of ['customerName', 'material', 'boardLength', 'boardWidth', 'cartonLength', 'cartonWidth', 'cartonHeight', 'fluteType', 'layers', 'faceGsm', 'linerGsm', 'flutingGsm', 'unitPrice', 'warningQty', 'location']) next[k] = String(b[k] ?? ''); return next; }); }, []);
   const loadBoards = useCallback(async () => {
     const params = routeParams.current;
     if (!params) return;
@@ -112,7 +115,7 @@ export default function BoardReceive() {
       if (!initialBatchApplied.current && !saving.current) {
         initialBatchApplied.current = true;
         if (!draftChanged.current) {
-          if (editing) { setSupplierId(editing.supplier_id ?? null); orderedQuantityEdited.current = true; setBoardSpecification(specificationFromDimensions([editing.boardLength, editing.boardWidth])); setCartonSpecification(specificationFromDimensions([editing.cartonLength, editing.cartonWidth, editing.cartonHeight])); setForm(Object.fromEntries(Object.keys(initial).map(k => [k, String(editing[k] ?? '')])) as typeof initial); }
+          if (editing) { setSupplierId(editing.supplier_id ?? null); orderedQuantityEdited.current = true; setBoardSpecification(editing.boardDimensionsPending ? '' : specificationFromDimensions([editing.boardLength, editing.boardWidth])); setManualAmount(editing.amountMode === 'manual' ? String(editing.amount) : ''); setCartonSpecification(specificationFromDimensions([editing.cartonLength, editing.cartonWidth, editing.cartonHeight])); setForm({ ...Object.fromEntries(Object.keys(initial).map(k => [k, String(editing[k] ?? '')])), ...(editing.amountMode === 'pending' ? { billedArea: '', unitPrice: '' } : {}) } as typeof initial); }
           else if (params.from) { const batch = rows.find(b => b.id === params.from); if (batch) fill(batch); }
         }
         if (params.id) setEditReady(true);
@@ -128,16 +131,20 @@ export default function BoardReceive() {
   const selectField = (key: keyof typeof initial, label: string, choices: string[], custom = false) => <View className='stock-entry-field'><Text className='stock-entry-label'>{label}</Text><Picker disabled={fieldsDisabled} mode='selector' range={['请选择' + label, ...choices, ...(custom ? ['新增 / 手动填写'] : [])]} onChange={e => { const value = choices[Number(e.detail.value) - 1]; if (value) { change(key, value); setCustomField(''); } else if (custom && Number(e.detail.value) === choices.length + 1) { setCustomField(key); change(key, ''); } }}><View className='board-input-wrap'>{form[key] || '请选择' + label} ▾</View></Picker>{customField === key && <View className='board-input-wrap board-entry-custom'><Input disabled={fieldsDisabled} aria-label={key === 'location' ? '库位名称' : '自定义楞型'} value={form[key]} onInput={e => change(key, e.detail.value)} /></View>}</View>;
   const matches = templates.filter(b => [boardSpec(b), b.supplier, b.fluteType, b.layers + '层'].join(' ').toLowerCase().replace(/[ ×x*]/g, '').includes(templateQuery.toLowerCase().replace(/[ ×x*]/g, '')));
   const gift = Math.max(0, Number(form.receivedQty) - Number(form.orderedQty)); const shortage = Math.max(0, Number(form.orderedQty) - Number(form.receivedQty));
-  const amount = form.billedArea.trim() && form.unitPrice.trim() ? Number(form.billedArea) * Number(form.unitPrice) : null;
+  const calculatedArea = Number(form.boardLength) > 0 && Number(form.boardWidth) > 0 && Number(form.receivedQty) > 0 ? Math.round(Number(form.boardLength) * Number(form.boardWidth) / 10000 * Number(form.receivedQty) * 10000) / 10000 : null;
+  const billedArea = form.billedArea.trim() || (calculatedArea == null ? '' : String(calculatedArea));
+  const amount = manualAmount.trim() ? Number(manualAmount) : billedArea && form.unitPrice.trim() ? Number(billedArea) * Number(form.unitPrice) : null;
+  const pendingTotal = pending.reduce((sum, row) => sum + (row.data.amountMode === 'pending' ? 0 : row.data.amountMode === 'manual' ? Number(row.data.manualAmount) : Math.round(Number(row.data.billedArea) * Number(row.data.unitPrice) * 100) / 100), 0);
   const currentDraft = (): BoardDraft => {
     const boardDimensions = parseDimensionSpecification(boardSpecification, 2);
-    if (!boardDimensions) throw new Error('纸板规格尺寸请填写完整的长×宽，且均为正数');
+    if (boardSpecification.trim() && !boardDimensions) throw new Error('纸板规格尺寸请填写完整的长×宽，或留空稍后补充');
     const cartonDimensions = parseDimensionSpecification(cartonSpecification, 3);
     if (!cartonDimensions) throw new Error('成箱规格尺寸请填写完整的长×宽×高，且均为正数');
     if (supplierId != null && !supplier) throw new Error('所选供货商已停用，请重新选择');
-    const required: [keyof typeof initial, string][] = [['orderedQty', '订购数'], ['receivedQty', '实收数'], ['billedArea', '计费平米'], ['unitPrice', '每平米单价']];
+    const required: [keyof typeof initial, string][] = [['orderedQty', '订购数'], ['receivedQty', '实收数']];
     for (const [key, label] of required) if (!form[key].trim()) throw new Error('请填写' + label);
-    return { ...form, supplier_id: supplierId, supplier: supplier?.name || '', boardLength: boardDimensions[0], boardWidth: boardDimensions[1], cartonLength: cartonDimensions[0], cartonWidth: cartonDimensions[1], cartonHeight: cartonDimensions[2], freight: form.freight || '0', faceGsm: form.faceGsm || '0', linerGsm: form.linerGsm || '0', flutingGsm: form.flutingGsm || '0' };
+    if (manualAmount.trim() && (!Number.isFinite(Number(manualAmount)) || Number(manualAmount) < 0)) throw new Error('请核对本批金额');
+    return { ...form, supplier_id: supplierId, supplier: supplier?.name || '', boardLength: boardDimensions?.[0] || 0, boardWidth: boardDimensions?.[1] || 0, ...(!boardDimensions ? { boardDimensionsPending: true } : {}), cartonLength: cartonDimensions[0], cartonWidth: cartonDimensions[1], cartonHeight: cartonDimensions[2], billedArea: billedArea || '0', unitPrice: form.unitPrice || '0', amountMode: manualAmount.trim() ? 'manual' : amount == null ? 'pending' : 'area', manualAmount: manualAmount.trim() || '0', freight: form.freight || '0', faceGsm: form.faceGsm || '0', linerGsm: form.linerGsm || '0', flutingGsm: form.flutingGsm || '0' };
   };
   const addNext = () => {
     if (saving.current) return;
@@ -145,7 +152,7 @@ export default function BoardReceive() {
       const data = currentDraft();
       setPending(rows => [...rows, {key: `${Date.now()}-${Math.random()}`, data}]);
       setForm({...initial, supplier: supplier?.name || '', date: form.date});
-      setBoardSpecification(''); setCartonSpecification(''); setSelected(null); orderedQuantityEdited.current = false; draftChanged.current = false; setError('');
+      setBoardSpecification(''); setCartonSpecification(''); setManualAmount(''); setSelected(null); orderedQuantityEdited.current = false; draftChanged.current = false; setError('');
     } catch (e) { setError(e.message); }
   };
   const changeSupplier = async (id: number | null) => {
@@ -153,7 +160,7 @@ export default function BoardReceive() {
     if (pending.length || draftChanged.current) {
       const confirmation = await Taro.showModal({ title: '改变本单关联对象', content: '更改供货商会改变本单全部纸板的关联对象，并清空已选规格和待入库明细。请确认。' });
       if (!confirmation.confirm) return;
-      setPending([]); setForm({...initial, date: form.date}); setBoardSpecification(''); setCartonSpecification('');
+      setPending([]); setForm({...initial, date: form.date}); setBoardSpecification(''); setCartonSpecification(''); setManualAmount('');
     }
     setSupplierId(id); draftChanged.current = false;
   };
@@ -195,10 +202,13 @@ export default function BoardReceive() {
         {field('customerName', '客户')}
         {field('material', '材质 / 配纸')}
         {specificationField('board', '纸板规格尺寸', boardSpecification)}
+        <Text className='stock-entry-note'>纸板长宽选填，未填可先入库；不按纸箱尺寸推算纸板面积。</Text>
         {specificationField('carton', '成箱规格尺寸', cartonSpecification)}
         {field('receivedQty', '实收数', true, '张')}
         <View className='stock-entry-grid'>{field('billedArea', '计费平米', true, 'm²')}{field('unitPrice', '每平米单价', true, '元')}</View>
-        <Text className='stock-entry-note'>计费平米按送货单填写，货款不按实收张数计算。</Text>
+        <Text className='stock-entry-note'>{calculatedArea == null ? '计费平米可按送货单填写，或直接填写本批金额。' : `按纸板长宽与实收数计算 ${calculatedArea} m²；填写计费平米时以送货单为准。`}</Text>
+        <View className='stock-entry-field'><Text className='stock-entry-label'>本批金额（选填，元）</Text><View className='board-input-wrap'><Input aria-label='本批金额' type='digit' value={manualAmount} disabled={fieldsDisabled} onInput={event => { draftChanged.current = true; setManualAmount(event.detail.value); }} /></View></View>
+        {amount == null && <Text className='stock-entry-note'>金额待补，先增加库存，补齐金额后再生成供货商应付。</Text>}
         <View className='stock-entry-field'><Text className='stock-entry-label'>业务日期</Text><Picker disabled={fieldsDisabled} mode='date' value={form.date} end={today()} onChange={e => change('date', e.detail.value)}><View className='board-input-wrap' aria-label='业务日期'>{form.date}</View></Picker></View>
         <View className='board-detail-row'><Text>本批货款</Text><strong>{amount == null ? '金额未记录' : Number.isFinite(amount) ? '¥ ' + amount.toFixed(2) : '金额超出范围'}</strong></View>
       </View>
@@ -218,7 +228,7 @@ export default function BoardReceive() {
       {error && <BoardError message={error} />}
       {pending.map((row, index) => <View className='stock-entry-section' key={row.key}><Text>待入库 {index + 1}：{row.data.boardLength} × {row.data.boardWidth} cm · {row.data.receivedQty} 张</Text><Button className='stock-entry-secondary' disabled={fieldsDisabled} onClick={() => setPending(rows => rows.filter(item => item.key !== row.key))}>移除</Button></View>)}
       {!editingId && <Button className='stock-entry-secondary' disabled={fieldsDisabled} onClick={addNext}>再添加一项</Button>}
-      {pending.length > 0 && <Text className='stock-entry-note'>本单已选 {pending.length} 项；货款合计 {Number.isFinite(amount) ? '¥ ' + (pending.reduce((sum, row) => sum + Math.round(Number(row.data.billedArea) * Number(row.data.unitPrice) * 100) / 100, 0) + (amount ?? 0)).toFixed(2) : amount == null ? '¥ ' + pending.reduce((sum, row) => sum + Math.round(Number(row.data.billedArea) * Number(row.data.unitPrice) * 100) / 100, 0).toFixed(2) : '金额超出范围'}；运费单独列示</Text>}
+      {pending.length > 0 && <Text className='stock-entry-note'>本单已选 {pending.length} 项；已知货款合计 {Number.isFinite(amount ?? 0) ? '¥ ' + (pendingTotal + (amount ?? 0)).toFixed(2) : '金额超出范围'}{pending.some(row => row.data.amountMode === 'pending') ? ' · 含金额待补明细' : ''}；运费单独列示</Text>}
       <Button className='stock-entry-primary' disabled={fieldsDisabled} onClick={save}>{busy ? '正在保存…' : editingId ? '保存修改' : '确认入库 · 生成批次标签'}</Button>
     </View>
   </StockEntryLayout>;

@@ -100,21 +100,21 @@ async function main() {
     const field = (index, name) => active().getByLabel('第' + index + '项' + name, { exact: true });
     const expectModes = async selected => {
       await expect(modes()).toBeVisible();
-      for (const name of ['送货单', '标签打印']) await expect(modes().getByRole('button', { name, exact: true })).toHaveAttribute('aria-pressed', String(name === selected));
+      for (const name of ['送货单', '对账单', '标签打印']) await expect(modes().getByRole('button', { name, exact: true })).toHaveAttribute('aria-pressed', String(name === selected));
       const geometry = await modes().evaluate(nav => {
         const bounds = nav.getBoundingClientRect(), style = getComputedStyle(nav);
-        const available = bounds.width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth) - parseFloat(style.columnGap || '0');
+        const available = bounds.width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth) - 2 * parseFloat(style.columnGap || '0');
         return { width: bounds.width, height: bounds.height, available, buttons: [...nav.querySelectorAll('button')].map(control => {
           const rect = control.getBoundingClientRect(), buttonStyle = getComputedStyle(control);
           return { name: control.textContent, width: rect.width, height: rect.height, fontSize: parseFloat(buttonStyle.fontSize), radius: parseFloat(buttonStyle.borderRadius), borderWidth: parseFloat(buttonStyle.borderTopWidth), background: buttonStyle.backgroundColor, selected: control.getAttribute('aria-pressed') === 'true' };
         }) };
       });
-      assert.equal(geometry.buttons.length, 2, selected + ': exactly two mode controls');
+      assert.equal(geometry.buttons.length, 3, selected + ': three print types');
       assert.ok(geometry.available > 0, selected + ': navigation width is measurable');
       for (const control of geometry.buttons) {
         const detail = selected + ': styled, touch-sized, equal-width mode controls: ' + JSON.stringify(geometry);
         assert.ok(control.height >= 44, detail);
-        assert.ok(Math.abs(control.width - geometry.available / 2) <= 1.5, detail);
+        assert.ok(Math.abs(control.width - geometry.available / 3) <= 1.5, detail);
         assert.ok(Math.abs(control.fontSize - 14) <= .1, detail);
         assert.ok(control.radius >= 8 && control.borderWidth === 0, detail);
         assert.equal(control.background, control.selected ? 'rgb(255, 255, 255)' : 'rgba(0, 0, 0, 0)', detail);
@@ -183,7 +183,7 @@ async function main() {
       await expectModes('标签打印');
       await expect(active().getByText('电脑 USB 打印 K3', { exact: true })).toBeVisible();
       await expect(active().getByText('70 × 100 mm · 手机不连接蓝牙', { exact: true })).toBeVisible();
-      await expect(active().locator('nav[aria-label="打印类型"]').locator('button')).toHaveCount(2);
+      await expect(active().locator('nav[aria-label="打印类型"]').locator('button')).toHaveCount(3);
       await noOverflow('label mode');
       await modes().getByRole('button', { name: '送货单', exact: true }).click();
       await page.waitForURL(/pages\/print-center\/index/);
@@ -239,7 +239,7 @@ async function main() {
       assert.deepEqual(await active().locator('main input').evaluateAll(inputs => inputs.map(input => [input.getAttribute('aria-label'), input.value])), draftBefore, 'complete draft retained after repeated round trip at width ' + width);
     }
     checks.push('edit and label switches fit 320, 375, 390 and 430 pixel viewports');
-    checks.push('delivery and label modes have 44px touch targets, equal halves and 14px styled text');
+    checks.push('all three print modes have 44px touch targets, equal widths and 14px styled text');
     checks.push('repeated returns remain visible beyond delayed Taro shade timer');
     await page.setViewportSize({ width: 390, height: 844 });
 

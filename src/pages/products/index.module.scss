@@ -4,7 +4,7 @@
   padding: 24rpx 24rpx calc(240rpx + env(safe-area-inset-bottom));
   min-height: 100vh;
   box-sizing: border-box;
-  background: linear-gradient(180deg, #eef4ff 0%, #f7f8ff 36%, #ffffff 100%);
+  background: #f4f7fc;
 }
 
 .searchBox {
@@ -39,9 +39,9 @@
 }
 
 .listItem {
-  background: rgba(255, 255, 255, 0.82);
-  border: 1rpx solid rgba(255, 255, 255, 0.84);
-  border-radius: $radius-lg;
+  background: #fff;
+  border: 1PX solid #e9eef5;
+  border-radius: 8PX;
   padding: 24rpx 22rpx;
   box-shadow: 0 16rpx 36rpx rgba(47, 107, 255, 0.08);
   backdrop-filter: blur(18px) saturate(180%);

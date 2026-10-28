@@ -25,6 +25,8 @@ import {
 } from './model';
 import type { PartyPeriod } from './model';
 import styles from './index.module.scss';
+import Statement from './statement';
+import type { StatementData } from './statement';
 
 export type FinanceView = 'ledger' | 'customer' | 'supplier';
 type PartyType = 'customer' | 'supplier';
@@ -122,6 +124,7 @@ export default function FinanceCenter({
   const [keyword, setKeyword] = useState('');
   const [range, setRange] = useState(() => monthRange());
   const [period, setPeriod] = useState('本月');
+  const [statement, setStatement] = useState<StatementData>();
   const [draftRange, setDraftRange] = useState(range);
   const [rangeOpen, setRangeOpen] = useState(false);
   const [rangeError, setRangeError] = useState('');
@@ -384,6 +387,7 @@ export default function FinanceCenter({
           <View className={styles.partyCardHead}><View><Text className={styles.partyName}>{customer.name}</Text><Text className={styles.balance}>当前待收款 {formatMoney(balance)}</Text></View><View className={styles.partyButtons}>
             <FinanceButton className={styles.primary} aria-label={`收款客户 ${customer.name}`} data-testid={`finance-settle-customer-${customer.id}`} onClick={() => { setSettling({ id: customer.id, name: customer.name, type: 'customer', balance }); setSettlementAmount(''); setSettlementError(''); }}>收款</FinanceButton>
             <FinanceButton aria-label={`编辑客户 ${customer.name}`} onClick={() => onEditParty?.('customer', customer.id)}>编辑</FinanceButton>
+            <FinanceButton aria-label={`打印客户对账单 ${customer.name}`} onClick={() => setStatement({ name: customer.name, type: 'customer', from: partyRangeText.from, to: partyRangeText.to, balance, entries: filterPartyLedgerEntries(ledger, 'customer', customer.id, partyRangeText.from, partyRangeText.to).slice().sort((a, b) => a.created_at - b.created_at) })}>对账单</FinanceButton>
           </View></View>
           <CustomerSpecs customer={String(customer.id)} specs={row.specs} expanded={Boolean(expandedSpecs[expandedKey])} onToggle={() => setExpandedSpecs(current => ({ ...current, [expandedKey]: !current[expandedKey] }))} />
           <View className={styles.metrics}>
@@ -417,6 +421,7 @@ export default function FinanceCenter({
           <View className={styles.partyCardHead}><View><Text className={styles.partyName}>{supplier.name}</Text><Text className={styles.balance}>当前待付款 {formatMoney(balance)}</Text></View><View className={styles.partyButtons}>
             <FinanceButton className={styles.primary} aria-label={`付款给供货商 ${supplier.name}`} data-testid={`finance-settle-supplier-${supplier.id}`} onClick={() => { setSettling({ id: supplier.id, name: supplier.name, type: 'supplier', balance }); setSettlementAmount(''); setSettlementError(''); }}>付款</FinanceButton>
             <FinanceButton aria-label={`编辑供货商 ${supplier.name}`} onClick={() => onEditParty?.('supplier', supplier.id)}>编辑</FinanceButton>
+            <FinanceButton aria-label={`打印供货商对账单 ${supplier.name}`} onClick={() => setStatement({ name: supplier.name, type: 'supplier', from: partyRangeText.from, to: partyRangeText.to, balance, entries: rows.slice().sort((a, b) => a.created_at - b.created_at) })}>对账单</FinanceButton>
           </View></View>
           <View className={styles.metrics}><View><Text>{partyPeriodLabel(partyPeriod)}纸板入库与应付</Text><strong>{formatMoney(summary.sales)}</strong></View><View><Text>{partyPeriodLabel(partyPeriod)}已付款</Text><strong>{formatMoney(summary.settled)}</strong></View></View>
           <FinanceButton className={styles.expandButton} aria-expanded={Boolean(expanded[key])} aria-label={`查看供货商账单明细 ${supplier.name}`} onClick={() => setExpanded(current => ({ ...current, [key]: !current[key] }))}>{expanded[key] ? '收起' : '展开'}供货商账单明细 · {rows.length} 笔</FinanceButton>
@@ -428,6 +433,7 @@ export default function FinanceCenter({
       {(view === 'customer' ? customerRows.length : supplierRows.length) === 0 && <View className={styles.empty}><Text>{partySearch ? '没有找到匹配对象' : `还没有${view === 'customer' ? '客户' : '供货商'}资料`}</Text></View>}
     </View>}
 
+    {statement && <Statement data={statement} onClose={() => setStatement(undefined)} />}
     {rangeOpen && <View className={styles.overlay}><View className={styles.backdrop} aria-hidden='true' onClick={() => setRangeOpen(false)} /><View className={styles.sheet} role='dialog' aria-modal='true' aria-label='筛选账单日期'>
       <View className={styles.sheetHeader}><Text>筛选日期</Text><FinanceButton aria-label='关闭日期筛选' onClick={() => setRangeOpen(false)}>×</FinanceButton></View>
       <View className={styles.dateFields}><View><Text>开始日期</Text><Picker mode='date' value={draftRange.from} onChange={e => { setDraftRange(current => ({ ...current, from: e.detail.value })); setRangeError(''); }}><View className={styles.datePicker}>{draftRange.from || '请选择日期'}</View></Picker></View><Text>—</Text><View><Text>结束日期</Text><Picker mode='date' value={draftRange.to} onChange={e => { setDraftRange(current => ({ ...current, to: e.detail.value })); setRangeError(''); }}><View className={styles.datePicker}>{draftRange.to || '请选择日期'}</View></Picker></View></View>

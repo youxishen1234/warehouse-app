@@ -211,6 +211,7 @@ export interface DeliveryLine {
 }
 
 export interface DeliveryNote {
+  billing_mode?: 'on_outbound';
   id: number;
   date: string;
   work_order_no: string;

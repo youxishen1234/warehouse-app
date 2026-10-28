@@ -6,6 +6,7 @@ import type { CustomerForm } from '@/types';
 import { sanitizeNonNegativeMoneyInput } from '@/utils/form-input';
 import { session, watchSession } from '@/services/session';
 import styles from './index.module.scss';
+import BusinessHeader from '@/components/BusinessHeader';
 
 const CustomerEditPage: React.FC = () => {
   const router = useRouter();
@@ -82,7 +83,7 @@ const CustomerEditPage: React.FC = () => {
 
   return (
     <ScrollView scrollY className={styles.container}>
-      <Text className={styles.label}>{isEdit ? '编辑' : '新增'}{label}</Text>
+      <BusinessHeader title={(isEdit ? '编辑' : '新增') + label} />
       {loading && <View>正在加载{label}资料…</View>}
       {loadError && <View onClick={() => setRetry(value => value + 1)}>{loadError} · 点击重试</View>}
       {!loading && !loadError &&

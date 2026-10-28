@@ -822,6 +822,8 @@ function addDeliveryNote(data) {
     if (!Array.isArray(data.lines) || !data.lines.length) throw new Error('至少添加一行商品');
     if (data.source_type !== undefined && data.source_type !== 'production') throw new Error('入库来源类型无效');
     const productionInbound = data.source_type === 'production';
+    if (data.billing_mode !== undefined && (data.billing_mode !== 'on_outbound' || !productionInbound)) throw new Error('入库记账方式无效');
+    const billOnOutbound = data.billing_mode === 'on_outbound';
     const workOrderNo = String(data.work_order_no || '').trim();
     if (workOrderNo && cache.delivery_notes.some(note => !note.voided_at && String(note.work_order_no || '').trim() === workOrderNo) && data.confirm_duplicate_work_order !== true) {
       throw new Error(`工单编号「${workOrderNo}」已有未作废送货单，请确认后再重复开单`);
@@ -924,7 +926,10 @@ function addDeliveryNote(data) {
         matched = productionPricing.matchCustomerSpecification({ ...customer, specs: [matched.specification] }, product, customerSpecId);
         const requestedPrice = raw.unit_price !== undefined ? raw.unit_price : raw.price;
         let currentPrice;
-        if (matched.specification.price === null) {
+        if (billOnOutbound) {
+          if (requestedPrice === undefined || requestedPrice === null || requestedPrice === '') throw new Error('请填写本次入库成本单价');
+          currentPrice = numberValue(requestedPrice, '入库成本单价');
+        } else if (matched.specification.price === null) {
           if (requestedPrice === undefined || requestedPrice === null || requestedPrice === '') throw new Error('未设置客户报价，请填写入库单价');
           currentPrice = numberValue(requestedPrice, '入库单价');
         } else {
@@ -964,14 +969,14 @@ function addDeliveryNote(data) {
         ...(customerSpecSnapshot ? { customer_spec_id: customerSpecId, customer_spec_snapshot: customerSpecSnapshot } : {})
       };
     });
-    const note = { id: cache._meta.nextDeliveryNoteId++, date, work_order_no: workOrderNo, ...(productionInbound ? { source_type: 'production' } : {}), party_type: partyType, supplier_id: supplier?.id || null, supplier_name: supplier?.name || '', customer_id: customer?.id || null, customer_name: customer?.name || '', driver_phone: String(data.driver_phone || '').trim(), vehicle_no: String(data.vehicle_no || '').trim(), operator: String(data.operator || '').trim(), freight, remark: String(data.remark || '').trim(), lines: [], total_square_meters: 0, total_amount: 0, created_at: now };
+    const note = { id: cache._meta.nextDeliveryNoteId++, date, work_order_no: workOrderNo, ...(productionInbound ? { source_type: 'production' } : {}), ...(billOnOutbound ? { billing_mode: 'on_outbound' } : {}), party_type: partyType, supplier_id: supplier?.id || null, supplier_name: supplier?.name || '', customer_id: customer?.id || null, customer_name: customer?.name || '', driver_phone: String(data.driver_phone || '').trim(), vehicle_no: String(data.vehicle_no || '').trim(), operator: String(data.operator || '').trim(), freight, remark: String(data.remark || '').trim(), lines: [], total_square_meters: 0, total_amount: 0, created_at: now };
     for (const item of prepared) {
       const { product, quantity, delivered, unit, unitPrice, amount, specification, material, length, width, square } = item;
       const partyId = note.party_type === 'customer' ? note.customer_id : note.supplier_id;
       const transactionRemark = productionInbound
         ? [`自产成品入库 · 送货单 #${note.id}`, note.remark].filter(Boolean).join(' · ')
         : note.remark || `送货单 ${note.work_order_no}`;
-      const result = delivered > 0 ? stockIn(product.id, delivered, note.operator, transactionRemark, partyId, { specification, material, unit, unit_price: unitPrice, delivery_note_id: note.id, work_order_no: note.work_order_no, delivered_qty: delivered, square_meters: square }, note.party_type || 'supplier', productionInbound && customer ? 'production_inbound' : null) : null;
+      const result = delivered > 0 ? stockIn(product.id, delivered, note.operator, transactionRemark, partyId, { specification, material, unit, unit_price: unitPrice, delivery_note_id: note.id, work_order_no: note.work_order_no, delivered_qty: delivered, square_meters: square }, note.party_type || 'supplier', productionInbound && customer && !billOnOutbound ? 'production_inbound' : null) : null;
       if (productionInbound && result && !customer) Object.assign(result.transaction, { supplier_id: null, supplier_name: '', customer_id: null, customer_name: '' });
       note.lines.push({ product_id: product.id, product_name: product.name, specification, material, unit, length, width, quantity, unit_price: unitPrice, delivered_qty: delivered, square_meters: square, amount, ...(result ? { transaction_id: result.transaction.id } : {}), ...(item.supplier_spec_id ? { supplier_spec_id: item.supplier_spec_id, supplier_spec_snapshot: item.supplier_spec_snapshot } : {}), ...(item.customer_spec_id ? { customer_spec_id: item.customer_spec_id, customer_spec_snapshot: item.customer_spec_snapshot } : {}) });
       note.total_square_meters += square; note.total_amount += amount;
@@ -2035,6 +2040,7 @@ function validateBackupData(data) {
     timestamp(take.created_at, `stocktake ${take.id}`); timestamp(take.counted_at, `stocktake ${take.id}`);
   }
   for (const note of data.delivery_notes) {
+    if (note.billing_mode !== undefined && (note.billing_mode !== 'on_outbound' || note.source_type !== 'production')) throw new Error(`送货单 ${note.id} 记账方式无效`);
     if (note.source_type !== undefined && note.source_type !== 'production') throw new Error(`送货单 ${note.id} 入库来源类型无效`);
     if (note.source_type === 'production') {
       const hasCustomer = note.customer_id != null;
@@ -2117,8 +2123,10 @@ function validateBackupData(data) {
         || (productionHasCustomer
           ? (Number(transaction.customer_id || 0) !== Number(note.customer_id)
             || String(transaction.customer_name || '') !== String(note.customer_name || '')
-            || transaction.billing_source !== 'production_inbound'
-            || roundDecimal(Number(transaction.receivable_amount ?? transaction.amount), 2) !== roundDecimal(Number(transaction.amount), 2))
+            || (note.billing_mode === 'on_outbound'
+              ? transaction.billing_source !== undefined || transaction.receivable_amount !== undefined
+              : transaction.billing_source !== 'production_inbound'
+                || roundDecimal(Number(transaction.receivable_amount ?? transaction.amount), 2) !== roundDecimal(Number(transaction.amount), 2)))
           : (transaction.customer_id != null || String(transaction.customer_name || '') !== ''
             || transaction.billing_source !== undefined || transaction.receivable_amount !== undefined))
       );

@@ -12,9 +12,9 @@ export default function StockEntryLayout({ title, subtitle, children, onRefresh,
   const goBack = () => {
     if (busy) return;
     if (Taro.getCurrentPages().length > 1) void Taro.navigateBack();
-    else void Taro.navigateTo({ url: '/pages/business-center/index' });
+    else void Taro.switchTab({ url: '/pages/home/index' });
   };
-  return <View className='stock-entry-page' data-testid='stock-entry-page'>
+  return <View className='stock-entry-page' data-ui-version='web-workbench-v2' data-testid='stock-entry-page'>
     <View className='stock-entry-surface'>
       <View className='stock-entry-header'>
         <View className='stock-entry-heading'>

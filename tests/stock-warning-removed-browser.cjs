@@ -121,6 +121,7 @@ async function main() {
     await inventoryPage.locator('.sg-glass-dock button[data-tab="2"]').click();
     await inventoryPage.waitForURL(/\/pages\/inventory\/index/);
     const inventoryRoot = activeRoot(inventoryPage);
+    await expect(inventoryRoot).toHaveAttribute('data-panel', 'stock');
     await expect(inventoryRoot.getByText('查看库存', { exact: true })).toBeVisible();
     await inventoryRoot.getByText('纸箱', { exact: true }).click();
     const inventoryRow = inventoryRoot.getByTestId('workbench-carton').filter({ hasText: 'sjfhjs' });

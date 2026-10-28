@@ -2,6 +2,7 @@ import { request } from './request';
 export interface BusinessSpecification {
   id: string; source: 'board' | 'product' | 'customer'; source_id: string; kind: '纸板' | '成品'; name: string;
   board?: number[]; carton?: number[]; material: string; fluteType?: string; layers?: number; updated_at: number;
+  customer_name?: string;
 }
 export interface ProductionRecord {
   id: string; batch_id: string; product_id: number; product_name: string; specification: string; unit: string;

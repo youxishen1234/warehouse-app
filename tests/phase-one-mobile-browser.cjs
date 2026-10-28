@@ -73,7 +73,10 @@ async function main() {
       return { tasks: rect('workbench-tasks'), summary: rect('workbench-summary'), actions: rect('workbench-actions'), dock: document.querySelector('taro-tabbar').getBoundingClientRect().top, cards: [...document.querySelectorAll('[data-testid="workbench-actions"] > taro-button-core')].map(el => ({ left: el.getBoundingClientRect().left, top: el.getBoundingClientRect().top })) };
     });
     assert.ok(homeGeometry.tasks.top < homeGeometry.summary.top && homeGeometry.summary.top < homeGeometry.actions.top, JSON.stringify(homeGeometry));
-    assert.ok(homeGeometry.actions.bottom <= homeGeometry.dock + 1, 'todos, summary and all four shortcuts fit before the phone dock: ' + JSON.stringify(homeGeometry));
+    await expect(page.getByTestId('workbench-business-flow')).toContainText('客户下单');
+    await expect(page.getByTestId('workbench-business-flow')).toContainText('客户出库');
+    await page.getByTestId('workbench-actions').scrollIntoViewIfNeeded();
+    assert.ok(await page.getByTestId('workbench-actions').isVisible(), 'all four shortcuts remain reachable below the business workflow');
     assert.ok(homeGeometry.cards[0].left < homeGeometry.cards[1].left && Math.abs(homeGeometry.cards[0].top - homeGeometry.cards[1].top) < 2, 'phone shortcuts use a two-by-two grid');
     await noOverflow(); await page.screenshot({ path: path.join(evidence, 'home-390.png'), fullPage: true });
     await page.getByTestId('workbench-task-stock').click(); await expect(page.getByText('库存预警 · 全部商品', { exact: true })).toBeVisible();

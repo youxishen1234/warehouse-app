@@ -4,6 +4,7 @@ import Taro, { usePullDownRefresh } from '@tarojs/taro';
 import { accountApi, Member, session, setSession } from '@/services/session';
 import { formatTime } from '@/utils/format';
 import './style.scss';
+import BusinessHeader from '@/components/BusinessHeader';
 
 const roles = ['admin','operator','viewer'];
 const labels = ['管理员','操作员','只读'];
@@ -30,6 +31,7 @@ export default function Team() {
   usePullDownRefresh(() => { load().finally(() => Taro.stopPullDownRefresh()); });
   const action=async(fn:()=>Promise<any>)=>{if(busy)return;setBusy(true);setMessage('');try{await fn();await load();setMessage('已保存');}catch(e){setMessage(e.message);}finally{setBusy(false);}};
   return <View className="team-page">
+    <BusinessHeader title='团队与账号' />
     <View className="team-heading"><Text>团队与账号</Text><Button size="mini" onClick={()=>Taro.switchTab({url:'/pages/mine/index'})}>完成</Button></View>
     <Text>{me?.username} · {labels[roles.indexOf(me?.role || '')]}</Text>
     <Text className="team-message">{message}</Text>

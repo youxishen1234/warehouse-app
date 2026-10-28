@@ -6,10 +6,10 @@
 }
 
 .form {
-  background: $color-bg-card;
-  border-radius: $radius-md;
+  background: #fff;
+  border-radius: 0;
   padding: $spacing-lg;
-  box-shadow: $shadow-card;
+  box-shadow: none;
 }
 
 .field {
@@ -46,7 +46,7 @@
   @include button-reset;
   width: 100%;
   height: $button-height-lg;
-  background: linear-gradient(135deg, $color-primary 0%, $color-primary-light 100%);
+  background: #2469ee;
   color: $color-text-white;
   border-radius: $radius-button;
   font-size: $font-size-lg;

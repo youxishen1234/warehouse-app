@@ -8,6 +8,7 @@ import {
 } from '../../features/label-print';
 import type { BoardLabelSnapshot, FinishedLabelSnapshot, LabelTarget, SafeBoardMovement } from '../../features/label-print';
 import './style.scss';
+import BusinessHeader from '@/components/BusinessHeader';
 
 type Detail = { kind: 'finished-product'; data: FinishedLabelSnapshot } | { kind: 'paperboard-batch'; data: BoardLabelSnapshot; movements: readonly SafeBoardMovement[] };
 
@@ -58,7 +59,7 @@ export default function LabelResolver() {
   usePullDownRefresh(() => { void load().finally(() => Taro.stopPullDownRefresh()); });
   const row = (title: string, value: string | number) => <View className='label-resolver-row' key={title}><Text className='label-resolver-key'>{title}</Text><Text className='label-resolver-value'>{value}</Text></View>;
   return <View className='label-resolver-page'>
-    <Text className='label-resolver-title'>标签实时详情</Text>
+    <BusinessHeader title='标签实时详情' />
     <Text className='label-resolver-note'>本页只查询仓库记录，不会扣减库存。标签上的数量为打印时快照，实时数值以本页本次在线读取为准。</Text>
     {loading && <View className='label-resolver-card'><Text>正在在线读取最新资料…</Text></View>}
     {!loading && error && <View className='label-resolver-card label-resolver-error'><Text>{error}</Text><Button onClick={() => { void load(); }}>重新读取</Button></View>}

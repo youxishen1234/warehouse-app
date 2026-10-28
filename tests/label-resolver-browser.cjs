@@ -102,7 +102,8 @@ async function paperboard(browser, origin) {
     await expect(f.page.locator('.label-resolver-movement')).toContainText('盘点调整 · -3 张');
     await expect(f.page.locator('.label-resolver-movement')).toContainText('结余 0 张');
     assert.doesNotMatch(await f.page.locator('.label-resolver-page').innerText(), /SECRET|91234|93456|单价|货款|备注|领料人|联系方式/);
-    assert.equal(await f.page.locator('.label-resolver-page button, .label-resolver-page taro-button-core').count(), 1);
+    await expect(f.page.getByLabel('返回总台', { exact: true })).toBeVisible();
+    assert.equal(await f.page.locator('.label-resolver-page button, .label-resolver-page taro-button-core').count(), 2);
     await f.page.setViewportSize({ width: 320, height: 740 });
     assert.equal(await f.page.locator('.label-resolver-page').evaluate(element => element.scrollWidth <= element.clientWidth + 1), true, 'long batch ID does not overflow narrow view');
     await f.page.screenshot({ path: path.join(output, 'paperboard-320.png'), fullPage: true });

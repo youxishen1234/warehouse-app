@@ -215,7 +215,7 @@ async function main() {
     await chooseCustomerSpec('零报价客户纸箱');
     const zeroPrice = input('货物 1 入库单价');
     await expect(zeroPrice).toHaveValue('0');
-    assert.equal(await zeroPrice.evaluate(node => Boolean(node.disabled || node.readOnly)), true, '数值 0 客户报价也必须只读');
+    assert.equal(await zeroPrice.evaluate(node => Boolean(node.disabled || node.readOnly)), false, '入库成本可调整，不能锁定为客户报价');
     assert.equal(db.listProducts().length, 0, '选取客户规格不得在保存前建立库存商品');
 
     await chooseCustomerSpec(longGoodsName);
@@ -228,7 +228,7 @@ async function main() {
     const pricedSpec = customer.specs.find(spec => spec.goods === longGoodsName);
     assert.ok(pricedSpec);
     await expect(input('货物 1 入库单价')).toHaveValue('3.5');
-    assert.equal(await input('货物 1 入库单价').evaluate(node => Boolean(node.disabled || node.readOnly)), true);
+    assert.equal(await input('货物 1 入库单价').evaluate(node => Boolean(node.disabled || node.readOnly)), false);
     const first = await saveReceipt('CUSTOMER-SPEC-FIRST', 10);
     assert.equal(first.customer_id, customer.id);
     assert.equal(first.lines[0].customer_spec_id, pricedSpec.id);
@@ -249,7 +249,7 @@ async function main() {
     assert.equal(firstProduct.price, 0, '自动建立的库存商品基础价保持0，客户报价写入入库单');
     assert.equal(firstProduct.stock, 10);
     assert.equal(first.lines[0].square_meters, 0.6);
-    assert.equal(db.getCustomer(customer.id).debt, 35);
+    assert.equal(db.getCustomer(customer.id).debt, 0);
     assert.equal(db.listProducts().length, 1);
     assert.equal(apiRequests.filter(row => row.method === 'POST' && row.path === '/products').length, 0, '浏览器不得调用商品管理新增接口');
 
@@ -260,7 +260,7 @@ async function main() {
     assert.equal(second.lines[0].product_id, firstProductId, '第二次入库必须复用同一纸箱SKU');
     assert.equal(db.listProducts().length, 1);
     assert.equal(db.getProduct(firstProductId).stock, 15);
-    assert.equal(db.getCustomer(customer.id).debt, 52.5);
+    assert.equal(db.getCustomer(customer.id).debt, 0);
     assert.equal(db.getDeliveryNote(first.id).lines[0].unit_price, 3.5, '历史入库单价不应被后续资料变化覆盖');
 
     await openCarton(customer.name);
@@ -275,7 +275,7 @@ async function main() {
     assert.equal(unpriced.lines[0].customer_spec_snapshot.price, 2.25);
     assert.equal(unpriced.lines[0].unit_price, 2.25);
     assert.equal(unpriced.total_amount, 9);
-    assert.equal(db.getCustomer(customer.id).debt, 61.5);
+    assert.equal(db.getCustomer(customer.id).debt, 0);
     assert.equal(db.getProduct(unpriced.lines[0].product_id).price, 0, '手工入库价不得改写商品基础价');
 
     await openCarton(customer.name);
@@ -285,7 +285,7 @@ async function main() {
     assert.equal(zero.total_amount, 0);
     assert.equal(zero.lines[0].unit_price, 0);
     assert.equal(zero.lines[0].customer_spec_snapshot.price, 0);
-    assert.equal(db.getCustomer(customer.id).debt, 61.5, '零报价入库不应产生应收');
+    assert.equal(db.getCustomer(customer.id).debt, 0, '纸箱入库不应产生应收');
     assert.equal(db.getProduct(zero.lines[0].product_id).stock, 3);
 
     await openCarton(legacyCustomer.name);
@@ -295,7 +295,7 @@ async function main() {
     assert.match(legacyNote.lines[0].customer_spec_id, /^dimension:/);
     assert.equal(legacyNote.lines[0].customer_spec_snapshot.price, 1.75);
     assert.equal(legacyNote.total_amount, 3.5);
-    assert.equal(db.getCustomer(legacyCustomer.id).debt, 3.5);
+    assert.equal(db.getCustomer(legacyCustomer.id).debt, 0);
     assert.equal(db.getProduct(legacyNote.lines[0].product_id).name, '旧尺寸本纸箱');
     assert.equal(db.getProduct(legacyNote.lines[0].product_id).length, 220);
     assert.equal(db.getProduct(legacyNote.lines[0].product_id).width, 170);

@@ -70,6 +70,7 @@ function createHarness({ entryId, ledger, getLedger = async () => [] }) {
     },
     '@/pages/ledger/attachments': { __esModule: true, default: attachments },
     '@/pages/ledger/button': { __esModule: true, default: button },
+    './statement': { __esModule: true, default: () => null },
     './model': {
       filterPartyLedgerEntries: () => [], inferredPartyType: () => '', partyPeriodLabel: () => '',
       summarizePartyLedger: () => ({ sales: 0, settled: 0 }), summarizeProductionInbound: () => ({ total: 0, count: 0, notes: [] })

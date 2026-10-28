@@ -25,7 +25,7 @@ const cartonSize = batch => [batch.cartonLength, batch.cartonWidth, batch.carton
 const sizeLabel = dimensions => dimensions.join(' × ') + ' cm';
 function specifications(data) {
   const rows = [];
-  for (const batch of data.board_batches || []) rows.push({ id: 'board:' + batch.id, source: 'board', source_id: batch.id, kind: '纸板', name: batch.supplier, board: [batch.boardLength, batch.boardWidth], carton: cartonSize(batch), material: '', fluteType: batch.fluteType, layers: batch.layers, updated_at: batch.createdAt });
+  for (const batch of data.board_batches || []) rows.push({ id: 'board:' + batch.id, source: 'board', source_id: batch.id, kind: '纸板', name: batch.supplier, customer_name: batch.customerName || '', ...(batch.boardDimensionsPending ? {} : { board: [batch.boardLength, batch.boardWidth] }), carton: cartonSize(batch), material: batch.material || '', fluteType: batch.fluteType, layers: batch.layers, updated_at: batch.createdAt });
   for (const product of data.products || []) {
     if (product.deleted_at) continue;
     const size = sizeInCm(product.specification);
@@ -35,7 +35,15 @@ function specifications(data) {
   for (const customer of data.customer_dimensions?.customers || []) for (const spec of customer.specs) {
     const size = sizeInCm(spec.size, spec.sizeUnit);
     if (!size) continue;
-    rows.push({ id: 'customer:' + customer.id + ':' + spec.id, source: 'customer', source_id: spec.id, kind: spec.kind, name: customer.name + ' · ' + spec.goods, ...(size.length === 3 ? { carton: size } : { board: size }), material: spec.material, updated_at: 0 });
+    rows.push({ id: 'customer:' + customer.id + ':' + spec.id, source: 'customer', source_id: spec.id, customer_name: customer.name, kind: spec.kind, name: customer.name + ' · ' + spec.goods, ...(size.length === 3 ? { carton: size } : { board: size }), material: spec.material, updated_at: 0 });
+  }
+  for (const customer of data.customers || []) {
+    if (customer.deleted_at) continue;
+    for (const spec of customer.specs || []) {
+      const size = sizeInCm(spec.specification, 'cm');
+      if (!size) continue;
+      rows.push({ id: `account:${customer.id}:${spec.id}`, source: 'customer', source_id: spec.id, customer_name: customer.name, kind: size.length === 3 ? '成品' : '纸板', name: `${customer.name} · ${spec.goods}`, ...(size.length === 3 ? { carton: size } : { board: size }), material: spec.material || '', updated_at: customer.updated_at || 0 });
+    }
   }
   return rows;
 }

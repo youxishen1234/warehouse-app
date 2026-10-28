@@ -9,6 +9,7 @@ import styles from './index.module.scss';
 import { previewAmount, sanitizeDecimalInput } from '@/utils/stock-math';
 import { formatMoney, formatShortTime } from '@/utils/format';
 import { useRemoteData } from '@/hooks/useRemoteData';
+import BusinessHeader from '@/components/BusinessHeader';
 
 const nextStatusMap: Record<CustomerOrder['status'], CustomerOrder['status'][]> = {
   '待生产': ['待生产', '生产中', '待发货', '已取消'],
@@ -114,6 +115,7 @@ export default function Orders() {
   }, [load]);
 
   return <ScrollView scrollY className={styles.page} onRefresherRefresh={load} refresherEnabled>
+    <BusinessHeader title='客户订单' />
     <View className={styles.header}><Text>客户订单</Text><View onClick={() => setShow(!show)}>{show ? '关闭' : '＋新增订单'}</View></View>
     <View className={styles.guide} data-testid='order-stock-flow'>客户接单后从已入库纸箱库存发货，不重复生产入库；待发货订单可在出库页直接选择。旧订单仍保留原状态流程。</View>
     {remote.loading && <View className={styles.empty}>正在加载订单资料…</View>}
