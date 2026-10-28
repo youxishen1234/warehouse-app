@@ -68,6 +68,13 @@ async function main() {
     await page.getByRole('button', { name: /查看详情/ }).click();
     await expect(page.getByText(/临时打印单据：未核对库存/)).toBeVisible();
     assert.equal(db.listTx().length, 0, 'reprint and history never create stock transactions');
+    await button('删除单据').click();
+    await expect(page.locator('.taro__modal .taro-model__confirm')).toBeVisible();
+    await page.locator('.taro__modal .taro-model__confirm').click();
+    await expect(page.getByText(/送货单 .* 已删除/)).toBeVisible();
+    assert.equal(db.listPrintNotes().length, 0, 'deleted temporary notes disappear from the print center');
+    assert.ok(JSON.parse(fs.readFileSync(process.env.WAREHOUSE_DATA_FILE)).print_notes[0].deleted_at > 0, 'deleted notes remain in the backup as soft-deleted records');
+    await page.screenshot({ path: path.join(artifacts, 'temporary-print-deleted.png'), fullPage: true });
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ temporaryPrint: 'passed', saved: notes[0].number, artifacts }));
   } catch (error) {

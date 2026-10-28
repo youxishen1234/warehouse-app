@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Taro, { useRouter } from '@tarojs/taro';
 import { getCustomer, getCustomers, getTransactions } from '@/services/api';
-import { getPrintNote, getPrintNotes, savePrintNote, shipPrintNote, temporaryPrintNote } from '@/services/print-notes';
+import { deletePrintNote, getPrintNote, getPrintNotes, savePrintNote, shipPrintNote, temporaryPrintNote } from '@/services/print-notes';
 import type { PrintNoteInput, SavedPrintNote } from '@/services/print-notes';
 import type { Customer } from '@/types';
 import { documentFromTransactions, moneyUpper, transactionPrintKey } from '@/utils/dot-matrix-print';
@@ -76,6 +76,7 @@ export default function PrintCenterPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [shipBusy, setShipBusy] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const shipping = useRef(false);
   const errorBox = useRef<HTMLDivElement>(null);
   const [customerOpen, setCustomerOpen] = useState(false);
@@ -332,6 +333,32 @@ export default function PrintCenterPage() {
       setBusy(false); setShipBusy(false);
     }
   };
+  const deleteSaved = async () => {
+    if (!saved || saved.outbound_at || sourceActive || shipping.current || busyRef.current) return;
+    let confirmation: Awaited<ReturnType<typeof Taro.showModal>>;
+    try {
+      confirmation = await Taro.showModal({
+        title: '删除这张送货单？',
+        content: `${saved.number} 删除后会从打印中心隐藏，未出库单据不再显示。此操作不能撤销，但备份中仍保留删除记录。`,
+        confirmText: '删除单据', confirmColor: '#b74949'
+      });
+    } catch { return; }
+    if (!confirmation.confirm) return;
+    const removed = saved;
+    busyRef.current = true; shipping.current = true;
+    setBusy(true); setDeleteBusy(true); setError(''); setNotice('');
+    try {
+      await deletePrintNote(removed.id);
+      setSaved(undefined); setDraft(newNote()); setPreview(undefined); setChosenCustomer(undefined);
+      setDirty(false); setTemporaryMode(false); setTab('home');
+      setNotice(`送货单 ${removed.number} 已删除`);
+      window.setTimeout(() => window.scrollTo({ top: 0, behavior: 'auto' }), 0);
+    } catch (issue) { setError(messageOf(issue)); }
+    finally {
+      busyRef.current = false; shipping.current = false;
+      setBusy(false); setDeleteBusy(false);
+    }
+  };
   const chooseCustomer = (customer: Customer) => {
     setDraft(previous => selectCustomer(previous, customer)); setChosenCustomer(customer); setCustomerOpen(false); setDirty(true); setError(''); setNotice('');
   };
@@ -424,8 +451,11 @@ export default function PrintCenterPage() {
           }} />
           <span>出库后自动打印</span>
         </label>}
-        <footer className={`${styles.actions} ${saved.temporary_print_at && !saved.outbound_at ? styles.actionsWrap : ''}`}><button type='button' className={styles.secondary} onClick={() => { setTab('edit'); setNotice(''); }} disabled={!!saved.outbound_at || shipBusy}>编辑单据</button>{saved.temporary_print_at && !saved.outbound_at && <button type='button' className={styles.secondary} onClick={() => { setPreviewIntent('reprint'); setPreview(saved); }}>再次打印</button>}{saved.outbound_at ? <button type='button' className={styles.primary} onClick={() => { setPreviewIntent('reprint'); setPreview(saved); }}>再次打印</button> : <button type='button' className={styles.primary} onClick={shipAndPrint} disabled={shipBusy || dirty}>{shipBusy ? '出库中…' : native ? paired && printAfterOutbound ? '确认出库并打印' : '确认出库' : '确认出库并打印'}</button>}</footer>
-        {!saved.outbound_at && !saved.temporary_print_at && <button type='button' className={styles.temporaryLink} disabled={shipBusy || dirty} onClick={() => void temporaryPrint()}>货品未入库？临时打印（不扣库存）</button>}
+        <footer className={`${styles.actions} ${saved.temporary_print_at && !saved.outbound_at ? styles.actionsWrap : ''}`}><button type='button' className={styles.secondary} onClick={() => { setTab('edit'); setNotice(''); }} disabled={!!saved.outbound_at || shipBusy || deleteBusy}>编辑单据</button>{saved.temporary_print_at && !saved.outbound_at && <button type='button' className={styles.secondary} onClick={() => { setPreviewIntent('reprint'); setPreview(saved); }} disabled={deleteBusy}>再次打印</button>}{saved.outbound_at ? <button type='button' className={styles.primary} onClick={() => { setPreviewIntent('reprint'); setPreview(saved); }}>再次打印</button> : <button type='button' className={styles.primary} onClick={shipAndPrint} disabled={shipBusy || deleteBusy || dirty}>{shipBusy ? '出库中…' : native ? paired && printAfterOutbound ? '确认出库并打印' : '确认出库' : '确认出库并打印'}</button>}</footer>
+        {!saved.outbound_at && <div className={styles.detailUtilities}>
+          {!saved.temporary_print_at && <button type='button' className={styles.temporaryLink} disabled={shipBusy || deleteBusy || dirty} onClick={() => void temporaryPrint()}>货品未入库？临时打印（不扣库存）</button>}
+          <button type='button' className={`${styles.temporaryLink} ${styles.deleteLink}`} disabled={shipBusy || deleteBusy || dirty} onClick={() => void deleteSaved()}>{deleteBusy ? '删除中…' : '删除单据'}</button>
+        </div>}
       </> : <>
         <div className={styles.documentStatus} data-source-status={sourceActive ? sourceStatus : undefined}><span>{sourceActive ? '原出库单' : temporaryMode ? '临时打印' : saved?.number || '新送货单'}</span><span>{sourceStatus === 'loading' ? '正在读取…' : sourceActive ? sourceStatus === 'ready' ? '已出库 · 只读' : '读取失败' : busy ? '正在处理…' : dirty ? '待保存' : saved ? noteStatus(saved) : '填写后保存'}</span></div>
         {temporaryMode && !sourceActive && <div className={styles.temporaryNotice} role='status'>临时打印：不核对库存、不扣库存，也不增加客户应收。可以先把单子打印给客户，货品入库后再补正式出库。</div>}

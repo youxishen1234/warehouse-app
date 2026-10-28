@@ -152,6 +152,17 @@ function save(data, raw, id) {
   if (previous) notes[notes.indexOf(previous)] = result; else notes.push(result);
   return result;
 }
+function remove(data, id) {
+  const notes = data.print_notes || (data.print_notes = []);
+  const note = notes.find(row => row.id === Number(id) && !row.deleted_at);
+  if (!note) throw fail('送货单不存在', 404);
+  if (note.outbound_at) throw fail('已出库的送货单不能删除，请保留作为出库凭证', 409);
+  const now = Date.now();
+  note.deleted_at = now;
+  note.updated_at = now;
+  note.version = Number(note.version || 1) + 1;
+  return { id: note.id, number: note.number, deleted_at: now };
+}
 function validateBackup(data) {
   if (data.print_notes === undefined) return;
   if (!Array.isArray(data.print_notes)) throw fail('送货单备份格式无效');
@@ -182,4 +193,4 @@ function validateBackup(data) {
     ids.add(note.id);
   }
 }
-module.exports = { normalizeSpecification, validateNote, list, save, removeDuplicates, validateBackup };
+module.exports = { normalizeSpecification, validateNote, list, save, remove, removeDuplicates, validateBackup };

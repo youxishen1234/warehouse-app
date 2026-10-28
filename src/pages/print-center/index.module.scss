@@ -90,6 +90,8 @@
 .actions [type=button] { flex: 1; min-width: 0; min-height: 49PX; font-weight: 600; font-size: 15PX; }
 .actionsWrap { flex-wrap: wrap; }.actionsWrap [type=button] { flex: 1 1 120PX; }
 .page .temporaryLink { width: 100%; margin: 10PX 0 0; padding: 12PX 14PX; border: 1PX dashed #ddbd8d; border-radius: 10PX; background: #fffaf2; color: #855a29; font-size: 13PX; }
+.detailUtilities { display: flex; flex-wrap: wrap; gap: 10PX; margin-top: 10PX; }.detailUtilities .temporaryLink { flex: 1 1 190PX; width: auto; margin: 0; }
+.page .deleteLink { border-color: #e4bcbc; background: #fff8f8; color: #a13e3e; }
 .autoPrint { display: flex; align-items: center; gap: 10PX; min-height: 44PX; margin: 10PX 0; color: #415f6d; font-size: 14PX; }
 .page .autoPrint input { width: 20PX; min-width: 20PX; height: 20PX; margin: 0; padding: 0; accent-color: #245f72; }
 .page .primary, .backdrop .primary { background: #245f72; color: #fff; }

@@ -509,6 +509,11 @@ function install(db, options = {}) {
       () => db.savePrintNote(req.body, method === 'post' ? undefined : Number(req.params.id)));
     res.set('X-Warehouse-Revision', String(result.revision)); ok(res, result.data);
   });
+  route('delete', '/print-notes/:id', (req, res) => {
+    const operation = 'DELETE ' + req.path;
+    const result = db.transact(req.user, req.get('Idempotency-Key'), digest(operation), req.get('If-Match'), operation, () => db.deletePrintNote(Number(req.params.id)));
+    res.set('X-Warehouse-Revision', String(result.revision)); ok(res, result.data);
+  });
   route('post', '/print-notes/:id/temporary-print', (req, res) => {
     const operation = 'POST ' + req.path;
     const result = db.transact(req.user, req.get('Idempotency-Key'), digest(operation + JSON.stringify(req.body || {})), req.get('If-Match'), operation, () => db.temporaryPrintNote(Number(req.params.id)));

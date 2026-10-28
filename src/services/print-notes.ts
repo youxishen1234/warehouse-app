@@ -1,7 +1,7 @@
 import { request } from './request';
 import type { PageResult } from '@/types';
-import type { PrintNoteInput, SavedPrintNote } from '../../backend/print-notes';
-export type { PrintNoteInput, SavedPrintNote, PrintNoteItem } from '../../backend/print-notes';
+import type { DeletedPrintNote, PrintNoteInput, SavedPrintNote } from '../../backend/print-notes';
+export type { DeletedPrintNote, PrintNoteInput, SavedPrintNote, PrintNoteItem } from '../../backend/print-notes';
 export const getPrintNotes = (keyword = '', page = 1) => request<PageResult<SavedPrintNote>>({ url: `/api/print-notes?keyword=${encodeURIComponent(keyword)}&page=${page}&page_size=30` });
 export const getPrintNote = (id: number) => request<SavedPrintNote>({ url: `/api/print-notes/${id}` });
 export const savePrintNote = (data: PrintNoteInput, previous?: SavedPrintNote) => request<SavedPrintNote>({
@@ -9,4 +9,5 @@ export const savePrintNote = (data: PrintNoteInput, previous?: SavedPrintNote) =
   method: previous ? 'PUT' : 'POST', data: { ...data, ...(previous ? { version: previous.version } : {}) },
 });
 export const temporaryPrintNote = (id: number) => request<SavedPrintNote>({ url: `/api/print-notes/${id}/temporary-print`, method: 'POST', data: {} });
+export const deletePrintNote = (id: number) => request<DeletedPrintNote>({ url: `/api/print-notes/${id}`, method: 'DELETE' });
 export const shipPrintNote = (id: number) => request<SavedPrintNote>({ url: `/api/print-notes/${id}/ship`, method: 'POST', data: {} });

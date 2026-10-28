@@ -2223,6 +2223,7 @@ function updateCustomerDimensions(raw) {
 }
 function listPrintNotes(keyword) { return JSON.parse(JSON.stringify(require('./print-notes').list(cache, keyword))); }
 function savePrintNote(raw, id) { return atomicMutation(() => { const note = require('./print-notes').save(cache, raw, id); persist(); return note; }); }
+function deletePrintNote(id) { return atomicMutation(() => { const result = require('./print-notes').remove(cache, id); persist(); return result; }); }
 function temporaryPrintNote(id) {
   return atomicMutation(() => {
     const note = cache.print_notes.find(row => row.id === Number(id) && !row.deleted_at);
@@ -2301,7 +2302,7 @@ function deleteBoard(id) { return atomicMutation(() => { const batch = cache.boa
 function listBusinessSpecifications() { return require('./business-workflow').specifications(cache); }
 function listProduction() { return (cache.production_records || []).slice().reverse(); }
 function completeProduction(raw, operator) { return atomicMutation(() => { const record = require('./business-workflow').complete(cache, raw, operator, stockIn, addProduct); persist(); return record; }); }
-module.exports = { listBusinessSpecifications, listProduction, completeProduction, listPrintNotes, savePrintNote, temporaryPrintNote, shipPrintNote, getCustomerDimensions, updateCustomerDimensions, listBoards, receiveBoard, moveBoard, updateBoard, deleteBoard, listProducts, getProduct, addProduct, updateProduct, deleteProduct,
+module.exports = { listBusinessSpecifications, listProduction, completeProduction, listPrintNotes, savePrintNote, deletePrintNote, temporaryPrintNote, shipPrintNote, getCustomerDimensions, updateCustomerDimensions, listBoards, receiveBoard, moveBoard, updateBoard, deleteBoard, listProducts, getProduct, addProduct, updateProduct, deleteProduct,
   getLedgerAttachments, addLedgerAttachment, readLedgerAttachment, listCustomerAttachments, addCustomerAttachment, readCustomerAttachment, prepareLedgerAttachment: ledgerAttachments.prepare, prepareCustomerAttachment, validateBackup,
   listCustomers, listCartonInboundCustomers, getCustomer, listInactiveCustomerNames, addCustomer, updateCustomer, saveCustomerSpecs, deleteCustomer,
   listSuppliers, getSupplier, addSupplier, updateSupplier, deleteSupplier,
