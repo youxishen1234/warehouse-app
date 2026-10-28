@@ -297,7 +297,7 @@ export default function InboundPage() {
       {loadError && <View role='alert' className={styles.error}>{loadError}<Button disabled={saving} className={styles.textButton} onClick={() => { void load(true); }}>重新读取</Button></View>}
       {cartonOnly && <>
         <View className={styles.field}>
-          <View className={styles.fieldHead}><Text className={styles.fieldLabel}>客户（选填）</Text><Button aria-label='新增入库客户' className={styles.textButton} disabled={saving} onClick={() => setCustomerEditor({})}><Icon name='plus' color='#a6dcb8' className={styles.actionIcon} /><Text>新增客户</Text></Button></View>
+          <View className={styles.fieldHead}><Text className={styles.fieldLabel}>客户（选填）</Text><Button aria-label='新增入库客户' className={styles.textButton} disabled={saving} onClick={() => setCustomerEditor({})}><Icon name='plus' color='#1677ff' className={styles.actionIcon} /><Text>新增客户</Text></Button></View>
           <Picker aria-label='选择客户' disabled={saving} range={customerOptions.map(option => option.label)} value={billingCustomerIndex} onChange={e => { const option = customerOptions[Number(e.detail.value)]; changeBillingCustomer(option?.id ?? null); }}>
             <View className={styles.picker}>{billingCustomer?.name || (billingCustomerId != null ? `${selectedBillingCustomer?.name || '所选客户'}（已停用或不可用，请重新选择）` : '不关联客户 · 只增加库存')}<Text>⌄</Text></View>
           </Picker>
@@ -318,10 +318,10 @@ export default function InboundPage() {
           <View className={styles.lineHead}><Text className={styles.fieldLabel}>{lines.length > 1 ? `货物 ${index + 1}` : cartonOnly && billingCustomer ? '纸箱规格' : '货物名称'}</Text>{lines.length > 1 && <Button disabled={saving} aria-label={`移除货物 ${index + 1}`} className={styles.remove} onClick={() => { if (!busy.current) setLines(current => current.filter(item => item.key !== line.key)); }}>移除</Button>}</View>
           {(!cartonOnly || !billingCustomer) && <StockProductPicker products={products} value={line.product_id} disabled={saving || !ready} excluded={lines.filter(item => item.key !== line.key).map(item => item.product_id || 0)} onSelect={product => updateLine(line.key, applyProduct(line, product))} />}
           {cartonOnly && billingCustomer && <View className={styles.field}>
-            <Picker aria-label={`货物 ${index + 1} 客户常用规格`} disabled={saving || !ready || !customerSpecifications.length} range={['选择纸箱规格', ...customerSpecifications.map(specificationLabel)]} value={Math.max(0, customerSpecifications.findIndex(spec => spec.id === line.customer_spec_id) + 1)} onChange={e => { const option = Number(e.detail.value); changeCustomerSpecification(line, option ? customerSpecifications[option - 1]?.id || '' : ''); }}>
-              <View className={styles.picker}>{selectedCustomerSpecification ? specificationLabel(selectedCustomerSpecification) : customerSpecifications.length ? '选择客户的纸箱规格' : '暂无纸箱规格'}<Text>⌄</Text></View>
-            </Picker>
-            <Button className={styles.textButton} aria-label='编辑入库客户规格' disabled={saving} onClick={() => setCustomerEditor({ id: billingCustomer.id })}><Icon name='edit' color='#a6dcb8' className={styles.actionIcon} /><Text>编辑客户规格</Text></Button>
+            {customerSpecifications.length ? <Picker aria-label={`货物 ${index + 1} 客户常用规格`} disabled={saving || !ready} range={['选择纸箱规格', ...customerSpecifications.map(specificationLabel)]} value={Math.max(0, customerSpecifications.findIndex(spec => spec.id === line.customer_spec_id) + 1)} onChange={e => { const option = Number(e.detail.value); changeCustomerSpecification(line, option ? customerSpecifications[option - 1]?.id || '' : ''); }}>
+              <View className={styles.picker}>{selectedCustomerSpecification ? specificationLabel(selectedCustomerSpecification) : '选择客户的纸箱规格'}<Text>⌄</Text></View>
+            </Picker> : <View className={`${styles.picker} ${styles.emptySpecPicker}`} role='button' aria-label={`货物 ${index + 1} 客户常用规格`} aria-disabled={saving || !ready || undefined} onClick={() => { if (!saving && ready) setCustomerEditor({ id: billingCustomer.id }); }}><Text>暂无纸箱规格，点此添加</Text><Text>＋</Text></View>}
+            <Button className={styles.textButton} aria-label='编辑入库客户规格' disabled={saving} onClick={() => setCustomerEditor({ id: billingCustomer.id })}><Icon name='edit' color='#1677ff' className={styles.actionIcon} /><Text>编辑客户规格</Text></Button>
             {line.customer_quote_invalid
               ? <Text className={styles.hint}>原客户规格已失效，请重新选择。</Text>
               : null}

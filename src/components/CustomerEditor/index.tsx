@@ -6,6 +6,7 @@ import type { Customer, CustomerForm, CustomerSpec } from '@/types';
 import { session, watchSession } from '@/services/session';
 import { sanitizeNonNegativeMoneyInput } from '@/utils/form-input';
 import { formatMoney } from '@/utils/format';
+import { formatDimensionInput } from '@/utils/dimension-input';
 import { getCustomerDimensions } from '@/services/customer-dimensions';
 import { canonicalSpecification } from '../../../backend/production-pricing';
 import styles from './index.module.scss';
@@ -27,6 +28,9 @@ export default function CustomerEditor({ id, supplier = false, initialName = '',
   const [recoverableError, setRecoverableError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [retry, setRetry] = useState(0);
+  const [basicOpen, setBasicOpen] = useState(true);
+  const [remarkOpen, setRemarkOpen] = useState(false);
+  const [specsOpen, setSpecsOpen] = useState(true);
   const [identity, setIdentity] = useState(editorSessionIdentity);
   const [linkedName, setLinkedName] = useState(lockName);
   const lock = useRef(false);
@@ -75,9 +79,9 @@ export default function CustomerEditor({ id, supplier = false, initialName = '',
         first.focus();
       }
     };
-    drawer?.addEventListener('keydown', onKeyDown, true);
+    document.addEventListener('keydown', onKeyDown, true);
     return () => {
-      drawer?.removeEventListener('keydown', onKeyDown, true);
+      document.removeEventListener('keydown', onKeyDown, true);
       if (returnFocus?.isConnected) returnFocus.focus();
     };
   }, []);
@@ -264,6 +268,7 @@ export default function CustomerEditor({ id, supplier = false, initialName = '',
   };
   const addSpec = () => {
     if (specRows.length >= MAX_CUSTOMER_SPECS) { setError('客户规格最多500条'); return; }
+    setSpecsOpen(true);
     setSpecsChanged(true);
     setSpecRows(rows => [...rows, { id: createSpecId(), goods: '', specification: '', material: '', unit: '个', price: '', source: 'account' }]);
     setError('');
@@ -282,21 +287,38 @@ export default function CustomerEditor({ id, supplier = false, initialName = '',
   const field = (key: keyof typeof profile, caption: string, limit: number) => <View className={styles.field}><Text>{caption}</Text><Input aria-label={caption} value={profile[key]} maxlength={limit} disabled={saving || !writable || (key === 'name' && (lockName || linkedName)) || undefined} onInput={event => setProfile(value => ({ ...value, [key]: event.detail.value }))} /></View>;
   const specField = (row: SpecDraft, index: number, key: keyof Omit<SpecDraft, 'id'>, caption: string, limit: number) => <View className={styles.specField}>
     <Text>{caption}</Text>
-    <Input aria-label={`规格 ${index + 1} ${caption}`} type={key === 'price' ? 'digit' : undefined} value={row[key]} maxlength={limit} disabled={saving || !writable || row.source === 'dimension' || undefined} onInput={event => updateSpec(index, key, key === 'price' ? sanitizeNonNegativeMoneyInput(event.detail.value) : event.detail.value)} />
+    <Input aria-label={`规格 ${index + 1} ${caption}`} type={key === 'price' ? 'digit' : undefined} value={row[key]} maxlength={limit} placeholder={key === 'specification' ? '例如 30×20×15 cm' : undefined} disabled={saving || !writable || row.source === 'dimension' || undefined} onInput={event => {
+      const value = key === 'price'
+        ? sanitizeNonNegativeMoneyInput(event.detail.value)
+        : key === 'specification'
+          ? formatDimensionInput(event.detail.value, row.specification, { sizeUnit: 'cm', kind: '成品' })
+          : event.detail.value;
+      updateSpec(index, key, value);
+    }} />
   </View>;
   return <View className={styles.mask} onClick={() => { if (!saving) onClose(); }}><View role='dialog' aria-modal='true' aria-label={(id ? '编辑' : '新增') + label} data-testid='customer-editor' className={styles.drawer} onClick={event => event.stopPropagation()}>
     <View className={styles.heading}><Text>{id ? '编辑' : '新增'}{label}资料</Text><Button aria-label='关闭资料抽屉' disabled={saving} onClick={onClose}>×</Button></View>
     {loading && <Text className={styles.hint}>正在读取{label}资料…</Text>}
     {loadError && <View className={styles.error} role='alert'><Text>{loadError}</Text><Button onClick={() => { setError(''); setRecoverableError(false); setRetry(value => value + 1); }}>重新读取</Button></View>}
     {!loading && !loadError && <View>
-      {field('name', supplier ? '供应商名称' : '公司名称', 50)}
-      {(lockName || linkedName) && <Text className={styles.hint}>此名称关联现有规格，资料编辑保留关联名称。</Text>}
-      {!id && lockName && initialName.trim().length > 50 && <View className={styles.error} role='alert'>现有规格名称超过50字，原资料不会被截断；请先核对名称后再建立客户账户。</View>}
-      {field('contact', '联系人', 50)}{field('phone', '联系电话', 20)}{field('address', '地址', 200)}
-      <View className={styles.field}><Text>备注</Text><Textarea aria-label='备注' value={profile.remark} maxlength={500} disabled={saving || !writable || undefined} onInput={event => setProfile(value => ({ ...value, remark: event.detail.value }))} /></View>
+      <View className={styles.section}>
+        <View className={styles.sectionHeading}><Text>基本资料</Text><Button aria-label={basicOpen ? '收起基本资料' : '展开基本资料'} disabled={saving} onClick={() => setBasicOpen(open => !open)}>{basicOpen ? '收起' : '展开'}</Button></View>
+        {basicOpen ? <>
+          {field('name', supplier ? '供应商名称' : '公司名称', 50)}
+          {(lockName || linkedName) && <Text className={styles.hint}>此名称关联现有规格，资料编辑保留关联名称。</Text>}
+          {!id && lockName && initialName.trim().length > 50 && <View className={styles.error} role='alert'>现有规格名称超过50字，原资料不会被截断；请先核对名称后再建立客户账户。</View>}
+          {field('contact', '联系人', 50)}{field('phone', '联系电话', 20)}{field('address', '地址', 200)}
+        </> : <Text className={styles.sectionSummary}>{profile.name || `未填写${supplier ? '供应商' : '公司'}名称`}{profile.contact ? ` · ${profile.contact}` : ''}{profile.phone ? ` · ${profile.phone}` : ''}</Text>}
+      </View>
+      <View className={styles.section}>
+        <View className={styles.sectionHeading}><Text>备注</Text><Button aria-label={remarkOpen ? '收起备注' : '展开备注'} disabled={saving} onClick={() => setRemarkOpen(open => !open)}>{remarkOpen ? '收起' : '展开'}</Button></View>
+        {remarkOpen && <View className={styles.field}><Textarea aria-label='备注' value={profile.remark} maxlength={500} disabled={saving || !writable || undefined} onInput={event => setProfile(value => ({ ...value, remark: event.detail.value }))} /></View>}
+        {!remarkOpen && profile.remark.trim() && <Text className={styles.sectionSummary}>{profile.remark}</Text>}
+      </View>
       {!supplier && <View className={styles.specSection}>
-        <View className={styles.specHeading}><Text>规格</Text><Button aria-label='添加客户规格' disabled={saving || !writable || specRows.length >= MAX_CUSTOMER_SPECS} onClick={addSpec}>添加规格</Button></View>
-        {specRows.map((row, index) => <View className={styles.specRow} data-testid={`customer-spec-editor-${index + 1}`} key={row.id}>
+        <View className={styles.specHeading}><Text>规格{specRows.length ? ` · ${specRows.length} 条` : ''}</Text><View className={styles.specActions}>{!!specRows.length && <Button aria-label={specsOpen ? '收起客户规格' : '展开客户规格'} disabled={saving} onClick={() => setSpecsOpen(open => !open)}>{specsOpen ? '收起' : '展开'}</Button>}<Button aria-label='添加客户规格' disabled={saving || !writable || specRows.length >= MAX_CUSTOMER_SPECS} onClick={addSpec}>添加规格</Button></View></View>
+        {!specsOpen && <Text className={styles.specSummary}>已填写 {specRows.length} 条规格，点“展开”查看或修改</Text>}
+        {specsOpen && specRows.map((row, index) => <View className={styles.specRow} data-testid={`customer-spec-editor-${index + 1}`} key={row.id}>
           <View className={styles.specRowHeading}><Text>规格 {index + 1}</Text><Button aria-label={`删除客户规格 ${index + 1}`} disabled={saving || !writable} onClick={() => removeSpec(index)}>删除</Button></View>
           <View className={styles.specFields}>
             {specField(row, index, 'goods', '货物名称', 100)}

@@ -1,6 +1,6 @@
 /* eslint-disable react/forbid-elements */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import Taro, { useRouter } from '@tarojs/taro';
+import Taro, { useDidShow, useRouter } from '@tarojs/taro';
 import { getCustomer, getCustomers, getTransactions } from '@/services/api';
 import { deletePrintNote, getPrintNote, getPrintNotes, savePrintNote, shipPrintNote, temporaryPrintNote } from '@/services/print-notes';
 import type { PrintNoteInput, SavedPrintNote } from '@/services/print-notes';
@@ -92,8 +92,10 @@ export default function PrintCenterPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState('');
   const [totalRecords, setTotalRecords] = useState(0);
+  const [pendingTotal, setPendingTotal] = useState(0);
   const [historyPage, setHistoryPage] = useState(1);
   const historySequence = useRef(0);
+  const shown = useRef(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const pendingNavigation = useRef<(() => void) | null>(null);
   const routeSourceId = Object.prototype.hasOwnProperty.call(params, 'transaction_id') ? String(params.transaction_id ?? '') : undefined;
@@ -171,6 +173,7 @@ export default function PrintCenterPage() {
       if (current !== historySequence.current) return;
       setHistory(previous => page === 1 ? result.items : [...previous, ...result.items]);
       setHistoryPage(page); setTotalRecords(result.total);
+      setPendingTotal(result.outbound_pending ?? result.items.filter(note => !note.outbound_at).length);
     } catch (issue) { if (current === historySequence.current) setHistoryError(messageOf(issue)); }
     finally { if (current === historySequence.current) setHistoryLoading(false); }
   }, [query]);
@@ -183,6 +186,10 @@ export default function PrintCenterPage() {
   }, [tab, loadHistory]);
   const refresh = useCallback(() => { if (tab === 'history' || tab === 'home') void loadHistory(); }, [tab, loadHistory]);
   useSharedRefresh(refresh);
+  useDidShow(() => {
+    if (shown.current && (tab === 'home' || tab === 'history')) void loadHistory();
+    shown.current = true;
+  });
 
   // Transaction links are already-posted outbound records. Keep them read-only and
   // preview-only so printing cannot deduct stock or add a receivable a second time.
@@ -398,7 +405,7 @@ export default function PrintCenterPage() {
         {printModes}
         <section className={styles.printBrief}>
           <div className={styles.briefTop}><span>送货单</span><strong>{new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' })}</strong></div>
-          <div className={styles.briefBody}><div><span>最近单据</span><strong>{historyLoading ? '…' : history.length}</strong></div><div><span>待出库</span><strong>{history.filter(note => !note.outbound_at).length}</strong></div></div>
+          <div className={styles.briefBody}><div><span>全部单据</span><strong>{historyLoading ? '…' : totalRecords}</strong></div><div><span>待出库</span><strong>{historyLoading ? '…' : pendingTotal}</strong></div></div>
           <div className={styles.paperLines} aria-hidden='true'><i /><i /><i /></div>
         </section>
         <nav className={styles.quickActions} aria-label='打印快捷操作'>

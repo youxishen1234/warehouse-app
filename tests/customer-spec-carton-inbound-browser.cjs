@@ -262,6 +262,16 @@ async function main() {
     const inlineNewCustomer = page.getByTestId('customer-editor');
     await expect(inlineNewCustomer).toBeVisible();
     await expect.poll(() => inlineNewCustomer.evaluate(editor => editor.contains(document.activeElement))).toBe(true);
+    await inlineNewCustomer.getByLabel('收起基本资料').click();
+    await expect(inlineNewCustomer.getByText('未填写公司名称', { exact: true })).toBeVisible();
+    await inlineNewCustomer.getByLabel('展开基本资料').click();
+    await inlineNewCustomer.getByLabel('展开备注').click();
+    await expect(inlineNewCustomer.getByLabel('备注').locator('textarea')).toBeVisible();
+    await inlineNewCustomer.getByLabel('收起备注').click();
+    await inlineNewCustomer.locator('[aria-label="添加客户规格"]').click();
+    const inlineSize = inlineNewCustomer.getByLabel('规格 1 规格尺寸').locator('input');
+    await inlineSize.fill('30');
+    await expect(inlineSize).toHaveValue('30×');
     await page.keyboard.press('Escape');
     await expect(inlineNewCustomer).toHaveCount(0);
     assert.equal(db.listCustomers().length, customerCountBeforeInline, '仅打开并取消 inline 客户资料不新增客户');
@@ -435,6 +445,12 @@ async function main() {
     await expect(legacyEditor).toHaveCount(0);
     assert.equal(db.getCustomerDimensions().customers.find(row => row.id === 'legacy-carton-customer-spec-e2e').specs.length, 0, '删除旧尺寸库规格后必须持久化，刷新不能重新出现');
     await expect(page.locator('[aria-label="货物 1 客户常用规格"]')).toContainText('暂无纸箱规格');
+    await page.locator('[aria-label="货物 1 客户常用规格"]').click();
+    const emptySpecEditor = page.getByTestId('customer-editor');
+    await expect(emptySpecEditor).toBeVisible();
+    await expect(emptySpecEditor.getByText('编辑客户资料', { exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(emptySpecEditor).toHaveCount(0);
 
     await openCarton(customer.name);
     await page.getByLabel('编辑入库客户规格').click();

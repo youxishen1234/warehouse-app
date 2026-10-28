@@ -231,6 +231,7 @@ export interface PageResult<T> {
   total: number;
   page: number;
   page_size: number;
+  outbound_pending?: number;
 }
 
 export interface BackupMetadata {

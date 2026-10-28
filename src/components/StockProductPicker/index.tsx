@@ -9,7 +9,7 @@ type ProductOptionProps = { product: Product; onSelect: (product: Product) => vo
 const ProductOption = React.memo(function ProductOption({ product, onSelect }: ProductOptionProps) {
   return <View className={styles.option} onClick={() => onSelect(product)}>
     <Text>{product.name}</Text>
-    <Text className={styles.detail}>{product.specification || '???'} ? ?? {product.stock}{product.unit} ? ?{product.price}/{product.unit}</Text>
+    <Text className={styles.detail}>{product.specification || '未填规格'} · 库存 {product.stock}{product.unit} · ¥{product.price}/{product.unit}</Text>
   </View>;
 });
 

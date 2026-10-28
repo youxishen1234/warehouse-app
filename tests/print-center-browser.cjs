@@ -313,6 +313,22 @@ async function main() {
     await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
     await expect(page.locator('[data-dot-matrix-print-root]')).toHaveCount(0);
     await button('返回单据').click();
+    const counterCustomer = db.addCustomer({ name: '打印台计数客户' });
+    for (let index = 0; index < 31; index += 1) {
+      db.savePrintNote({
+        company: counterCustomer.name, customer_id: counterCustomer.id, customer_name: counterCustomer.name,
+        receiver: '计数收件人 ' + index, phone: '13800000000', address: '计数地址', sender: '计数发货人',
+        date: '2026-10-28', paper: saved.paper,
+        items: [{ name: '计数纸箱', specification: '30×20×15', quantity: 1, unit: '个', price: 1, remark: '' }]
+      });
+    }
+    const countTotal = db.listPrintNotes().length;
+    const countPending = db.listPrintNotes().filter(note => !note.outbound_at).length;
+    assert.ok(countTotal > 30, 'seed more notes than one history page');
+    await page.goto(origin + '/#/pages/print-center/index'); await page.reload();
+    await page.locator('.team-boot').waitFor({ state: 'hidden' });
+    await expect(page.locator('[class*="briefBody"]')).toContainText(`全部单据${countTotal}待出库${countPending}`);
+    await expect(page.locator('[class*="recentHeading"] p')).toContainText(`共 ${countTotal} 张`);
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ engine, savedEditReload: 'passed', customersAndStaleSearch: 'passed', saveFailure: 'passed', conflict: 'passed', mobileWidths: [320, 375, 390, 430], twoDigitSpecification: 'passed', previewZoom: 'passed', paperSelector: 'removed', multipage: 12, screenshots: artifacts }));
   } catch (error) {

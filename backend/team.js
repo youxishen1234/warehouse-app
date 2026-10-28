@@ -496,7 +496,10 @@ function install(db, options = {}) {
     const page = Number(req.query.page || 1), size = Number(req.query.page_size || 30);
     if (!Number.isSafeInteger(page) || page < 1 || !Number.isInteger(size) || size < 1 || size > 100 || !Number.isSafeInteger(page * size)) throw error('页码无效');
     const rows = db.listPrintNotes(req.query.keyword || '');
-    ok(res, { items: rows.slice((page - 1) * size, page * size), total: rows.length, page, page_size: size });
+    ok(res, {
+      items: rows.slice((page - 1) * size, page * size), total: rows.length, page, page_size: size,
+      outbound_pending: rows.filter(note => !note.outbound_at).length
+    });
   });
   route('get', '/print-notes/:id', (req, res) => {
     const note = db.listPrintNotes().find(row => row.id === Number(req.params.id));

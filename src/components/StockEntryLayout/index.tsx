@@ -19,7 +19,7 @@ export default function StockEntryLayout({ title, subtitle, children, onRefresh,
       <View className='stock-entry-header'>
         <View className='stock-entry-heading'>
           {back && <Button className='stock-entry-back' aria-label='返回' disabled={busy} onClick={goBack}>‹</Button>}
-          <View className='stock-entry-mark'><Icon name={title.includes('出库') ? 'truck' : 'package-plus'} color='#222924' style={{ width: 20, height: 20 }} /></View>
+          <View className='stock-entry-mark'><Icon name={title.includes('出库') ? 'truck' : 'package-plus'} color='#1677ff' style={{ width: 20, height: 20 }} /></View>
           <Text className='stock-entry-heading-title'>{title}</Text>
           {onRefresh && <Button className='stock-entry-refresh' disabled={busy} onClick={onRefresh}>刷新</Button>}
         </View>
