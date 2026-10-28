@@ -109,8 +109,20 @@ export interface CustomerForm {
   remark: string;
 }
 export interface CustomerSpec {
-  id: string; goods: string; specification: string; material: string; unit: string; price: number;
+  id: string; goods: string; specification: string; material: string; unit: string; price: number | null;
   kind?: '成品' | '纸板';
+  category?: '纸箱' | '纸板' | '其他';
+  boardLength?: number | null;
+  boardWidth?: number | null;
+  cartonLength?: number | null;
+  cartonWidth?: number | null;
+  cartonHeight?: number | null;
+  fluteType?: string;
+  layers?: number | null;
+  faceGsm?: number | null;
+  linerGsm?: number | null;
+  flutingGsm?: number | null;
+  unitPrice?: number | null;
   dimension_source?: { customer_id: string; spec_id: string };
 }
 
@@ -184,6 +196,8 @@ export interface DeliveryLine {
   specification: string;
   material?: string;
   customer_spec_id?: string | null;
+  supplier_spec_id?: string | null;
+  create_product?: boolean;
   customer_spec_snapshot?: Omit<Pick<CustomerSpec, 'id' | 'goods' | 'specification' | 'material' | 'unit' | 'price'>, 'price'> & { price: number };
   unit?: string;
   length?: number;

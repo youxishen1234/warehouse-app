@@ -29,7 +29,8 @@ test('business workbench shares dimensions and completes production atomically',
     const r = await fetch('http://127.0.0.1:' + server.address().port + '/api' + url, { method, headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key, 'If-Match': String(revision), 'X-Warehouse-Device': 'business-test' }, body: body === undefined ? undefined : JSON.stringify(body) });
     return { status: r.status, ...await r.json() };
   };
-  const form = { supplier: '学习用板厂', boardLength: 160, boardWidth: 110, cartonLength: 40, cartonWidth: 30, cartonHeight: 20, fluteType: 'B', layers: 3, orderedQty: 100, receivedQty: 100, billedArea: 176, unitPrice: 1, date: '2026-10-01' };
+  const boardSupplier = db.addSupplier({ name: '学习用板厂' });
+  const form = { supplier_id: boardSupplier.id, supplier: boardSupplier.name, boardLength: 160, boardWidth: 110, cartonLength: 40, cartonWidth: 30, cartonHeight: 20, fluteType: 'B', layers: 3, orderedQty: 100, receivedQty: 100, billedArea: 176, unitPrice: 1, date: '2026-10-01' };
   try {
     let batch, record;
     await t.test('paperboard receipt records payable once, separately from customer receivables', async () => {
@@ -92,7 +93,7 @@ test('business workbench shares dimensions and completes production atomically',
         assert.equal(response.status, 400, product.name + ': ' + response.message);
       }
 
-      const bcBatch = db.receiveBoard({ ...form, fluteType: 'BC', supplier: 'BC板厂', receivedQty: 20 });
+      const bcBatch = db.receiveBoard({ ...form, supplier_id: null, fluteType: 'BC', supplier: 'BC板厂', receivedQty: 20 });
       const bcLegacy = makeProduct('BC楞旧箱', 'BC楞');
       const bcFullWidth = makeProduct('全角ＢＣ旧箱', 'ＢＣ楞');
       assert.equal((await call('/production', 'POST', { batch_id: bcBatch.id, product_id: bcLegacy.id, consumed_quantity: 1, quantity: 1 })).status, 200);
@@ -103,7 +104,7 @@ test('business workbench shares dimensions and completes production atomically',
       assert.equal((await call('/production', 'POST', { batch_id: bcBatch.id, product_id: bLegacy.id, consumed_quantity: 1, quantity: 1 })).status, 400);
       assert.equal(db.listProduction().find(r => r.product_id === bLegacy.id).product_id, bLegacy.id);
 
-      const eBatch = db.receiveBoard({ ...form, fluteType: 'E', supplier: 'E板厂', receivedQty: 20 });
+      const eBatch = db.receiveBoard({ ...form, supplier_id: null, fluteType: 'E', supplier: 'E板厂', receivedQty: 20 });
       const eLegacy = makeProduct('E楞旧箱', 'ｅ 楞');
       assert.equal((await call('/production', 'POST', { batch_id: eBatch.id, product_id: eLegacy.id, consumed_quantity: 1, quantity: 1 })).status, 200);
       assert.equal((await call('/production', 'POST', { batch_id: eBatch.id, product_id: bLegacy.id, consumed_quantity: 1, quantity: 1 })).status, 400);
@@ -117,9 +118,10 @@ test('business workbench shares dimensions and completes production atomically',
       assert.equal(JSON.stringify(db.backupData()), before);
     });
     await t.test('paperboard edit/delete reverse their own payable without crossing party types', () => {
-      const b = db.receiveBoard({ ...form, supplier: '另一个板厂' });
+      const otherSupplier = db.addSupplier({ name: '另一个板厂' });
+      const b = db.receiveBoard({ ...form, supplier_id: otherSupplier.id, supplier: otherSupplier.name });
       const supplier = db.getSupplier(b.supplier_id);
-      db.updateBoard(b.id, { ...form, supplier: supplier.name, billedArea: 100 });
+      db.updateBoard(b.id, { ...form, supplier_id: supplier.id, supplier: supplier.name, billedArea: 100 });
       assert.equal(db.getSupplier(supplier.id).payable, 100);
       db.deleteBoard(b.id); assert.equal(db.getSupplier(supplier.id).payable, 0);
     });

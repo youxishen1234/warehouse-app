@@ -15,7 +15,7 @@ async function main() {
   app.use(express.static(path.resolve(process.env.WORKBENCH_SYNC_WEB_DIR || process.env.TARO_OUTPUT_DIR || 'release/business-sync-20261019/web')));
   const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
   const origin = 'http://127.0.0.1:' + server.address().port;
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(process.env.CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.CHROMIUM_EXECUTABLE_PATH } : {});
   const contexts = [];
   const errors = [];
   const setup = async width => {
@@ -33,17 +33,18 @@ async function main() {
     const page = await context.newPage(); page.on('pageerror', e => errors.push(e.message)); page.setDefaultTimeout(12000);
     return page;
   };
-  const go = async page => { await page.goto('about:blank'); await page.goto(origin + '/#/pages/business-center/index'); await expect(page.getByText('办理业务', { exact: true })).toBeVisible(); await expect(page.getByText('服务器数据已读取 · 多设备自动同步', { exact: true })).toBeVisible(); };
+  const go = async page => { await page.goto('about:blank'); await page.goto(origin + '/#/pages/business-center/index'); await expect(page.getByText('快捷办理', { exact: true })).toBeVisible(); await expect(page.getByText('服务器数据已读取 · 多设备自动同步', { exact: true })).toBeVisible(); };
   const button = (scope, text) => scope.getByText(text, { exact: true }).last().locator('xpath=ancestor-or-self::*[self::taro-button-core or self::button][1]');
   const workbench = page => page.getByTestId('simple-workbench');
   try {
     const first = await setup(390), second = await setup(430); await go(first); await go(second);
     assert.equal(await first.getByTestId('workbench-actions').locator('taro-button-core').count(), 4, 'home keeps exactly four main actions');
-    await expect(first.getByText('今天还没有业务记录', { exact: true })).toBeVisible();
+    await expect(first.getByText('还没有业务记录', { exact: true })).toBeVisible();
     await first.screenshot({ path: path.join(artifacts, 'empty-home.png'), fullPage: true });
     const actor = { id: 'browser-seed', username: '示例操作员' };
     const seed = fn => db.transact(actor, 'browser-change-' + Date.now(), String(Date.now()), String(db.revision()), 'isolated seed', fn).data;
-    const batch = seed(() => db.receiveBoard({ supplier: '学习板厂', date: '2026-10-01', boardLength: 160, boardWidth: 110, cartonLength: 40, cartonWidth: 30, cartonHeight: 20, fluteType: 'B', layers: 3, orderedQty: 100, receivedQty: 100, billedArea: 176, unitPrice: 1, deliveryNo: 'SH-1001' }));
+    const supplier = seed(() => db.addSupplier({ name: '学习板厂' }));
+    const batch = seed(() => db.receiveBoard({ supplier_id: supplier.id, supplier: supplier.name, date: '2026-10-01', boardLength: 160, boardWidth: 110, cartonLength: 40, cartonWidth: 30, cartonHeight: 20, fluteType: 'B', layers: 3, orderedQty: 100, receivedQty: 100, billedArea: 176, unitPrice: 1, deliveryNo: 'SH-1001' }));
     await button(workbench(first), '刷新').click(); await expect(first.getByText('100 张', { exact: true })).toBeVisible();
     await expect(second.getByText('100 张', { exact: true })).toBeVisible({ timeout: 20000 });
     for (const width of [320, 390, 736, 1280]) {
@@ -53,8 +54,7 @@ async function main() {
       await first.screenshot({ path: path.join(artifacts, 'home-' + width + '.png'), fullPage: true });
     }
     await first.setViewportSize({ width: 390, height: 900 });
-    await button(workbench(first), '入库').click();
-    await button(workbench(first), '查看已有库存').click();
+    await button(workbench(first), '查看库存').click();
     await expect(first.getByTestId('workbench-board')).toContainText('成箱 40 × 30 × 20 cm');
     await button(workbench(first), '生产').click();
     await expect(first.getByTestId('production-spec')).toContainText('40 × 30 × 20 cm');
@@ -66,8 +66,7 @@ async function main() {
     await first.locator('.taro-model__confirm').click();
     assert.equal(db.listBoards()[0].remainingQty, 90); assert.equal(db.listProduction().length, 1);
     const product = db.listProducts()[0]; assert.equal(product.specification, '40 × 30 × 20 cm'); assert.equal(product.stock, 8);
-    await button(workbench(second), '入库').click();
-    await button(workbench(second), '查看已有库存').click();
+    await button(workbench(second), '查看库存').click();
     await expect(second.getByTestId('workbench-board')).toContainText('90 张', { timeout: 20000 });
     await go(first);
     await button(workbench(first), '全部记录').click(); await expect(first.getByText('领用 10 张 · 完工 8 个', { exact: true })).toBeVisible();
@@ -99,15 +98,15 @@ async function main() {
     assert.equal(db.listSuppliers()[0].payable, 176); assert.equal(db.listLedger().length, 1);
     assert.equal(db.listLedger()[0].attachments.length, 1);
     await go(first);
-    await button(workbench(first), '账单中心').click();
+    await button(workbench(first), '收付款 / 账单').click();
     await button(workbench(first), '供货商账单').click(); await expect(first.getByText('当前待付款 ¥176.00', { exact: true })).toBeVisible();
     await button(workbench(first), '付款').click(); await first.locator('[aria-label="供货商付款金额"] input').fill('50'); await button(workbench(first), '确认付款').click();
     await expect(first.getByText('当前待付款 ¥126.00', { exact: true })).toBeVisible();
-    await go(first); await button(first.getByTestId('workbench-actions'), '入库').click(); await button(workbench(first), '纸箱入库').click(); await expect(first.getByText('纸箱生产入库', { exact: true })).toBeVisible();
-    await go(first); await button(first.getByTestId('workbench-actions'), '入库').click(); await button(workbench(first), '纸板入库').click();
+    await go(first); await button(first.getByTestId('workbench-actions'), '生产纸箱并入库').click(); await expect(first.getByText('纸箱生产入库', { exact: true })).toBeVisible();
+    await go(first); await button(first.getByTestId('workbench-actions'), '纸板入库').click();
     await first.locator('taro-button-core').filter({ hasText: '选择已有规格' }).click();
     await expect(first.getByText('两套规格分别带入，未保存的尺寸需自行填写。', { exact: true })).toBeVisible();
-    await first.locator('.board-template-list .board-button').first().click();
+    await first.locator('.board-entry-history .board-template-list .board-button').first().click();
     await expect(first.locator('[aria-label="纸板规格尺寸"] input')).toHaveValue('160×110');
     await expect(first.locator('[aria-label="成箱规格尺寸"] input')).toHaveValue('40×30×20');
     await first.screenshot({ path: path.join(artifacts, 'shared-specifications.png'), fullPage: true });

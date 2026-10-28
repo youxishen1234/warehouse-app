@@ -38,4 +38,7 @@
 .actions { display:grid; grid-template-columns:1fr 1fr; gap:10PX; margin-top:14PX; padding-bottom:2PX; }
 .actions :is(button,taro-button-core) { width:100%; min-height:40PX; padding:8PX 12PX; }
 .drawer .primary { background:#245ec7; color:#fff; border-color:#245ec7; }
+.categoryChoices { display:flex; flex-wrap:wrap; gap:5PX; margin-top:5PX; }
+.categoryChoices :is(button,taro-button-core) { padding:5PX 8PX; font-size:12PX; }
+.categoryChoices :is(button,taro-button-core)[aria-pressed='true'] { color:#1458b8; border-color:#93c5fd; background:#eff6ff; }
 @media(max-width:374PX) { .mask { padding-left:10PX; padding-right:10PX; } .drawer { padding:15PX; } }

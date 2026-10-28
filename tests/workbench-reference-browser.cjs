@@ -25,19 +25,23 @@ async function main() {
       const url = new URL(route.request().url());
       if (url.pathname.startsWith('/api/')) {
         if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS', 'access-control-allow-headers': 'Content-Type,Authorization,If-Match,Idempotency-Key,X-Warehouse-Device' } });
-        const response = await route.fetch({ url: origin + url.pathname + url.search });
-        return route.fulfill({ response, headers: { ...response.headers(), 'access-control-allow-origin': '*', 'access-control-expose-headers': 'X-Warehouse-Revision' } });
+        try {
+          const response = await route.fetch({ url: origin + url.pathname + url.search });
+          return await route.fulfill({ response, headers: { ...response.headers(), 'access-control-allow-origin': '*', 'access-control-expose-headers': 'X-Warehouse-Revision' } });
+        } catch (error) { if (!/disposed|closed/i.test(String(error))) throw error; }
+        return;
       }
       return url.origin === origin ? route.continue() : route.abort();
     });
     const page = await context.newPage(); page.on('pageerror', e => errors.push(e.message)); page.setDefaultTimeout(12000);
     return page;
   };
-  const go = async page => { await page.goto('about:blank'); await page.goto(origin + '/#/pages/business-center/index'); await expect(page.getByText('办理业务', { exact: true })).toBeVisible(); await expect(page.getByText('服务器数据已读取 · 多设备自动同步', { exact: true })).toBeVisible(); };
+  const go = async page => { await page.goto('about:blank'); await page.goto(origin + '/#/pages/business-center/index'); await expect(page.getByText('快捷办理', { exact: true })).toBeVisible(); await expect(page.getByText('服务器数据已读取 · 多设备自动同步', { exact: true })).toBeVisible(); };
   const button = (scope, text) => scope.getByText(text, { exact: true }).last().locator('xpath=ancestor-or-self::*[self::taro-button-core or self::button][1]');
   try {
     // Isolated demonstration data only. No calls reach the live warehouse.
-    const batch = db.receiveBoard({ supplier: '示例板厂', date: '2026-10-19', boardLength: 160, boardWidth: 110, cartonLength: 40, cartonWidth: 30, cartonHeight: 20, fluteType: 'B', layers: 3, orderedQty: 120, receivedQty: 120, billedArea: 211.2, unitPrice: 1 });
+    const supplier = db.addSupplier({ name: '示例板厂' });
+    const batch = db.receiveBoard({ supplier_id: supplier.id, supplier: supplier.name, date: '2026-10-19', boardLength: 160, boardWidth: 110, cartonLength: 40, cartonWidth: 30, cartonHeight: 20, fluteType: 'B', layers: 3, orderedQty: 120, receivedQty: 120, billedArea: 211.2, unitPrice: 1 });
     const completed = db.completeProduction({ batch_id: batch.id, product_name: '成品 B', consumed_quantity: 100, quantity: 100 }, '学习操作员');
     await new Promise(resolve => setTimeout(resolve, 10));
     const customer = db.addCustomer({ name: '示例客户' });
@@ -74,11 +78,10 @@ async function main() {
       await page.screenshot({ path: path.join(artifacts, 'reference-home-' + width + '.png'), fullPage: true });
     }
     await page.setViewportSize({ width: 390, height: 844 });
-    await button(page.getByTestId('workbench-actions'), '入库').click();
-    await expect(page.getByText('纸板入库', { exact: true })).toBeVisible();
-    await expect(page.getByText('纸箱入库', { exact: true })).toBeVisible();
+    await button(page.getByTestId('workbench-actions'), '纸板入库').click();
+    await expect(page).toHaveURL(/pages\/board-receive\/index/);
     await page.screenshot({ path: path.join(artifacts, 'reference-inbound.png'), fullPage: true });
-    await page.locator('[aria-label="返回总台"]:visible').last().click(); await button(page.getByTestId('simple-workbench').filter({ visible: true }).last(), '账单中心').click();
+    await go(page); await button(page.getByTestId('simple-workbench').filter({ visible: true }).last(), '收付款 / 账单').click();
     await expect(page.getByTestId('finance-center').filter({ visible: true }).last()).toBeVisible();
     await page.getByTestId('finance-tab-customer').click();
     await expect(page.getByTestId('finance-customer-view')).toBeVisible();

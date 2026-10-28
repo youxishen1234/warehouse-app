@@ -16,7 +16,7 @@ async function main() {
     orderedQty: 100, receivedQty: 100, billedArea: 96, unitPrice: 2, location: 'A-01'
   });
   const base = 'http://127.0.0.1:' + server.address().port;
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(process.env.PLAYWRIGHT_BROWSER_CHANNEL ? { channel: process.env.PLAYWRIGHT_BROWSER_CHANNEL } : {});
   try {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
     await context.route(/https?:\/\/[^/]+\/api\//, async route => {

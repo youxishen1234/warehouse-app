@@ -44,6 +44,23 @@
 .entryGuide taro-text-core:last-child { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; white-space: normal; }
 .entryBadge { display: inline-flex; flex-shrink: 0; padding: 0 5PX; border: 1PX solid #bfdbfe; border-radius: 3PX; color: #1677ff; background: #eff6ff; font-size: 11PX; line-height: 18PX; }
 .page .entry:hover, .page .choice:hover, .page .activity:hover { background: #f1f6ff; }
+.homeHeading { display: flex; align-items: baseline; justify-content: space-between; gap: 12PX; margin: 0 0 12PX; }
+.sectionCaption, .sectionHint { color: #64748b; font-size: 13PX; }
+.tasks { display: grid; gap: 0; padding: 0 14PX; margin-bottom: 24PX; border: 1PX solid #e2e8f0; border-radius: 9PX; background: #fff; }
+.page .task { display: grid; grid-template-columns: minmax(0, 1fr) auto 18PX; align-items: center; gap: 10PX; width: 100%; min-height: 57PX; padding: 9PX 0; border: 0; border-bottom: 1PX solid #edf1f5; border-radius: 0; background: transparent; text-align: left; }
+.page .task:last-of-type { border-bottom: 0; }
+.taskTitle { min-width: 0; color: #172033; font-size: 15PX; font-weight: 600; overflow-wrap: anywhere; }
+.taskDetail { max-width: 130PX; color: #64748b; font-size: 12PX; text-align: right; overflow-wrap: anywhere; }
+.sectionHint { display: block; padding: 12PX 0; }
+.sectionError { display: flex; justify-content: space-between; align-items: center; gap: 10PX; padding: 10PX 13PX; margin: 0 0 12PX; color: #92400e; background: #fffbeb; border: 1PX solid #fde68a; border-radius: 7PX; font-size: 12PX; overflow-wrap: anywhere; }
+.page .sectionError .textAction { flex-shrink: 0; min-height: 36PX; padding: 4PX 8PX; }
+.page .summaryItem { display: flex; flex-direction: column; align-items: flex-start; gap: 4PX; width: 100%; min-width: 0; padding: 13PX; border: 0; background: #fff; color: #64748b; text-align: left; }
+.page .summaryItem strong { color: #172033; font-size: 19PX; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.secondaryActions { display: flex; flex-wrap: wrap; gap: 8PX; margin: -5PX 0 22PX; }
+.page .secondaryAction { min-height: 38PX; padding: 7PX 11PX; border: 1PX solid #e2e8f0; border-radius: 6PX; background: #f8fafc; color: #475569; font-size: 13PX; }
+.page .secondaryAction:hover { background: #eff6ff; color: #1458b8; }
+.page .flowToggle { min-height: 40PX; padding: 7PX 0; border: 0; background: transparent; color: #1677ff; font-size: 13PX; }
+.filterNotice { display: flex; align-items: center; justify-content: space-between; gap: 12PX; padding: 10PX 13PX; margin-bottom: 12PX; color: #1458b8; border: 1PX solid #bfdbfe; border-radius: 7PX; background: #eff6ff; }
 .recentHeading { margin: 32PX 0 16PX; }
 .page .textAction { display: flex; align-items: center; gap: 6PX; font-size: 17PX; }
 .page .activity { display: grid; grid-template-columns: 21PX minmax(0, 1fr) auto; align-items: center; width: 100%; min-height: 98PX; gap: 14PX; padding: 19PX 0; border: 0; border-top: 1PX solid #e2e8f0; border-radius: 0; background: transparent; text-align: left; }
@@ -122,9 +139,27 @@
   .customerToolbar { justify-content: flex-start; margin-bottom: 18PX; }
 }
 @media (max-width: 520PX) {
-  .entries { grid-template-columns: 1fr; gap: 12PX; }
-  .entry { min-height: 94PX !important; padding: 16PX 18PX !important; gap: 10PX !important; }
-  .entryGuide { gap: 6PX; font-size: 12PX; }
+  .page[data-panel='home'] .masthead { padding-top: calc(env(safe-area-inset-top) + 16PX); padding-bottom: 12PX; }
+  .page[data-panel='home'] .content { padding-top: 16PX; }
+  .page[data-panel='home'] .status { margin-top: 8PX; font-size: 12PX; }
+  .page[data-panel='home'] .homeHeading { margin-bottom: 9PX; }
+  .page[data-panel='home'] .tasks { margin-bottom: 16PX; padding: 0 11PX; }
+  .page[data-panel='home'] .entries { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9PX; margin-top: 9PX; }
+  .page[data-panel='home'] .entry { min-height: 76PX !important; padding: 11PX !important; gap: 7PX !important; font-size: 14PX !important; }
+  .page[data-panel='home'] .entryTop { gap: 7PX; }
+  .page[data-panel='home'] .entryTop > taro-image-core { width: 18PX !important; height: 18PX !important; }
+  .page[data-panel='home'] .entryTop > taro-image-core:last-child { display: none; }
+  .page[data-panel='home'] .entryTitle { font-size: 14PX; }
+  .page[data-panel='home'] .entryGuide { gap: 4PX; font-size: 11PX; }
+  .page[data-panel='home'] .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1PX; margin: 0 0 16PX; }
+  .page[data-panel='home'] .summaryItem { padding: 9PX 11PX; font-size: 12PX; }
+  .page[data-panel='home'] .summaryItem strong { font-size: 17PX; }
+  .page[data-panel='home'] .task { min-height: 38PX; padding: 6PX 0; gap: 7PX; }
+  .page[data-panel='home'] .taskTitle { font-size: 13PX; }
+  .page[data-panel='home'] .taskDetail { max-width: 105PX; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 11PX; }
+  .page[data-panel='home'] .sectionTitle { font-size: 17PX; }
+  .page[data-panel='home'] .secondaryActions { gap: 7PX; margin-top: 9PX; }
+  .page[data-panel='home'] .secondaryAction { min-height: 35PX; padding: 6PX 9PX; font-size: 12PX; }
 }
 @media (max-width: 360PX) {
   .masthead { padding-left: 16PX; padding-right: 16PX; }

@@ -323,6 +323,14 @@ function install(db, options = {}) {
     res.set('X-Warehouse-Revision', String(result.revision)); ok(res, result.data);
   });
   route('get', '/boards', (req, res) => ok(res, db.listBoards()));
+  route('post', '/boards/batch', (req, res) => {
+    if (req.user.role === 'viewer') throw error('只读账号不能提交纸板入库', 403);
+    if (!IDENTITY_KEY_PATTERN.test(String(req.get('Idempotency-Key') || ''))) throw error('缺少有效的提交编号');
+    if (!req.is('application/json') || !req.body || typeof req.body !== 'object' || Array.isArray(req.body)) throw error('请提交有效的纸板数据');
+    const operation = 'POST /boards/batch';
+    const result = db.transact(req.user, req.get('Idempotency-Key'), digest(operation + JSON.stringify(req.body)), req.get('If-Match'), operation, () => db.receiveBoards(req.body));
+    res.set('X-Warehouse-Revision', String(result.revision)); ok(res, result.data);
+  });
   route('get', '/business-specifications', (req, res) => ok(res, db.listBusinessSpecifications()));
   route('get', '/production', (req, res) => ok(res, db.listProduction()));
   route('post', '/production', (req, res) => {
@@ -488,6 +496,19 @@ function install(db, options = {}) {
     const key = req.get('Idempotency-Key'); const body = req.body || {};
     const operation = `POST /suppliers/${req.params.id}/settlement`;
     const result = db.transact(req.user, key, digest(operation + JSON.stringify(body)), req.get('If-Match'), operation, () => db.settleParty('supplier', Number(req.params.id), body.amount, body.remark));
+    res.set('X-Warehouse-Revision', String(result.revision)); ok(res, result.data);
+  });
+  route('get', '/suppliers/:id/specs', (req, res) => {
+    const supplier = db.getSupplier(Number(req.params.id));
+    if (!supplier || supplier.deleted_at) throw error('供货商不存在或已停用', 404);
+    ok(res, supplier);
+  });
+  route('put', '/suppliers/:id/specs', (req, res) => {
+    if (req.user.role === 'viewer') throw error('只读账号不能修改供货商常用货物', 403);
+    if (!req.is('application/json') || !req.body || typeof req.body !== 'object' || Array.isArray(req.body) || !Array.isArray(req.body.specs)) throw error('请提交常用采购资料');
+    const operation = `PUT /suppliers/${req.params.id}/specs`;
+    const result = db.transact(req.user, req.get('Idempotency-Key'), digest(operation + JSON.stringify(req.body)), req.get('If-Match'), operation,
+      () => db.updateSupplier(Number(req.params.id), { specs: req.body.specs }));
     res.set('X-Warehouse-Revision', String(result.revision)); ok(res, result.data);
   });
   const collections = { products: ['listProducts','getProduct','addProduct','updateProduct','deleteProduct'], customers: ['listCustomers','getCustomer','addCustomer','updateCustomer','deleteCustomer'], suppliers: ['listSuppliers','getSupplier','addSupplier','updateSupplier','deleteSupplier'], orders: ['listOrders',null,'addOrder','updateOrder'], transactions: ['listTx',null,null,'updateTransaction','deleteTransaction'], ledger: ['listLedger',null,'addLedger',null,'deleteLedger'] };

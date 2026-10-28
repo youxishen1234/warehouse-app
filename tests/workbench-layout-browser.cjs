@@ -76,9 +76,9 @@ async function main() {
 
   try {
     await page.goto(origin + '/#/pages/business-center/index');
-    await expect(page.getByText('办理业务', { exact: true })).toBeVisible();
+    await expect(page.getByText('快捷办理', { exact: true })).toBeVisible();
     await expect(page.getByText('服务器数据已读取 · 多设备自动同步', { exact: true })).toBeVisible();
-    await expect(page.getByTestId('workbench-version')).toHaveText('网页版本 1.1.137');
+    await expect(page.getByTestId('workbench-version')).toContainText('网页版本');
     await expect(page.getByTestId('workbench-today')).toContainText(longProductName);
     const activity = page.getByTestId('workbench-today').locator('taro-button-core').first();
 
@@ -92,11 +92,9 @@ async function main() {
       assert.equal(await cards.count(), 4, 'four primary business actions remain visible');
       const cardMetrics = await cards.evaluateAll(elements => elements.map(card => {
         const guide = card.querySelector('[class*="entryGuide"]');
-        const badge = guide?.firstElementChild;
         const label = guide?.lastElementChild;
         const cardRect = card.getBoundingClientRect();
         const guideRect = guide?.getBoundingClientRect();
-        const badgeRect = badge?.getBoundingClientRect();
         const labelRect = label?.getBoundingClientRect();
         const range = document.createRange();
         if (label) range.selectNodeContents(label);
@@ -106,29 +104,21 @@ async function main() {
         return {
           card: { left: cardRect.left, right: cardRect.right, top: cardRect.top, bottom: cardRect.bottom, height: cardRect.height },
           guide: guideRect && { left: guideRect.left, right: guideRect.right, top: guideRect.top, bottom: guideRect.bottom },
-          badge: badgeRect && { left: badgeRect.left, right: badgeRect.right, top: badgeRect.top, bottom: badgeRect.bottom, width: badgeRect.width },
           label: labelRect && { left: labelRect.left, right: labelRect.right, top: labelRect.top, bottom: labelRect.bottom },
           textLines
         };
       }));
       assert.equal(cardMetrics.length, 4);
-      if (width <= 520) {
-        assert.ok(cardMetrics.every(metric => Math.abs(metric.card.left - cardMetrics[0].card.left) < 2 && Math.abs(metric.card.right - cardMetrics[0].card.right) < 2), `primary actions share one column at ${width}px`);
-        assert.ok(cardMetrics.every((metric, index) => index === 0 || metric.card.top >= cardMetrics[index - 1].card.bottom - 1), `primary actions stack vertically at ${width}px`);
-      } else {
-        assert.ok(cardMetrics[0].card.left < cardMetrics[1].card.left && cardMetrics[2].card.left < cardMetrics[3].card.left, `primary actions remain in two columns at ${width}px`);
-        assert.ok(Math.abs(cardMetrics[0].card.top - cardMetrics[1].card.top) < 2 && Math.abs(cardMetrics[2].card.top - cardMetrics[3].card.top) < 2 && cardMetrics[2].card.top > cardMetrics[0].card.top, `primary actions remain in a two-by-two grid at ${width}px`);
-      }
+      assert.ok(cardMetrics[0].card.left < cardMetrics[1].card.left && cardMetrics[2].card.left < cardMetrics[3].card.left, `primary actions remain in two columns at ${width}px`);
+      assert.ok(Math.abs(cardMetrics[0].card.top - cardMetrics[1].card.top) < 2 && Math.abs(cardMetrics[2].card.top - cardMetrics[3].card.top) < 2 && cardMetrics[2].card.top > cardMetrics[0].card.top, `primary actions remain in a two-by-two grid at ${width}px`);
       for (const [index, metric] of cardMetrics.entries()) {
         assert.ok(metric.card.height >= 44, `action ${index} has a usable touch target at ${width}px`);
-        assert.ok(metric.guide && metric.badge && metric.label, `action ${index} guide is rendered at ${width}px`);
+        assert.ok(metric.guide && metric.label, `action ${index} guide is rendered at ${width}px`);
         assert.ok(metric.guide.left >= metric.card.left && metric.guide.right <= metric.card.right + 1, `action ${index} guide remains inside its card at ${width}px`);
-        assert.ok(metric.badge.width > 0 && metric.badge.left >= metric.guide.left && metric.badge.right <= metric.guide.right + 1, `action ${index} badge is not squeezed at ${width}px`);
         assert.ok(metric.label.left >= metric.guide.left && metric.label.right <= metric.guide.right + 1, `action ${index} guide text remains inside the guide at ${width}px`);
         assert.ok(metric.textLines.length > 0, `action ${index} guide text is laid out at ${width}px`);
         assert.ok(metric.textLines.every(line => line.left >= metric.guide.left - 1 && line.right <= metric.guide.right + 1), `action ${index} guide text has no clipped line at ${width}px`);
         assert.ok(metric.textLines.every(line => line.bottom <= metric.card.bottom + 1), `action ${index} guide text stays inside the card at ${width}px`);
-        assert.ok(metric.textLines.every(line => line.bottom <= metric.badge.top || line.top >= metric.badge.bottom || line.right <= metric.badge.left || line.left >= metric.badge.right), `action ${index} badge and guide text do not overlap at ${width}px`);
       }
 
       const titleRect = await activity.locator('[class*="activityTitle"]').evaluate(element => {
@@ -151,8 +141,8 @@ async function main() {
       return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
     }));
     assert.equal(embeddedMetrics.length, 4);
-    assert.ok(embeddedMetrics.every(metric => Math.abs(metric.left - embeddedMetrics[0].left) < 2 && Math.abs(metric.right - embeddedMetrics[0].right) < 2), 'embedded home actions share one column at 390px');
-    assert.ok(embeddedMetrics.every((metric, index) => index === 0 || metric.top >= embeddedMetrics[index - 1].bottom - 1), 'embedded home actions stack vertically at 390px');
+    assert.ok(embeddedMetrics[0].left < embeddedMetrics[1].left && embeddedMetrics[2].left < embeddedMetrics[3].left, 'embedded home has two columns at 390px');
+    assert.ok(Math.abs(embeddedMetrics[0].top - embeddedMetrics[1].top) < 2 && Math.abs(embeddedMetrics[2].top - embeddedMetrics[3].top) < 2 && embeddedMetrics[2].top > embeddedMetrics[0].top, 'embedded home has a compact two-by-two grid at 390px');
     const bottomInset = await embeddedRoot.evaluate(element => ({
       clearance: parseFloat(getComputedStyle(element).paddingBottom),
       dockSpace: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sg-workbench-dock-space')) || 84,
@@ -181,8 +171,8 @@ async function main() {
 
     await page.goto(origin + '/#/pages/business-center/index');
     await page.reload();
-    await expect(page.getByText('办理业务', { exact: true })).toBeVisible();
-    await button(home, '账单中心').click();
+    await expect(page.getByText('快捷办理', { exact: true })).toBeVisible();
+    await button(home, '收付款 / 账单').click();
     await expect(page.getByTestId('finance-center')).toBeVisible();
     await expect(page.getByTestId('finance-tab-ledger')).toBeVisible();
     await expect(page.getByTestId('finance-tab-customer')).toBeVisible();
@@ -194,7 +184,7 @@ async function main() {
     await page.screenshot({ path: path.join(artifacts, 'finance-entry-390.png'), fullPage: true });
 
     await page.getByLabel('返回总台').click();
-    await expect(page.getByText('办理业务', { exact: true })).toBeVisible();
+    await expect(page.getByText('快捷办理', { exact: true })).toBeVisible();
     await page.locator('.sg-glass-items [data-tab="2"]').click();
     await page.waitForURL(/pages\/inventory\/index/);
     const inventory = page.getByTestId('simple-workbench').filter({ visible: true }).last();
@@ -211,7 +201,7 @@ async function main() {
     assert.ok(dialogMetrics.top >= 0 && dialogMetrics.bottom <= 320, 'stocktake dialog fits inside a short phone viewport');
     assert.ok(dialogMetrics.scrollHeight > dialogMetrics.clientHeight, 'dialog contents remain reachable through internal scrolling when screen height is short');
     assert.deepEqual(errors, []);
-    console.log('PASS business-center layout: phone actions stack in one column at 320/390/430px, tablet/desktop keep two columns at 736/1280px; guidance, badges, long activity title, finance entry and short-screen dialog verified.');
+    console.log('PASS business-center layout: compact two-by-two actions at 320/390/430/736/1280px; guidance, long activity title, finance entry and short-screen dialog verified.');
   } finally {
     await Promise.all(contexts.map(context => context.close()));
     await browser.close();

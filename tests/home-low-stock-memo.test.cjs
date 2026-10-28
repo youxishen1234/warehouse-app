@@ -1,16 +1,19 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const test = require('node:test');
+const ts = require('typescript');
+const vm = require('node:vm');
 
-test('home reuses the shared workbench without a stock warning surface or fetch', () => {
-  const home = fs.readFileSync('src/pages/home/index.tsx', 'utf8');
-  const workbench = fs.readFileSync('src/pages/business-center/workbench.tsx', 'utf8');
-  const styles = fs.readFileSync('src/pages/business-center/workbench.module.scss', 'utf8');
-  assert.match(home, /<Workbench embedded initial='home' \/>/);
-  assert.match(workbench, /loadHomeSummary/);
-  assert.match(workbench, /setStats\(await getStats\(\)\)/);
-  assert.doesNotMatch(workbench, /lowStock|loadProducts\(true\)|库存预警|库存提醒|workbench-stock-notice/);
-  assert.doesNotMatch(styles, /stockNotice|noticeTitle|noticeDetail|noticeAction|alertValue/);
-  assert.match(workbench, /data-testid='workbench-summary'/);
-  assert.equal((workbench.match(/<View className=\{styles\.summaryItem\}>/g) || []).length, 2);
+const model = {};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/pages/home/dashboard-model.ts', 'utf8'), {
+  compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS }
+}).outputText, { exports: model, Date });
+
+test('stock warnings match safety thresholds and exclude deleted goods', () => {
+  assert.equal(model.isStockWarning({ stock: 0, safety_stock: 0 }), true);
+  assert.equal(model.isStockWarning({ stock: 4, safety_stock: 5 }), true);
+  assert.equal(model.isStockWarning({ stock: 5, safety_stock: 5 }), true);
+  assert.equal(model.isStockWarning({ stock: 1, safety_stock: 0 }), false);
+  assert.equal(model.isStockWarning({ stock: 6, safety_stock: 5 }), false);
+  assert.equal(model.isStockWarning({ stock: 0, safety_stock: 5, deleted_at: 1 }), false);
 });

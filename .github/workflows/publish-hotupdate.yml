@@ -86,6 +86,10 @@ jobs:
         env:
           LEDGER_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
         run: npx playwright install --with-deps chromium
+      - name: Validate phase one mobile workflows and partial outages
+        env:
+          PHASE_ONE_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/phase-one-mobile-browser.cjs
       - name: Validate ledger photo workflows
         env:
           LEDGER_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}

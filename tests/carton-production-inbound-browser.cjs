@@ -69,6 +69,7 @@ async function main() {
   });
   const cartonProduct = db.addProduct({
     name: '自产测试纸箱甲',
+    material: '牛皮纸',
     category: '纸箱',
     specification: '20×15×10',
     unit: '个',
@@ -77,6 +78,7 @@ async function main() {
   });
   const finishedProduct = db.addProduct({
     name: '自产测试成品乙',
+    material: '牛皮纸',
     category: '成品',
     specification: '18×12×8',
     unit: '个',
@@ -180,15 +182,15 @@ async function main() {
     };
 
     await openProductionEntry();
-    await expect(page.locator('[aria-label="选择客户"]')).toBeVisible();
+    await expect(page.getByTestId('customer-search-open')).toBeVisible();
     await expect(page.getByText('选择供货商', { exact: true })).toHaveCount(0);
     assert.ok(countCartonInboundCustomerRequests() > 0, '纸箱自产页面从生产入库客户接口加载可选客户');
     assert.equal(apiRequests.filter(item => item.method === 'GET' && item.path.startsWith('/suppliers')).length, 0, '纸箱自产页面不得加载供货商列表');
 
     await buttonContainingText('更多信息').click();
-    await expect(input('生产工单编号')).toBeVisible();
+    await expect(input('工单编号或采购单号')).toBeVisible();
     await expect(input('货物 1 计划数量')).toBeVisible();
-    await expect(input('操作人')).toBeVisible();
+    await expect(page.getByText('操作人', { exact: true })).toBeVisible();
     await expect(input('入库备注')).toBeVisible();
     const detailsText = await page.locator('[class*="detailsBody"]').innerText();
     for (const excludedLabel of ['采购单号', '供货商', '司机电话', '车号', '运费', '计入应付', '增加应付']) {
@@ -200,6 +202,7 @@ async function main() {
     await firstSpec.fill('');
     await firstSpec.pressSequentially('302015');
     await expect(firstSpec).toHaveValue('30×20×15');
+    await openProductPickerAndSelect('自产测试纸箱甲');
 
     const firstQuantity = input('货物 1 本次完工数量');
     const firstPrice = input('货物 1 入库单价');
@@ -210,7 +213,7 @@ async function main() {
     await expectedLineAmount(0, '3.08');
     await expectedTotal('3.08');
 
-    await buttonContainingText('添加货物').click();
+    await buttonContainingText('再添加一项').click();
     await openProductPickerAndSelect('自产测试成品乙');
     const secondQuantity = input('货物 2 本次完工数量');
     const secondPrice = input('货物 2 入库单价');
@@ -224,8 +227,8 @@ async function main() {
     await expectedLineAmount(1, '4.20');
     await expectedTotal('7.28');
 
-    await input('生产工单编号').fill('PROD-BROWSER-20261023-01');
-    await input('操作人').fill('浏览器回归');
+    await input('工单编号或采购单号').fill('PROD-BROWSER-20261023-01');
+
     const productionHistoryToggle = buttonContainingText('最近入库单');
     await productionHistoryToggle.click();
     await expect(page.getByText('暂无入库单', { exact: true })).toBeVisible();
@@ -289,7 +292,7 @@ async function main() {
     await page.screenshot({ path: path.join(evidence, 'carton-production-saved.png'), fullPage: true });
 
     await page.goto(`${origin}/#/pages/inbound/index`);
-    await expect(page.getByText('入库', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('采购入库', { exact: true }).first()).toBeVisible();
     await buttonContainingText('最近入库单').click();
     await expect(page.getByText('LEGACY-SUPPLIER-INBOUND', { exact: true }).last()).toBeVisible();
     await expect(page.getByText('LEGACY-CUSTOMER-SUPPLY', { exact: true }).last()).toBeVisible();
@@ -322,13 +325,13 @@ async function main() {
     // is accepted and still follows the same idempotent, stock-only workflow.
     await openProductionEntry();
     await buttonContainingText('更多信息').click();
-    await expect(input('生产工单编号')).toBeVisible();
+    await expect(input('工单编号或采购单号')).toBeVisible();
     await openProductPickerAndSelect('自产测试成品乙');
     await input('货物 1 本次完工数量').fill('2');
     await input('货物 1 入库单价').fill('0');
     await expectedLineAmount(0, '0.00');
     await expectedTotal('0.00');
-    await input('生产工单编号').fill('PROD-ZERO-BROWSER-20261023-01');
+    await input('工单编号或采购单号').fill('PROD-ZERO-BROWSER-20261023-01');
     const zeroPostResponse = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/delivery-notes');
     await buttonContainingText('确认入库').click();
     const zeroResponse = await zeroPostResponse;

@@ -134,31 +134,18 @@ async function main() {
     return task.finally(() => pendingRoutes.delete(task));
   });
   const input = label => page.locator(`[aria-label=${JSON.stringify(label)}] input, input[aria-label=${JSON.stringify(label)}]`).first();
-  const click = label => page.locator('taro-button-core, button, [role="button"]').filter({ has: page.getByText(label, { exact: true }) }).last().click();
+  const click = label => page.locator('taro-button-core, button, [role="button"]').filter({ hasText: label }).last().click();
   const go = async route => { await page.goto('about:blank'); await page.goto(origin + '/#' + route); };
   const choose = async (label, text) => {
-    const picker = page.locator(`[aria-label=${JSON.stringify(label)}]`).first();
-    const matches = value => typeof text === 'string' ? value.includes(text) : text.test(value);
-    if (await picker.evaluate(node => node.tagName === 'SELECT')) {
-      const options = await picker.locator('option').allTextContents();
-      const option = options.find(matches);
-      assert.ok(option, `Missing option matching ${text} in ${label}: ${options.join(' | ')}`);
-      return picker.selectOption({ label: option });
+    if (label === '选择客户') {
+      await page.getByTestId('customer-search-open').click();
+      await page.getByRole('dialog', { name: '选择客户', exact: true }).getByText(text, { exact: true }).locator('xpath=ancestor::taro-button-core[1]').click();
+      const confirm = page.locator('.taro-model__confirm:visible');
+      if (await confirm.count()) await confirm.click();
+      return;
     }
-    await picker.click();
-    const wheel = page.locator('.weui-picker__group:visible').last();
-    await expect(wheel).toBeVisible();
-    await expect.poll(async () => {
-      const bounds = await wheel.boundingBox();
-      return Math.round(bounds.y + bounds.height);
-    }).toBe(page.viewportSize().height);
-    const row = wheel.locator('.weui-picker__item').filter({ hasText: text }).first();
-    const box = await row.boundingBox();
-    assert.ok(box);
-    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-    await page.locator('.weui-picker__action:visible').filter({ hasText: '确定' }).click();
-    await expect(wheel).not.toBeVisible();
-    await expect(picker).toContainText(text);
+    const name = typeof text === 'string' ? text : '客户自产纸箱';
+    await page.getByTestId('party-goods-cards').getByText(name, { exact: true }).locator('xpath=ancestor::taro-button-core[1]').click();
   };
   const assertNoOverflow = async width => {
     await page.setViewportSize({ width, height: 900 });
@@ -172,10 +159,9 @@ async function main() {
     await expect(page.getByText('纸箱生产入库', { exact: true })).toBeVisible();
     await expect(input('货物 1 本次完工数量')).toBeVisible();
     await choose('选择客户', customer.name);
-    const specPicker = page.locator('[aria-label="货物 1 客户常用规格"]').first();
-    await expect(specPicker).toBeVisible();
+    await expect(page.getByTestId('party-goods-cards')).toBeVisible();
     await choose('货物 1 客户常用规格', /客户自产纸箱 · 30×20×15 cm · 牛皮纸 · 个 ·/);
-    await expect(page.getByText('选择已有商品', { exact: true })).toHaveCount(0, '选择客户后应直接选客户规格，不再经库存商品弹窗');
+    await expect(input('货物 1 货物名称')).toHaveValue(spec.goods);
     assert.equal(requests.filter(row => row.method === 'POST' && row.path === '/products').length, 0, '选择客户规格不得创建库存商品');
   };
   const saveReceipt = async (number, price) => {
@@ -183,7 +169,7 @@ async function main() {
     await input('货物 1 本次完工数量').fill('100');
     await expect(page.getByTestId('inbound-total-amount')).toContainText(`¥${(price * 100).toFixed(2)}`);
     await click('更多信息');
-    await input('生产工单编号').fill(number);
+    await input('工单编号或采购单号').fill(number);
     const response = page.waitForResponse(row => row.request().method() === 'POST' && new URL(row.url()).pathname === '/api/delivery-notes');
     await click('确认入库');
     const result = await response;
@@ -198,11 +184,9 @@ async function main() {
     await openCarton();
     await expect(input('货物 1 入库单价')).toHaveValue('3');
     await choose('选择客户', other.name);
-    await expect(input('货物 1 入库单价')).toHaveValue('', { timeout: 5000 });
     await choose('货物 1 客户常用规格', /客户自产纸箱 · 30×20×15 cm · 牛皮纸 · 个 ·/);
     await expect(input('货物 1 入库单价')).toHaveValue('5');
     await choose('选择客户', customer.name);
-    await expect(input('货物 1 入库单价')).toHaveValue('', { timeout: 5000 });
     await choose('货物 1 客户常用规格', /客户自产纸箱 · 30×20×15 cm · 牛皮纸 · 个 ·/);
     await expect(input('货物 1 入库单价')).toHaveValue('3');
     const first = await saveReceipt('CUSTOMER-INBOUND-300', 3);
@@ -233,7 +217,7 @@ async function main() {
     const customerProfileCard = page.getByTestId(`customer-management-card-${customer.id}`);
     await expect(customerProfileCard).toBeVisible();
     const customerSpecs = page.getByTestId(`customer-specs-${customer.id}`);
-    await expect(customerSpecs).toContainText('常用规格');
+    await expect(customerSpecs).toContainText('常用销售资料');
     await expect(customerSpecs).toContainText('客户自产纸箱');
     await expect(customerSpecs).toContainText('30×20×15 cm');
     await expect(customerSpecs).toContainText('¥2.00/个');
@@ -274,7 +258,7 @@ async function main() {
     await page.getByLabel('刷新服务器数据').click();
     await failedDimensions;
     await expect(customerProfileCard).toBeVisible();
-    await expect(dimensionOnlyCard).toHaveCount(0);
+    await expect(dimensionOnlyCard).toBeVisible();
     failDimensions = false;
     const restoredDimensions = page.waitForResponse(response =>
       new URL(response.url()).pathname === '/api/customer-dimensions' && response.status() === 200

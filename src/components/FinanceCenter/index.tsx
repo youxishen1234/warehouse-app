@@ -355,7 +355,7 @@ export default function FinanceCenter({
 
     {(view === 'customer' || view === 'supplier') && <View className={styles.partyView} data-testid={`finance-${view}-view`}>
       <View className={styles.partyToolbar}>
-        <FinanceButton className={`${styles.primary} ${styles.partyAddButton}`} data-testid={`finance-add-${view}`} onClick={() => onEditParty?.(view)}><Icon name='plus' color='#fff' /><Text>{`新增${view === 'customer' ? '客户' : '供货商'}`}</Text></FinanceButton>
+        <FinanceButton className={`${styles.primary} ${styles.partyAddButton}`} data-testid={`finance-add-${view}`} onClick={() => onEditParty?.(view)}><Icon name='notebook' color='#fff' /><Text>{view === 'customer' ? '客户管理' : '供货商管理'}</Text></FinanceButton>
         <Input className={styles.partySearch} data-testid='finance-party-search' aria-label={view === 'customer' ? '搜索客户、规格或联系方式' : `搜索${partyTitle}`} placeholder={view === 'customer' ? '搜索客户、规格或联系方式' : `搜索${partyTitle}对象`} value={partySearch} onInput={e => setPartySearch(e.detail.value)} />
         <View className={styles.periodTabs}>{(['本月', '上月', '全部时间'] as PartyPeriod[]).map(value => <FinanceButton key={value} aria-pressed={partyPeriod === value} className={`${styles.periodTab} ${partyPeriod === value ? styles.periodActive : ''}`} onClick={() => choosePartyPeriod(value)}>{value}</FinanceButton>)}</View>
       </View>
@@ -366,7 +366,7 @@ export default function FinanceCenter({
       {view === 'customer' && customerRows.map(row => {
         if (!row.account) return <View key={row.key} className={styles.partyCard} data-testid={`customer-specs-only-${row.key}`}>
           <View className={styles.partyCardHead}><View><Text className={styles.partyName}>{row.name}</Text><Text className={styles.dimensionOnlyStatus}>规格客户 · 未建立客户资料</Text></View><View className={styles.partyButtons}>
-            <FinanceButton className={styles.primary} aria-label={`建立客户资料 ${row.name}`} data-testid={`customer-create-from-dimension-${row.key}`} onClick={() => onEditParty?.('customer', undefined, row.name)}>建立客户资料</FinanceButton>
+            <FinanceButton className={styles.primary} aria-label={`在客户管理建立资料 ${row.name}`} data-testid={`customer-create-from-dimension-${row.key}`} onClick={() => onEditParty?.('customer')}>前往客户管理</FinanceButton>
           </View></View>
           <CustomerSpecs customer={row.key} specs={row.specs} expanded={Boolean(expandedSpecs[row.key])} onToggle={() => setExpandedSpecs(current => ({ ...current, [row.key]: !current[row.key] }))} />
           <Text className={styles.dimensionOnlyNote}>建立客户资料后，可登记应收、收款和自产入库账单。</Text>

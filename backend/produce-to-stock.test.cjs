@@ -26,7 +26,9 @@ function openDatabase(t) {
 test('produce cartons into stock, create a ready-stock order, ship it and reverse it without double posting', t => {
   const db = openDatabase(t);
   const date = require('./stock-math').localDate();
+  const boardSupplier = db.addSupplier({ name: '自产流程纸板供应商' });
   const board = db.receiveBoard({
+    supplier_id: boardSupplier.id,
     supplier: '自产流程纸板供应商',
     date,
     boardLength: 160,

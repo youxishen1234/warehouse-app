@@ -49,7 +49,7 @@ function list(data) {
 function receive(data, raw) {
   if (!raw || Array.isArray(raw) || typeof raw !== 'object') fail('入库单格式不正确');
   const spec = validateSpec(raw);
-  const supplier = text(raw.supplier, '板厂', true);
+  const supplier = text(raw.supplier, '板厂');
   const orderedQty = number(raw.orderedQty, '订购数', true, true);
   const receivedQty = number(raw.receivedQty, '实收数', true, true);
   const billedArea = number(raw.billedArea, '计费平米', true);
@@ -59,7 +59,7 @@ function receive(data, raw) {
   const date = text(raw.date, '送货日期', true, 10);
   if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date) fail('送货日期无效');
   if (date > localDate()) fail('送货日期不能晚于今天');
-  const batch = { ...spec, id: `BOARD-${date.replace(/-/g, '')}-${crypto.randomBytes(6).toString('hex').toUpperCase()}`, specKey: specKey(spec), supplier, customerName: batchLabelText(raw.customerName, '客户'), material: batchLabelText(raw.material, '材质 / 配纸'), printPlate: batchLabelText(raw.printPlate, '印刷版名'), printColor: batchLabelText(raw.printColor, '印刷颜色'), orderedQty, receivedQty, remainingQty: receivedQty, giftQty: Math.max(0, receivedQty - orderedQty), shortageQty: Math.max(0, orderedQty - receivedQty), billedArea, unitPrice, amount, date, deliveryNo: text(raw.deliveryNo, '送货单号'), location: text(raw.location, '库位'), remark: text(raw.remark, '备注', false, 500), warningQty: number(raw.warningQty ?? 0, '预警数量', false, true), createdAt: Date.now() };
+  const batch = { ...spec, id: `BOARD-${date.replace(/-/g, '')}-${crypto.randomBytes(6).toString('hex').toUpperCase()}`, specKey: specKey(spec), supplier, customerName: batchLabelText(raw.customerName, '客户'), material: batchLabelText(raw.material, '材质 / 配纸'), printPlate: batchLabelText(raw.printPlate, '印刷版名'), printColor: batchLabelText(raw.printColor, '印刷颜色'), orderedQty, receivedQty, remainingQty: receivedQty, giftQty: Math.max(0, receivedQty - orderedQty), shortageQty: Math.max(0, orderedQty - receivedQty), billedArea, unitPrice, amount, freight: round(number(raw.freight ?? 0, '运费')), date, deliveryNo: text(raw.deliveryNo, '送货单号'), location: text(raw.location, '库位'), remark: text(raw.remark, '备注', false, 500), warningQty: number(raw.warningQty ?? 0, '预警数量', false, true), createdAt: Date.now() };
   data.board_batches ||= []; data.board_movements ||= [];
   data.board_batches.push(batch);
   data.board_movements.push({ id: crypto.randomUUID(), batchId: batch.id, type: 'in', quantity: receivedQty, balance: receivedQty, date, remark: batch.remark, createdAt: batch.createdAt });
@@ -94,11 +94,12 @@ function validate(data) {
     if (!/^BOARD-[0-9]{8}-[A-F0-9]{12}$/.test(b.id) || ids.has(b.id)) fail('纸板批次编号无效或重复');
     ids.add(b.id); validateSpec(b);
     if (b.specKey !== specKey(b)) fail('纸板规格索引不一致');
-    text(b.supplier, '板厂', true); number(b.remainingQty, '批次库存', false, true); number(b.receivedQty, '实收数', true, true); number(b.orderedQty, '订购数', true, true);
+    text(b.supplier, '板厂'); number(b.remainingQty, '批次库存', false, true); number(b.receivedQty, '实收数', true, true); number(b.orderedQty, '订购数', true, true);
     for (const [field, label] of [['customerName', '客户'], ['material', '材质 / 配纸'], ['printPlate', '印刷版名'], ['printColor', '印刷颜色']]) {
       if (b[field] !== undefined) batchLabelText(b[field], label);
     }
     number(b.billedArea, '计费平米', true); number(b.unitPrice, '每平米单价'); number(b.warningQty, '预警数量', false, true);
+    if (b.freight !== undefined) number(b.freight, '运费');
     if (b.amount !== round(b.billedArea * b.unitPrice) || b.giftQty !== Math.max(0, b.receivedQty - b.orderedQty) || b.shortageQty !== Math.max(0, b.orderedQty - b.receivedQty)) fail('纸板金额或赠送数量不一致');
     if (typeof b.date !== 'string' || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(b.date) || !Number.isFinite(Date.parse(b.date)) || new Date(b.date).toISOString().slice(0, 10) !== b.date) fail('纸板批次日期无效');
     let balance = 0; let inbound = 0;

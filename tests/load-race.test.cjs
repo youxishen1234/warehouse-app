@@ -11,21 +11,24 @@ test('stock workflow pages guard stale responses and initial duplicate refreshes
   for (const file of pages) {
     const source = read(file);
     assert.match(source, /useRef\(0\)/, `${file} should keep a request sequence ref`);
-    assert.match(source, /loadSequence|requestId/, `${file} should identify each load`);
-    assert.match(source, /!== (?:loadSequence|requestId)\.current/, `${file} should discard stale responses`);
+    assert.match(source, /loadSequence|requestId|sequence/, `${file} should identify each load`);
+    assert.match(source, /!== (?:loadSequence|requestId|sequence)\.current/, `${file} should discard stale responses`);
   }
   // The order-based outbound page has a single initial loader; its races and
   // draft preservation are exercised by workflow-regressions-browser.cjs.
   for (const file of ['src/pages/inbound/index.tsx']) {
     const source = read(file);
-    assert.match(source, /didShowOnce/, `${file} should dedupe first useDidShow refresh`);
-    assert.match(source, /Date\.now\(\) - lastLoadAt\.current >= 250/, `${file} should gate first refresh`);
+    assert.match(source, /useDidShow/, `${file} should refresh on page display`);
+    assert.match(source, /loadedAt\.current/, `${file} should gate duplicate requests`);
   }
   const home = read('src/pages/home/index.tsx');
   const workbench = read('src/pages/business-center/workbench.tsx');
   const remoteHook = read('src/hooks/useRemoteData.ts');
   assert.match(home, /<Workbench embedded initial='home' \/>/);
-  assert.match(workbench, /useRemoteData\(load, empty\)/);
+  assert.match(workbench, /useWorkbenchData\(\)/);
+  const sourceHook = read('src/pages/home/useWorkbenchData.ts');
+  assert.match(sourceHook, /const current = \+\+sequence\.current/);
+  assert.match(sourceHook, /current !== sequence\.current/);
   assert.match(remoteHook, /const current = \+\+sequence\.current/);
   assert.match(remoteHook, /current !== sequence\.current/);
   for (const file of ['src/pages/records/index.tsx']) {

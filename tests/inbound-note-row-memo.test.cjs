@@ -6,7 +6,6 @@ test('inbound recent delivery note rows are memoized', () => {
   const source = fs.readFileSync('src/pages/inbound/index.tsx', 'utf8');
   assert.match(source, /const InboundNoteRow = React\.memo\(function InboundNoteRow/);
   assert.match(source, /notes\.map\(note => <InboundNoteRow/);
-  assert.match(source, /const openPreview = useCallback\(/);
-  assert.match(source, /onOpen=\{openPreview\}/);
+  assert.match(source, /onOpen=\{setPreview\}/);
   assert.doesNotMatch(source, /notes\.map\(note => <View className=\{styles\.note\}/);
 });

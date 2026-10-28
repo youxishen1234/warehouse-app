@@ -173,10 +173,11 @@ export default function CustomerEditor({ id, supplier = false, initialName = '',
         setSpecsChanged(false);
       } else {
         preservedAccountSpecs.current = []; deletedDimensionSpecs.current = []; dimensionRevision.current = 0;
-        originalAccountSpecsSignature.current = serverSpecSignature();
-        originalSpecsSignature.current = serverSpecSignature();
-        originalSpecs.current = [];
-        setSpecRows([]); setSpecsChanged(false);
+        const accountSpecs = Array.isArray(party.specs) ? party.specs : [];
+        originalAccountSpecsSignature.current = serverSpecSignature(accountSpecs);
+        originalSpecsSignature.current = serverSpecSignature(accountSpecs);
+        originalSpecs.current = accountSpecs.map(spec => ({ ...spec }));
+        setSpecRows(specDrafts(accountSpecs, new Set(accountSpecs.map(spec => spec.id)))); setSpecsChanged(false);
       }
       setBalance(String(supplier ? party.payable || 0 : party.debt || 0));
       loadedIdentity.current = loadIdentity;
@@ -195,7 +196,7 @@ export default function CustomerEditor({ id, supplier = false, initialName = '',
     if (data.name.length > 50) { setError('名称超过50字，现有规格名称已保留；请先核对并缩短名称后再建立客户账户'); return; }
     if (data.phone && !/^[\d\-+\s()]{6,20}$/.test(data.phone)) { setError('电话格式不正确'); return; }
     if (!id && (!/^\d+(\.\d{1,2})?$/.test(balance) || !Number.isFinite(Number(balance)) || !Number.isSafeInteger(Math.round(Number(balance) * 100)))) { setError('金额须为非负数，最多两位小数'); return; }
-    if (!supplier && (!id || specsChanged)) {
+    if (!id || specsChanged) {
       try { validateSpecDrafts(specRows); }
       catch (reason) { setError(reason instanceof Error ? reason.message : '客户规格无效'); return; }
     }
@@ -229,8 +230,15 @@ export default function CustomerEditor({ id, supplier = false, initialName = '',
           throw new EditorRecoveryError('尺寸库已在其他设备更新，请重新读取后再编辑规格');
         }
       }
+      if (supplier && specsChanged && id) {
+        const fresh = parties.find(party => party.id === id);
+        if (!fresh || fresh.deleted_at || serverProfileSignature(fresh) !== originalProfileSignature.current
+          || serverSpecSignature(fresh.specs || []) !== originalAccountSpecsSignature.current) {
+          throw new EditorRecoveryError('供货商资料或常用货物已在其他设备更新，请重新读取后再保存');
+        }
+      }
       let nextSpecs: CustomerSpec[] | null = null;
-      if (!supplier && (!id || specsChanged)) {
+      if (!id || specsChanged) {
         const editableAccountSpecs = specRows.filter(row => row.source === 'account');
         nextSpecs = id ? [...preservedAccountSpecs.current, ...toCustomerSpecs(editableAccountSpecs)] : toCustomerSpecs(editableAccountSpecs);
         Object.assign(data, { specs: nextSpecs });
@@ -260,7 +268,7 @@ export default function CustomerEditor({ id, supplier = false, initialName = '',
     }
     finally { lock.current = false; if (mounted.current) setSaving(false); }
   };
-  const updateSpec = (index: number, key: keyof Omit<SpecDraft, 'id'>, value: string) => {
+  const updateSpec = <Key extends SpecField | 'category'>(index: number, key: Key, value: SpecDraft[Key]) => {
     setSpecRows(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, [key]: value } : row));
     setSpecsChanged(true);
     setError('');
@@ -270,7 +278,7 @@ export default function CustomerEditor({ id, supplier = false, initialName = '',
     if (specRows.length >= MAX_CUSTOMER_SPECS) { setError('客户规格最多500条'); return; }
     setSpecsOpen(true);
     setSpecsChanged(true);
-    setSpecRows(rows => [...rows, { id: createSpecId(), goods: '', specification: '', material: '', unit: '个', price: '', source: 'account' }]);
+    setSpecRows(rows => [...rows, { id: createSpecId(), goods: '', specification: '', material: '', unit: '', price: '', category: '纸箱', source: 'account' }]);
     setError('');
     setRecoverableError(false);
   };
@@ -284,14 +292,14 @@ export default function CustomerEditor({ id, supplier = false, initialName = '',
     setError('');
     setRecoverableError(false);
   };
-  const field = (key: keyof typeof profile, caption: string, limit: number) => <View className={styles.field}><Text>{caption}</Text><Input aria-label={caption} value={profile[key]} maxlength={limit} disabled={saving || !writable || (key === 'name' && (lockName || linkedName)) || undefined} onInput={event => setProfile(value => ({ ...value, [key]: event.detail.value }))} /></View>;
-  const specField = (row: SpecDraft, index: number, key: keyof Omit<SpecDraft, 'id'>, caption: string, limit: number) => <View className={styles.specField}>
+  const field = (key: keyof typeof profile, caption: string, limit: number) => <View className={styles.field}><Text>{caption}{key === 'name' ? ' *' : '（选填）'}</Text><Input aria-label={caption} value={profile[key]} maxlength={limit} disabled={saving || !writable || (key === 'name' && (lockName || linkedName)) || undefined} onInput={event => setProfile(value => ({ ...value, [key]: event.detail.value }))} /></View>;
+  const specField = (row: SpecDraft, index: number, key: SpecField, caption: string, limit: number) => <View className={styles.specField}>
     <Text>{caption}</Text>
     <Input aria-label={`规格 ${index + 1} ${caption}`} type={key === 'price' ? 'digit' : undefined} value={row[key]} maxlength={limit} placeholder={key === 'specification' ? '例如 30×20×15 cm' : undefined} disabled={saving || !writable || row.source === 'dimension' || undefined} onInput={event => {
       const value = key === 'price'
         ? sanitizeNonNegativeMoneyInput(event.detail.value)
         : key === 'specification'
-          ? formatDimensionInput(event.detail.value, row.specification, { sizeUnit: 'cm', kind: '成品' })
+          ? formatDimensionInput(event.detail.value, row.specification, { sizeUnit: 'cm', kind: row.category === '纸板' ? '纸板' : '成品' })
           : event.detail.value;
       updateSpec(index, key, value);
     }} />
@@ -315,8 +323,9 @@ export default function CustomerEditor({ id, supplier = false, initialName = '',
         {remarkOpen && <View className={styles.field}><Textarea aria-label='备注' value={profile.remark} maxlength={500} disabled={saving || !writable || undefined} onInput={event => setProfile(value => ({ ...value, remark: event.detail.value }))} /></View>}
         {!remarkOpen && profile.remark.trim() && <Text className={styles.sectionSummary}>{profile.remark}</Text>}
       </View>
-      {!supplier && <View className={styles.specSection}>
-        <View className={styles.specHeading}><Text>规格{specRows.length ? ` · ${specRows.length} 条` : ''}</Text><View className={styles.specActions}>{!!specRows.length && <Button aria-label={specsOpen ? '收起客户规格' : '展开客户规格'} disabled={saving} onClick={() => setSpecsOpen(open => !open)}>{specsOpen ? '收起' : '展开'}</Button>}<Button aria-label='添加客户规格' disabled={saving || !writable || specRows.length >= MAX_CUSTOMER_SPECS} onClick={addSpec}>添加规格</Button></View></View>
+      <View className={styles.specSection}>
+        <View className={styles.specHeading}><Text>{supplier ? '常用采购资料' : '常用销售资料'}{specRows.length ? ` · ${specRows.length} 条` : ''}</Text><View className={styles.specActions}>{!!specRows.length && <Button aria-label={specsOpen ? '收起客户规格' : '展开客户规格'} disabled={saving} onClick={() => setSpecsOpen(open => !open)}>{specsOpen ? '收起' : '展开'}</Button>}<Button aria-label='添加客户规格' disabled={saving || !writable || specRows.length >= MAX_CUSTOMER_SPECS} onClick={addSpec}>添加货物</Button></View></View>
+        <Text className={styles.hint}>五项字段均选填，至少填写一项。缺少价格时保持空白，可保存后继续编辑。</Text>
         {!specsOpen && <Text className={styles.specSummary}>已填写 {specRows.length} 条规格，点“展开”查看或修改</Text>}
         {specsOpen && specRows.map((row, index) => <View className={styles.specRow} data-testid={`customer-spec-editor-${index + 1}`} key={row.id}>
           <View className={styles.specRowHeading}><Text>规格 {index + 1}</Text><Button aria-label={`删除客户规格 ${index + 1}`} disabled={saving || !writable} onClick={() => removeSpec(index)}>删除</Button></View>
@@ -326,10 +335,13 @@ export default function CustomerEditor({ id, supplier = false, initialName = '',
             {specField(row, index, 'material', '材质', 100)}
             {specField(row, index, 'unit', '单位', 20)}
             {specField(row, index, 'price', '单价', 30)}
+            <View className={styles.specField}><Text>类别</Text><View className={styles.categoryChoices}>{(['纸箱', '纸板', '其他'] as const).map(category => <Button key={category}
+              aria-pressed={row.category === category} disabled={saving || !writable || row.source === 'dimension'}
+              onClick={() => updateSpec(index, 'category', category)}>{category}</Button>)}</View></View>
           </View>
           {row.source === 'dimension' && <Text className={styles.hint}>来自旧尺寸库，可在纸箱入库中直接选用；新增同规格客户规格可覆盖报价。</Text>}
         </View>)}
-      </View>}
+      </View>
       {id ? <Text className={styles.hint}>{supplier ? '当前应付' : '当前应收'}：{formatMoney(Number(balance))}，请通过结算登记变动。</Text> : <View className={styles.field}><Text>{supplier ? '期初应付（元）' : '期初欠款（元）'}</Text><Input aria-label={supplier ? '期初应付' : '期初欠款'} type='digit' value={balance} disabled={saving || !writable || undefined} onInput={event => setBalance(sanitizeNonNegativeMoneyInput(event.detail.value))} /></View>}
     </View>}
     {!writable && <Text className={styles.hint}>当前账号仅可查看资料</Text>}
@@ -337,7 +349,8 @@ export default function CustomerEditor({ id, supplier = false, initialName = '',
     <View className={styles.actions}><Button disabled={saving} onClick={onClose}>取消</Button><Button className={styles.primary} disabled={loading || !!loadError || saving || !writable} onClick={() => void save()}>{saving ? '保存中…' : '保存' + label}</Button></View>
   </View></View>;
 }
-type SpecDraft = { id: string; goods: string; specification: string; material: string; unit: string; price: string; source: 'account' | 'dimension' };
+type SpecField = 'goods' | 'specification' | 'material' | 'unit' | 'price';
+type SpecDraft = { id: string; goods: string; specification: string; material: string; unit: string; price: string; category: '纸箱' | '纸板' | '其他'; source: 'account' | 'dimension'; record?: CustomerSpec };
 class EditorRecoveryError extends Error {}
 const MAX_CUSTOMER_SPECS = 500;
 const createSpecId = () => `customer-spec-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -350,29 +363,34 @@ const specDrafts = (specs: CustomerSpec[] = [], accountIds = new Set<string>()):
     ids.add(id);
     return {
       id, goods: stringValue(spec?.goods), specification: stringValue(spec?.specification),
-      material: stringValue(spec?.material), unit: stringValue(spec?.unit), price: stringValue(spec?.price),
+      material: stringValue(spec?.material), unit: stringValue(spec?.unit), price: stringValue(spec?.unitPrice ?? spec?.price),
+      category: spec.category || (spec.kind === '纸板' ? '纸板' : '纸箱'), record: spec,
       source: accountIds.has(id) ? 'account' : 'dimension'
     };
   });
 };
 const serverSpecSignature = (specs: CustomerSpec[] = []) => JSON.stringify(specs.map(spec => ({
-  id: spec?.id, goods: spec?.goods, specification: spec?.specification, material: spec?.material, unit: spec?.unit, price: spec?.price
+  ...spec
 })));
 const serverProfileSignature = (profile: Partial<Pick<Customer, 'name' | 'contact' | 'phone' | 'address' | 'remark'>> = {}) => JSON.stringify({
   name: stringValue(profile.name), contact: stringValue(profile.contact), phone: stringValue(profile.phone),
   address: stringValue(profile.address), remark: stringValue(profile.remark)
 });
 const validateSpecDrafts = (rows: SpecDraft[]) => rows.forEach((row, index) => {
-  if (!row.goods.trim()) throw new Error('请填写规格 ' + (index + 1) + ' 的货物名称');
-  if (!canonicalSpecification(row.specification.trim(), 'cm')) throw new Error('请填写规格 ' + (index + 1) + ' 的三维尺寸，例如 30×20×15 cm');
+  if (![row.goods, row.specification, row.material, row.unit, row.price].some(value => value.trim())
+    && !(row.record?.category === '纸板' && (row.record.boardLength || row.record.boardWidth || row.record.cartonLength || row.record.cartonWidth || row.record.cartonHeight || row.record.fluteType || row.record.layers))) {
+    throw new Error('货物 ' + (index + 1) + ' 至少填写一项，不能保存完全空白记录');
+  }
   const priceText = row.price.trim();
   if (priceText && (!Number.isFinite(Number(priceText)) || Number(priceText) < 0)) throw new Error('规格 ' + (index + 1) + ' 的单价无效');
 });
 const toCustomerSpecs = (rows: SpecDraft[]): CustomerSpec[] => rows.map(row => {
   const priceText = row.price.trim();
   return {
+    ...row.record,
     id: row.id, goods: row.goods.trim(), specification: canonicalSpecification(row.specification.trim(), 'cm') || row.specification.trim(),
-    material: row.material.trim(), unit: row.unit.trim() || '个',
-    price: priceText ? Number(priceText) : null
+    material: row.material.trim(), unit: row.unit.trim(),
+    price: priceText ? Number(priceText) : null, category: row.category, kind: row.category === '纸板' ? '纸板' : '成品',
+    ...(row.source !== 'dimension' && row.record?.unitPrice !== undefined ? { unitPrice: priceText ? Number(priceText) : null } : {})
   } as CustomerSpec;
 });

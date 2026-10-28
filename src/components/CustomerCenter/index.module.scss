@@ -55,7 +55,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-.toolbar { display: flex; flex-wrap: wrap; gap: 8PX; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8PX; margin: 10PX 0; }
 .primaryAction, .ordersAction, .secondaryAction {
   display: inline-flex;
   align-items: center;
@@ -178,6 +178,8 @@
 .quoteActions { display: flex; justify-content: flex-end; gap: 8PX; margin-top: 18PX; }
 .quoteActions button { min-height: 36PX; padding: 7PX 12PX; border: 1PX solid #d1dbe8; border-radius: 4PX; background: #fff; }
 .quoteActions .quoteSave { border-color: #1677ff; background: #1677ff; color: #fff; font-weight: 650; }
+.incomplete { display: block; margin-top: 5PX; color: #b45309; font-size: 10PX; }
+.quoteBoardFields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 10PX; }
 
 @media (min-width: 760PX) {
   .list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32PX; align-items: start; }

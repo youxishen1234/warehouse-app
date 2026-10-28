@@ -35,7 +35,7 @@ async function main() {
   const server = app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
   const origin = `http://127.0.0.1:${server.address().port}`;
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(process.env.CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.CHROMIUM_EXECUTABLE_PATH } : {});
   const context = await browser.newContext({ viewport: { width: 390, height: 900 }, locale: 'zh-CN', timezoneId: 'Asia/Shanghai' });
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
@@ -96,6 +96,8 @@ async function main() {
     await page.goto('about:blank');
     await page.goto(origin + '/#/pages/home/index');
     const flow = page.getByTestId('workbench-factory-flow');
+    await expect(flow).toHaveCount(0);
+    await page.getByText('查看流程', { exact: true }).click();
     await expect(flow).toBeVisible();
     await page.getByTestId('workbench-customer-orders').click();
     await expect(page.getByTestId('order-stock-flow')).toBeVisible();

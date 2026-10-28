@@ -169,7 +169,7 @@ async function verify(browser, name) {
     assert.match(page.url(), /inventory/, 'interactive stock controls do not switch tabs: ' + target);
   }
   await page.getByText('新增入库', { exact: true }).click();
-  await page.locator('taro-button-core').filter({ hasText: '纸板入库' }).click();
+  await page.locator('taro-button-core:visible').filter({ hasText: '纸板入库' }).click();
   await page.waitForURL(/board-receive/);
   await page.waitForTimeout(500);
   await swipe(page, 120, { x: 20 });
@@ -244,7 +244,7 @@ async function verify(browser, name) {
   assert.equal(await page.evaluate(() => window.__nativeMessages.length), acknowledgments.length, 'unrelated DOM changes do not resend the selection');
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('sg-native-tab', { detail: '/pages/home/index' })));
   await page.waitForURL(/home/);
-  for (const label of ['入库', '生产', '出库', '账单中心', '今天的记录']) assert.ok(pageText.includes(label), `homepage action missing: ${label}`);
+  for (const label of ['新增订单', '纸板入库', '生产纸箱并入库', '客户出库', '最近动态']) assert.ok(pageText.includes(label), `homepage action missing: ${label}`);
   await page.evaluate(() => {
     delete window.__sgNativeDock;
     window.dispatchEvent(new Event('sg-native-ready'));

@@ -49,7 +49,7 @@ export function partyMonthSummary(ledger: LedgerEntry[], supplier: boolean, now 
 }
 
 // Display saved business data only; linked accruals must not duplicate receipts.
-export function dailyRecords(data: { boards: BoardBatch[]; production: ProductionRecord[]; transactions: Transaction[]; ledger: LedgerEntry[] }, day: string): DailyRecord[] {
+export function dailyRecords(data: { boards: BoardBatch[]; production: ProductionRecord[]; transactions: Transaction[]; ledger: LedgerEntry[] }, day?: string): DailyRecord[] {
   const rows: DailyRecord[] = [];
   for (const b of data.boards) rows.push({ id: 'board-' + b.id, title: `${b.supplier} · 纸板入库`, detail: `${b.boardLength} × ${b.boardWidth} cm`, value: b.receivedQty, unit: '张', money: false, status: '已入库', icon: 'package-plus', time: b.createdAt, target: { board: b.id } });
   for (const p of data.production) rows.push({ id: 'production-' + p.id, title: `${p.product_name} · 生产单`, detail: p.specification, value: p.quantity, unit: p.unit, money: false, status: '已完工', icon: 'factory', time: p.created_at, target: { records: true } });
@@ -67,5 +67,5 @@ export function dailyRecords(data: { boards: BoardBatch[]; production: Productio
     const label = unknownSettlement ? '结算' : payment ? '付款' : '收款';
     rows.push({ id: 'ledger-' + l.id, title: `${l.party_name || '日常账务'} · ${label}记录`, detail: l.remark || '已登记', value: l.amount, money: true, status: `已${label}`, icon: 'wallet', time: l.created_at, target: { ledger: l.id } });
   }
-  return rows.filter(r => localDay(r.time) === day).sort((a, b) => b.time - a.time || a.id.localeCompare(b.id));
+  return rows.filter(r => !day || localDay(r.time) === day).sort((a, b) => b.time - a.time || a.id.localeCompare(b.id));
 }

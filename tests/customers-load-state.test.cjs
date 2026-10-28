@@ -20,7 +20,7 @@ test('legacy customer and supplier routes render the current workbench', () => {
   assert.match(workbench, /remote\.loadError/);
   assert.match(workbench, /remote\.loading/);
   assert.match(workbench, /const hasSnapshot = data !== empty/);
-  assert.match(workbench, /hasSnapshot \|\| panel === 'finance' \|\| panel === 'customers'/);
+  assert.match(workbench, /hasSnapshot \|\| panel === 'home' \|\| panel === 'finance' \|\| panel === 'customers'/);
   assert.match(workbench, /data-testid='workbench-initial-loading'/);
   assert.match(workbench, /data-testid='workbench-sync-status'/);
 });

@@ -31,7 +31,7 @@ test('customer carton account and dimension-book specs resolve atomically into p
   const receipt = (customer, specId, price, extra = {}) => db.addDeliveryNote({
     source_type: 'production', customer_id: customer.id, party_type: 'customer',
     work_order_no: `SPEC-IN-${++sequence}`,
-    lines: [{ product_id: null, customer_spec_id: specId, quantity: 5, delivered_qty: 4, unit_price: price, ...extra }]
+    lines: [{ product_id: null, customer_spec_id: specId, create_product: true, quantity: 5, delivered_qty: 4, unit_price: price, ...extra }]
   });
   const disk = () => fs.readFileSync(dataFile, 'utf8');
   try {
@@ -48,7 +48,7 @@ test('customer carton account and dimension-book specs resolve atomically into p
         'dimension:["legacy-a","named-40"]',
         'dimension:["legacy-b","named-50"]'
       ]);
-      assert.equal(account.specs[1].goods, '纸箱规格');
+      assert.equal(account.specs[1].goods, '', 'missing goods remain editable instead of receiving an invented name');
       assert.equal(account.specs[1].unit, '个');
       assert.equal(account.specs[1].price, null);
       assert.equal(account.specs.filter(spec => spec.goods === '多尺寸纸箱').length, 2, 'same goods with distinct dimensions remain selectable');
@@ -120,10 +120,10 @@ test('customer carton account and dimension-book specs resolve atomically into p
       const specs = db.listCartonInboundCustomers().find(row => row.id === customer.id).specs;
       const unpriced = specs.find(row => row.id === 'dimension:["legacy-a","blank-goods"]');
       const before = disk();
-      assert.throws(() => receipt(customer, unpriced.id, undefined), /填写入库单价/);
+      assert.throws(() => receipt(customer, unpriced.id, undefined, { goods: '纸箱规格' }), /填写入库单价/);
       assert.equal(disk(), before, 'failed manual-price validation rolls back its newly-created SKU');
 
-      const blankNote = receipt(customer, unpriced.id, 2.5);
+      const blankNote = receipt(customer, unpriced.id, 2.5, { goods: '纸箱规格' });
       const blankProduct = db.getProduct(blankNote.lines[0].product_id);
       assert.equal(blankProduct.name, '纸箱规格');
       assert.equal(blankProduct.unit, '个');
@@ -177,14 +177,15 @@ test('customer carton account and dimension-book specs resolve atomically into p
         { id: 'dup', goods: 'B', specification: '1×2×3 cm', price: 1 }
       ]), /编号重复/);
       assert.throws(() => add([{ id: 'bad-price', goods: 'A', specification: '1×2×3 cm', price: Infinity }]), /单价无效/);
-      assert.throws(() => add([{ id: 'bad-spec', goods: 'A', specification: ' ', price: 1 }]), /客户规格资料无效/);
+      assert.doesNotThrow(() => add([{ id: 'partial-spec', goods: 'A', specification: ' ', price: 1 }]));
+      assert.throws(() => add([{ id: 'empty-spec', goods: ' ', specification: ' ', price: null }]), /不能保存完全空白/);
       const merged = productionPricing.mergeCustomerCartonSpecifications(
         { id: 1, name: 'Blank Unit Buyer' }, [{ id: 1, name: 'Blank Unit Buyer' }],
         { customers: [{ id: 'legacy-unit', name: 'blank unit buyer', specs: [
           { id: 'blank-unit-spec', goods: '箱体', size: '10×8×5', sizeUnit: 'cm', unit: '', material: '', kind: '成品' }
         ] }] }
       );
-      assert.equal(merged[0].unit, '个');
+      assert.equal(merged[0].unit, '', 'missing units are not replaced with a fabricated default');
     });
   } finally {
     assert.ok(path.resolve(temporary).startsWith(path.resolve(os.tmpdir()) + path.sep));

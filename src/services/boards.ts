@@ -1,12 +1,13 @@
-﻿import { request } from './request';
+import { request } from './request';
 export interface BoardMovement { id: string; batchId: string; type: 'in' | 'out' | 'count'; quantity: number; balance: number; before?: number; recipient?: string; remark: string; createdAt: number; date?: string }
 export interface BoardBatch {
-  id: string; specKey: string; supplier: string; customerName?: string; material?: string; printPlate?: string; printColor?: string; boardLength: number; boardWidth: number; fluteType: string; layers: number; faceGsm: number; linerGsm: number; flutingGsm: number; cartonLength: number; cartonWidth: number; cartonHeight: number; orderedQty: number; receivedQty: number; remainingQty: number; giftQty: number; shortageQty: number; billedArea: number; unitPrice: number; amount: number; date: string; deliveryNo: string; location: string; remark: string; warningQty: number; createdAt: number; movements: BoardMovement[];
+  id: string; specKey: string; supplier: string; supplier_id?: number | null; customerName?: string; material?: string; printPlate?: string; printColor?: string; boardLength: number; boardWidth: number; fluteType: string; layers: number; faceGsm: number; linerGsm: number; flutingGsm: number; cartonLength: number; cartonWidth: number; cartonHeight: number; orderedQty: number; receivedQty: number; remainingQty: number; giftQty: number; shortageQty: number; billedArea: number; unitPrice: number; amount: number; date: string; deliveryNo: string; location: string; remark: string; warningQty: number; createdAt: number; movements: BoardMovement[];
 }
 export const getBoards = () => request<BoardBatch[]>({ url: '/api/boards' });
 export const getBoard = (id: string, options?: { forceNetwork?: boolean }) => request<BoardBatch>({ url: `/api/boards/${encodeURIComponent(id)}`, forceNetwork: options?.forceNetwork });
-export const receiveBoard = (data: Record<string, string | number>) => request<BoardBatch>({ url: '/api/boards', method: 'POST', data });
-export const updateBoard = (id: string, data: Record<string, string | number>) => request<BoardBatch>({ url: '/api/boards/' + encodeURIComponent(id), method: 'PUT', data });
+export const receiveBoard = (data: Record<string, string | number | null>) => request<BoardBatch>({ url: '/api/boards', method: 'POST', data });
+export const receiveBoards = (supplier_id: number | null, items: Array<Record<string, string | number | null>>) => request<{batches: BoardBatch[]; total_amount: number}>({ url: '/api/boards/batch', method: 'POST', data: { supplier_id, items } });
+export const updateBoard = (id: string, data: Record<string, string | number | null>) => request<BoardBatch>({ url: '/api/boards/' + encodeURIComponent(id), method: 'PUT', data });
 export const deleteBoard = (id: string) => request<{ id: string }>({ url: '/api/boards/' + encodeURIComponent(id), method: 'DELETE' });
 export const moveBoard = (id: string, data: { type: 'out' | 'count'; quantity: number; remark: string; recipient: string }) => request<BoardBatch>({ url: `/api/boards/${encodeURIComponent(id)}/movements`, method: 'POST', data });
 export const boardSpec = (b: BoardBatch) => `${b.boardLength} × ${b.boardWidth}`;

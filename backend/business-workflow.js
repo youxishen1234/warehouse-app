@@ -1,4 +1,5 @@
 const crypto = require('node:crypto');
+const partyGoods = require('./party-goods');
 const fail = message => { throw Object.assign(new Error(message), { status: 400 }); };
 
 function normalizeFlute(value) {
@@ -77,6 +78,19 @@ function complete(data, raw, operator, stockIn, addProduct) {
 }
 function validate(data) {
   for (const batch of data.board_batches || []) {
+    if (batch.supplier_id != null && !data.suppliers?.some(s => s.id === batch.supplier_id)) fail('纸板入库引用了不存在的供货商');
+    if (batch.supplier_spec_id !== undefined || batch.supplier_spec_snapshot !== undefined) {
+      const snapshot = batch.supplier_spec_snapshot;
+      if (batch.supplier_id == null || typeof batch.supplier_spec_id !== 'string' || !batch.supplier_spec_id.trim()
+        || !snapshot || snapshot.id !== batch.supplier_spec_id
+        || (snapshot.category !== '纸板' && snapshot.kind !== '纸板')) fail('纸板入库的供货商规格快照无效');
+      partyGoods.validate([snapshot], '供货商常用纸板');
+    }
+    if (batch.freight_ledger_id) {
+      const freight = data.ledger?.find(e => e.id === batch.freight_ledger_id);
+      if (!freight || freight.voided_at || freight.board_batch_id !== batch.id || freight.type !== 'expense'
+        || freight.party_id != null || freight.amount !== batch.freight) fail('纸板入库运费与费用账单不一致');
+    } else if (Number(batch.freight || 0) > 0) fail('纸板入库缺少运费账单');
     if (!batch.ledger_id) continue; // Legacy batches predate linked payables.
     const entry = data.ledger?.find(e => e.id === batch.ledger_id);
     if (!entry || entry.voided_at || entry.board_batch_id !== batch.id || entry.party_type !== 'supplier' || entry.type !== 'payable' || entry.party_id !== batch.supplier_id || entry.amount !== batch.amount || !data.suppliers?.some(s => s.id === batch.supplier_id)) fail('纸板入库与供货商账单不一致');

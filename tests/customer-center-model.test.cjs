@@ -89,3 +89,26 @@ test('keeps paperboard quotes separate from carton matches and rejects invalid p
   assert.equal(specs.find(spec => spec.quoteId === 'board').kind, '纸板');
   assert.equal(specs.find(spec => spec.quoteId === 'invalid-price').price, null);
 });
+
+test('keeps name-only and other partial goods visible and editable without adding unit or price', () => {
+  const account = customer(15, { specs: [
+    quote({ id: 'name-only', goods: '稍后补尺寸纸箱', specification: '', material: '', unit: '', price: null }),
+    quote({ id: 'price-only', goods: '', specification: '', material: '', unit: '', price: 0 })
+  ] });
+  const specs = model.buildCustomerManagementRows([account], [])[0].specs;
+  assert.equal(specs.length, 2, 'records without a size must remain visible');
+  const first = specs.find(spec => spec.quoteId === 'name-only');
+  assert.equal(first.record.id, 'name-only', 'preserve the edit source');
+  assert.equal(first.unit, '', 'missing unit must not become 个');
+  assert.equal(first.price, null, 'missing price must not become zero');
+  assert.deepEqual(Array.from(model.customerSpecMissingFields(first)), ['尺寸', '材质', '单位', '价格']);
+  assert.equal(specs.find(spec => spec.quoteId === 'price-only').price, 0, 'explicit zero remains a recorded price');
+});
+
+test('retains explicit other category and detects category or board-data edits', () => {
+  const other = quote({ id: 'other-category', category: '其他' });
+  const view = model.buildCustomerManagementRows([customer(16, { specs: [other] })], [])[0].specs[0];
+  assert.equal(view.category, '其他');
+  assert.equal(model.sameCustomerSpecQuote(other, { ...other, category: '纸箱' }), false);
+  assert.equal(model.sameCustomerSpecQuote(other, { ...other, boardLength: 125 }), false);
+});

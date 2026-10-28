@@ -29,8 +29,9 @@ async function main() {
   const pad = value => String(value).padStart(2, '0');
   const now = new Date();
   const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const boardSupplier = db.addSupplier({ name: '刷新验收纸板厂' });
   db.receiveBoard({
-    supplier: '刷新验收纸板厂', date: today, boardLength: 160, boardWidth: 110,
+    supplier_id: boardSupplier.id, supplier: boardSupplier.name, date: today, boardLength: 160, boardWidth: 110,
     cartonLength: 40, cartonWidth: 30, cartonHeight: 20, fluteType: 'B',
     layers: 3, orderedQty: 100, receivedQty: 100, billedArea: 176, unitPrice: 1
   });
@@ -112,7 +113,9 @@ async function main() {
   try {
     await page.goto(origin + '/#/pages/business-center/index');
     await initialProductionGate.started.promise;
-    await expect(page.getByTestId('workbench-initial-loading')).toContainText('正在读取业务数据');
+    await expect(page.getByTestId('workbench-actions')).toBeVisible();
+    await expect(page.getByTestId('workbench-summary')).toBeVisible();
+    await expect(page.getByTestId('workbench-initial-loading')).toHaveCount(0);
     initialProductionGate.release.resolve();
     await expect(page.getByText('服务器数据已读取 · 多设备自动同步', { exact: true })).toBeVisible();
     await expect(page.getByTestId('workbench-today')).toContainText('刷新验收纸板厂 · 纸板入库');
@@ -133,7 +136,7 @@ async function main() {
 
     // Manual refresh must keep the prior usable snapshot, activity and an
     // unfinished production form mounted while the slow endpoint is pending.
-    await button(workbench, '生产').click();
+    await button(workbench, '领纸板生产').click();
     const consumed = page.getByLabel('领用纸板数').locator('input');
     await consumed.fill('7');
     await consumed.evaluate(element => {
@@ -199,8 +202,8 @@ async function main() {
     await page.getByRole('button', { name: '关闭流水详情' }).click();
     await expect(page.getByRole('dialog', { name: '流水详情' })).toHaveCount(0);
     await page.locator('[aria-label="返回总台"]:visible').last().click();
-    await button(workbench, '入库').click();
-    await button(workbench, '供货商 / 付款').click();
+    await button(workbench, '收付款 / 账单').click();
+    await page.getByTestId('finance-tab-supplier').click();
     await expect(page.getByTestId('finance-center')).toBeVisible();
     await expect(page.getByTestId('finance-supplier-view')).toBeVisible();
     await expect(page.getByRole('dialog', { name: '流水详情' })).toHaveCount(0);

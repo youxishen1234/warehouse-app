@@ -2,5 +2,5 @@
   "name": "shuguang-server",
   "private": true,
   "scripts": { "start": "node server.js", "test": "node --test team.test.cjs stock.test.cjs server-security.test.cjs updates.test.cjs db-health.test.cjs server-shutdown.test.cjs list-query.test.cjs" },
-  "dependencies": { "express": "^4.19.2" }
+  "dependencies": { "express": "^4.19.2", "proxy-addr": "^2.0.7" }
 }

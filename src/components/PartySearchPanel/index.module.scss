@@ -1,0 +1,44 @@
+.root { min-width: 0; }
+.root, .root * { box-sizing: border-box; }
+.root :is(button, taro-button-core) { width: auto; min-width: 0; height: auto; margin: 0; color: inherit; font: inherit; line-height: 1.4; white-space: normal; box-shadow: none; }
+.root :is(button, taro-button-core)::after { border: 0; }
+.trigger { display: flex; width: 100% !important; min-height: 44PX; align-items: center; justify-content: space-between; gap: 10PX; padding: 10PX 12PX; border: 1PX solid #cbd5e1; border-radius: 8PX; background: #fff; color: #172033; text-align: left; }
+.trigger > text:first-child { font-weight: 600; }
+.triggerHint { color: #64748b; font-size: 12PX; }
+.mask { position: fixed; inset: 0; z-index: 1300; display: flex; align-items: flex-end; padding: 0; background: #0f172a66; }
+.sheet { display: flex; width: 100%; max-height: min(82dvh, 760PX); flex-direction: column; padding: 14PX 14PX calc(env(safe-area-inset-bottom, 0PX) + 16PX); overflow: hidden; border-radius: 16PX 16PX 0 0; background: #fff; color: #172033; box-shadow: 0 -10PX 36PX #0f172a1a; }
+.heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10PX; padding-bottom: 12PX; }
+.title { display: block; font-size: 17PX; font-weight: 700; }
+.subtitle { display: block; margin-top: 4PX; color: #64748b; font-size: 11PX; }
+.close { flex: 0 0 auto; min-height: 31PX; padding: 3PX 10PX; border: 1PX solid #d1dbe8; border-radius: 7PX; background: #fff; font-size: 18PX; }
+.search { flex: 0 0 auto; padding: 9PX 11PX; border: 1PX solid #cbd5e1; border-radius: 8PX; background: #f8fafc; }
+.search input { width: 100%; min-height: 24PX; color: #172033; font-size: 14PX; }
+.search input::placeholder { color: #94a3b8; }
+.unlinked { display: flex; width: 100% !important; flex: 0 0 auto; align-items: center; justify-content: space-between; margin-top: 9PX !important; padding: 12PX; border: 1PX dashed #94a3b8; border-radius: 8PX; background: #f8fafc; color: #334155; text-align: left; font-weight: 600; }
+.unlinked > text + text { color: #64748b; font-size: 11PX; font-weight: 400; }
+.list { min-height: 0; margin-top: 7PX; overflow-y: auto; overscroll-behavior: contain; }
+.party { display: flex; width: 100% !important; align-items: center; justify-content: space-between; gap: 12PX; padding: 12PX 3PX; border-bottom: 1PX solid #e2e8f0; background: #fff; text-align: left; }
+.partyMain { display: flex; min-width: 0; flex-direction: column; gap: 3PX; }
+.partyName { color: #172033; font-size: 14PX; font-weight: 650; }
+.partyMeta, .goodsSummary { color: #64748b; font-size: 11PX; }
+.goodsSummary { color: #1458b8; }
+.history { color: #b45309; font-size: 10PX; }
+.selected { flex: 0 0 auto; color: #1677ff; font-size: 11PX; }
+.empty, .goodsEmpty { display: block; padding: 18PX 8PX; color: #64748b; font-size: 12PX; text-align: center; }
+.goodsCards { display: grid; grid-template-columns: minmax(0, 1fr); gap: 9PX; }
+.goodsCards :is(button, taro-button-core) { height: auto; min-width: 0; margin: 0; font: inherit; line-height: 1.4; white-space: normal; box-shadow: none; }
+.goodsCards :is(button, taro-button-core)::after { border: 0; }
+.goodsCard { display: block; width: 100% !important; padding: 11PX 12PX; border: 1PX solid #d9e2ed; border-radius: 10PX; background: #fff; color: #172033; text-align: left; }
+.goodsCard:active { border-color: #1677ff; background: #f8fbff; }
+.goodsHeading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8PX; }
+.goodsName { min-width: 0; font-size: 14PX; font-weight: 650; }
+.complete, .incomplete { flex: 0 0 auto; font-size: 10PX; }
+.complete { color: #15803d; }
+.incomplete { color: #b45309; }
+.goodsKind { display: inline-block; margin-top: 4PX; padding: 2PX 6PX; border-radius: 999PX; background: #eff6ff; color: #1458b8; font-size: 10PX; }
+.goodsFields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5PX 9PX; margin-top: 8PX; color: #64748b; font-size: 11PX; }
+.goodsDetail { display: block; margin-top: 5PX; color: #64748b; font-size: 10PX; }
+.goodsActions { display: flex; justify-content: flex-end; gap: 7PX; margin-top: 8PX; }
+.goodsActions :is(button, taro-button-core) { min-height: 28PX; padding: 4PX 9PX; border: 1PX solid #bfdbfe; border-radius: 6PX; background: #eff6ff; color: #1458b8; font-size: 11PX; }
+.goodsActions .remove { border-color: #fecaca; background: #fff; color: #b42318; }
+@media (min-width: 650PX) { .sheet { width: min(100%, 620PX); align-self: center; margin: auto; border-radius: 14PX; } .mask { padding: 16PX; } .goodsCards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

@@ -12,5 +12,5 @@ test('product store shares concurrent reads and supports invalidation', () => {
   assert.match(home, /<Workbench embedded initial='home' \/>/);
   assert.doesNotMatch(workbench, /loadProducts\(true\)/);
   assert.match(workbench, /import \{ invalidateProducts \} from '@\/services\/product-store'/);
-  assert.match(workbench, /getProducts/);
+  assert.match(fs.readFileSync('src/pages/home/useWorkbenchData.ts', 'utf8'), /getProducts/);
 });

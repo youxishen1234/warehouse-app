@@ -53,14 +53,14 @@ function mergeCustomerCartonSpecifications(customer, customers, dimensions) {
   const result = [];
   const accountIdentities = new Set();
   for (const spec of accountSpecs) {
-    if (!spec || spec.kind === '纸板' || typeof spec.id !== 'string' || !spec.id.trim()) continue;
-    const specification = canonicalSpecification(spec.specification ?? spec.size, spec.sizeUnit || 'cm');
-    const price = spec.price === undefined ? null : spec.price;
-    if (!specification || typeof spec.goods !== 'string' || !spec.goods.trim()
-      || (price !== null && (typeof price !== 'number' || !Number.isFinite(price) || price < 0))) continue;
+    if (!spec || spec.kind === '纸板' || spec.category === '纸板' || spec.category === '其他' || spec.kind === '其他' || typeof spec.id !== 'string' || !spec.id.trim()) continue;
+    const specification = canonicalSpecification(spec.specification ?? spec.size, spec.sizeUnit || 'cm') || String(spec.specification ?? spec.size ?? '').trim();
+    const price = spec.price === undefined || spec.price === '' ? null : spec.price;
+    if (price !== null && (typeof price !== 'number' || !Number.isFinite(price) || price < 0)) continue;
     const canonical = {
-      id: spec.id.trim(), goods: spec.goods.trim(), specification,
-      material: String(spec.material ?? ''), unit: String(spec.unit ?? '').trim() || '个', price
+      id: spec.id.trim(), goods: String(spec.goods ?? '').trim(), specification,
+      material: String(spec.material ?? ''), unit: String(spec.unit ?? '').trim(), price,
+      ...(spec.category ? { category: spec.category } : {}), ...(spec.kind ? { kind: spec.kind } : {})
     };
     result.push(canonical);
     const identity = specificationIdentity(canonical);
@@ -79,17 +79,15 @@ function mergeCustomerCartonSpecifications(customer, customers, dimensions) {
     if (!Array.isArray(dimensionCustomer?.specs)) continue;
     for (const spec of dimensionCustomer.specs) {
       if (!spec || spec.kind === '纸板' || typeof spec.id !== 'string' || !spec.id.trim()) continue;
-      const specification = canonicalSpecification(spec.size ?? spec.specification, spec.sizeUnit || 'cm');
-      if (!specification) continue;
-      // Some legacy dimensions entries predate the goods field; retain them under a stable label.
-      const goods = String(spec.goods ?? '').trim() || '纸箱规格';
+      const specification = canonicalSpecification(spec.size ?? spec.specification, spec.sizeUnit || 'cm') || String(spec.size ?? spec.specification ?? '').trim();
+      const goods = String(spec.goods ?? '').trim();
       const canonical = {
         id: dimensionSpecId(dimensionCustomer.id, spec.id),
         goods, specification, material: String(spec.material ?? ''),
-        unit: String(spec.unit ?? '').trim() || '个', price: null
+        unit: String(spec.unit ?? '').trim(), price: null
       };
       const identity = specificationIdentity(canonical);
-      if (!identity || accountIdentities.has(identity) || seenDimensionIdentities.has(identity)
+      if ((identity && (accountIdentities.has(identity) || seenDimensionIdentities.has(identity)))
         || seenDimensionIds.has(canonical.id) || reservedIds.has(canonical.id)) continue;
       seenDimensionIdentities.add(identity);
       seenDimensionIds.add(canonical.id);
@@ -110,7 +108,7 @@ function matchCustomerSpecification(customer, product, specId) {
   if (!customer || customer.deleted_at) throw new Error('客户不存在或已停用，请刷新');
   const specification = findCustomerSpecification(customer, specId);
   if (!specification) throw new Error('客户规格已变更，请刷新后重新选择');
-  if (specification.kind === '纸板') throw new Error('纸板规格不能用于纸箱计价，请选择成品规格');
+  if (specification.kind === '纸板' || specification.category === '纸板' || specification.category === '其他' || specification.kind === '其他') throw new Error('该规格不能用于纸箱计价，请选择纸箱规格');
   if (!product || product.deleted_at || product.category === '纸板') throw new Error('请选择有效纸箱商品');
   const productDimensions = dimensionsInCm(product.specification, product.size_unit || 'cm');
   const customerDimensions = dimensionsInCm(specification.specification ?? specification.size, specification.sizeUnit || 'cm');

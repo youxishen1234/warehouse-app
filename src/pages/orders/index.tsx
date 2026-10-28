@@ -1,7 +1,7 @@
 import { useSharedRefresh } from '@/services/shared-refresh';
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, Input, Picker, ScrollView } from '@tarojs/components';
-import Taro from '@tarojs/taro';
+import Taro, { useRouter } from '@tarojs/taro';
 import { addOrder, getCustomers, getOrderEvents, getOrders, updateOrder } from '@/services/api';
 import type { Customer, CustomerOrder } from '@/types';
 import type { OrderStatusEvent } from '@/services/api';
@@ -42,10 +42,11 @@ const OrderListRow = React.memo(function OrderListRow({ order, history, onStatus
 });
 
 export default function Orders() {
+  const { params } = useRouter();
   const [list, setList] = useState<CustomerOrder[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [events, setEvents] = useState<Record<number, OrderStatusEvent[]>>({});
-  const [show, setShow] = useState(false);
+  const [show, setShow] = useState(() => params.create === '1');
   const [orderNo, setOrderNo] = useState('');
   const [spec, setSpec] = useState('');
   const [material, setMaterial] = useState('');

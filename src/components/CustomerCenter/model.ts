@@ -12,6 +12,7 @@ export type CustomerSpecView = {
   unit: string;
   price: number | null;
   kind: '成品' | '纸板';
+  category: '纸箱' | '纸板' | '其他';
 };
 
 export type CustomerManagementRow = {
@@ -29,8 +30,8 @@ const nameComparable = (value: unknown) => specText(value).replace(/\s+/g, ' ').
 const normalizeSpecification = (value: unknown) => specText(value).replace(/\s*(?:[×xX*＊✕]|乘)\s*/g, '×');
 export const specificationSearchText = (value: unknown) =>
   normalizeSpecification(value).toLocaleLowerCase().replace(/\s+/g, '');
-const specBaseKey = (spec: Pick<CustomerSpecView, 'goods' | 'specification' | 'material' | 'unit' | 'kind'>) =>
-  JSON.stringify([specComparable(spec.goods), specificationSearchText(spec.specification), specComparable(spec.material), specComparable(spec.unit), spec.kind]);
+const specBaseKey = (spec: Pick<CustomerSpecView, 'goods' | 'specification' | 'material' | 'unit' | 'kind' | 'category'>) =>
+  JSON.stringify([specComparable(spec.goods), specificationSearchText(spec.specification), specComparable(spec.material), specComparable(spec.unit), spec.category]);
 const fallbackGoods = (kind: CustomerSpecView['kind']) => kind === '纸板' ? '纸板规格' : '纸箱规格';
 const sourceKey = (customerId: string, specId: string) => JSON.stringify([customerId, specId]);
 const expandExponent = (value: number) => {
@@ -50,10 +51,28 @@ export const formatCustomerUnitPrice = (value: number | null) => {
   return `¥${whole}.${fraction.padEnd(2, '0')}`;
 };
 
+export function customerSpecMissingFields(spec: Pick<CustomerSpecView, 'goods' | 'specification' | 'material' | 'unit' | 'price'>): string[] {
+  return [
+    !spec.goods.trim() ? '货物名称' : '',
+    !spec.specification.trim() ? '尺寸' : '',
+    !spec.material.trim() ? '材质' : '',
+    !spec.unit.trim() ? '单位' : '',
+    spec.price == null ? '价格' : ''
+  ].filter(Boolean);
+}
+
+const customerCategory = (spec: Pick<CustomerSpec, 'kind'> & { category?: string }): CustomerSpecView['category'] =>
+  spec.category === '纸箱' || spec.category === '纸板' || spec.category === '其他'
+    ? spec.category
+    : spec.kind === '纸板' ? '纸板' : '纸箱';
+
 export function sameCustomerSpecQuote(left: CustomerSpec, right: CustomerSpec): boolean {
   return left.id === right.id && left.goods === right.goods && left.specification === right.specification
-    && (left.material ?? '') === (right.material ?? '') && (left.unit ?? '个') === (right.unit ?? '个')
+    && (left.material ?? '') === (right.material ?? '') && (left.unit ?? '') === (right.unit ?? '')
     && left.price === right.price && (left.kind || '成品') === (right.kind || '成品')
+    && customerCategory(left) === customerCategory(right)
+    && (['boardLength', 'boardWidth', 'cartonLength', 'cartonWidth', 'cartonHeight', 'fluteType', 'layers', 'unitPrice'] as const)
+      .every(key => (left[key] ?? null) === (right[key] ?? null))
     && (left.dimension_source?.customer_id || '') === (right.dimension_source?.customer_id || '')
     && (left.dimension_source?.spec_id || '') === (right.dimension_source?.spec_id || '');
 }
@@ -72,14 +91,14 @@ function customerSpecs(account: Customer | null, dimension: DimensionCustomer | 
   const dimensionBases = new Set<string>();
   const quoteKeys = new Set<string>();
   for (const spec of account?.specs || []) {
-    if (!spec || !specText(spec.specification)) continue;
+    if (!spec) continue;
     const kind = spec.kind === '纸板' ? '纸板' : '成品';
     const row: CustomerSpecView = {
-      key: `quote:${account!.id}:${spec.id}`, goods: specText(spec.goods) || fallbackGoods(kind),
+      key: `quote:${account!.id}:${spec.id}`, goods: specText(spec.goods),
       specification: normalizeSpecification(spec.specification), material: specText(spec.material),
-      unit: specText(spec.unit) || '个',
+      unit: specText(spec.unit),
       price: typeof spec.price === 'number' && Number.isFinite(spec.price) && spec.price >= 0 ? spec.price : null,
-      kind, quoteId: spec.id, record: spec,
+      kind, category: customerCategory(spec), quoteId: spec.id, record: spec,
       source: spec.dimension_source ? { customerId: spec.dimension_source.customer_id, specId: spec.dimension_source.spec_id } : undefined
     };
     const base = specBaseKey(row); dimensionBases.add(base);
@@ -100,7 +119,7 @@ function customerSpecs(account: Customer | null, dimension: DimensionCustomer | 
     const kind = spec.kind === '纸板' ? '纸板' : '成品';
     const row: CustomerSpecView = { key: `dimension:${dimension!.id}:${spec.id}`,
       goods: specText(spec.goods) || fallbackGoods(kind), specification, material: specText(spec.material),
-      unit: specText(spec.unit) || '个', price: null, kind, source: { customerId: dimension!.id, specId: spec.id } };
+      unit: specText(spec.unit) || '个', price: null, kind, category: kind === '纸板' ? '纸板' : '纸箱', source: { customerId: dimension!.id, specId: spec.id } };
     const base = specBaseKey(row);
     if (dimensionBases.has(base) || dimensionKeys.has(base)) continue;
     dimensionKeys.add(base); rows.push(row);

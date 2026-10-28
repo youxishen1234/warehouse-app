@@ -68,9 +68,9 @@ async function main() {
   };
 
   const activeRoot = page => page.locator('.taro_page:visible').last().getByTestId('simple-workbench');
-  const assertNoWarningSurface = async root => {
-    await expect(root.getByTestId('workbench-stock-notice')).toHaveCount(0);
-    assert.doesNotMatch(await root.innerText(), /库存预警|库存提醒/, 'workbench must not show stock warnings');
+  const assertWarningSummary = async root => {
+    await expect(root.getByTestId('workbench-summary')).toContainText('库存预警');
+    await expect(root.getByTestId('workbench-task-stock')).toContainText('项库存预警');
   };
   const assertNoOverflow = async (page, root, width) => {
     assert.ok(await root.evaluate(element => element.scrollWidth <= element.clientWidth + 1), `workbench overflow at ${width}px`);
@@ -78,7 +78,7 @@ async function main() {
   };
 
   try {
-    browser = await chromium.launch();
+    browser = await chromium.launch(process.env.CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.CHROMIUM_EXECUTABLE_PATH } : {});
     const statsResponse = await fetch(`${origin}/api/stats`);
     assert.equal(statsResponse.status, 200, 'isolated stats API is available');
     const statsEnvelope = await statsResponse.json();
@@ -90,26 +90,20 @@ async function main() {
     for (const [routeName, routePath] of [['home', '/#/pages/home/index'], ['business-center', '/#/pages/business-center/index']]) {
       const page = await setup(390);
       await page.goto(origin + routePath);
-      await expect(page.getByText('办理业务', { exact: true })).toBeVisible();
+      await expect(page.getByText('快捷办理', { exact: true })).toBeVisible();
       const root = activeRoot(page);
       await expect(root.getByTestId('workbench-sync-status')).toContainText('服务器数据已读取 · 多设备自动同步');
-      await assertNoWarningSurface(root);
+      await assertWarningSummary(root);
       await expect(root.getByText('sjfhjs', { exact: true })).toHaveCount(0, 'zero-stock product is not surfaced on the home workbench');
       const feed = root.getByTestId('workbench-today');
       await expect(feed).toContainText('出入库记录测试商品');
       await expect(feed).toContainText('入库单');
       await expect(feed).toContainText('出库单');
-      if (routeName === 'home') {
-        const summary = root.getByTestId('workbench-summary');
-        await expect(summary).toBeVisible();
-        await expect(summary.getByText('6', { exact: true })).toBeVisible();
-        await expect(summary.getByText('2', { exact: true })).toBeVisible();
-      } else {
-        await expect(root.getByTestId('workbench-summary')).toHaveCount(0);
-      }
+      const summary = root.getByTestId('workbench-summary');
+      for (const label of ['待发货', '库存预警', '待收款', '待付款']) await expect(summary.getByText(label, { exact: true })).toBeVisible();
       for (const width of [320, 390, 1280]) {
         await page.setViewportSize({ width, height: width === 320 ? 700 : 900 });
-        await assertNoWarningSurface(root);
+        await assertWarningSummary(root);
         await assertNoOverflow(page, root, width);
         await page.screenshot({ path: path.join(artifacts, `${routeName}-${width}.png`), fullPage: true });
       }
@@ -117,7 +111,7 @@ async function main() {
       await expect(refresh).toBeVisible();
       await refresh.click();
       await expect(root.getByTestId('workbench-sync-status')).toContainText('服务器数据已读取 · 多设备自动同步');
-      await assertNoWarningSurface(root);
+      await assertWarningSummary(root);
       await page.close();
     }
 
@@ -132,11 +126,11 @@ async function main() {
     const inventoryRow = inventoryRoot.getByTestId('workbench-carton').filter({ hasText: 'sjfhjs' });
     await expect(inventoryRow).toContainText('sjfhjs');
     await expect(inventoryRow).toContainText('0 个');
-    await assertNoWarningSurface(inventoryRoot);
+    await expect(inventoryRoot.getByTestId('workbench-summary')).toHaveCount(0);
     assert.equal(db.getProduct(unconfiguredZeroStock.id).stock, 0, 'opening the inventory page does not change stock');
     assert.equal(JSON.stringify(db.backupData()), initialData, 'UI reads do not mutate isolated warehouse data');
     assert.deepEqual(errors, [], 'no browser page errors');
-    console.log('PASS stock-warning removal: configured and unconfigured zero-stock products with nonzero API warnings do not appear on the home workbench, daily summaries and inventory navigation remain intact, responsive layouts fit, and isolated data is unchanged.');
+    console.log('PASS stock-warning summary: zero-stock and configured low-stock products are counted in a compact dashboard task, product names stay in inventory, responsive layouts fit, and isolated data is unchanged.');
   } finally {
     await Promise.all(contexts.map(context => context.close()));
     if (browser) await browser.close();

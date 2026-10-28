@@ -73,6 +73,8 @@ export const getSuppliersPage = (params: PageQuery & SortQuery<'suppliers'> & { 
 export const getSupplier = (id: number) => request<Supplier>({ url: `/api/suppliers/${id}` });
 export const addSupplier = (data: CustomerForm) => request<Supplier>({ url: '/api/suppliers', method: 'POST', data });
 export const updateSupplier = (id: number, data: Partial<CustomerForm>) => request<Supplier>({ url: `/api/suppliers/${id}`, method: 'PUT', data });
+export const getSupplierSpecs = (id: number) => request<Supplier>({ url: `/api/suppliers/${id}/specs` });
+export const updateSupplierSpecs = (id: number, specs: CustomerSpec[]) => request<Supplier>({ url: `/api/suppliers/${id}/specs`, method: 'PUT', data: { specs } });
 export const deleteSupplier = (id: number) => request<{ id: number }>({ url: `/api/suppliers/${id}`, method: 'DELETE' });
 
 export const settleSupplier = (id: number, amount: number, remark?: string) =>

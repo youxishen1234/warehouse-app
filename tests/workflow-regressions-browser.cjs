@@ -104,11 +104,11 @@ async function main() {
     assert.equal(outbound.quantity, 2); assert.equal(outbound.remark, '保留这份出库草稿');
     await page.goto(origin + '/pages/business-center/index');
     await expect(page.getByTestId('simple-workbench')).toBeVisible();
-    await page.getByText('账单中心', { exact: true }).locator('xpath=ancestor-or-self::taro-button-core[1]').click();
+    await page.getByText('收付款 / 账单', { exact: true }).locator('xpath=ancestor-or-self::taro-button-core[1]').click();
     await page.goto(origin + '/pages/business-center/index');
     await expect(page.getByTestId('simple-workbench')).toBeVisible();
     await page.getByTestId('workbench-customer-management').click();
-    await page.getByText('新增客户', { exact: true }).locator('xpath=ancestor-or-self::taro-button-core[1]').click();
+    await page.getByTestId('customer-center-add').click();
     const companyDialog = page.getByRole('dialog', { name: '新增客户' });
     await companyDialog.getByLabel('公司名称', { exact: true }).locator('input').fill('网页尺寸本回归');
     await companyDialog.getByText('保存客户', { exact: true }).click();

@@ -10,7 +10,8 @@ export interface CustomerSpecification {
   /** Inventory unit, for example 个. */
   unit: string;
   price: number | null;
-  kind?: '成品' | '纸板';
+  category?: '纸箱' | '纸板' | '其他';
+  kind?: '成品' | '纸箱' | '纸板' | '其他';
 }
 
 export interface CustomerWithSpecifications {

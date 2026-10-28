@@ -8,6 +8,6 @@ test('stock forms distinguish non-empty overflow previews from blank inputs', ()
   for (const source of [inbound, outbound]) {
     assert.match(source, /金额超出支持范围，请减少数量或单价/);
     assert.match(source, /Number\.isFinite\(/);
-    assert.match(source, /if \(!Number\.isFinite\(totalAmount\)\)/);
+    assert.match(source, /if \((?:totalAmount != null && )?!Number\.isFinite\(totalAmount\)\)/);
   }
 });

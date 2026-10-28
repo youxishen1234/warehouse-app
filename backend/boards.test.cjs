@@ -24,7 +24,7 @@ test('paperboard batches persist with atomic quantities, billing, replay and bac
     });
     await t.test('invalid quantities never alter disk, revision or batches', async () => {
       for (const value of [-1, 0, 1.5, 'NaN', null, true, '']) { const before = fs.readFileSync(process.env.WAREHOUSE_DATA_FILE, 'utf8'); const r = await call('/boards', 'POST', { ...form, receivedQty: value }); assert.equal(r.status, 400, JSON.stringify(r)); assert.equal(fs.readFileSync(process.env.WAREHOUSE_DATA_FILE, 'utf8'), before); }
-      for (const extra of [{ date: '2026-02-30' }, { supplier: '' }, { billedArea: -1 }, { boardWidth: 0 }, { cartonHeight: '' }]) assert.equal((await call('/boards', 'POST', { ...form, ...extra })).status, 400);
+      for (const extra of [{ date: '2026-02-30' }, { billedArea: -1 }, { boardWidth: 0 }, { cartonHeight: '' }]) assert.equal((await call('/boards', 'POST', { ...form, ...extra })).status, 400);
       for (const extra of [{ customerName: '客户\u0001名' }, { material: '配纸'.repeat(61) }, { printPlate: 123 }, { printColor: '颜色\u007f' }]) assert.equal((await call('/boards', 'POST', { ...form, ...extra })).status, 400);
     });
     await t.test('batch-specific deduction, replay and overdraft protection', async () => {

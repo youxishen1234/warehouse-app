@@ -43,7 +43,7 @@ async function main() {
   let context;
   let page;
   try {
-    browser = await chromium.launch();
+    browser = await chromium.launch(process.env.CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.CHROMIUM_EXECUTABLE_PATH } : {});
     context = await browser.newContext({ viewport: { width: 390, height: 900 }, locale: 'zh-CN', timezoneId: 'Asia/Shanghai' });
     page = await context.newPage();
     page.setDefaultTimeout(15000);
@@ -113,7 +113,7 @@ async function main() {
     await go('/pages/business-center/index');
     await expect(page.getByTestId('workbench-actions').locator('taro-button-core')).toHaveCount(4);
     const customerToolbar = page.getByTestId('workbench-customer-toolbar');
-    await expect(customerToolbar.locator('taro-button-core')).toHaveCount(1);
+    await expect(customerToolbar.locator('taro-button-core')).toHaveCount(6);
     await expect(customerToolbar.getByText('客户管理', { exact: true })).toBeVisible();
     await expect(page.getByTestId('workbench-add-customer')).toHaveCount(0);
     for (const width of [320, 390, 1280]) {

@@ -125,7 +125,7 @@ async function verify() {
       const receipt = requireSuccess(await call('POST', '/api/delivery-notes', {
         source_type: 'production', party_type: 'customer', customer_id: customer.id,
         work_order_no: `VERIFY-${price}-${suffix}`,
-        lines: [{ product_id: null, quantity: 1, delivered_qty: 1, customer_spec_id: `billing-${price}`, specification: '20×10×5cm' }]
+        lines: [{ product_id: null, create_product: true, quantity: 1, delivered_qty: 1, customer_spec_id: `billing-${price}`, specification: '20×10×5cm' }]
       }, key()), `production receipt at ${price}`);
       inboundProductIds.push(receipt.lines[0]?.product_id);
     }

@@ -34,7 +34,7 @@ async function main() {
   const server = app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
   const origin = `http://127.0.0.1:${server.address().port}`;
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(process.env.PLAYWRIGHT_BROWSER_CHANNEL ? { channel: process.env.PLAYWRIGHT_BROWSER_CHANNEL } : {});
   const context = await browser.newContext({ viewport: { width: 390, height: 900 }, locale: 'zh-CN' });
   const page = await context.newPage();
   page.setDefaultTimeout(12000);
@@ -50,7 +50,7 @@ async function main() {
   const historicalSupplier = db.addSupplier({ name: '历史模板板厂' });
   const historyDate = '2026-10-01';
   const sharedHistory = {
-    supplier: historicalSupplier.name,
+    supplier: historicalSupplier.name, supplier_id: historicalSupplier.id,
     fluteType: 'B',
     layers: 3,
     orderedQty: 25,
@@ -172,7 +172,10 @@ async function main() {
     // Start a clean form after checking the history template, then exercise
     // actual keyboard input so the auto-inserted separator behavior is covered.
     await openBoardEntry();
-    await fieldInput('板厂名称').fill('演示纸板入库板厂');
+    const receiptSupplier = db.addSupplier({ name: '演示纸板入库板厂' });
+    await page.locator('.stock-entry-refresh').click();
+    await page.getByTestId('supplier-search-open').click();
+    await page.getByTestId(`supplier-search-result-${receiptSupplier.id}`).click();
     await fieldInput('客户').fill('青禾纸品');
     await fieldInput('材质 / 配纸').fill('牛卡 / 120g高强瓦楞 / 140g芯纸');
     await expect(fieldInput('印刷版名')).toHaveCount(0);
@@ -284,7 +287,7 @@ async function main() {
     await openBoardEntry(`?id=${encodeURIComponent(saved.id)}`);
     await expect(boardSpec).toHaveValue('30×20');
     await expect(cartonSpec).toHaveValue('30×20×15');
-    await expect(fieldInput('板厂名称')).toHaveValue('演示纸板入库板厂');
+    await expect(page.getByTestId('supplier-search-open')).toContainText('演示纸板入库板厂');
     await expect(fieldInput('客户')).toHaveValue('青禾纸品');
     await expect(fieldInput('材质 / 配纸')).toHaveValue('牛卡 / 120g高强瓦楞 / 140g芯纸');
     await expect(fieldInput('印刷版名')).toHaveCount(0);
@@ -294,7 +297,7 @@ async function main() {
     await expect(page.locator('.team-boot')).toBeHidden();
     await expect(boardSpec).toHaveValue('30×20');
     await expect(cartonSpec).toHaveValue('30×20×15');
-    await expect(fieldInput('板厂名称')).toHaveValue('演示纸板入库板厂');
+    await expect(page.getByTestId('supplier-search-open')).toContainText('演示纸板入库板厂');
     await expect(fieldInput('客户')).toHaveValue('青禾纸品');
     await expect(fieldInput('材质 / 配纸')).toHaveValue('牛卡 / 120g高强瓦楞 / 140g芯纸');
     await expect(fieldInput('印刷版名')).toHaveCount(0);

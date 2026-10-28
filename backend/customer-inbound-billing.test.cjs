@@ -90,7 +90,7 @@ test('customer production receipts are billed once, settle correctly and preserv
     await t.test('customer quotation is authoritative, including zero, and old receipt prices stay immutable', () => {
       const spec = { id: 'quote-a', goods: '客户规格纸箱', specification: '30×20×15 cm', material: '牛皮纸', unit: '个', price: 3 };
       const c = customer('报价', [spec]); const p = product();
-      const body = { lines: [{ product_id: null, quantity: 2, delivered_qty: 2, customer_spec_id: spec.id, specification: p.specification, unit_price: 3 }] };
+      const body = { lines: [{ product_id: null, create_product: true, quantity: 2, delivered_qty: 2, customer_spec_id: spec.id, specification: p.specification, unit_price: 3 }] };
       const first = receipt(c, p, 2, 3, body);
       assert.equal(first.total_amount, 6); assert.equal(first.lines[0].customer_spec_id, spec.id);
       assert.equal(first.lines[0].customer_spec_snapshot.price, 3);
