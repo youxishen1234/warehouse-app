@@ -77,7 +77,11 @@ backup="$(mktemp /tmp/shuguang-nginx-backup.XXXXXX)"
 headers="$(mktemp)"
 normal_headers="$(mktemp)"
 had_config=0
-cleanup() { rm -f -- "$stage/nginx-production.conf" "$backup" "$headers" "$normal_headers"; rmdir -- "$stage" 2>/dev/null || true; }
+cleanup() {
+  rm -f -- "$stage/nginx-production.conf" "$headers" "$normal_headers"
+  sudo -n rm -f -- "$backup"
+  rmdir -- "$stage" 2>/dev/null || true
+}
 rollback() {
   if [ "$had_config" -eq 1 ]; then
     sudo -n cp -p -- "$backup" "$config"
