@@ -33,6 +33,8 @@
 .page .quickActions button > span { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; gap: 3PX; text-align: left; }.quickActions strong, .quickActions small { display: block; max-width: 100%; overflow-wrap: anywhere; }.quickActions strong { font-size: 14PX; line-height: 1.35; }.quickActions small { font-size: 11PX; line-height: 1.35; opacity: .72; }
 .page[data-print-view='home'] .shell { padding-bottom: calc(max(var(--sg-native-bottom-space, 84PX), 84PX) + env(safe-area-inset-bottom, 0PX) + 30PX); }
 .page .primaryAction { background: #276979; color: #fff; box-shadow: 0 8PX 20PX #2769791a; }.page .secondaryAction { background: #fff; color: #315663; border: 1PX solid #e0e7eb; }
+.page .quickActions .temporaryAction { grid-column: 1 / -1; min-height: 56PX; background: #fff8ec; color: #7a5328; border: 1PX dashed #e5c895; }
+.page .quickActions .temporaryAction:hover { background: #fff3df; }
 .recent { padding: 18PX 16PX 8PX; border: 1PX solid #e4e9ed; border-radius: 16PX; background: #fff; }
 .recentHeading { display: flex; align-items: center; justify-content: space-between; gap: 12PX; margin: 0 2PX 8PX; }.recentHeading h2 { font-size: 16PX; }.recentHeading p { margin: 2PX 0 0; color: #8999a3; font-size: 11PX; }
 .recentHeading button { display: inline-flex; align-items: center; gap: 1PX; background: transparent; color: #377284; padding: 5PX 0 5PX 5PX; font-size: 12PX; }.recentHeading button svg { width: 16PX; height: 16PX; }
@@ -86,6 +88,8 @@
 // Keep actions after the complete document instead of floating over editable fields.
 .actions { position: static; display: flex; gap: 12PX; background: #f4f6f8; padding: 14PX 0 0; margin: 16PX 0 0; border-top: 1PX solid #e4e9ed; }
 .actions [type=button] { flex: 1; min-width: 0; min-height: 49PX; font-weight: 600; font-size: 15PX; }
+.actionsWrap { flex-wrap: wrap; }.actionsWrap [type=button] { flex: 1 1 120PX; }
+.page .temporaryLink { width: 100%; margin: 10PX 0 0; padding: 12PX 14PX; border: 1PX dashed #ddbd8d; border-radius: 10PX; background: #fffaf2; color: #855a29; font-size: 13PX; }
 .autoPrint { display: flex; align-items: center; gap: 10PX; min-height: 44PX; margin: 10PX 0; color: #415f6d; font-size: 14PX; }
 .page .autoPrint input { width: 20PX; min-width: 20PX; height: 20PX; margin: 0; padding: 0; accent-color: #245f72; }
 .page .primary, .backdrop .primary { background: #245f72; color: #fff; }
@@ -93,6 +97,8 @@
 .error { background: #fff1ed; color: #a74028; border-radius: 10PX; padding: 12PX 14PX; margin-bottom: 14PX; font-size: 13PX; overflow-wrap: anywhere; }
 .error [type=button] { color: inherit; background: transparent; }
 .notice { background: #e8f4ef; color: #36735e; padding: 10PX 14PX; font-size: 13PX; border-radius: 10PX; margin-bottom: 14PX; }
+.temporaryNotice { background: #fff7e8; color: #7a5328; border: 1PX solid #f0d9b5; padding: 12PX 14PX; border-radius: 10PX; margin: 0 0 14PX; font-size: 13PX; line-height: 1.6; }
+.card > .temporaryNotice { margin: 14PX 0 0; }
 .muted { color: #80919c; font-size: 13PX; margin: 10PX 0; overflow-wrap: anywhere; }
 .historySearch { display: flex; gap: 8PX; margin-bottom: 16PX; }
 .historyEntry { margin-bottom: 12PX; background: white; border: 1PX solid #e4e9ed; border-radius: 14PX; overflow: hidden; }
@@ -112,6 +118,7 @@
 .empty { text-align: center; padding: 65PX 12PX; color: #516a79; }
 .empty strong { font-size: 18PX; }.empty p { color: #8597a2; }.empty [type=button] { color: #245f72; background: white; margin-top: 12PX; }
 .sectionHeading .saved { color: #388365; background: #edf6f0; border-radius: 20PX; padding: 4PX 10PX; }
+.sectionHeading .temporaryBadge { color: #8a5a1f; background: #fff4e0; border-radius: 20PX; padding: 4PX 10PX; }
 .details { display: grid; grid-template-columns: auto 1fr; gap: 12PX 20PX; margin: 22PX 0 0; font-size: 13PX; }
 .details dt { color: #8597a2; }.details dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
 .detailItem { display: flex; justify-content: space-between; gap: 12PX; padding: 17PX 0; border-bottom: 1PX solid #edf0f3; }

@@ -151,6 +151,7 @@ jobs:
           PRINT_ARTIFACTS: release/print-workbench-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           node tests/print-center-browser.cjs
+          node tests/print-center-temporary-browser.cjs
           node tests/print-center-sync-browser.cjs
           node tests/print-modes-browser.cjs
       - name: Validate native phone delivery print shortcuts and outbound dispatch

@@ -8,4 +8,5 @@ export const savePrintNote = (data: PrintNoteInput, previous?: SavedPrintNote) =
   url: previous ? `/api/print-notes/${previous.id}` : '/api/print-notes',
   method: previous ? 'PUT' : 'POST', data: { ...data, ...(previous ? { version: previous.version } : {}) },
 });
+export const temporaryPrintNote = (id: number) => request<SavedPrintNote>({ url: `/api/print-notes/${id}/temporary-print`, method: 'POST', data: {} });
 export const shipPrintNote = (id: number) => request<SavedPrintNote>({ url: `/api/print-notes/${id}/ship`, method: 'POST', data: {} });

@@ -147,7 +147,8 @@ function save(data, raw, id) {
   const nextId = previous?.id ?? notes.reduce((max, row) => Math.max(max, row.id), 0) + 1;
   const now = Date.now();
   const result = { ...note, id: nextId, number: previous?.number || `SH-${note.date.replace(/-/g, '')}-${String(nextId).padStart(5, '0')}`,
-    version: (previous?.version || 0) + 1, created_at: previous?.created_at || now, updated_at: now };
+    version: (previous?.version || 0) + 1, created_at: previous?.created_at || now, updated_at: now,
+    ...(previous?.temporary_print_at ? { temporary_print_at: previous.temporary_print_at } : {}) };
   if (previous) notes[notes.indexOf(previous)] = result; else notes.push(result);
   return result;
 }
@@ -161,7 +162,8 @@ function validateBackup(data) {
     const normalized = validateNote(note);
     if (!Number.isSafeInteger(note.id) || note.id < 1 || ids.has(note.id) || typeof note.number !== 'string' || !note.number || note.number.length > 80
       || !Number.isSafeInteger(note.version) || note.version < 1 || !Number.isSafeInteger(note.created_at) || note.created_at < 0
-      || !Number.isSafeInteger(note.updated_at) || note.updated_at < 0 || (note.deleted_at !== undefined && (!Number.isSafeInteger(note.deleted_at) || note.deleted_at < 0)) || normalized.total !== note.total
+      || !Number.isSafeInteger(note.updated_at) || note.updated_at < 0 || (note.deleted_at !== undefined && (!Number.isSafeInteger(note.deleted_at) || note.deleted_at < 0))
+      || (note.temporary_print_at !== undefined && (!Number.isSafeInteger(note.temporary_print_at) || note.temporary_print_at < 0)) || normalized.total !== note.total
       || note.customer_id != null && !customers.has(Number(note.customer_id))
       || normalized.items.some((item, i) => item.amount !== note.items[i].amount || note.items[i].unit !== '个')) throw fail('送货单备份编号、版本或金额无效');
     for (const [index, item] of normalized.items.entries()) {

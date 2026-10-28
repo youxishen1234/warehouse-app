@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Taro, { useRouter } from '@tarojs/taro';
 import { getCustomer, getCustomers, getTransactions } from '@/services/api';
-import { getPrintNote, getPrintNotes, savePrintNote, shipPrintNote } from '@/services/print-notes';
+import { getPrintNote, getPrintNotes, savePrintNote, shipPrintNote, temporaryPrintNote } from '@/services/print-notes';
 import type { PrintNoteInput, SavedPrintNote } from '@/services/print-notes';
 import type { Customer } from '@/types';
 import { documentFromTransactions, moneyUpper, transactionPrintKey } from '@/utils/dot-matrix-print';
@@ -24,6 +24,7 @@ const currency = (value: number) => Number.isFinite(value) ? value.toLocaleStrin
 const messageOf = (error: unknown) => error instanceof Error ? error.message : '暂时无法完成，请重试';
 type PrintTab = 'home' | 'edit' | 'history' | 'detail';
 type SourceStatus = 'none' | 'loading' | 'ready' | 'error';
+const noteStatus = (note: Pick<SavedPrintNote, 'outbound_at' | 'temporary_print_at'>) => note.outbound_at ? '已出库' : note.temporary_print_at ? '临时打印' : '待出库';
 
 function PrintIcon({ kind }: { kind: 'printer' | 'plus' | 'search' | 'arrow' }) {
   const paths = {
@@ -41,7 +42,8 @@ export default function PrintCenterPage() {
   const [draft, setDraft] = useState<NoteDraft>(newNote);
   const [saved, setSaved] = useState<SavedPrintNote>();
   const [dirty, setDirty] = useState(false);
-  const [tab, setTab] = useState<PrintTab>(() => params.transaction_id || params.mode === 'edit' ? 'edit' : 'home');
+  const [temporaryMode, setTemporaryMode] = useState(() => params.mode === 'temporary');
+  const [tab, setTab] = useState<PrintTab>(() => params.transaction_id || params.mode === 'edit' || params.mode === 'temporary' ? 'edit' : 'home');
   const [printerStatus, setPrinterStatus] = useState<{ label: string; ready: boolean }>(() => ({ label: readPrintPair() ? '正在检查打印电脑' : '电脑打印未连接', ready: false }));
   const [preview, setPreview] = useState<PrintNoteInput>();
   const [previewIntent, setPreviewIntent] = useState<'preview' | 'reprint' | 'auto'>('preview');
@@ -125,17 +127,18 @@ export default function PrintCenterPage() {
     if (!dirty) { action(); return; }
     pendingNavigation.current = action; setConfirmDiscard(true);
   };
-  const createNew = () => {
+  const createNew = (temporary = false) => {
     sourceSequence.current++;
     setSourceId(undefined); setSourceStatus('none');
     busyRef.current = false; setBusy(false);
     setDraft(newNote()); setSaved(undefined); setPreview(undefined); setChosenCustomer(undefined);
-    setDirty(false); setTab('edit'); setError(''); setNotice('');
+    setDirty(false); setTemporaryMode(temporary); setTab('edit'); setError(''); setNotice('');
   };
   const startNew = () => {
     if (sourceActive && sourceStatus === 'loading') { createNew(); return; }
     guard(createNew);
   };
+  const startTemporary = () => guard(() => createNew(true));
   const openHistory = () => guard(() => setTab('history'));
 
   useEffect(() => {
@@ -186,7 +189,7 @@ export default function PrintCenterPage() {
     if (sourceId === undefined) { setSourceStatus('none'); return; }
     const requestSequence = sourceSequence;
     const generation = ++requestSequence.current;
-    setSaved(undefined); setPreview(undefined); setDraft(newNote()); setChosenCustomer(undefined);
+    setSaved(undefined); setPreview(undefined); setDraft(newNote()); setChosenCustomer(undefined); setTemporaryMode(false);
     setDirty(false); setTab('edit'); setSourceStatus('loading'); setError(''); setNotice('');
     let active = true, started = false; busyRef.current = true; setBusy(true);
     const load = async () => {
@@ -230,9 +233,9 @@ export default function PrintCenterPage() {
     sourceSequence.current++;
     busyRef.current = true; setBusy(true); setError(''); setNotice('');
     getPrintNote(id).then(note => {
-      setSourceId(undefined); setSourceStatus('none');
+      setSourceId(undefined); setSourceStatus('none'); setTemporaryMode(false);
       setSaved(note); setDraft(noteDraft(note)); setDirty(false); setChosenCustomer(undefined);
-      if (reprint && note.outbound_at) { setPreviewIntent('reprint'); setPreview(note); }
+      if (reprint && (note.outbound_at || note.temporary_print_at)) { setPreviewIntent('reprint'); setPreview(note); }
       else {
         setTab('detail');
         if (reprint) setError('这张送货单尚未出库，请确认出库后再打印');
@@ -245,7 +248,7 @@ export default function PrintCenterPage() {
   const copyNote = (id: number) => guard(() => {
     busyRef.current = true; setBusy(true); setError(''); setNotice('');
     getPrintNote(id).then(note => {
-      setSourceId(undefined); setSourceStatus('none');
+      setSourceId(undefined); setSourceStatus('none'); setTemporaryMode(false);
       setSaved(undefined); setChosenCustomer(undefined);
       setDraft(copyNoteDraft(note));
       setDirty(true); setTab('edit');
@@ -288,6 +291,40 @@ export default function PrintCenterPage() {
       if (savedDuringAttempt && note && !note.outbound_at) {
         setSaved(note); setDraft(noteDraft(note)); setDirty(false); setTab('detail');
         setNotice('送货单已保存，但出库未完成；可在详情中重试出库');
+      }
+      setError(messageOf(issue));
+    } finally {
+      busyRef.current = false; shipping.current = false;
+      setBusy(false); setShipBusy(false);
+    }
+  };
+  // A temporary print is an explicit escape hatch for goods that have not been
+  // stocked in yet. It records the exact document that was printed but never
+  // touches stock, receivables, or outbound transactions.
+  const temporaryPrint = async () => {
+    if (sourceActive || shipping.current || busyRef.current) return;
+    let data: PrintNoteInput;
+    try { data = validateDraft(draft); } catch (issue) { setError(messageOf(issue)); return; }
+    busyRef.current = true; shipping.current = true;
+    setBusy(true); setShipBusy(true); setError(''); setNotice('');
+    let note = saved;
+    let savedDuringAttempt = false;
+    try {
+      if (!note || dirty) {
+        note = await savePrintNote(data, note);
+        setSaved(note); setDraft(noteDraft(note)); setDirty(false);
+        savedDuringAttempt = true;
+        setNotice('送货单已保存，正在准备临时打印');
+      }
+      if (!note.outbound_at && !note.temporary_print_at) note = await temporaryPrintNote(note.id);
+      setSaved(note); setDraft(noteDraft(note)); setDirty(false); setTemporaryMode(false); setTab('detail');
+      if (note.outbound_at) setNotice('这张单据已经正式出库，库存和客户应收已更新；现在打开打印预览');
+      else setNotice('已保存为临时打印：未核对库存、未扣库存，也未增加客户应收；货品入库后请在详情中确认出库');
+      setPreviewIntent(native && paired && printAfterOutbound ? 'auto' : 'preview'); setPreview(note);
+    } catch (issue) {
+      if (savedDuringAttempt && note && !note.outbound_at && !note.temporary_print_at) {
+        setSaved(note); setDraft(noteDraft(note)); setDirty(false); setTab('detail');
+        setNotice('送货单已保存，但临时打印未完成；可在详情中重试临时打印');
       }
       setError(messageOf(issue));
     } finally {
@@ -340,6 +377,7 @@ export default function PrintCenterPage() {
         <nav className={styles.quickActions} aria-label='打印快捷操作'>
           <button type='button' className={styles.primaryAction} aria-label='新建送货单' onClick={startNew}><PrintIcon kind='plus' /><span><strong>新建送货单</strong><small>填写客户、货物并打印</small></span></button>
           <button type='button' className={styles.secondaryAction} aria-label='查找单据' onClick={openHistory}><PrintIcon kind='search' /><span><strong>查找单据</strong><small>按客户、单号或规格</small></span></button>
+          <button type='button' className={styles.temporaryAction} aria-label='临时打印' onClick={startTemporary}><PrintIcon kind='printer' /><span><strong>临时打印</strong><small>货品未入库也能先出单，不扣库存</small></span></button>
         </nav>
         <section className={styles.recent}>
           <div className={styles.recentHeading}><div><h2>最近单据</h2><p>{totalRecords ? `共 ${totalRecords} 张` : '送货单记录'}</p></div><button type='button' onClick={openHistory}>全部单据 <PrintIcon kind='arrow' /></button></div>
@@ -349,7 +387,7 @@ export default function PrintCenterPage() {
             <button type='button' className={styles.recentNote} disabled={busy} onClick={() => openNote(note.id)}>
               <span className={styles.recentIcon}><PrintIcon kind='printer' /></span>
               <span className={styles.recentContent}><strong>{note.customer_name}</strong><small>{note.date} · {note.items.length} 项 · {note.number}</small></span>
-              <span className={styles.recentValue}><strong>¥ {currency(note.total)}</strong><small>{note.outbound_at ? '已出库' : '待出库'}</small></span>
+              <span className={styles.recentValue}><strong>¥ {currency(note.total)}</strong><small>{noteStatus(note)}</small></span>
             </button>
             {native && <button type='button' className={styles.recentCopy} disabled={busy} aria-label={`照${note.number}再来一单`} onClick={() => copyNote(note.id)}>再来一单</button>}
           </div>)}
@@ -363,7 +401,7 @@ export default function PrintCenterPage() {
         {!readPrintPair() && <p className={styles.muted}>连接打印电脑后可查看远程打印时间。</p>}
         {history.map(note => <article className={styles.historyEntry} key={note.id}>
           <button type='button' className={styles.historyCard} disabled={busy} onClick={() => openNote(note.id)}>
-            <span><strong>{note.customer_name}</strong><small>{note.date} · {note.items.length} 项</small><small>{note.number}</small><span className={styles.historyItems}>{note.items.map(item => item.name).join('、')}</span></span>
+            <span><strong>{note.customer_name}</strong><small>{note.date} · {note.items.length} 项 · {noteStatus(note)}</small><small>{note.number}</small><span className={styles.historyItems}>{note.items.map(item => item.name).join('、')}</span></span>
             <span className={styles.historyAmount}>¥ {currency(note.total)}<small>查看详情 ›</small></span>
           </button>
           <div className={styles.historyPrint}>
@@ -377,7 +415,7 @@ export default function PrintCenterPage() {
         {historyLoading && <p className={styles.muted} role='status'>正在加载单据…</p>}
         {!historyLoading && history.length < totalRecords && <button type='button' className={styles.addButton} onClick={() => void loadHistory(historyPage + 1)}>加载更多</button>}
       </section> : tab === 'detail' && saved ? <>
-        <section className={styles.card}><div className={styles.sectionHeading}><h2>单据详情</h2><span className={styles.saved}>已保存</span></div><h3>{saved.customer_name}</h3><p className={styles.muted}>{saved.number} · {saved.date}</p><dl className={styles.details}><dt>收货地址</dt><dd>{saved.address || '未填写'}</dd><dt>收货人</dt><dd>{saved.receiver || '未填写'}{saved.phone ? ` · ${saved.phone}` : ''}</dd><dt>送货人</dt><dd>{saved.sender || '未填写'}</dd><dt>公司抬头</dt><dd>{saved.company}</dd></dl></section>
+        <section className={styles.card}><div className={styles.sectionHeading}><h2>单据详情</h2><span className={saved.outbound_at ? styles.saved : saved.temporary_print_at ? styles.temporaryBadge : styles.saved}>{saved.outbound_at ? '已出库' : saved.temporary_print_at ? '临时打印' : '已保存'}</span></div><h3>{saved.customer_name}</h3><p className={styles.muted}>{saved.number} · {saved.date}</p><dl className={styles.details}><dt>收货地址</dt><dd>{saved.address || '未填写'}</dd><dt>收货人</dt><dd>{saved.receiver || '未填写'}{saved.phone ? ` · ${saved.phone}` : ''}</dd><dt>送货人</dt><dd>{saved.sender || '未填写'}</dd><dt>公司抬头</dt><dd>{saved.company}</dd></dl>{saved.temporary_print_at && !saved.outbound_at && <p className={styles.temporaryNotice} role='status'>临时打印单据：未核对库存、未扣库存，也未增加客户应收。货品入库后，请点“确认出库”完成正式出库。</p>}</section>
         <section className={styles.card}><div className={styles.sectionHeading}><h2>货物明细</h2><span>{saved.items.length} 项</span></div>{saved.items.map((item, index) => <div key={index} className={styles.detailItem}><div><strong>{index + 1}. {item.name}</strong><span>{item.specification || '未填规格'} · {item.quantity} 个 × ¥ {item.price}</span>{item.remark && <small>{item.remark}</small>}</div><strong>¥ {currency(item.amount)}</strong></div>)}<div className={styles.total}><span>合计</span><strong>¥ {currency(saved.total)}</strong></div><p className={styles.upper}>{moneyUpper(saved.total)}</p></section>
         {native && !saved.outbound_at && <label className={styles.autoPrint}>
           <input type='checkbox' checked={printAfterOutbound} disabled={!paired || shipBusy} onChange={event => {
@@ -386,9 +424,11 @@ export default function PrintCenterPage() {
           }} />
           <span>出库后自动打印</span>
         </label>}
-        <footer className={styles.actions}><button type='button' className={styles.secondary} onClick={() => { setTab('edit'); setNotice(''); }} disabled={!!saved.outbound_at || shipBusy}>编辑单据</button>{saved.outbound_at ? <button type='button' className={styles.primary} onClick={() => { setPreviewIntent('reprint'); setPreview(saved); }}>再次打印</button> : <button type='button' className={styles.primary} onClick={shipAndPrint} disabled={shipBusy || dirty}>{shipBusy ? '出库中…' : native ? paired && printAfterOutbound ? '确认出库并打印' : '确认出库' : '确认出库并打印'}</button>}</footer>
+        <footer className={`${styles.actions} ${saved.temporary_print_at && !saved.outbound_at ? styles.actionsWrap : ''}`}><button type='button' className={styles.secondary} onClick={() => { setTab('edit'); setNotice(''); }} disabled={!!saved.outbound_at || shipBusy}>编辑单据</button>{saved.temporary_print_at && !saved.outbound_at && <button type='button' className={styles.secondary} onClick={() => { setPreviewIntent('reprint'); setPreview(saved); }}>再次打印</button>}{saved.outbound_at ? <button type='button' className={styles.primary} onClick={() => { setPreviewIntent('reprint'); setPreview(saved); }}>再次打印</button> : <button type='button' className={styles.primary} onClick={shipAndPrint} disabled={shipBusy || dirty}>{shipBusy ? '出库中…' : native ? paired && printAfterOutbound ? '确认出库并打印' : '确认出库' : '确认出库并打印'}</button>}</footer>
+        {!saved.outbound_at && !saved.temporary_print_at && <button type='button' className={styles.temporaryLink} disabled={shipBusy || dirty} onClick={() => void temporaryPrint()}>货品未入库？临时打印（不扣库存）</button>}
       </> : <>
-        <div className={styles.documentStatus} data-source-status={sourceActive ? sourceStatus : undefined}><span>{sourceActive ? '原出库单' : saved?.number || '新送货单'}</span><span>{sourceStatus === 'loading' ? '正在读取…' : sourceActive ? sourceStatus === 'ready' ? '已出库 · 只读' : '读取失败' : busy ? '正在处理…' : dirty ? '待保存' : saved ? '已保存' : '填写后保存'}</span></div>
+        <div className={styles.documentStatus} data-source-status={sourceActive ? sourceStatus : undefined}><span>{sourceActive ? '原出库单' : temporaryMode ? '临时打印' : saved?.number || '新送货单'}</span><span>{sourceStatus === 'loading' ? '正在读取…' : sourceActive ? sourceStatus === 'ready' ? '已出库 · 只读' : '读取失败' : busy ? '正在处理…' : dirty ? '待保存' : saved ? noteStatus(saved) : '填写后保存'}</span></div>
+        {temporaryMode && !sourceActive && <div className={styles.temporaryNotice} role='status'>临时打印：不核对库存、不扣库存，也不增加客户应收。可以先把单子打印给客户，货品入库后再补正式出库。</div>}
         <fieldset disabled={busy || sourceActive} className={styles.form}>
           <section className={styles.card}><div className={styles.sectionHeading}><h2>收货信息</h2><button type='button' className={styles.textButton} onClick={() => { setCustomerQuery(''); setCustomerOpen(true); }}>搜索客户</button></div>
             <label className={styles.field}>收货单位<input aria-label='收货单位' placeholder='输入名称，或点右上角搜索客户' maxLength={100} value={draft.customer_name} onChange={event => { change({ customer_name: event.target.value, customer_id: null }); setChosenCustomer(undefined); }} /></label>
@@ -411,8 +451,9 @@ export default function PrintCenterPage() {
           <button type='button' className={styles.primary} disabled={busy || sourceStatus !== 'ready'} onClick={showPreview}>{sourceStatus === 'loading' ? '正在读取原单…' : '预览打印'}</button>
         </> : <>
           <button type='button' className={styles.secondary} disabled={busy || (!!saved && !dirty)} onClick={() => void save()}>{busy ? '保存中…' : saved && !dirty ? '已保存' : native ? '仅保存' : '保存单据'}</button>
-          <button type='button' className={styles.primary} disabled={busy} onClick={() => void shipAndPrint()}>{busy ? '处理中…' : '确认出库并打印'}</button>
+          <button type='button' className={styles.primary} disabled={busy} onClick={() => void (temporaryMode ? temporaryPrint() : shipAndPrint())}>{busy ? '处理中…' : temporaryMode ? '保存并临时打印' : '确认出库并打印'}</button>
         </>}</footer>
+        {!sourceActive && !temporaryMode && !saved?.outbound_at && <button type='button' className={styles.temporaryLink} disabled={busy} onClick={() => void temporaryPrint()}>货品未入库？临时打印（不扣库存）</button>}
       </>}
     </div>
     {specificationOpen && <SpecificationPicker customerId={draft.customer_id} customerName={draft.customer_name} items={draft.items} onAdd={addSpecifications} onClose={() => setSpecificationOpen(false)} />}

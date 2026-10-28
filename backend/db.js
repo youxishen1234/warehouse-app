@@ -2223,6 +2223,19 @@ function updateCustomerDimensions(raw) {
 }
 function listPrintNotes(keyword) { return JSON.parse(JSON.stringify(require('./print-notes').list(cache, keyword))); }
 function savePrintNote(raw, id) { return atomicMutation(() => { const note = require('./print-notes').save(cache, raw, id); persist(); return note; }); }
+function temporaryPrintNote(id) {
+  return atomicMutation(() => {
+    const note = cache.print_notes.find(row => row.id === Number(id) && !row.deleted_at);
+    if (!note) throw Object.assign(new Error('送货单不存在'), { status: 404 });
+    if (note.outbound_at || note.temporary_print_at) return JSON.parse(JSON.stringify(note));
+    const now = Date.now();
+    note.temporary_print_at = now;
+    note.version = Number(note.version || 1) + 1;
+    note.updated_at = now;
+    persist();
+    return JSON.parse(JSON.stringify(note));
+  });
+}
 function shipPrintNote(id) {
   return atomicMutation(() => {
     const note = cache.print_notes.find(row => row.id === Number(id));
@@ -2288,7 +2301,7 @@ function deleteBoard(id) { return atomicMutation(() => { const batch = cache.boa
 function listBusinessSpecifications() { return require('./business-workflow').specifications(cache); }
 function listProduction() { return (cache.production_records || []).slice().reverse(); }
 function completeProduction(raw, operator) { return atomicMutation(() => { const record = require('./business-workflow').complete(cache, raw, operator, stockIn, addProduct); persist(); return record; }); }
-module.exports = { listBusinessSpecifications, listProduction, completeProduction, listPrintNotes, savePrintNote, shipPrintNote, getCustomerDimensions, updateCustomerDimensions, listBoards, receiveBoard, moveBoard, updateBoard, deleteBoard, listProducts, getProduct, addProduct, updateProduct, deleteProduct,
+module.exports = { listBusinessSpecifications, listProduction, completeProduction, listPrintNotes, savePrintNote, temporaryPrintNote, shipPrintNote, getCustomerDimensions, updateCustomerDimensions, listBoards, receiveBoard, moveBoard, updateBoard, deleteBoard, listProducts, getProduct, addProduct, updateProduct, deleteProduct,
   getLedgerAttachments, addLedgerAttachment, readLedgerAttachment, listCustomerAttachments, addCustomerAttachment, readCustomerAttachment, prepareLedgerAttachment: ledgerAttachments.prepare, prepareCustomerAttachment, validateBackup,
   listCustomers, listCartonInboundCustomers, getCustomer, listInactiveCustomerNames, addCustomer, updateCustomer, saveCustomerSpecs, deleteCustomer,
   listSuppliers, getSupplier, addSupplier, updateSupplier, deleteSupplier,

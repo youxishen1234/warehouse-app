@@ -62,7 +62,8 @@ export default function PrintPreview({ note, saved, postedSource = false, reprin
   const selectedPrinter = printers.find(printer => printer.name === printerName);
   const mobileNotices = useMobilePrintNotifications();
   const savedMatch = useMemo(() => saved && JSON.stringify(printDocument(saved, saved)) === JSON.stringify(doc) ? saved : undefined, [doc, saved]);
-  const printableSaved = savedMatch?.outbound_at ? savedMatch : undefined;
+  const printableSaved = savedMatch && (savedMatch.outbound_at || savedMatch.temporary_print_at) ? savedMatch : undefined;
+  const temporaryPrint = !!savedMatch?.temporary_print_at && !savedMatch?.outbound_at;
   const printAllowed = postedSource || !!printableSaved;
   const bluetoothSupported = native && isBluetooth630KSupported();
   const [transport, setTransport] = useState<PrintTransport>(() => readPreferredPrintTransport(bluetoothSupported));
@@ -229,6 +230,7 @@ export default function PrintPreview({ note, saved, postedSource = false, reprin
     {printPending.issue && <p role='alert' className={styles.error}>{printPending.issue} 已暂停发送和通道切换。</p>}
     {bluetoothSupported && activeTransport === 'bluetooth' && <Bluetooth630KPrint enabled ready={ready} saved={printableSaved} document={doc} settings={settings} autoSend={autoSend && printAllowed} onReadyChange={setBluetoothReady} onPendingChange={notifyPendingChange} />}
     <div className={styles.previewHeader}><h2>送货单预览</h2><button type='button' className={styles.textButton} disabled={printing} onClick={onClose}>关闭</button></div>
+    {temporaryPrint && <p className={styles.temporaryNotice} role='status'>临时打印：未核对库存、未扣库存，也未增加客户应收。此单据仅用于先把送货单交给客户。</p>}
     {bridge && <div className={styles.previewControls}><select aria-label='打印机' value={printerName} disabled={printerLoading || printing} onChange={event => setPrinterName(event.target.value)}><option value=''>{printerLoading ? '正在读取打印机…' : '请选择打印机'}</option>{printers.map(printer => <option key={printer.name} value={printer.name} disabled={printer.unavailable}>{printer.displayName}{printer.unavailable ? '（不可用）' : ''}</option>)}</select><button type='button' disabled={printerLoading || printing} onClick={() => setPrinterRetry(value => value + 1)}>刷新</button></div>}
     {printerError && <p role='alert' className={styles.error}>{printerError}</p>}{error && <p role='alert' className={styles.error}>{error}</p>}
     <div className={styles.previewStage} ref={stage}><button type='button' className={styles.previewTrigger} aria-label={zoomed ? '缩小送货单预览' : '放大送货单预览'} aria-pressed={zoomed} disabled={!ready} onClick={() => setZoomed(value => !value)}><span className={styles.frameShell} style={{ width: width * scale, height: layout.height * scale }}><iframe key={html} ref={frame} title='送货单纸张预览' tabIndex={-1} sandbox='allow-same-origin allow-modals' srcDoc={html} onLoad={load} style={{ width, height: layout.height, transform: `scale(${scale})` }} /></span></button></div>

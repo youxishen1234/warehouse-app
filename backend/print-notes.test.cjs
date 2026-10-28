@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { validateNote, normalizeSpecification, removeDuplicates, list } = require('./print-notes');
+const { validateNote, normalizeSpecification, removeDuplicates, list, save } = require('./print-notes');
 const fixture = () => ({ company: '东光县曙光纸箱包装', customer_id: null, customer_name: '测试客户', address: '测试地址', phone: '123456', receiver: '王先生', sender: '李师傅', date: '2026-10-09', paper: '241-93',
   items: [{ name: '瓦楞纸箱', specification: '400mm x 300毫米 * 200 mm', unit: '箱', quantity: '3', price: '1.005', amount: 999, remark: '' }] });
 
@@ -37,6 +37,16 @@ test('automatic cleanup hides newer exact unshipped drafts and preserves shipped
   assert.equal(data.print_notes.find(note => note.id === 2).version, 2);
   assert.deepEqual(list(data).map(note => note.id).sort((a, b) => a - b), [1, 3, 4]);
   assert.deepEqual(removeDuplicates(data), []);
+});
+
+test('temporary print marker survives draft edits without changing the document payload', () => {
+  const data = { print_notes: [] };
+  const original = save(data, fixture());
+  original.temporary_print_at = 1234;
+  const updated = save(data, { ...original, receiver: '修改后的收货人' }, original.id);
+  assert.equal(updated.temporary_print_at, 1234);
+  assert.equal(updated.receiver, '修改后的收货人');
+  assert.equal(updated.version, 2);
 });
 
 test('saved notes persist, update in place, search all lines, reject stale edits, and survive older backups', async () => {
@@ -77,6 +87,13 @@ test('saved notes persist, update in place, search all lines, reject stale edits
     assert.equal((await call('/print-notes?keyword=missing')).data.total, 0);
     const stale = await call(`/print-notes/${saved.id}`, 'PUT', { ...saved, sender: '不能覆盖' });
     assert.equal(stale.status, 409); assert.equal(db.listPrintNotes()[0].receiver, '新收货人');
+    const temporary = await call(`/print-notes/${saved.id}/temporary-print`, 'POST', {});
+    assert.equal(temporary.status, 200); assert.ok(temporary.data.temporary_print_at > 0);
+    assert.equal(db.getProduct(product.id).stock, 10); assert.equal(db.getProduct(product2.id).stock, 10);
+    assert.equal(db.getCustomer(customer.id).debt, 0); assert.equal(db.listTx().length, 0);
+    const temporaryAgain = await call(`/print-notes/${saved.id}/temporary-print`, 'POST', {});
+    assert.equal(temporaryAgain.data.temporary_print_at, temporary.data.temporary_print_at);
+    assert.equal(temporaryAgain.data.version, temporary.data.version);
     const noKey = await call('/print-notes', 'POST', raw, { 'Idempotency-Key': '' }); assert.equal(noKey.status, 400);
     assert.equal((await call('/print-notes?page=0')).status, 400);
     assert.equal((await call('/print-notes/9999')).status, 404);
@@ -96,8 +113,8 @@ test('saved notes persist, update in place, search all lines, reject stale edits
     assert.throws(() => db.restoreData(bad), /送货单备份/);
     assert.equal(db.listPrintNotes()[0].total, 8.05);
     const oldBackup = structuredClone(after); delete oldBackup.print_notes; db.restoreData(oldBackup);
-    assert.equal(db.listPrintNotes()[0].receiver, '新收货人'); assert.equal(db.listPrintNotes()[0].version, 4);
-    db.restoreData(after); assert.equal(db.listPrintNotes()[0].version, 5);
+    assert.equal(db.listPrintNotes()[0].receiver, '新收货人'); assert.equal(db.listPrintNotes()[0].version, 5);
+    db.restoreData(after); assert.equal(db.listPrintNotes()[0].version, 6);
     const unnamedRaw = fixture(); unnamedRaw.customer_id = customer.id; unnamedRaw.items[0].name = '';
     const unnamed = await call('/print-notes', 'POST', unnamedRaw);
     assert.equal(unnamed.status, 200);

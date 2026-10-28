@@ -56,6 +56,9 @@ test('remote routes require pairing and print immutable saved snapshots without 
   delete note.outbound_at;
   const blocked=await call({note_id:1,version:1,id:'remote-route-unshipped',paper:'241-93'});
   assert.equal(blocked.status,400);assert.match((await blocked.json()).message,/出库/);
+  note.temporary_print_at=90000;
+  const temporary=await call({note_id:1,version:1,id:'remote-route-temporary-01',paper:'241-93'});assert.equal((await temporary.json()).data.status,'waiting');
+  delete note.temporary_print_at;
   note.outbound_at=100000;
   const response=await call({note_id:1,version:1,id:'remote-route-00001',paper:'241-93'});assert.equal(response.status,200);
   note.items[0].specification='changed';assert.equal(store.claim(pair.agent,true).job.note.items[0].specification,'400×300×200');
