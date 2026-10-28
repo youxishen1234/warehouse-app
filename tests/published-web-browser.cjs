@@ -1,10 +1,28 @@
 const assert = require('node:assert/strict');
+const https = require('node:https');
 const { chromium, expect } = require('@playwright/test');
+
+function fetchIPv4(url, options) {
+  return new Promise((resolve, reject) => {
+    const request = https.request(url, { method: options?.method || 'GET', family: 4, agent: false, timeout: 30000 }, response => {
+      const chunks = [];
+      response.on('data', chunk => chunks.push(chunk));
+      response.on('error', reject);
+      response.on('end', () => resolve(new Response(options?.method === 'HEAD' ? null : Buffer.concat(chunks), { status: response.statusCode, headers: response.headers })));
+    });
+    request.on('timeout', () => request.destroy(new Error('Published endpoint IPv4 request timed out')));
+    request.on('error', reject);
+    request.end();
+  });
+}
 
 async function fetchWithRetry(url, options) {
   for (let attempt = 0; ; attempt++) {
     try { return await fetch(url, { ...options, signal: AbortSignal.timeout(30000) }); }
-    catch (error) { if (attempt === 2) throw error; await new Promise(resolve => setTimeout(resolve, 2000 * (attempt + 1))); }
+    catch (error) {
+      if (attempt === 2) return fetchIPv4(url, options);
+      await new Promise(resolve => setTimeout(resolve, 2000 * (attempt + 1)));
+    }
   }
 }
 
@@ -22,7 +40,7 @@ async function main() {
     assert.equal(response.status, 200, route);
     assert.equal((await response.json()).commit, expected, route + ' must match the released source');
   }
-  for (const route of ['/workspace/', '/print.html', '/customers.html', '/management.html', '/legacy-entry.js', '/pages/ledger/index', '/pages/board-stock/index']) {
+  for (const route of ['/workspace/', '/web-releases/', '/web-releases/old/index.html', '/web-current/index.html', '/print.html', '/customers.html', '/management.html', '/legacy-entry.js', '/pages/ledger/index', '/pages/board-stock/index']) {
     const response = await fetchWithRetry(origin + route, { method: 'HEAD', cache: 'no-store' });
     assert.equal(response.status, 410, route + ' must no longer serve a legacy interface');
   }

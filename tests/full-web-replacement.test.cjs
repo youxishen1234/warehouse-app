@@ -20,6 +20,8 @@ test('retired web routes are blocked before backend static files can serve an ol
   assert(server.indexOf("res.status(410)") < server.indexOf('app.use(express.static(WEB_ROOT))'));
   const nginx = fs.readFileSync('deploy/nginx-production.conf', 'utf8');
   assert.match(nginx, /return 410/);
+  assert(nginx.includes('web-(?:releases|current)'));
+  assert(server.includes('web-(?:releases|current)'));
   assert.match(nginx, /location ~ \^\/\(\?:js\|css\|static\|assets\)\/ \{ try_files \$uri =404; \}/);
 });
 
