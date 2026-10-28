@@ -20,3 +20,6 @@ __pycache__/
 /backend/update-log.jsonl
 /backend/runtime/
 /backend/*.attachments/
+
+# Native and desktop assets are generated from the current web source.
+/www/

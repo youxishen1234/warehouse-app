@@ -219,7 +219,7 @@ export default function AiAssistantPage() {
     } catch (e) { setError(textError(e)); }
   };
 
-  return <div ref={pageRef} className={styles.page} data-ai-assistant='20261003' data-ai-media='20261004' data-ai-chat='20261004-wechat'>
+  return <div ref={pageRef} className={styles.page} data-ui-version='web-workbench-v2' data-ai-assistant='web-workbench-v2' data-ai-media='20261004' data-ai-chat='web-workbench-v2'>
     <div className={styles.header}>
       <button data-ai-control="button" className={styles.back} aria-label='打开聊天记录' onClick={() => setMenuOpen(value => !value)}><ChatIcon name='more' /></button>
       <div className={styles.heading}><span className={styles.title}>AI 助手</span></div>

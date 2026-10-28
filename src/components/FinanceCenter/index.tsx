@@ -11,10 +11,10 @@ import { parseMoneyInput, previewMoneyInput, sanitizeNonNegativeMoneyInput } fro
 import {
   amountPrefix, dateBounds, dateKey, filterLedger, groupLedger, isLinkedEntry,
   ledgerTypes, monthRange, summarizeLedger
-} from '@/pages/ledger/model';
+} from '@/components/FinanceCenter/ledger-model';
 import type { PhotoDraft } from '@/services/ledger-photos';
-import LedgerAttachments from '@/pages/ledger/attachments';
-import FinanceButton from '@/pages/ledger/button';
+import LedgerAttachments from '@/components/FinanceCenter/attachments';
+import FinanceButton from '@/components/FinanceCenter/button';
 import {
   buildCustomerManagementRows, MAX_VISIBLE_CUSTOMER_SPECS, specificationSearchText
 } from '@/components/CustomerCenter/model';

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, ScrollView, Input } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
 import Icon from '@/components/Icon';
+import BusinessHeader from '@/components/BusinessHeader';
 
 import { autoBestBase, checkServerHealth, getBaseUrl, setBaseUrl } from '@/services/request';
 import { checkAndUpdate } from '@/services/update';
@@ -197,12 +198,13 @@ const MineContent: React.FC = () => {
 
   return (
     <ScrollView scrollY className={styles.container}>
+      <BusinessHeader title='我的与设置' />
       <View className={styles.hero}>
         <View className={styles.heroTop}>
           <View className={styles.brandMark}>曙</View>
           <View className={styles.heroCopy}>
-            <Text className={styles.eyebrow}>SHUGUANG / WORKSPACE</Text>
-            <Text className={styles.heroTitle}>我的工作台</Text>
+            <Text className={styles.eyebrow}>曙光业务总台</Text>
+            <Text className={styles.heroTitle}>连接与更新</Text>
             <Text className={styles.heroSubtitle}>连接与更新设置</Text>
           </View>
           <View className={`${styles.heroBadge} ${connectionDetail ? styles.connectionError : ''}`} onClick={() => { void refreshConnection(); }}><View className={styles.liveDot} /><Text>{connection}</Text></View>

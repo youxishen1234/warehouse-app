@@ -55,8 +55,8 @@ async function main() {
     assert.equal(await page.evaluate(() => document.documentElement.hasAttribute('data-tab-context')), true);
     await tab(0).click();
     await current('home');
-    // Retired ledger deep links remain compatible and land in the unified finance tab.
-    await page.goto(origin + '/#/pages/ledger/index');
+    // Finance opens directly inside the current business center.
+    await page.goto(origin + '/#/pages/business-center/index?section=finance');
     await current('business-center');
     await page.getByTestId('finance-center').filter({ visible: true }).last().waitFor();
     await page.getByTestId('finance-ledger-view').filter({ visible: true }).last().waitFor();

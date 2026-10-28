@@ -6,7 +6,7 @@ const ts = require('typescript');
 const { parseDateQuery } = require('../backend/date-query');
 
 const model = {};
-vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/pages/ledger/model.ts', 'utf8'), {
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/components/FinanceCenter/ledger-model.ts', 'utf8'), {
   compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS }
 }).outputText, { exports: model });
 const entry = (id, type, amount, extra = {}) => ({ id, type, amount, remark: '', created_at: new Date(2026, 9, 3, 12).getTime(), ...extra });

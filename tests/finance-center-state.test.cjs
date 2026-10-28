@@ -62,14 +62,14 @@ function createHarness({ entryId, ledger, getLedger = async () => [] }) {
     '@/utils/format': { formatMoney: value => Number(value || 0).toFixed(2), formatTime: () => '2026-10-24 10:00' },
     '@/services/download': { downloadCsv: noop },
     '@/utils/form-input': { parseMoneyInput: value => Number(value), previewMoneyInput: value => Number(value), sanitizeNonNegativeMoneyInput: value => value },
-    '@/pages/ledger/model': {
+    '@/components/FinanceCenter/ledger-model': {
       amountPrefix: () => '', dateBounds: () => ({}), dateKey: () => '2026-10-24',
       filterLedger: rows => rows, groupLedger: rows => rows.length ? [{ date: '2026-10-24', entries: rows }] : [],
       isLinkedEntry: () => false, ledgerTypes: [{ value: '', label: '全部' }, { value: 'income', label: '收入' }],
       monthRange: () => ({ from: '', to: '' }), summarizeLedger: () => ({ net: 0, income: 0, expense: 0, receivable: 0, payable: 0, settlement: 0 })
     },
-    '@/pages/ledger/attachments': { __esModule: true, default: attachments },
-    '@/pages/ledger/button': { __esModule: true, default: button },
+    '@/components/FinanceCenter/attachments': { __esModule: true, default: attachments },
+    '@/components/FinanceCenter/button': { __esModule: true, default: button },
     './statement': { __esModule: true, default: () => null },
     './model': {
       filterPartyLedgerEntries: () => [], inferredPartyType: () => '', partyPeriodLabel: () => '',

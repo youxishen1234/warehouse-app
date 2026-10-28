@@ -347,7 +347,7 @@ async function main() {
     await page.getByRole('button', { name: '全部时间', exact: true }).click();
     await assertNoOverflow(320); await assertNoOverflow(1440);
     await page.screenshot({ path: path.join(evidence, 'finance-three-views.png'), fullPage: true });
-    await go(`/pages/ledger/index?party_type=customer&party_id=${customer.id}`);
+    await go(`/pages/business-center/index?section=finance&party_type=customer&party_id=${customer.id}`);
     await expect(page.getByTestId('finance-center')).toBeVisible();
     await expect(page).toHaveURL(/pages\/business-center\/index/);
     assert.doesNotThrow(() => db.validateBackup(db.backupData()));

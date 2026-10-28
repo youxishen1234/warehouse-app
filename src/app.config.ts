@@ -2,7 +2,6 @@ export default defineAppConfig({
   pages: [
     'pages/home/index',
     'pages/ai-assistant/index',
-    'pages/board-stock/index',
     'pages/business-center/index',
     'pages/label-print/index',
     'pages/label-resolver/index',
@@ -17,7 +16,6 @@ export default defineAppConfig({
     'pages/products/index',
     'pages/inventory/index',
     'pages/records/index',
-    'pages/ledger/index',
     'pages/orders/index',
     'pages/team/index',
     'pages/suppliers/index',

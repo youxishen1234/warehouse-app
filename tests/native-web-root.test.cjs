@@ -11,7 +11,7 @@ function scripts() {
 function bootstrap({ protocol = 'http:', native = false, hash = '' } = {}) {
   const inline = scripts();
   const navigation = inline.find(script => script.includes('document.write(') && script.includes('base href'));
-  const auxiliary = inline.find(script => script.includes('home-search.js'));
+  const auxiliary = inline.find(script => script.includes('web-shell.css'));
   const writes = [];
   const window = {
     location: { protocol, pathname: '/', hash, search: '', href: protocol + '//localhost/' },
@@ -33,33 +33,33 @@ function bootstrap({ protocol = 'http:', native = false, hash = '' } = {}) {
 test('Android Capacitor bundles resolve app and auxiliary assets relative to the active update', () => {
   const { writes } = bootstrap({ protocol: 'http:', native: true, hash: '#/pages/mine/index' });
   assert(writes.includes('<base href="./">'));
-  assert(writes.some(value => value.includes('./js/home-search.js')));
-  assert(writes.some(value => value.includes('./css/polish.css')));
+  assert(writes.some(value => value.includes('./css/web-shell.css')));
+  assert(!writes.some(value => value.includes('home-search.js')));
 });
 
 test('iOS and Electron retain relative assets while ordinary web remains root-based', () => {
   const ios = bootstrap({ protocol: 'capacitor:', native: true });
   assert(ios.writes.includes('<base href="./">'));
-  assert(ios.writes.some(value => value.includes('./js/home-search.js')));
+  assert(ios.writes.some(value => value.includes('./css/web-shell.css')));
   const desktop = bootstrap({ protocol: 'file:' });
   assert(desktop.writes.includes('<base href="./">'));
-  assert(desktop.writes.some(value => value.includes('./js/home-search.js')));
+  assert(desktop.writes.some(value => value.includes('./css/web-shell.css')));
   const web = bootstrap({ protocol: 'https:', hash: '#/pages/home/index' });
   assert(web.writes.includes('<base href="/">'));
-  assert(web.writes.some(value => value.includes('/js/home-search.js')));
+  assert(web.writes.some(value => value.includes('/css/web-shell.css')));
 });
 
 test('native root detection stays safe when the Capacitor bridge is unavailable', () => {
   for (const capacitor of [undefined]) {
     const inline = scripts();
     const navigation = inline.find(script => script.includes('document.write(') && script.includes('base href'));
-    const auxiliary = inline.find(script => script.includes('home-search.js'));
+    const auxiliary = inline.find(script => script.includes('web-shell.css'));
     const writes = [];
     const window = { location: { protocol: 'http:', hostname: 'localhost', pathname: '/', hash: '', search: '', href: 'http://localhost/' }, Capacitor: capacitor, history: { replaceState: () => {} }, addEventListener: () => {} };
     const document = { write: value => writes.push(value), getElementById: () => null, createElement: () => ({ style: {}, remove: () => {} }), body: { appendChild: () => {} } };
     vm.runInNewContext(navigation, { window, document, URL });
     vm.runInNewContext(auxiliary, { window, document });
     assert(writes.includes('<base href="./">'));
-    assert(writes.some(value => value.includes('./js/home-search.js')));
+    assert(writes.some(value => value.includes('./css/web-shell.css')));
   }
 });

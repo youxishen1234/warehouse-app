@@ -1,22 +1,37 @@
 const assert = require('node:assert/strict');
 const { chromium, expect } = require('@playwright/test');
 
+async function fetchWithRetry(url, options) {
+  for (let attempt = 0; ; attempt++) {
+    try { return await fetch(url, { ...options, signal: AbortSignal.timeout(30000) }); }
+    catch (error) { if (attempt === 2) throw error; await new Promise(resolve => setTimeout(resolve, 2000 * (attempt + 1))); }
+  }
+}
+
 async function main() {
   const origin = new URL(process.env.PUBLISHED_WEB_ORIGIN || 'https://youxishen.online').origin;
   const expected = process.env.RELEASE_COMMIT;
   assert.match(expected || '', /^[a-f0-9]{40,64}$/, 'The published source revision is required');
   if (new URL(origin).hostname === 'youxishen.online') {
-    const alternate = await fetch('https://www.youxishen.online/mobile.html', { method: 'HEAD', redirect: 'manual' });
+    const alternate = await fetchWithRetry('https://www.youxishen.online/mobile.html', { method: 'HEAD', redirect: 'manual' });
     assert.equal(alternate.status, 308, 'Alternate hostname must use the canonical application origin');
     assert.equal(alternate.headers.get('location'), origin + '/mobile.html');
   }
   for (const route of ['/appupdate/manifest.json', '/release-info.json']) {
-    const response = await fetch(origin + route, { cache: 'no-store' });
+    const response = await fetchWithRetry(origin + route, { cache: 'no-store' });
     assert.equal(response.status, 200, route);
     assert.equal((await response.json()).commit, expected, route + ' must match the released source');
   }
+  for (const route of ['/workspace/', '/print.html', '/customers.html', '/management.html', '/legacy-entry.js', '/pages/ledger/index', '/pages/board-stock/index']) {
+    const response = await fetchWithRetry(origin + route, { method: 'HEAD', cache: 'no-store' });
+    assert.equal(response.status, 410, route + ' must no longer serve a legacy interface');
+  }
+  for (const route of ['/js/home-search.js', '/css/polish.css', '/js/app.fba72e6a.js']) {
+    const response = await fetchWithRetry(origin + route, { method: 'HEAD', cache: 'no-store' });
+    assert.equal(response.status, 404, route + ' must not fall back to old shared assets');
+  }
   for (const route of ['/embed/', '/embed/pages/label-print/index', '/pages/label-print/index']) {
-    const response = await fetch(origin + route, { method: 'HEAD', cache: 'no-store' });
+    const response = await fetchWithRetry(origin + route, { method: 'HEAD', cache: 'no-store' });
     assert.equal(response.status, 200, route);
     const policy = response.headers.get('content-security-policy') || '';
     if (route.startsWith('/embed/')) {

@@ -15,13 +15,12 @@ test('ledger page separates loading, load failure and empty results', () => {
 
 test('ledger deep links scope parties and retrieve exact entries without replacing the list', () => {
   const source = fs.readFileSync('src/components/FinanceCenter/index.tsx', 'utf8');
-  const legacy = fs.readFileSync('src/pages/ledger/index.tsx', 'utf8');
+  const workbench = fs.readFileSync('src/pages/business-center/workbench.tsx', 'utf8');
   assert.match(source, /partyType\?: PartyType/);
   assert.match(source, /partyId\?: number/);
   assert.match(source, /getLedger\(\{ id: entryId, include_voided: true \}\)/);
   assert.match(source, /Number\(item\.party_id\) === selectedId/);
-  assert.match(legacy, /Taro\.redirectTo/);
-  assert.match(legacy, /target\.set\('party_type', partyType\)/);
-  assert.match(legacy, /target\.set\('entry', String\(params\.entry\)\)/);
-  assert.doesNotMatch(legacy, /流水明细|exportCsv|addLedger/);
+  assert.match(workbench, /partyType=\{params\.party_type/);
+  assert.match(workbench, /entryId=\{financeEntryId\}/);
+  assert.equal(fs.existsSync('src/pages/ledger/index.tsx'), false);
 });

@@ -65,7 +65,6 @@
 .board-file { display: block; width: 100%; padding: 12PX; font-size: 13PX; border: 1PX dashed #b5c5b6; border-radius: 12PX; }
 .board-page :focus-visible { outline: 3PX solid #6c9e7c; outline-offset: 3PX; }
 @media (min-width: 760PX) { .board-page { padding-left: 32PX; padding-right: 32PX; } .board-stock-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14PX; } .board-card { margin: 0; } .board-stock-list .board-card { margin-bottom: 4PX; } }
-@media (prefers-color-scheme: dark) { .board-page { --board-ink: #edf2e9; --board-muted: #a6b3a9; --board-line: #34483a; background: #17251e; } .board-section,.board-card,.board-empty { background: #21332a; } .board-input-wrap { background: #1b2b22; border-color: #405345; } .board-input-wrap input { color: #edf2e9; } .board-field-label,.board-card-meta,.board-subtitle { color: #b2bcb3; } .board-tabs :is(button,taro-button-core),.board-note { background: #2a4032; color: #c2d2c1; } .board-detail-row,.board-card-footer { border-color: #34483a; } }
 .board-header > .board-button { flex: none; width: auto; min-height: 38PX; font-size: 12PX; padding: 8PX 12PX; }
 .board-heading { min-width: 0; flex: 1; }
 .board-title { white-space: nowrap; }
@@ -76,3 +75,37 @@
 .board-page .board-button { color: #fff; margin-top: 0; }
 .board-page .board-button.is-secondary { color: #254d3e; }
 .board-page .board-button.is-disabled { color: #87948b; }
+
+.board-page {
+  --board-ink: #162741; --board-muted: #718198; --board-line: #e9eef5;
+  color-scheme: light; background: #f4f7fc; color: var(--board-ink);
+}
+.board-page .board-title, .board-page .board-spec, .board-page .board-qty,
+.board-page .board-summary-number { letter-spacing: 0; }
+.board-page .board-title { font-size: 24PX; }
+.board-page .board-eyebrow { color: #2469ee; letter-spacing: 0; }
+.board-page .board-button { border-radius: 8PX; background: #2469ee; color: #fff; box-shadow: none; }
+.board-page .board-button.is-secondary { background: #edf3ff; color: #2469ee; }
+.board-page .board-button.is-disabled { background: #e8eef5; color: #8290a4; }
+.board-page .board-section { border: 0; border-bottom: 1PX solid var(--board-line); border-radius: 0; background: #fff; }
+.board-page .board-card, .board-page .board-empty { border-radius: 8PX; background: #fff; }
+.board-page .board-summary { border-radius: 8PX; background: #edf3ff; color: #162741; }
+.board-page .board-summary .board-muted, .board-page .board-summary small { color: #718198; }
+.board-page .board-summary-bottom { border-color: #dce7fa; }
+.board-page .board-field-label, .board-page .board-card-meta { color: #718198; }
+.board-page .board-input-wrap { background: #f8fafc; border-color: #dce3ef; border-radius: 8PX; }
+.board-page .board-input-wrap input { color: #162741; }
+.board-page .board-note { background: #edf3ff; color: #526d95; border-radius: 8PX; }
+.board-page .board-detail-row { border-color: #e9eef5; }
+.board-page .board-tabs :is(button,taro-button-core) { border-radius: 6PX; background: #e9eef6; color: #718198; }
+.board-page .board-tabs :is(button,taro-button-core).active { background: #2469ee; color: #fff; }
+.board-page .board-steps { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 4PX; max-width: 800PX; margin: 16PX auto; padding: 4PX; background: #e9eef6; border-radius: 8PX; }
+.board-page .board-step { display: flex; align-items: center; justify-content: center; gap: 6PX; min-height: 36PX; padding: 6PX; font-size: 11PX; color: #718198; }
+.board-page .board-step.is-active { background: #fff; color: #2469ee; border-radius: 6PX; }
+.board-page .board-confirm-rail { max-width: 800PX; margin: 20PX auto; }
+.board-page .board-confirm-bar { display: flex; align-items: center; justify-content: space-between; gap: 12PX; padding: 14PX; background: #fff; border: 1PX solid #e9eef5; border-radius: 8PX; }
+.board-page .board-confirm-summary { min-width: 0; }
+.board-page .board-confirm-label { display: block; color: #718198; font-size: 12PX; }
+.board-page .board-confirm-amount { display: block; color: #162741; font-size: 20PX; overflow-wrap: anywhere; }
+.board-page .board-confirm-action { padding: 12PX 16PX; min-height: 46PX; border-radius: 8PX; background: #2469ee; color: #fff; font-size: 14PX; cursor: pointer; text-align: center; }
+.board-page .board-confirm-action.is-disabled { background: #e8eef5; color: #8290a4; cursor: default; }

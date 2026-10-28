@@ -16,7 +16,7 @@ async function main() {
     const active = () => page.locator('.taro_page:visible').last();
     const button = text => active().getByText(text, { exact: true });
     const field = label => active().locator('.board-field').filter({ has: page.locator('.board-field-label', { hasText: label }) }).locator('input');
-    await page.goto(base + '/pages/board-stock/index'); await active().getByText('从第一批纸板开始', { exact: true }).waitFor();
+    await page.goto(base + '/pages/inventory/index'); await active().getByText('从第一批纸板开始', { exact: true }).waitFor();
     await button('录入第一批来料').click();
     for (const [label, value] of [['板厂名称', '恒盛纸业'], ['纸板长', '165'], ['纸板宽', '115'], ['纸箱长', '40'], ['纸箱宽', '30'], ['纸箱高', '20'], ['面纸克重', '150'], ['里纸克重', '150'], ['楞纸克重', '120'], ['订购数', '1000'], ['实收数', '1004'], ['计费平米', '1897.5'], ['每平米单价', '2.1'], ['规格预警线', '600'], ['库位', 'A区 02']]) await field(label).fill(value);
     await page.screenshot({ path: dir + '/receive.png', fullPage: true });
@@ -24,7 +24,7 @@ async function main() {
     const batch = db.listBoards()[0]; assert.equal(batch.remainingQty, 1004); assert.equal(batch.amount, 3984.75);
     await button('领用这批纸板').click(); await field('领料数量').fill('1005'); await button('确认领料').click(); await active().locator('.board-error').filter({ hasText: '领料不能超过' }).waitFor(); assert.equal(db.listBoards()[0].remainingQty, 1004);
     await field('领料数量').fill('500'); await field('用途备注').fill('生产 40×30×20 纸箱'); await button('确认领料').click(); await page.waitForURL(/board-detail/); await expect(active().locator('.board-summary-number')).toContainText('504'); assert.equal(db.listBoards()[0].remainingQty, 504);
-    await page.goto(base + '/pages/board-stock/index'); await active().getByText('查看批次 ›', { exact: true }).waitFor(); await expect(active().locator('.board-qty')).toHaveText('504');
+    await page.goto(base + '/pages/inventory/index'); await active().getByText('查看批次 ›', { exact: true }).waitFor(); await expect(active().locator('.board-qty')).toHaveText('504');
     await active().locator('.board-title').scrollIntoViewIfNeeded(); await page.screenshot({ path: dir + '/stock-light.png', fullPage: true });
     await button('查看批次 ›').click(); await page.screenshot({ path: dir + '/stock-expanded.png', fullPage: true });
     await page.emulateMedia({ colorScheme: 'dark' }); await page.screenshot({ path: dir + '/stock-dark.png', fullPage: true }); await page.emulateMedia({ colorScheme: 'light' });
@@ -38,7 +38,7 @@ async function main() {
     await expect(field('纸板长')).toBeHidden();
     await expect(field('计费平米')).toHaveValue('');
     await expect(field('每平米单价')).toHaveValue('2.1');
-    await page.goto(base + '/pages/board-stock/index');
+    await page.goto(base + '/pages/inventory/index');
     await button('同规格一键入库').click();
     await expect(active().locator('.board-reuse-summary')).toBeVisible();
     await field('订购数').fill('100'); await field('实收数').fill('102'); await field('计费平米').fill('189.75');
@@ -48,18 +48,18 @@ async function main() {
     const repeated = db.listBoards().find(b => b.id !== batch.id);
     assert.equal(repeated.specKey, batch.specKey); assert.equal(repeated.remainingQty, 102);
     assert.equal(repeated.amount, 398.48);
-    await page.goto(base + '/pages/board-stock/index'); await expect(active().locator('.board-qty')).toHaveText('602');
+    await page.goto(base + '/pages/inventory/index'); await expect(active().locator('.board-qty')).toHaveText('602');
     await active().locator('.inventory-shortcut.primary').click();
     await active().locator('.board-template-list .board-button').first().click();
     await expect(field('实收数')).toHaveValue(''); await expect(field('计费平米')).toHaveValue('');
     await expect(active().locator('.board-reuse-summary')).toBeVisible();
     await page.goto(base + '/pages/board-detail/index?id=' + batch.id); await expect(active().locator('.board-summary-number')).toContainText('500');
-    await page.goto(base + '/pages/board-stock/index'); await button('查看批次 ›').click();
+    await page.goto(base + '/pages/inventory/index'); await button('查看批次 ›').click();
     const row = active().locator('.board-timeline').filter({ hasText: repeated.id });
     await row.getByText('编辑', { exact: true }).click(); await expect(field('实收数')).toHaveValue('102');
     await field('实收数').fill('120'); await button('保存修改').click(); await page.waitForURL(/board-detail/);
     assert.equal(db.listBoards().length, 2); assert.equal(db.listBoards().find(b => b.id === repeated.id).remainingQty, 120);
-    await page.goto(base + '/pages/board-stock/index'); await button('查看批次 ›').click();
+    await page.goto(base + '/pages/inventory/index'); await button('查看批次 ›').click();
     await active().locator('.board-timeline').filter({ hasText: repeated.id }).getByText('删除', { exact: true }).click();
     await page.getByText('确定', { exact: true }).click();
     await expect(active().locator('.board-qty')).toHaveText('500'); assert.equal(db.listBoards().length, 1);

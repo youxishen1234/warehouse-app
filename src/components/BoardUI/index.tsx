@@ -4,7 +4,6 @@ import Taro from '@tarojs/taro';
 import Icon from '../Icon';
 import { getCopy } from '@/services/copy';
 import './style.scss';
-import './web.scss';
 export function BoardPage({ title, subtitle, children, back = true, action, eyebrow, tone = 'default', steps, activeStep = 0 }: { title: string; subtitle?: string; children: ReactNode; back?: boolean; action?: ReactNode; eyebrow?: string; tone?: 'default' | 'inbound' | 'outbound'; steps?: [string, string, string]; activeStep?: number }) {
   const appName = getCopy('appName');
   return <View className={'board-page board-page--' + tone} data-ui-version='web-workbench-v2'><View className='board-header'><View className='board-heading'>{back && <Button className='board-back' onClick={() => { if (Taro.getCurrentPages().length > 1) Taro.navigateBack(); else Taro.switchTab({ url: '/pages/inventory/index' }); }} aria-label='返回'>‹</Button>}<View><Text className='board-eyebrow'>{appName} · {eyebrow || '纸板仓库'}</Text><Text className='board-title'>{title}</Text></View></View>{action}</View>{subtitle && <Text className='board-subtitle'>{subtitle}</Text>}{steps && <View className='board-steps' aria-label='办理步骤'>{steps.map((step, index) => <View className={'board-step' + (index === activeStep ? ' is-active' : '')} key={step}><Text className='board-step-number'>{index + 1}</Text><Text>{step}</Text></View>)}</View>}<View className='board-content'>{children}</View></View>;

@@ -156,43 +156,20 @@
   .primary { background:#4f6fe8; color:white; }
   .secondary { background:#f3f3f3; color:#555; border-color:#ddd; }
   .thinking { color:#999; font-size:12PX; }
-  /* DeepSeek-style home state: a quiet dark canvas with a floating glass composer. */
-  background:#0e0f11; color:#f5f7fb;
-  .header { height:86PX; min-height:86PX; padding:28PX 26PX 10PX; background:transparent; border:0; }
-  .header .back,.header .headerMore { color:#f5f7fb; width:54PX; height:54PX; flex:0 0 54PX; padding:11PX; background:#2d2e31; border:1PX solid #45464a; border-radius:50%; }
-  .header .back svg { width:25PX; height:25PX; }
-  .header .headerMore svg { width:25PX; height:25PX; }
-  .heading { display:none; }
-  .content { background:#0e0f11; padding:0 24PX 180PX; }
+  .welcomeHero { min-height:280PX; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18PX; padding:48PX 12PX; }
+  .whaleMark { font-size:48PX; color:#2469ee; }
+  .welcomeHero h1 { color:#162741; font-size:24PX; font-weight:650; text-align:center; margin:0; }
   .referenceActions { display:none; }
-  .referenceActions button { pointer-events:auto; width:52PX; height:52PX; min-height:52PX; padding:11PX; color:#f4f5f7; background:#2d2e31; border:1PX solid #45464a; border-radius:50%; }
-  .referenceActions svg { width:27PX; height:27PX; }
-  .welcomeHero { min-height:calc(100% - 80PX); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:170PX 0 150PX; }
-  .whaleMark { color:#5485ff; font-size:68PX; line-height:1; filter:saturate(1.3); margin-bottom:28PX; }
-  .welcomeHero h1 { margin:0; color:#f4f5f7; font-size:28PX; font-weight:600; letter-spacing:0; text-align:center; }
-  .chatTime,.message,.card,.connection,.actions,.success,.error,.thinking { display:none; }
-  .composer { position:fixed; left:24PX; right:24PX; bottom:max(18PX,env(safe-area-inset-bottom,0PX)); z-index:10; padding:20PX 22PX 16PX; background:#2a2b2eec; border:1PX solid #4b4d52; border-radius:28PX; box-shadow:0 10PX 28PX #0008; }
-  .referenceComposer { display:flex; flex-direction:column; gap:16PX; }
-  .messageInput { width:100%; height:46PX; min-height:46PX; max-height:112PX; padding:0; background:transparent; border:0; border-radius:0; color:#f5f7fb; font-size:22PX; line-height:1.35; }
-  .messageInput::placeholder { color:#94969e; opacity:1; }
-  .referenceOptions { display:flex; align-items:center; gap:12PX; min-height:44PX; }
-  .modeChip { min-height:42PX; padding:8PX 15PX; border:1PX solid #5a5c63; border-radius:24PX; color:#e5e7ec; background:transparent; font-size:16PX; }
-  .modeChipActive { color:#6f99ff; border-color:#4268d6; background:#1e2d62; }
-  .searchChip { color:#70a0ff; }
+  .referenceComposer { display:flex; flex-direction:column; gap:10PX; }
+  .referenceOptions { display:flex; align-items:center; flex-wrap:wrap; gap:6PX; }
   .referenceSpacer { flex:1; }
-  .referenceOptions .chatIcon { width:42PX; height:42PX; flex-basis:42PX; padding:6PX; color:#f1f3f8; }
-  .referenceOptions .send { width:42PX; height:42PX; min-height:42PX; padding:0; margin:0; border-radius:50%; background:#597ff3; font-size:25PX; }
-  .keyboardMode { display:flex; align-items:center; justify-content:center; width:100%; min-height:46PX; color:#f5f7fb; background:#35363a; border:1PX solid #4d4f55; border-radius:12PX; font-size:17PX; gap:8PX; }
-  .keyboardMode svg { width:22PX; height:22PX; }
-  .voicePanel { width:100%; }
-  .holdToTalk { min-height:46PX; height:46PX; background:#35363a; color:#f5f7fb; border-color:#55575e; border-radius:12PX; }
-  .holdToTalk.recording { background:#4b4c50; }
-  .photos,.voicePreview,.emojiPanel,.composerTools { background:#303136; border-color:#4b4d52; }
-  .chatMenu { top:92PX; right:24PX; background:#2a2b2e; color:#f5f7fb; border:1PX solid #4b4d52; box-shadow:0 10PX 28PX #0008; }
-  .chatMenu button { color:#f5f7fb; border-color:#4b4d52; }
-  .moreOpen .composerTools { color:#f5f7fb; }
-  .primary { background:#597ff3; }
-  @media (max-width:500PX) { .composer { left:14PX; right:14PX; bottom:max(10PX,env(safe-area-inset-bottom,0PX)); padding:17PX 16PX 13PX; border-radius:24PX; } .content { padding-left:14PX; padding-right:14PX; } .referenceActions { left:18PX; right:18PX; } .welcomeHero h1 { font-size:25PX; } .modeChip { padding-left:11PX; padding-right:11PX; font-size:14PX; } }
+  .modeChip { font-size:12PX; background:#edf3ff; color:#526d95; }
+  .modeChipActive { background:#dce8ff; color:#2469ee; }
+  .keyboardMode { width:100%; min-height:44PX; background:#edf3ff; color:#2469ee; }
+  .header { border-bottom:1PX solid #e9eef5; }
+  .heading { text-align:left; }
+  .title { font-size:22PX; color:#162741; }
+  .composer { padding-bottom:calc(100PX + env(safe-area-inset-bottom,0PX)); }
   @keyframes chat-spin { to { transform:rotate(360deg); } }
   @keyframes voice-pulse { to { opacity:.3; } }
   @keyframes voice-bars { to { height:8PX; } }

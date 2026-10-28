@@ -48,7 +48,7 @@ async function main() {
     page.on('pageerror', error => errors.push(error.message));
 
     // Delivery-note printing is exercised in print-center-browser.cjs.
-    await page.goto(base + '/pages/ledger/index');
+    await page.goto(base + '/pages/business-center/index?section=finance');
     await page.getByText('expense-test', { exact: false }).waitFor();
     await expect(page.getByText('+¥7.25', { exact: true })).toBeVisible();
     await expect(page.getByText('-¥2.50', { exact: true })).toBeVisible();

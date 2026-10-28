@@ -54,10 +54,8 @@ async function main() {
       ['/pages/home/index', '[data-testid="workbench-business-flow"]'],
       ['/pages/business-center/index', '[data-testid="workbench-business-flow"]'],
       ['/pages/inventory/index', '[data-panel="stock"]'],
-      ['/pages/board-stock/index', '[data-panel="stock"]'],
       ['/pages/customers/index', '[data-testid="customer-center"]'],
       ['/pages/suppliers/index', '[data-testid="supplier-center"]'],
-      ['/pages/ledger/index', '[data-testid="finance-center"]'],
       ['/pages/business-center/index?section=finance', '[data-testid="finance-center"]'],
       ['/pages/board-receive/index', '[data-testid="stock-entry-page"]'],
       ['/pages/inbound/index?kind=carton', '[data-testid="stock-entry-page"]'],
@@ -89,17 +87,10 @@ async function main() {
     }
     const configuredPages = [...fs.readFileSync('src/app.config.ts', 'utf8').split('window:')[0].matchAll(/'(pages\/[a-z-]+\/index)'/g)].map(match => '/' + match[1]);
     assert.deepEqual(configuredPages.filter(route => !checked.some(checkedRoute => checkedRoute.split('?')[0] === route)), [], 'every configured page has an audited entry');
-    for (const [legacy, target] of [
-      ['print.html', '/pages/print-center/index'],
-      ['customers.html', '/pages/customers/index'],
-      ['management.html?view=stock', '/pages/inventory/index'],
-      ['management.html?view=stock&action=board-in', '/pages/board-receive/index'],
-      ['management.html?view=stock&action=carton-in', '/pages/inbound/index?kind=carton'],
-      ['management.html?view=finance', '/pages/business-center/index?section=finance']
-    ]) {
-      await page.goto(origin + '/' + legacy);
-      await expect.poll(() => new URL(page.url()).hash).toBe('#' + target);
-      await expect(active().locator('[data-ui-version="web-workbench-v2"]').first()).toBeVisible();
+    for (const legacy of ['print.html', 'customers.html', 'management.html', 'legacy-entry.js']) {
+      assert.equal(fs.existsSync(path.join(path.resolve(process.env.TARO_OUTPUT_DIR || 'dist'), legacy)), false, legacy + ' must not be packaged');
+      const response = await page.request.get(origin + '/' + legacy);
+      assert([404, 410].includes(response.status()), legacy + ' must be retired');
     }
     for (const width of [320, 1440]) {
       await page.setViewportSize({ width, height: 900 });

@@ -12,5 +12,5 @@ test('legacy inventory route opens the current stock panel without legacy card a
   assert.match(workbench, /routePath === 'inventory\/index'/);
   assert.match(workbench, /<StockList kind=\{kind\}/);
   assert.match(fs.readFileSync('src/pages/business-center/stock-list.tsx', 'utf8'), /data-testid='workbench-board'/);
-  assert.match(fs.readFileSync('src/pages/board-stock/index.tsx', 'utf8'), /<Workbench initial='stock' \/>/);
+  assert.equal(fs.existsSync('src/pages/board-stock/index.tsx'), false);
 });

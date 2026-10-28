@@ -229,15 +229,14 @@
       })();
     </script>
     <script nonce="sg-bootstrap">
-      // These two auxiliary assets are inserted after the URL base is known;
-      // keeping them out of static HTML prevents the browser preload scanner
-      // from resolving ./js and ./css against a deep route.
+      // The shell stylesheet is inserted after the URL base is known;
+      // keeping it out of static HTML prevents the browser preload scanner
+      // from resolving ./css against a deep route.
       (function() {
         var nativeApp = Boolean(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
         if (!nativeApp && /^https?:$/.test(window.location.protocol) && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname)) nativeApp = true;
         var root = window.location.protocol === 'file:' || nativeApp ? './' : '/';
-        document.write('<script defer src="' + root + 'js/home-search.js"><\/script>');
-        document.write('<link rel="stylesheet" href="' + root + 'css/polish.css">');
+        document.write('<link rel="stylesheet" href="' + root + 'css/web-shell.css">');
       })();
     </script>
   </head>

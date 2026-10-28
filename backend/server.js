@@ -140,9 +140,11 @@ app.get('/download/shuguang.ipa', (req, res) => {
 
 const WEB_ROOT = process.env.WAREHOUSE_WEB_ROOT ? path.resolve(process.env.WAREHOUSE_WEB_ROOT) : path.join(__dirname, 'public');
 app.use('/uploads/products', express.static(require('./product-image-backup').imageDirectory(), { dotfiles: 'deny', index: false }));
+app.use((req, res, next) => {
+  if (/^\/(?:workspace(?:\/|$)|(?:print|management|customers)\.html$|legacy-entry\.js$|pages\/(?:ledger|board-stock|index)\/index$)/i.test(req.path)) return res.status(410).type('text').send('此旧页面已移除，请从新版业务总台进入。');
+  return next();
+});
 app.use(express.static(WEB_ROOT));
-// Keep previously printed /workspace labels and older app links usable.
-app.use('/workspace', express.static(WEB_ROOT));
 // Paperboard labels open a direct SPA route, including after a browser reload.
 app.get(/^\/pages\/[a-z-]+\/index$/, (req, res) => res.sendFile(path.join(WEB_ROOT, 'index.html')));
 // The desktop browser can host this route in an iframe. Its response policy only

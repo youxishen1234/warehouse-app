@@ -2,10 +2,10 @@
 .container { @include workflow.page; --sg-page-bottom-space: 120PX; }
 .hero { @include workflow.surface; padding: 32rpx; }
 .heroTop { display: flex; align-items: center; flex-wrap: wrap; gap: 18rpx; }
-.brandMark { display: flex; align-items: center; justify-content: center; width: 88rpx; height: 88rpx; flex: 0 0 auto; border-radius: 27rpx; background: #2563eb; color: #fff; font-size: 44rpx; font-weight: 800; }
+.brandMark { display: none; align-items: center; justify-content: center; width: 88rpx; height: 88rpx; flex: 0 0 auto; border-radius: 27rpx; background: #2563eb; color: #fff; font-size: 44rpx; font-weight: 800; }
 .heroCopy { flex: 1; min-width: 230rpx; }
 .eyebrow { display: block; color: #627086; font-size: 18rpx; letter-spacing: 2rpx; }
-.heroTitle { display: block; margin-top: 8rpx; color: #172235; font-size: 38rpx; font-weight: 800; }
+.heroTitle { display: block; margin-top: 8rpx; color: #162741; font-size: 30rpx; font-weight: 650; }
 .heroSubtitle { display: block; margin-top: 8rpx; color: #627086; font-size: 22rpx; }
 .heroBadge { display: flex; align-items: center; gap: 10rpx; min-height: 60rpx; padding: 0 18rpx; border-radius: 99rpx; background: #e8f5ef; color: #176844; font-size: 22rpx; }
 .liveDot { width: 12rpx; height: 12rpx; border-radius: 50%; background: currentColor; }

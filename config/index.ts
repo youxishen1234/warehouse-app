@@ -26,10 +26,7 @@ export default defineConfig<'webpack5'>(async (merge, { mode }) => {
       patterns: [
         { from: 'src/mobile/index.html', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/mobile.html' },
         { from: 'src/mobile/entry.js', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/mobile-entry.js' },
-        ...['print', 'management', 'customers'].map(name => ({ from: 'src/mobile/legacy.html', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/' + name + '.html' })),
-        { from: 'src/mobile/legacy-entry.js', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/legacy-entry.js' },
-        { from: 'www/js/home-search.js', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/js/home-search.js' },
-        { from: 'www/css/polish.css', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/css/polish.css' }
+        { from: 'src/styles/web-shell.css', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/css/web-shell.css' }
         ,{ from: 'src/assets/favicon.svg', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/assets/favicon.svg' },
         { from: 'src/assets/label-fonts/OFL.txt', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/static/fonts/assets/label-fonts/OFL.txt' }
       ],

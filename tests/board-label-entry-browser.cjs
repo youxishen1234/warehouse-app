@@ -25,7 +25,7 @@ async function main() {
     });
     const page = await context.newPage(); page.setDefaultTimeout(12000);
     const active = () => page.locator('.taro_page:visible').last();
-    await page.goto(base + '/pages/board-stock/index');
+    await page.goto(base + '/pages/inventory/index');
     await active().getByTestId('workbench-board').first().waitFor();
     const search = active().getByLabel('搜索库存').locator('input');
     await search.fill('客户搜索样例');
