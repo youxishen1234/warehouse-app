@@ -51,6 +51,21 @@ function ssh(command) {
   return remoteCommand('ssh', ['-p', target.port, '-o', 'ConnectTimeout=15', target.target, command], { maxBuffer: 8 * 1024 * 1024 });
 }
 
+function inspect() {
+  return ssh(`set -eu
+sudo -n nginx -T 2>&1 | grep -E '^# configuration file|^[[:space:]]*(listen |server_name |root |location |proxy_pass |add_header (X-Frame-Options|Content-Security-Policy))'
+for origin in local public; do
+  for route in /embed/ /embed/pages/label-print/index /pages/label-print/index; do
+    echo "Gateway check: $origin $route"
+    if [ "$origin" = local ]; then
+      curl -fsSkI --resolve youxishen.online:443:127.0.0.1 "https://youxishen.online$route"
+    else
+      curl -fsSkI "https://youxishen.online$route"
+    fi | grep -iE '^HTTP/|^x-frame-options:|^content-security-policy:|^server:'
+  done
+done`);
+}
+
 function buildRemoteCommand(stage, config, digest) {
   if (!/^[a-f0-9]{64}$/.test(digest || '')) throw new Error('Nginx config digest is invalid');
   return `set -eu
@@ -72,12 +87,14 @@ rollback() {
   fi
 }
 verify_headers() {
-  curl -fsSkI --resolve youxishen.online:443:127.0.0.1 https://youxishen.online/embed/pages/label-print/index > "$headers"
-  grep -qi '^content-security-policy:.*frame-ancestors .*app:' "$headers"
-  ! grep -qi '^x-frame-options:' "$headers"
-  curl -fsSkI --resolve youxishen.online:443:127.0.0.1 https://youxishen.online/pages/label-print/index > "$normal_headers"
-  grep -qi '^x-frame-options: DENY' "$normal_headers"
-  grep -qi '^content-security-policy:.*frame-ancestors .*none' "$normal_headers"
+  for route in /embed/ /embed/pages/label-print/index; do
+    curl -fsSkI --resolve youxishen.online:443:127.0.0.1 "https://youxishen.online$route" > "$headers" || return 1
+    grep -qi '^content-security-policy:.*frame-ancestors .*app:' "$headers" || return 1
+    if grep -qiE '^x-frame-options:|^content-security-policy:.*frame-ancestors .*none' "$headers"; then return 1; fi
+  done
+  curl -fsSkI --resolve youxishen.online:443:127.0.0.1 https://youxishen.online/pages/label-print/index > "$normal_headers" || return 1
+  grep -qi '^x-frame-options: DENY' "$normal_headers" || return 1
+  grep -qi '^content-security-policy:.*frame-ancestors .*none' "$normal_headers" || return 1
 }
 trap cleanup EXIT
 if [ "$(sudo -n sha256sum -- "$config" 2>/dev/null | awk '{print $1}' || true)" = "$config_digest" ]; then
@@ -113,11 +130,11 @@ function deploy() {
   }
 }
 
-module.exports = { buildRemoteCommand, validateConfig, deploy };
+module.exports = { buildRemoteCommand, validateConfig, deploy, inspect };
 
 if (require.main === module) {
   try {
-    process.stdout.write(deploy());
+    process.stdout.write(process.argv.includes('--inspect') ? inspect() : deploy());
   } catch (error) {
     console.error(error.message);
     process.exitCode = 1;

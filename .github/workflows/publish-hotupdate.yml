@@ -62,6 +62,11 @@ jobs:
               echo "::warning::Could not read publication baseline; build will continue"
             fi
           fi
+      - name: Inspect active web gateway
+        if: ${{ env.HOTUPDATE_HOST != '' && env.HOTUPDATE_USER != '' }}
+        run: |
+          if [ -n "$SSH_PRIVATE_KEY" ]; then export HOTUPDATE_PASSWORD=''; fi
+          node scripts/deploy-nginx-config.cjs --inspect
       - name: Validate source
         env:
           HOTUPDATE_COMMIT: ''

@@ -20,4 +20,7 @@ test('embedded label viewer has a narrow framing exception', () => {
   assert.match(remote, /nginx -t/);
   assert.match(remote, /rollback/);
   assert.match(remote, /frame-ancestors .*app:/);
+  assert.match(remote, /for route in \/embed\/ \/embed\/pages\/label-print\/index/);
+  assert.match(remote, /grep -qi .*"\$headers" \|\| return 1/);
+  assert.match(remote, /if grep -qiE '\^x-frame-options:/);
 });
