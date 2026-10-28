@@ -7,7 +7,7 @@ const { execFileSync } = require('node:child_process');
 
 const root = path.resolve(__dirname, '..');
 const localConfig = path.join(root, 'deploy', 'nginx-production.conf');
-const remoteConfig = process.env.WAREHOUSE_NGINX_CONFIG || '/etc/nginx/sites-available/shuguang';
+const remoteConfig = process.env.WAREHOUSE_NGINX_CONFIG || '/etc/nginx/sites-enabled/youxishen.online';
 const maxConfigBytes = 128 * 1024;
 
 function shellQuote(value) {
@@ -70,7 +70,8 @@ function buildRemoteCommand(stage, config, digest) {
   if (!/^[a-f0-9]{64}$/.test(digest || '')) throw new Error('Nginx config digest is invalid');
   return `set -eu
 stage=${shellQuote(stage)}
-config=${shellQuote(config)}
+config="$(sudo -n readlink -f -- ${shellQuote(config)})"
+case "$config" in /etc/nginx/sites-available/*|/etc/nginx/sites-enabled/*) ;; *) echo "Unexpected active Nginx config path" >&2; exit 1 ;; esac
 config_digest=${shellQuote(digest)}
 backup="$(mktemp /tmp/shuguang-nginx-backup.XXXXXX)"
 headers="$(mktemp)"
@@ -96,10 +97,17 @@ verify_headers() {
   grep -qi '^x-frame-options: DENY' "$normal_headers" || return 1
   grep -qi '^content-security-policy:.*frame-ancestors .*none' "$normal_headers" || return 1
 }
+wait_for_headers() {
+  for attempt in 1 2 3 4 5; do
+    if verify_headers; then return 0; fi
+    sleep 1
+  done
+  return 1
+}
 trap cleanup EXIT
 if [ "$(sudo -n sha256sum -- "$config" 2>/dev/null | awk '{print $1}' || true)" = "$config_digest" ]; then
   echo "Nginx config already current"
-  verify_headers
+  wait_for_headers
   exit 0
 fi
 if sudo -n test -f "$config"; then
@@ -110,7 +118,7 @@ if ! sudo -n install -m 644 -- "$stage/nginx-production.conf" "$config"; then ro
 if ! sudo -n nginx -t; then rollback; exit 1; fi
 if ! sudo -n systemctl reload nginx; then rollback; exit 1; fi
 if ! sudo -n systemctl is-active --quiet nginx; then rollback; exit 1; fi
-if ! verify_headers; then echo "Published Nginx framing policy did not pass verification" >&2; rollback; exit 1; fi`;
+if ! wait_for_headers; then echo "Published Nginx framing policy did not pass verification" >&2; rollback; exit 1; fi`;
 }
 
 function deploy() {

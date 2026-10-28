@@ -275,3 +275,4 @@ jobs:
           fi
           node scripts/upload-backend.cjs
           node scripts/upload-hotupdate.cjs
+          node tests/published-web-browser.cjs
