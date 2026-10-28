@@ -1,6 +1,6 @@
 # 共享仓库
 
-入口：<https://youxishen.online/workspace/>。安装包入口继续使用 <http://152.136.100.200/download/>。
+入口：<https://youxishen.online/>。安装包入口继续使用 <http://152.136.100.200/download/>。
 共享版 IPA 为 1.2.0 (Build 11)，内置前端与此次热更新包一致。IPA 沿用原生二进制更新网页资源，用户须重新签名；未在真实 iPhone 上验证签名安装。
 
 ## 账号与权限

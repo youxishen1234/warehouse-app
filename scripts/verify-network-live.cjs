@@ -7,7 +7,7 @@ const { webkit } = require(path.join(process.env.TEMP, 'warehouse-release-tools/
     const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.goto('https://youxishen.online/workspace/');
+    await page.goto('https://youxishen.online/');
     await page.waitForTimeout(2500);
     const text = await page.locator('body').innerText();
     if (text.includes('暂无本地数据') || text.includes('离线模式')) throw new Error('Offline indicator remained');

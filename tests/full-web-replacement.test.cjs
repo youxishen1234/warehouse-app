@@ -22,3 +22,15 @@ test('retired web routes are blocked before backend static files can serve an ol
   assert.match(nginx, /return 410/);
   assert.match(nginx, /location ~ \^\/\(\?:js\|css\|static\|assets\)\/ \{ try_files \$uri =404; \}/);
 });
+
+test('every AI navigation action opens a configured current page', () => {
+  const tools = require('../backend/ai-tools');
+  const config = fs.readFileSync('src/app.config.ts', 'utf8');
+  for (const page of tools.get('open_page').schema.properties.page.enum) {
+    const plan = tools.prepare({}, { action: 'open_page', parameters: { page } });
+    assert.equal(plan.status, 'navigate');
+    const route = plan.navigation.url.split('?')[0].slice(1);
+    assert(config.includes("'" + route + "'"), plan.navigation.url);
+  }
+  assert.equal(tools.prepare({}, { action: 'open_page', parameters: { page: 'finance' } }).navigation.url, '/pages/business-center/index?section=finance');
+});

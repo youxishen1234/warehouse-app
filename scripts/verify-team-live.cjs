@@ -23,7 +23,7 @@ const { webkit } = require(path.join(process.env.TEMP,'warehouse-release-tools/n
   try {
     const page=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
     const errors=[];page.on('pageerror',e=>errors.push(e.message));
-    await page.goto(origin+'/workspace/');
+    await page.goto(origin+'/');
     await page.locator('.team-login input').nth(0).fill('admin');await page.locator('.team-login input').nth(1).fill(password);
     await page.getByText('登录',{exact:true}).click();await page.locator('.team-login').waitFor({state:'detached'});
     await page.getByText('我的',{exact:true}).last().click();
