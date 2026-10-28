@@ -28,4 +28,5 @@ test('embedded label viewer has a narrow framing exception', () => {
   const publisher = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'deploy-nginx-config.cjs'), 'utf8');
   assert.match(publisher, /process\.env\.WAREHOUSE_NGINX_CONFIG \|\| '\/etc\/nginx\/sites-enabled\/youxishen\.online'/);
   assert.match(nginx, /location = \/embed \{ return 308 \/embed\/; \}/);
+  assert.match(nginx, /if \(\$host = www\.youxishen\.online\) \{ return 308 https:\/\/youxishen\.online\$request_uri; \}/);
 });

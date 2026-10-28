@@ -5,6 +5,11 @@ async function main() {
   const origin = new URL(process.env.PUBLISHED_WEB_ORIGIN || 'https://youxishen.online').origin;
   const expected = process.env.RELEASE_COMMIT;
   assert.match(expected || '', /^[a-f0-9]{40,64}$/, 'The published source revision is required');
+  if (new URL(origin).hostname === 'youxishen.online') {
+    const alternate = await fetch('https://www.youxishen.online/mobile.html', { method: 'HEAD', redirect: 'manual' });
+    assert.equal(alternate.status, 308, 'Alternate hostname must use the canonical application origin');
+    assert.equal(alternate.headers.get('location'), origin + '/mobile.html');
+  }
   for (const route of ['/appupdate/manifest.json', '/release-info.json']) {
     const response = await fetch(origin + route, { cache: 'no-store' });
     assert.equal(response.status, 200, route);
