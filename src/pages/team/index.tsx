@@ -1,0 +1,65 @@
+import { useCallback, useEffect, useState } from 'react';
+import { View, Text, Input, Picker, Button, Switch } from '@tarojs/components';
+import Taro, { usePullDownRefresh } from '@tarojs/taro';
+import { accountApi, Member, session, setSession } from '@/services/session';
+import { formatTime } from '@/utils/format';
+import './style.scss';
+import BusinessHeader from '@/components/BusinessHeader';
+
+const roles = ['admin','operator','viewer'];
+const labels = ['管理员','操作员','只读'];
+export default function Team() {
+  const me = session()?.user;
+  const [members,setMembers]=useState<Member[]>([]), [events,setEvents]=useState<any[]>([]);
+  const [username,setUsername]=useState(''), [password,setPassword]=useState(''), [role,setRole]=useState(1);
+  const [resetMember, setResetMember] = useState<string | null>(null), [resetPassword, setResetPassword] = useState('');
+  const [message,setMessage]=useState(''), [busy,setBusy]=useState(false), [page,setPage]=useState(1), [total,setTotal]=useState(0);
+  const [loading, setLoading] = useState(true), [loadError, setLoadError] = useState('');
+  const load=useCallback(async()=>{
+    if(me?.role !== 'admin') { setLoading(false); return; }
+    setLoading(true); setLoadError('');
+    try {
+      setMembers(await accountApi('/team'));
+      const a=await accountApi(`/audit?page=${page}`);
+      setEvents(a.items); setTotal(a.total);
+    } catch(error) {
+      const text = error instanceof Error ? error.message : '加载失败，请点击重试';
+      setLoadError(text); setMessage(text);
+    } finally { setLoading(false); }
+  },[me?.role,page]);
+  useEffect(()=>{load();},[load]);
+  usePullDownRefresh(() => { load().finally(() => Taro.stopPullDownRefresh()); });
+  const action=async(fn:()=>Promise<any>)=>{if(busy)return;setBusy(true);setMessage('');try{await fn();await load();setMessage('已保存');}catch(e){setMessage(e.message);}finally{setBusy(false);}};
+  return <View className="team-page">
+    <BusinessHeader title='团队与账号' />
+    <View className="team-heading"><Text>团队与账号</Text><Button size="mini" onClick={()=>Taro.switchTab({url:'/pages/mine/index'})}>完成</Button></View>
+    <Text>{me?.username} · {labels[roles.indexOf(me?.role || '')]}</Text>
+    <Text className="team-message">{message}</Text>
+    {me?.role === 'admin' && <>
+      <Text className="team-section">团队成员</Text>
+      {loading ? <Text className="team-message">正在加载…</Text> : loadError ? <Text className="team-message" onClick={load}>{loadError} · 点击重试</Text> : members.length === 0 ? <Text className="team-message">暂无成员</Text> : members.map(u=><View className="team-member" key={u.id}>
+        <Text>{u.username}</Text>
+        <Picker value={roles.indexOf(u.role)} range={labels} disabled={busy} onChange={e=>action(()=>accountApi(`/team/${u.id}`,'PUT',{role:roles[Number(e.detail.value)]}))}><Text>{labels[roles.indexOf(u.role)]}</Text></Picker>
+        <Switch checked={!u.disabled} disabled={busy || u.id === me.id} onChange={e=>action(()=>accountApi(`/team/${u.id}`,'PUT',{disabled:!e.detail.value}))} />
+        <Button size="mini" disabled={busy} onClick={() => { setResetMember(u.id); setResetPassword(''); }}>重置密码</Button>
+      </View>)}
+      {resetMember && <View>
+        <Text>重置成员密码</Text>
+        <Input password disabled={busy} placeholder='新密码，至少12位' value={resetPassword} onInput={e => setResetPassword(e.detail.value)} />
+        <Button disabled={busy} onClick={() => action(async () => { if (resetPassword.length < 12) throw new Error('密码至少12位'); await accountApi(`/team/${resetMember}`, 'PUT', { password: resetPassword }); setResetMember(null); setResetPassword(''); })}>确认重置</Button>
+        <Button disabled={busy} onClick={() => { setResetMember(null); setResetPassword(''); }}>取消</Button>
+      </View>}
+      <Text className="team-section">新增成员</Text>
+      <Input placeholder="登录账号（字母、数字、下划线）" value={username} onInput={e=>setUsername(e.detail.value)} />
+      <Input password placeholder="初始密码（至少12位）" value={password} onInput={e=>setPassword(e.detail.value)} />
+      <Picker range={labels} value={role} onChange={e=>setRole(Number(e.detail.value))}><Text className="team-select">{labels[role]}</Text></Picker>
+      <Button disabled={busy} onClick={()=>action(async()=>{await accountApi('/team','POST',{username,password,role:roles[role]});setUsername('');setPassword('');})}>添加成员</Button>
+      <Text className="team-section">操作记录</Text>
+      {loading ? <Text className="team-message">正在加载…</Text> : loadError ? <Text className="team-message" onClick={load}>{loadError} · 点击重试</Text> : events.length === 0 ? <Text className="team-message">暂无记录</Text> : events.map((e,i)=><View className="team-event" key={i}><Text>{e.actor_name} · {e.operation}</Text><Text>{formatTime(e.time)}</Text></View>)}
+      <View className="team-heading"><Button size="mini" disabled={page===1} onClick={()=>setPage(page-1)}>上一页</Button><Text>{page} / {Math.max(1,Math.ceil(total/50))}</Text><Button size="mini" disabled={page*50>=total} onClick={()=>setPage(page+1)}>下一页</Button></View>
+    </>}
+    <Text className="team-section">连接状态</Text>
+    <Text className="team-message">当前为共享匿名模式，无需账号密码，所有设备使用同一份仓库数据。</Text>
+    <Button disabled={busy} onClick={() => setSession(null)}>重新连接仓库</Button>
+  </View>;
+}

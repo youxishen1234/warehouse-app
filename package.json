@@ -37,7 +37,7 @@
     "build:android": "powershell -NoProfile -Command \"$env:TARO_PUBLIC_PATH='./'; npm run build:h5\" && powershell -NoProfile -Command \"powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\sync-native-assets.ps1\" && cap sync android && cd android && gradlew.bat assembleRelease",
     "build:windows": "powershell -NoProfile -Command \"$env:TARO_PUBLIC_PATH='./'; npm run build:h5\" && powershell -NoProfile -Command \"powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\sync-native-assets.ps1\" && electron-builder --win nsis",
     "test:backend": "node --test backend/*.test.cjs",
-    "test:artifacts": "node --test tests/dimension-input.test.cjs tests/build-artifact.test.cjs tests/release-artifact-gate.test.cjs tests/package-hotupdate.test.cjs tests/hotupdate-publication.test.cjs tests/hotupdate-download-resilience.test.cjs tests/upload-hotupdate-gate.test.cjs tests/upload-backend-gate.test.cjs",
+    "test:artifacts": "node --test tests/*.test.cjs",
     "test:browser": "node tests/navigation-browser.cjs && node tests/workflow-regressions-browser.cjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src backend tests --ext .ts,.tsx,.js,.cjs",
@@ -76,7 +76,8 @@
     "jsqr": "^1.4.0",
     "qrcode": "^1.5.4",
     "react": "^18.0.0",
-    "react-dom": "^18.0.0"
+    "react-dom": "^18.0.0",
+    "typescript": "^5.1.0"
   },
   "build": {
     "appId": "com.warehouse.app.desktop",
@@ -86,7 +87,9 @@
     },
     "files": [
       "desktop/**/*",
-      "www/**/*",
+      "dist/**/*",
+      "scripts/dot-matrix-native.cjs",
+      "src/utils/dot-matrix-print.ts",
       "package.json"
     ],
     "win": {
@@ -140,7 +143,6 @@
     "ts-node": "^10.9.1",
     "tsconfig-paths-webpack-plugin": "^4.0.1",
     "tt-ide-cli": "^0.1.31",
-    "typescript": "^5.1.0",
     "webpack": "5.91.0",
     "yauzl": "^3.4.0",
     "yazl": "^3.3.1"

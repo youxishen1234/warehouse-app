@@ -81,21 +81,175 @@ jobs:
           npm run build:h5
           npm run test:artifacts
           node scripts/release-provenance.cjs "$TARO_OUTPUT_DIR"
+          node scripts/verify-ai-bundle.cjs "$TARO_OUTPUT_DIR"
           node scripts/verify-release-features.cjs "$TARO_OUTPUT_DIR"
       - name: Package and verify
         run: |
           python3 scripts/package-hotupdate.py "$TARO_OUTPUT_DIR" "$HOTUPDATE_LOCAL_ZIP" "$HOTUPDATE_LOCAL_MANIFEST"
           node scripts/verify-release-artifacts.cjs --dist "$TARO_OUTPUT_DIR" --zip "$HOTUPDATE_LOCAL_ZIP"
       - name: Install browser workflow tests
-        run: npx playwright install --with-deps chromium
-      - name: Validate six-view demo and automatic dimensions
         env:
-          DEMO_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
-        run: node tests/demo-ui-browser.cjs
+          LEDGER_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+        run: npx playwright install --with-deps chromium
+      - name: Validate phase one mobile workflows and partial outages
+        env:
+          PHASE_ONE_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/phase-one-mobile-browser.cjs
+      - name: Audit all web business entry points
+        run: node tests/web-entry-audit-browser.cjs
+      - name: Validate ledger photo workflows
+        env:
+          LEDGER_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/ledger-photos-browser.cjs
+      - name: Validate customer center and 4K originals
+        env:
+          CUSTOMER_PHOTO_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/customer-original-4k-browser.cjs
+      - name: Validate connection settings
+        run: node tests/mine-connection-browser.cjs
+      - name: Validate label resolver live reads
+        env:
+          NAV_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          LABEL_RESOLVER_CHECK_DIR: release/label-resolver-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/label-resolver-browser.cjs
+      - name: Validate label printer connection and mobile layout
+        env:
+          NAV_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          LABEL_CONNECTION_CHECK_DIR: release/label-connection-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/label-connection-browser.cjs
+      - name: Validate label print empty states
+        env:
+          LABEL_PRINT_WEB_ROOT: dist-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/label-print-empty-browser.cjs
+      - name: Validate 70 x 100 mm label paper default
+        env:
+          LABEL_PRINT_WEB_ROOT: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          LABEL_PAPER_CHECK_DIR: release/label-paper-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/label-paper-browser.cjs
+      - name: Validate phone to shop computer USB label workflow
+        env:
+          LABEL_PRINT_WEB_ROOT: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          REMOTE_LABEL_CHECK_DIR: release/remote-label-print-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/remote-label-print-browser.cjs
+      - name: Validate manual paperboard label entry and USB snapshot
+        env:
+          LABEL_PRINT_WEB_ROOT: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          MANUAL_LABEL_CHECK_DIR: release/manual-label-print-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/manual-label-print-browser.cjs
       - name: Validate K3 serial receipts and agent recovery offline
         run: |
           node --test scripts/k3-serial.test.cjs
           node scripts/k3-serial.cjs self-test
+      - name: Validate remote print failure recovery
+        env:
+          REMOTE_PRINT_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/remote-print-recovery-browser.cjs
+      - name: Validate mobile print status notifications
+        env:
+          PRINT_NOTICE_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          PRINT_NOTICE_QA_DIR: release/print-notifications-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/print-notifications-browser.cjs
+      - name: Validate print specification search and quick add
+        env:
+          PRINT_SOURCE_PREVIEW: '0'
+          PRINT_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          PRINT_ARTIFACTS: release/print-specification-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/print-specification-browser.cjs
+      - name: Validate delivery actions and label mode navigation
+        env:
+          PRINT_SOURCE_PREVIEW: '0'
+          PRINT_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          PRINT_ARTIFACTS: release/print-workbench-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          node tests/print-center-browser.cjs
+          node tests/print-center-temporary-browser.cjs
+          node tests/print-center-sync-browser.cjs
+          node tests/print-modes-browser.cjs
+      - name: Validate native phone delivery print shortcuts and outbound dispatch
+        env:
+          PRINT_SOURCE_PREVIEW: '0'
+          PRINT_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          PRINT_ARTIFACTS: release/print-native-flow-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/print-center-native-flow.cjs
+      - name: Validate 630K Bluetooth original-job recovery and mobile layout
+        env:
+          PRINT_ARTIFACTS: release/bluetooth-630k-${{ github.run_id }}-${{ github.run_attempt }}
+          BLE630K_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          node tests/bluetooth-630k-browser.cjs
+          node tests/bluetooth-630k-built-browser.cjs
+      - name: Validate desktop navigation
+        env:
+          NAV_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/desktop-navigation-browser.cjs
+      - name: Validate business center workflows
+        env:
+          BUSINESS_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/business-center-browser.cjs
+      - name: Validate removed inventory reminders
+        env:
+          STOCK_WARNING_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          STOCK_WARNING_EVIDENCE_DIR: release/stock-warning-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/stock-warning-removed-browser.cjs
+      - name: Validate single homepage customer entry and order selection
+        env:
+          CUSTOMER_ENTRY_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          CUSTOMER_ENTRY_EVIDENCE_DIR: release/customer-entry-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/customer-entry-browser.cjs
+      - name: Validate produce-to-stock customer order fulfillment
+        env:
+          PRODUCE_TO_STOCK_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          PRODUCE_TO_STOCK_EVIDENCE_DIR: release/produce-to-stock-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/produce-to-stock-browser.cjs
+      - name: Validate workbench reference UI and shared revisions
+        env:
+          WORKBENCH_REFERENCE_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          WORKBENCH_REFERENCE_EVIDENCE_DIR: release/workbench-reference-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/workbench-reference-browser.cjs
+      - name: Validate workbench shared revisions and receipts
+        env:
+          WORKBENCH_SYNC_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          WORKBENCH_SYNC_EVIDENCE_DIR: release/workbench-sync-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/workbench-sync-browser.cjs
+      - name: Validate workbench refresh recovery and draft continuity
+        env:
+          WORKBENCH_REFRESH_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          WORKBENCH_REFRESH_EVIDENCE_DIR: release/workbench-refresh-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/workbench-refresh-browser.cjs
+      - name: Validate workbench mobile guidance and short-screen dialogs
+        env:
+          WORKBENCH_POLISH_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          WORKBENCH_LAYOUT_EVIDENCE_DIR: release/workbench-layout-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/workbench-layout-browser.cjs
+      - name: Validate daily backup page against the built H5 bundle
+        env:
+          DAILY_BACKUP_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          DAILY_BACKUP_BROWSER_OUTPUT: release/daily-backup-ui-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/daily-backup-built-browser.cjs
+      - name: Validate customer production billing and unified finance
+        env:
+          CUSTOMER_BILLING_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          CUSTOMER_BILLING_EVIDENCE_DIR: release/customer-billing-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/customer-inbound-billing-browser.cjs
+      - name: Validate customer specification carton inbound
+        env:
+          CUSTOMER_SPEC_INBOUND_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          CUSTOMER_SPEC_INBOUND_EVIDENCE_DIR: release/customer-spec-inbound-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/customer-spec-carton-inbound-browser.cjs
+      - name: Validate factory carton receipts
+        env:
+          CARTON_PRODUCTION_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          CARTON_PRODUCTION_EVIDENCE_DIR: release/carton-production-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/carton-production-inbound-browser.cjs
+      - name: Validate paperboard specifications and amounts
+        env:
+          BOARD_SPEC_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          BOARD_SPEC_EVIDENCE_DIR: release/board-spec-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/board-specification-input-browser.cjs
+      - name: Validate paperboard business label entry points
+        env:
+          BOARD_LABEL_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/board-label-entry-browser.cjs
       - name: Run complete backend test suite
         run: node --test backend/*.test.cjs
       - name: Bundle and preflight the exact backend revision
@@ -107,8 +261,6 @@ jobs:
           (cd "$BACKEND_PREFLIGHT_DIR" && node "$GITHUB_WORKSPACE/scripts/verify-backend-billing.cjs")
       - name: Publish through shared server lock and stale-source gate
         if: ${{ env.HOTUPDATE_HOST != '' && env.HOTUPDATE_USER != '' }}
-        env:
-          WAREHOUSE_PUBLISHED_BROWSER_ALLOW_NETWORK_SKIP: '1'
         run: |
           if [ -z "$SSH_PRIVATE_KEY" ] && [ -z "$HOTUPDATE_PASSWORD" ]; then
             echo "::warning::Neither SSH_PRIVATE_KEY nor SHUGUANG_SERVER_PASSWORD configured, skipping publish"

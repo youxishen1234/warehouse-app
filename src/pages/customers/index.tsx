@@ -1,5 +1,5 @@
-import DemoFrame from '@/components/DemoFrame';
+import Workbench from '@/pages/business-center/workbench';
 
-export default function CustomersPage() {
-  return <DemoFrame page='customers.html' />;
-}
+const CustomersPage: React.FC = () => <Workbench />;
+
+export default CustomersPage;

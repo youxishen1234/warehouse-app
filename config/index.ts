@@ -17,22 +17,8 @@ export default defineConfig<'webpack5'>(async (merge, { mode }) => {
     sourceRoot: 'src',
     outputRoot: process.env.TARO_OUTPUT_DIR || 'dist',
     plugins: ['@tarojs/plugin-html'],
-    defineConstants: {
-      // Demo builds may point at a local, isolated API. Release builds leave
-      // this empty and keep the canonical HTTPS endpoint unchanged.
-      __WAREHOUSE_DEMO_API_ORIGIN__: JSON.stringify(process.env.TARO_DEMO_API_ORIGIN || '')
-    },
     copy: {
       patterns: [
-        { from: 'src/preview-pages/index.html', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/preview-pages/index.html' },
-        { from: 'src/preview-pages/customers.html', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/preview-pages/customers.html' },
-        { from: 'src/preview-pages/management.html', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/preview-pages/management.html' },
-        { from: 'src/preview-pages/print.html', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/preview-pages/print.html' },
-        { from: 'src/preview-pages/preview-shared.css', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/preview-pages/preview-shared.css' },
-        { from: 'src/preview-pages/preview-store.js', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/preview-pages/preview-store.js' },
-        { from: 'src/preview-pages/dimension-input.js', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/preview-pages/dimension-input.js' },
-        { from: 'src/preview-pages/print-enhancements.js', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/preview-pages/print-enhancements.js' },
-        { from: 'src/preview-pages/project-print-template.js', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/preview-pages/project-print-template.js' },
         { from: 'src/mobile/index.html', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/mobile.html' },
         { from: 'src/mobile/entry.js', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/mobile-entry.js' },
         { from: 'src/styles/web-shell.css', to: (process.env.TARO_OUTPUT_DIR || 'dist') + '/css/web-shell.css' }
@@ -113,7 +99,7 @@ export default defineConfig<'webpack5'>(async (merge, { mode }) => {
         // Keep source maps out of those packages; development keeps the
         // toolchain default for local debugging. Taro passes the build mode
         // to this callback, so keep the policy in the H5 chain itself.
-        chain.devtool(mode === 'production' ? false : 'source-map');
+        if (mode === 'production') chain.devtool(false);
         chain.resolve.plugin('tsconfig-paths').use(TsconfigPathsPlugin);
         if (process.env.TARO_STATS === '1') {
           chain.plugin('warehouse-stats').use(class WarehouseStatsPlugin {

@@ -1,0 +1,53 @@
+.stock-entry-page {
+  --entry-bg: #ffffff; --entry-panel: #f8fafc; --entry-line: #dbe3ee; --entry-ink: #172033; --entry-muted: #64748b; --entry-green: #1677ff; --entry-soft: #eff6ff;
+  min-height: 100vh; min-height: 100dvh; padding: 24PX 16PX calc(110PX + env(safe-area-inset-bottom)); background: #f4f7fb; color: var(--entry-ink); color-scheme: light;
+  font: 14PX/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  &, * { box-sizing: border-box; }
+  :is(button, taro-button-core) { margin: 0; min-width: 0; height: auto; font: inherit; white-space: normal; box-shadow: none; }
+  :is(button, taro-button-core)::after { border: 0; }
+  :is(button, taro-button-core):focus-visible { outline: 2PX solid var(--entry-green); outline-offset: 2PX; }
+  :is(button, taro-button-core)[disabled]:not([disabled='false']) { opacity: .5; }
+  input { color: var(--entry-ink); font-size: 16PX; }
+  input::placeholder { color: #8a98a8; }
+  .stock-entry-surface { max-width: 560PX; width: 100%; margin: auto; background: var(--entry-bg); border: 1PX solid #e2e8f0; border-radius: 12PX; overflow: clip; }
+  .stock-entry-header { padding: calc(18PX + env(safe-area-inset-top, 0px)) 20PX 15PX; border-bottom: 1PX solid #e2e8f0; }
+  .stock-entry-heading { display: flex; align-items: center; gap: 10PX; }
+  .stock-entry-mark { width: 34PX; height: 34PX; border-radius: 8PX; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: #eaf3ff; }
+  .stock-entry-heading-title { font-size: 21PX; font-weight: 600; flex: 1; min-width: 0; overflow-wrap: anywhere; color: #172033; }
+  .stock-entry-back { color: #1677ff; background: none; border: 0; width: 25PX; padding: 0; min-height: 44PX; font-size: 30PX; line-height: 1; }
+  .stock-entry-refresh { width: auto; flex-shrink: 0; color: #1677ff; background: none; border: 0; padding: 8PX 0 8PX 8PX; min-height: 44PX; font-size: 12PX; }
+  .stock-entry-date { display: flex; justify-content: space-between; gap: 8PX; color: var(--entry-muted); font-size: 12PX; margin-top: 11PX; font-variant-numeric: tabular-nums; }
+  .stock-entry-subtitle { display: block; margin-top: 10PX; font-size: 12PX; color: var(--entry-muted); }
+  .stock-entry-content { padding: 18PX 20PX 24PX; }
+  .stock-entry-section, .board-section { margin: 0 0 18PX; padding: 0 0 18PX; border: 0; border-bottom: 1PX solid #e2e8f0; border-radius: 0; background: none; box-shadow: none; color: var(--entry-ink); }
+  .stock-entry-title, .board-section-title { display: block; font-size: 15PX; font-weight: 600; color: var(--entry-ink); margin: 0 0 12PX; }
+  .stock-entry-field, .board-field { display: block; min-width: 0; margin-bottom: 14PX; }
+  .stock-entry-label, .board-field-label { display: block; margin: 0 0 6PX; color: var(--entry-muted); font-size: 12PX; font-weight: 400; }
+  .stock-entry-input, .board-input-wrap { display: flex; align-items: center; width: 100%; min-width: 0; min-height: 46PX; padding: 11PX 12PX; border: 1PX solid var(--entry-line); border-radius: 8PX; background: var(--entry-panel); color: var(--entry-ink); font-size: 16PX; line-height: 1.5; overflow-wrap: anywhere; }
+  .stock-entry-input input, .board-input-wrap input, .board-input-wrap taro-input-core { color: var(--entry-ink); width: 100%; min-width: 0; font-size: 16PX; }
+  .board-input-wrap:focus-within { border-color: var(--entry-green); box-shadow: 0 0 0 3PX #1677ff14; }
+  .stock-entry-grid, .board-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12PX; }
+  .board-grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8PX; }
+  .stock-entry-grid > *, .board-grid > * { min-width: 0; }
+  .stock-entry-row { display: flex; align-items: center; justify-content: space-between; gap: 12PX; }
+  .stock-entry-note, .board-note, .board-muted { display: block; font-size: 12PX; color: var(--entry-muted); overflow-wrap: anywhere; line-height: 1.6; }
+  .stock-entry-note { margin: 9PX 0 15PX; }
+  .board-input-wrap > .board-muted { display: inline; margin-left: 7PX; }
+  .board-note { margin: 10PX 0 14PX; padding: 12PX; background: var(--entry-soft); border: 1PX solid #dbeafe; border-radius: 8PX; }
+  .stock-entry-more { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 44PX; margin: 10PX 0 16PX; padding: 10PX 12PX; border: 1PX solid var(--entry-line); border-radius: 8PX; background: #fff; color: #1677ff; font-size: 13PX; line-height: 1.5; }
+  .stock-entry-primary, .board-button { width: 100%; min-height: 46PX; padding: 12PX; border: 1PX solid var(--entry-green); border-radius: 8PX; background: var(--entry-green); color: #fff; font-size: 15PX; font-weight: 500; line-height: 1.5; }
+  .stock-entry-secondary, .board-button.is-secondary { width: 100%; min-height: 44PX; padding: 10PX 12PX; border: 1PX solid #bfdbfe; border-radius: 8PX; background: var(--entry-soft); color: #1458b8; font-size: 13PX; line-height: 1.5; }
+  .stock-entry-primary[disabled]:not([disabled='false']), .board-button.is-disabled { opacity: .55; background: #e8eef7; color: #8a97a8; border-color: #e8eef7; }
+  .board-error { background: #fef2f2; color: #b91c1c; border: 1PX solid #fecaca; padding: 12PX; border-radius: 8PX; margin: 12PX 0; font-size: 13PX; }
+  .board-template-list { display: grid; gap: 8PX; margin: 12PX 0; }
+  .board-template-list .board-button { background: var(--entry-soft); border-color: #bfdbfe; color: #1458b8; }
+  .board-spec { display: block; font-size: 18PX; font-weight: 500; }
+  .board-detail-row { display: flex; justify-content: space-between; gap: 10PX; border-color: #e2e8f0; padding: 12PX 0; font-size: 14PX; color: var(--entry-ink); }
+}
+@media (max-width: 600PX) {
+  .stock-entry-page { padding: 0 0 calc(110PX + env(safe-area-inset-bottom)); background: #f4f7fb; }
+  .stock-entry-page .stock-entry-surface { border: 0; border-radius: 0; }
+  .stock-entry-page .stock-entry-header { padding-left: 18PX; padding-right: 18PX; }
+  .stock-entry-page .stock-entry-content { padding: 16PX 18PX 24PX; }
+}
+@media (max-width: 350PX) { .stock-entry-page .stock-entry-content { padding-left: 14PX; padding-right: 14PX; } }

@@ -141,7 +141,7 @@ app.get('/download/shuguang.ipa', (req, res) => {
 const WEB_ROOT = process.env.WAREHOUSE_WEB_ROOT ? path.resolve(process.env.WAREHOUSE_WEB_ROOT) : path.join(__dirname, 'public');
 app.use('/uploads/products', express.static(require('./product-image-backup').imageDirectory(), { dotfiles: 'deny', index: false }));
 app.use((req, res, next) => {
-  if (/^\/(?:workspace(?:\/|$)|web-(?:releases|current)(?:\/|$)|(?:print|management|customers)\.html$|legacy-entry\.js$|pages\/(?:ai-assistant|business-center|label-print|label-resolver|board-calculator|board-receive|board-detail|board-scan|board-outbound|inbound|outbound|mine|products|records|orders|team|customer-edit|custom-copy|backup|customer-photos|carton-calculator|ledger|board-stock|index)\/index$)/i.test(req.path)) return res.status(410).type('text').send('此旧页面已移除，请从新版业务总台进入。');
+  if (/^\/(?:workspace(?:\/|$)|web-(?:releases|current)(?:\/|$)|(?:print|management|customers)\.html$|legacy-entry\.js$|pages\/(?:ledger|board-stock|index)\/index$)/i.test(req.path)) return res.status(410).type('text').send('此旧页面已移除，请从新版业务总台进入。');
   return next();
 });
 app.use(express.static(WEB_ROOT));

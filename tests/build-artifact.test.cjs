@@ -14,7 +14,7 @@ function files(root) {
   return result;
 }
 
-for (const output of [process.env.TARO_OUTPUT_DIR || 'dist']) {
+for (const output of [process.env.TARO_OUTPUT_DIR || 'dist', 'www']) {
   test(`${output} release assets do not publish source maps`, () => {
     const root = path.resolve(output);
     assert.ok(fs.existsSync(root), `${output} must exist after a build`);
@@ -35,4 +35,15 @@ test('release verification uses a fail-fast PowerShell script', () => {
   assert.match(script, /LASTEXITCODE/);
   assert.match(script, /npm run build:h5/);
   assert.match(script, /npm run verify:fast/);
+});
+
+test('desktop package contains the web build and local print runtime', () => {
+  const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+  const lock = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package-lock.json'), 'utf8'));
+  assert.ok(packageJson.dependencies.typescript, 'typescript is required by the local print bridge');
+  assert.equal(lock.packages['node_modules/typescript'].dev, undefined);
+  assert.ok(packageJson.build.files.includes('dist/**/*'));
+  assert.ok(packageJson.build.files.includes('desktop/**/*'));
+  assert.ok(packageJson.build.files.includes('scripts/dot-matrix-native.cjs'));
+  assert.ok(packageJson.build.files.includes('src/utils/dot-matrix-print.ts'));
 });

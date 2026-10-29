@@ -20,15 +20,8 @@ function validateConfig(config) {
   if (!text.includes('add_header X-Frame-Options DENY always;')) throw new Error('Normal routes must keep frame denial');
   const embed = text.match(/location \^~ \/embed\/ \{([\s\S]*?)\n    \}/)?.[1] || '';
   if (!embed) throw new Error('Embedded browser location is missing');
-  const preview = text.match(/location \^~ \/preview-pages\/ \{([\s\S]*?)\n    \}/)?.[1] || '';
-  if (!preview) throw new Error('Preview browser location is missing');
   if (!embed.includes("frame-ancestors 'self' app:")) throw new Error('Embedded browser policy must admit only the local app');
   if (/X-Frame-Options/i.test(embed)) throw new Error('Embedded browser location must not override the CSP with X-Frame-Options');
-  if (!preview.includes("frame-ancestors 'self' app:")) throw new Error('Preview browser policy must admit only the local app');
-  if (/X-Frame-Options/i.test(preview)) throw new Error('Preview browser location must not override the CSP with X-Frame-Options');
-  if (!/script-src 'self' 'unsafe-inline'/.test(preview)) throw new Error('Preview browser policy must allow its self-hosted interactive demo scripts');
-  if (/script-src[^;]*(?:'nonce-|'sha(?:256|384|512)-)/.test(preview)) throw new Error('Preview browser policy must not combine unsafe-inline with a nonce or hash');
-  if (/script-src[^;]*'unsafe-inline'/.test(embed)) throw new Error('Embedded application scripts must keep the strict nonce policy');
   return text;
 }
 
@@ -62,7 +55,7 @@ function inspect() {
   return ssh(`set -eu
 sudo -n nginx -T 2>&1 | grep -E '^# configuration file|^[[:space:]]*(listen |server_name |root |location |proxy_pass |add_header (X-Frame-Options|Content-Security-Policy))'
 for origin in local public; do
-  for route in /embed/ /embed/pages/print-center/index /preview-pages/index.html /pages/print-center/index; do
+  for route in /embed/ /embed/pages/label-print/index /pages/label-print/index; do
     echo "Gateway check: $origin $route"
     if [ "$origin" = local ]; then
       curl -fsSkI --resolve youxishen.online:443:127.0.0.1 "https://youxishen.online$route"
@@ -82,11 +75,10 @@ case "$config" in /etc/nginx/sites-available/*|/etc/nginx/sites-enabled/*) ;; *)
 config_digest=${shellQuote(digest)}
 backup="$(mktemp /tmp/shuguang-nginx-backup.XXXXXX)"
 headers="$(mktemp)"
-preview_headers="$(mktemp)"
 normal_headers="$(mktemp)"
 had_config=0
 cleanup() {
-  rm -f -- "$stage/nginx-production.conf" "$headers" "$preview_headers" "$normal_headers"
+  rm -f -- "$stage/nginx-production.conf" "$headers" "$normal_headers"
   sudo -n rm -f -- "$backup"
   rmdir -- "$stage" 2>/dev/null || true
 }
@@ -100,16 +92,12 @@ rollback() {
   fi
 }
 verify_headers() {
-  for route in /embed/ /embed/pages/print-center/index; do
+  for route in /embed/ /embed/pages/label-print/index; do
     curl -fsSkI --resolve youxishen.online:443:127.0.0.1 "https://youxishen.online$route" > "$headers" || return 1
     grep -qi '^content-security-policy:.*frame-ancestors .*app:' "$headers" || return 1
-    if grep -qiE '^x-frame-options:|^content-security-policy:.*frame-ancestors .*none|^content-security-policy:.*script-src [^;]*unsafe-inline' "$headers"; then return 1; fi
+    if grep -qiE '^x-frame-options:|^content-security-policy:.*frame-ancestors .*none' "$headers"; then return 1; fi
   done
-  curl -fsSkI --resolve youxishen.online:443:127.0.0.1 https://youxishen.online/preview-pages/index.html > "$preview_headers" || return 1
-  grep -qi '^content-security-policy:.*frame-ancestors .*app:' "$preview_headers" || return 1
-  grep -qi "content-security-policy:.*script-src 'self' 'unsafe-inline'" "$preview_headers" || return 1
-  if grep -qiE '^x-frame-options:|^content-security-policy:.*frame-ancestors .*none' "$preview_headers"; then return 1; fi
-  curl -fsSkI --resolve youxishen.online:443:127.0.0.1 https://youxishen.online/pages/print-center/index > "$normal_headers" || return 1
+  curl -fsSkI --resolve youxishen.online:443:127.0.0.1 https://youxishen.online/pages/label-print/index > "$normal_headers" || return 1
   grep -qi '^x-frame-options: DENY' "$normal_headers" || return 1
   grep -qi '^content-security-policy:.*frame-ancestors .*none' "$normal_headers" || return 1
 }

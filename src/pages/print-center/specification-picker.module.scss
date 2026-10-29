@@ -1,0 +1,47 @@
+.pickerBackdrop { position: fixed; inset: 0; z-index: 1250; display: flex; align-items: center; justify-content: center; padding: 20PX; background: #152e4259; color: #172b3a; font: 14PX/1.5 -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif; color-scheme: light; }
+.pickerBackdrop * { box-sizing: border-box; }
+.pickerDialog { width: 100%; max-width: 600PX; min-width: 0; max-height: calc(100vh - 40PX); max-height: calc(100dvh - 40PX); display: flex; flex-direction: column; padding: 22PX; border-radius: 20PX; background: #fff; box-shadow: 0 18PX 60PX #102b3d20; overflow: hidden; }
+.pickerDialog h2 { font-size: 18PX; font-weight: 650; line-height: 1.4; margin: 0; overflow-wrap: anywhere; }
+.pickerDialog [type=button] { font: inherit; cursor: pointer; min-height: 44PX; border: 0; border-radius: 10PX; margin: 0; padding: 10PX 14PX; line-height: 1.4; flex-shrink: 0; }
+.pickerDialog [type=button]:disabled { opacity: .45; cursor: default; }
+.pickerDialog :focus-visible { outline: 2PX solid #2a8194; outline-offset: 3PX; }
+.pickerHeader { display: flex; align-items: center; justify-content: space-between; gap: 12PX; flex-shrink: 0; }
+.pickerDialog .pickerClose { background: transparent; color: #416779; padding-right: 0; }
+.pickerHint { color: #80919c; font-size: 12PX; margin: 8PX 0 14PX; overflow-wrap: anywhere; flex-shrink: 0; }
+.pickerScopes { display: flex; gap: 4PX; border-radius: 12PX; background: #edf1f3; padding: 4PX; margin-bottom: 14PX; flex-shrink: 0; }
+.pickerScopes [type=button] { flex: 1; min-width: 0; color: #778692; background: transparent; padding: 9PX 12PX; }
+.pickerScopes [type=button][aria-pressed=true] { background: #fff; color: #245f72; font-weight: 600; box-shadow: 0 2PX 5PX #102a3d08; }
+.pickerSearch { display: block; width: 100%; min-width: 0; flex-shrink: 0; height: 46PX; font: inherit; font-size: 16PX; border: 1PX solid #dce2e7; border-radius: 9PX; background: #fff; color: #172b3a; padding: 10PX 12PX; outline: none; }
+.pickerSearch:focus { border-color: #1f6175; box-shadow: 0 0 0 3PX #1f617512; }
+.pickerSearch::placeholder { font-size: 13PX; color: #99a4ae; }
+.pickerSummary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4PX 12PX; margin: 12PX 0 8PX; color: #80919c; font-size: 12PX; flex-shrink: 0; }
+.pickerResults { min-height: 0; max-height: 48vh; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; border-top: 1PX solid #e8edf0; border-bottom: 1PX solid #e8edf0; }
+.pickerOption { display: flex; align-items: center; gap: 14PX; padding: 15PX 0; border-bottom: 1PX solid #edf0f2; min-width: 0; }
+.pickerOption:last-child { border-bottom: 0; }
+.pickerOptionBody { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.pickerOptionBody > strong, .pickerOptionBody > span, .pickerOptionBody > small { display: block; }
+.pickerSource { color: #7d929e; font-size: 11PX; margin-bottom: 4PX; }
+.pickerOptionBody > strong { color: #294757; font-size: 15PX; font-weight: 600; }
+.pickerSpecification { color: #375767; margin-top: 4PX; font-size: 14PX; }
+.pickerOptionBody > small { color: #80919c; font-size: 12PX; margin-top: 5PX; }
+.pickerDialog .pickerAdd { background: #edf4f5; color: #245f72; min-width: 66PX; padding: 10PX 12PX; }
+.pickerEmpty { padding: 40PX 10PX; margin: 0; text-align: center; color: #6c8390; overflow-wrap: anywhere; }
+.pickerEmpty strong { font-size: 15PX; font-weight: 600; color: #516a79; }
+.pickerEmpty p { margin: 8PX 0 0; color: #8597a2; font-size: 12PX; }
+.pickerError, .pickerActionError { padding: 12PX 14PX; background: #fff1ed; color: #a74028; border-radius: 10PX; font-size: 13PX; overflow-wrap: anywhere; }
+.pickerError { margin: 14PX 0; }
+.pickerError p { margin: 0 0 8PX; }
+.pickerError [type=button] { background: #fff; color: inherit; }
+.pickerActionError { margin-top: 12PX; flex-shrink: 0; }
+.pickerFooter { display: flex; gap: 12PX; padding-top: 16PX; flex-shrink: 0; }
+.pickerDialog .pickerBulk { flex: 1; min-width: 0; background: #245f72; color: #fff; font-weight: 600; }
+.pickerDialog .pickerDone { min-width: 72PX; background: #fff; color: #315769; border: 1PX solid #d2dee4; }
+@media (max-width: 420PX) {
+  .pickerBackdrop { padding: 12PX; }
+  .pickerDialog { padding: 16PX; border-radius: 16PX; max-height: calc(100vh - 24PX); max-height: calc(100dvh - 24PX); }
+  .pickerDialog h2 { font-size: 17PX; }
+  .pickerSearch::placeholder { font-size: 12PX; }
+  .pickerOption { gap: 10PX; }
+  .pickerFooter { gap: 10PX; }
+  .pickerDialog .pickerBulk, .pickerDialog .pickerDone { padding-left: 10PX; padding-right: 10PX; }
+}

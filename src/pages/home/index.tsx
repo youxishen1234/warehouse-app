@@ -1,5 +1,5 @@
-import DemoFrame from '@/components/DemoFrame';
+import Workbench from '@/pages/business-center/workbench';
 
 export default function HomePage() {
-  return <DemoFrame page='index.html' />;
+  return <Workbench embedded initial='home' />;
 }

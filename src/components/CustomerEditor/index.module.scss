@@ -1,0 +1,44 @@
+.mask { position:fixed; inset:0; z-index:1100; display:flex; align-items:center; justify-content:center; padding:14PX; padding-top:calc(env(safe-area-inset-top, 0PX) + 14PX); padding-bottom:calc(env(safe-area-inset-bottom, 0PX) + 14PX); box-sizing:border-box; background:#0f172a80; color-scheme:light; }
+.drawer { width:100%; max-width:440PX; max-height:100%; overflow-y:auto; overflow-x:hidden; box-sizing:border-box; padding:16PX; background:#fff; color:#172033; border-radius:14PX; font:14PX/1.5 -apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif; color-scheme:light; }
+.heading { display:flex; justify-content:space-between; align-items:center; font-size:18PX; font-weight:700; gap:10PX; }
+.drawer :is(button,taro-button-core) { width:auto; min-width:0; margin:0; border:1PX solid #d1dbe8; border-radius:8PX; background:#fff; padding:7PX 11PX; font:inherit; font-size:13PX; line-height:1.4; color:#243c50; }
+.drawer :is(button,taro-button-core)::after { border:0; }
+.drawer :is(button,taro-button-core)[disabled]:not([disabled='false']) { opacity:.5; }
+.heading :is(button,taro-button-core) { padding:2PX 9PX; }
+.section { margin:0 0 9PX; }
+.sectionHeading,.specHeading { display:flex; align-items:center; justify-content:space-between; gap:8PX; min-width:0; min-height:28PX; color:#243c50; font-size:13PX; font-weight:600; }
+.sectionHeading :is(button,taro-button-core),.specHeading :is(button,taro-button-core) { min-height:28PX; padding:2PX 8PX; font-size:12PX; color:#1458b8; background:transparent; border-color:transparent; }
+.sectionSummary { display:block; padding:3PX 0 5PX; color:#64748b; font-size:12PX; line-height:1.5; overflow-wrap:anywhere; }
+.field { margin:8PX 0; }
+.field > text { display:block; color:#44546a; font-size:13PX; font-weight:500; }
+.field input,.field textarea { display:block; width:100%; max-width:100%; min-width:0; box-sizing:border-box; margin-top:6PX; padding:10PX; border:1PX solid #d1dbe8; border-radius:8PX; font-size:16PX; background:#f8fafc; color:#172033; -webkit-text-fill-color:#172033; caret-color:#172033; }
+.field input::placeholder,.field textarea::placeholder { color:#8a98a8; -webkit-text-fill-color:#8a98a8; }
+.field input { min-height:38PX; }
+.field textarea { height:60PX; }
+.field taro-textarea-core { display:block; width:100%; min-width:0; height:62PX; margin-top:6PX; overflow:hidden; border:1PX solid #d1dbe8; border-radius:8PX; background:#f8fafc; }
+.field taro-textarea-core textarea { display:block; width:100%; min-width:0; height:60PX; min-height:60PX; box-sizing:border-box; padding:9PX 10PX; border:0; border-radius:8PX; background:#f8fafc; color:#172033; -webkit-text-fill-color:#172033; caret-color:#172033; font-size:16PX; line-height:1.45; resize:none; }
+ .specSection { width:100%; min-width:0; margin:10PX 0 9PX; }
+ .specRowHeading { display:flex; align-items:center; justify-content:space-between; gap:8PX; min-width:0; }
+ .specActions { display:flex; align-items:center; gap:6PX; flex-shrink:0; }
+ .specActions :is(button,taro-button-core) { min-height:28PX; padding:2PX 8PX; font-size:12PX; color:#1458b8; background:transparent; border-color:transparent; }
+ .specSummary { display:block; padding:10PX 12PX; color:#64748b; background:#f8fafc; border:1PX dashed #d1dbe8; border-radius:8PX; font-size:12PX; }
+ .specRow { min-width:0; padding:8PX 0 5PX; border-top:1PX solid #e5e9ee; }
+ .specRowHeading { margin-bottom:3PX; color:#536579; font-size:12PX; }
+ .specRowHeading :is(button,taro-button-core) { min-height:28PX; padding:2PX 8PX; font-size:12PX; color:#b42318; background:#fff; border-color:#fecaca; }
+ .specFields { display:grid; grid-template-columns:minmax(0,1fr); gap:0 10PX; min-width:0; }
+ .specField { min-width:0; margin:3PX 0; }
+ .specField > text { display:block; color:#44546a; font-size:13PX; }
+ .specField input { display:block; width:100%; max-width:100%; min-width:0; min-height:40PX; box-sizing:border-box; margin-top:4PX; padding:8PX 9PX; border:1PX solid #d1dbe8; border-radius:8PX; font-size:16PX; background:#f8fafc; color:#172033; -webkit-text-fill-color:#172033; caret-color:#172033; }
+ .specField input::placeholder { color:#8a98a8; -webkit-text-fill-color:#8a98a8; }
+ @media(min-width:520PX) { .specFields { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+ @media(max-width:374PX) { .specSection { margin-top:12PX; } .specFields { grid-template-columns:minmax(0,1fr); } }
+.hint { display:block; color:#64748b; font-size:12PX; margin:8PX 0; overflow-wrap:anywhere; }
+.error { color:#b42318; background:#fff2f0; padding:12PX; border-radius:9PX; overflow-wrap:anywhere; }
+.error :is(button,taro-button-core) { margin-top:10PX; }
+.actions { display:grid; grid-template-columns:1fr 1fr; gap:10PX; margin-top:14PX; padding-bottom:2PX; }
+.actions :is(button,taro-button-core) { width:100%; min-height:40PX; padding:8PX 12PX; }
+.drawer .primary { background:#245ec7; color:#fff; border-color:#245ec7; }
+.categoryChoices { display:flex; flex-wrap:wrap; gap:5PX; margin-top:5PX; }
+.categoryChoices :is(button,taro-button-core) { padding:5PX 8PX; font-size:12PX; }
+.categoryChoices :is(button,taro-button-core)[aria-pressed='true'] { color:#1458b8; border-color:#93c5fd; background:#eff6ff; }
+@media(max-width:374PX) { .mask { padding-left:10PX; padding-right:10PX; } .drawer { padding:15PX; } }

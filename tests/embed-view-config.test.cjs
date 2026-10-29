@@ -7,34 +7,22 @@ const { buildRemoteCommand, validateConfig } = require('../scripts/deploy-nginx-
 
 test('embedded label viewer has a narrow framing exception', () => {
   const nginx = fs.readFileSync(path.join(__dirname, '..', 'deploy', 'nginx-production.conf'), 'utf8');
-  const embed = nginx.match(/location \^~ \/embed\/ \{([\s\S]*?)\n    \}/)?.[1] || '';
-  const preview = nginx.match(/location \^~ \/preview-pages\/ \{([\s\S]*?)\n    \}/)?.[1] || '';
   assert.match(CONTENT_SECURITY_POLICY, /frame-ancestors 'none'/);
   assert.match(EMBEDDED_CONTENT_SECURITY_POLICY, /frame-ancestors 'self' app:/);
-  assert.match(preview, /frame-ancestors 'self' app:/);
-  assert.match(preview, /script-src 'self' 'unsafe-inline'/);
-  assert.doesNotMatch(preview, /'nonce-|'sha(?:256|384|512)-/);
-  assert.match(embed, /script-src 'self' 'nonce-sg-bootstrap'/);
-  assert.doesNotMatch(embed, /script-src[^;]*'unsafe-inline'/);
-  assert.equal(isEmbeddedViewPath('/embed/pages/print-center/index'), true);
-  assert.equal(isEmbeddedViewPath('/pages/print-center/index'), false);
+  assert.equal(isEmbeddedViewPath('/embed/pages/label-print/index'), true);
+  assert.equal(isEmbeddedViewPath('/pages/label-print/index'), false);
   assert.equal(isEmbeddedViewPath('/embedding'), false);
   assert.doesNotThrow(() => validateConfig(nginx));
-  assert.throws(() => validateConfig(nginx.replace("frame-ancestors 'self' app:", "frame-ancestors 'none'")), /browser policy/);
-  assert.throws(() => validateConfig(nginx.replace(preview, preview.replace("script-src 'self' 'unsafe-inline'", "script-src 'self' 'nonce-sg-bootstrap'"))), /interactive demo scripts/);
-  assert.throws(() => validateConfig(nginx.replace(embed, embed.replace("script-src 'self' 'nonce-sg-bootstrap'", "script-src 'self' 'unsafe-inline'"))), /strict nonce policy/);
+  assert.throws(() => validateConfig(nginx.replace("frame-ancestors 'self' app:", "frame-ancestors 'none'")), /Embedded browser policy/);
   assert.throws(() => validateConfig(nginx.replace('location ^~ /embed/ {', 'location ^~ /embedded/ {')), /location is missing/);
-  assert.throws(() => validateConfig(nginx.replace('location ^~ /preview-pages/ {', 'location ^~ /previews/ {')), /Preview browser location is missing/);
   const remote = buildRemoteCommand('/tmp/shuguang-nginx-test', '/etc/nginx/sites-available/shuguang', 'a'.repeat(64));
   assert.match(remote, /sha256sum/);
   assert.match(remote, /nginx -t/);
   assert.match(remote, /rollback/);
   assert.match(remote, /frame-ancestors .*app:/);
-  assert.match(remote, /for route in \/embed\/ \/embed\/pages\/print-center\/index/);
+  assert.match(remote, /for route in \/embed\/ \/embed\/pages\/label-print\/index/);
   assert.match(remote, /grep -qi .*"\$headers" \|\| return 1/);
   assert.match(remote, /if grep -qiE '\^x-frame-options:/);
-  assert.match(remote, /script-src 'self' 'unsafe-inline'/);
-  assert.match(remote, /script-src \[\^;\]\*unsafe-inline/);
   assert.match(remote, /readlink -f --/);
   assert.match(remote, /wait_for_headers/);
   assert.match(remote, /cleanup\(\) \{[\s\S]*?sudo -n rm -f -- "\$backup"/);

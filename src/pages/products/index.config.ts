@@ -1,0 +1,5 @@
+export default definePageConfig({
+  navigationBarTitleText: '商品管理',
+  enablePullDownRefresh: true,
+  navigationStyle: 'custom'
+})
