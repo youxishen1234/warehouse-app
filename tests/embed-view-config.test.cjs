@@ -9,8 +9,8 @@ test('embedded label viewer has a narrow framing exception', () => {
   const nginx = fs.readFileSync(path.join(__dirname, '..', 'deploy', 'nginx-production.conf'), 'utf8');
   assert.match(CONTENT_SECURITY_POLICY, /frame-ancestors 'none'/);
   assert.match(EMBEDDED_CONTENT_SECURITY_POLICY, /frame-ancestors 'self' app:/);
-  assert.equal(isEmbeddedViewPath('/embed/pages/label-print/index'), true);
-  assert.equal(isEmbeddedViewPath('/pages/label-print/index'), false);
+  assert.equal(isEmbeddedViewPath('/embed/pages/print-center/index'), true);
+  assert.equal(isEmbeddedViewPath('/pages/print-center/index'), false);
   assert.equal(isEmbeddedViewPath('/embedding'), false);
   assert.doesNotThrow(() => validateConfig(nginx));
   assert.throws(() => validateConfig(nginx.replace("frame-ancestors 'self' app:", "frame-ancestors 'none'")), /Embedded browser policy/);
@@ -20,7 +20,7 @@ test('embedded label viewer has a narrow framing exception', () => {
   assert.match(remote, /nginx -t/);
   assert.match(remote, /rollback/);
   assert.match(remote, /frame-ancestors .*app:/);
-  assert.match(remote, /for route in \/embed\/ \/embed\/pages\/label-print\/index/);
+  assert.match(remote, /for route in \/embed\/ \/embed\/pages\/print-center\/index/);
   assert.match(remote, /grep -qi .*"\$headers" \|\| return 1/);
   assert.match(remote, /if grep -qiE '\^x-frame-options:/);
   assert.match(remote, /readlink -f --/);

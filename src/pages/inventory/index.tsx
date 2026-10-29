@@ -1,5 +1,5 @@
-import Workbench from '@/pages/business-center/workbench';
+import DemoFrame from '@/components/DemoFrame';
 
 export default function InventoryPage() {
-  return <Workbench embedded initial='stock' />;
+  return <DemoFrame page='management.html' view='stock' />;
 }

@@ -48,7 +48,7 @@ async function main() {
     const response = await fetchWithRetry(origin + route, { method: 'HEAD', cache: 'no-store' });
     assert.equal(response.status, 404, route + ' must not fall back to old shared assets');
   }
-  for (const route of ['/embed/', '/embed/pages/label-print/index', '/pages/label-print/index']) {
+  for (const route of ['/embed/', '/pages/home/index']) {
     const response = await fetchWithRetry(origin + route, { method: 'HEAD', cache: 'no-store' });
     assert.equal(response.status, 200, route);
     const policy = response.headers.get('content-security-policy') || '';
@@ -76,17 +76,12 @@ async function main() {
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(origin + '/mobile.html');
     const frame = page.frameLocator('#mobile-app');
-    await expect(frame.getByTestId('workbench-business-flow')).toBeVisible({ timeout: 30000 });
-    await expect(frame.getByTestId('workbench-sync-status')).toContainText('服务器数据已读取', { timeout: 30000 });
-    await frame.locator('.sg-glass-items [data-tab="2"]').click();
-    await expect(frame.locator('[data-testid="simple-workbench"][data-panel="stock"]')).toBeVisible();
-    await frame.locator('.sg-glass-items [data-tab="3"]').click();
-    await expect(frame.getByRole('button', { name: '从出库单自动开单', exact: true })).toBeVisible();
-    await expect(frame.getByText('手动填写送货单', { exact: true })).toBeVisible();
-    await expect(frame.getByRole('heading', { name: '我的单据', exact: true })).toBeVisible();
+    await expect(frame.getByRole('heading', { name: '业务总台', exact: true })).toBeVisible({ timeout: 30000 });
+    await expect(frame.getByRole('button', { name: '客户开单', exact: true })).toBeVisible();
+    await expect(frame.getByRole('link', { name: '库存', exact: true })).toBeVisible();
     assert.deepEqual(writes, [], 'Online verification must never change business data');
     assert.deepEqual(errors, []);
-    console.log('PASS: published source revision, public framing headers, mobile homepage, live data, inventory and automatic/manual printing');
+    console.log('PASS: published source revision, public framing headers and six-view mobile business console');
   } finally {
     await browser.close();
   }

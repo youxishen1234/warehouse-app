@@ -1,3 +1,5 @@
-import Workbench from '../business-center/workbench';
+import DemoFrame from '@/components/DemoFrame';
 
-export default function SuppliersPage() { return <Workbench />; }
+export default function SuppliersPage() {
+  return <DemoFrame page='management.html' view='suppliers' />;
+}

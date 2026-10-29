@@ -1,8 +1,0 @@
-.root { margin: 12PX 0 22PX; }
-.selected { display: flex; justify-content: space-between; gap: 12PX; min-height: 46PX; box-sizing: border-box; align-items: center; padding: 12PX; border: 1PX solid #d1dbe8; border-radius: 8PX; background: #f8fafc; color: #172033; font-size: 14PX; }
-.selected text { margin: 0; }
-.options { margin-top: 8PX; padding: 10PX; border: 1PX solid #e2e8f0; border-radius: 10PX; background: #fff; }
-.search { height: 42PX; padding: 0 12PX; border: 1PX solid #d1dbe8; border-radius: 8PX; background: #f8fafc; color: #172033; font-size: 13PX; }
-.list { max-height: 280PX; }
-.option { padding: 12PX 4PX; border-bottom: 1PX solid #eef2f6; color: #172033; font-size: 13PX; }
-.detail { display: block; margin: 5PX 0; color: #64748b; font-size: 11PX; line-height: 1.6; }

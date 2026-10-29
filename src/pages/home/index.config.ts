@@ -1,5 +1,5 @@
 export default definePageConfig({
-  navigationBarTitleText: '曙光',
+  navigationBarTitleText: '业务总台',
   enablePullDownRefresh: false,
   navigationStyle: 'custom'
 })

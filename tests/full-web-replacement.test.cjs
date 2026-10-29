@@ -10,7 +10,7 @@ test('release contains only the current web interface and no retired page assets
   }
   assert(fs.existsSync(path.join(output, 'css/web-shell.css')));
   const config = fs.readFileSync('src/app.config.ts', 'utf8');
-  assert.doesNotMatch(config, /pages\/(?:ledger|board-stock|index)\/index/);
+  assert.doesNotMatch(config, /pages\/(?:ai-assistant|business-center|label-print|label-resolver|board-calculator|board-receive|board-detail|board-scan|board-outbound|inbound|outbound|mine|products|records|orders|team|customer-edit|custom-copy|backup|customer-photos|carton-calculator|ledger|board-stock|index)\/index/);
   const html = fs.readFileSync(path.join(output, 'index.html'), 'utf8');
   assert.doesNotMatch(html, /home-search\.js|polish\.css|legacy-entry/);
 });
@@ -20,6 +20,10 @@ test('retired web routes are blocked before backend static files can serve an ol
   assert(server.indexOf("res.status(410)") < server.indexOf('app.use(express.static(WEB_ROOT))'));
   const nginx = fs.readFileSync('deploy/nginx-production.conf', 'utf8');
   assert.match(nginx, /return 410/);
+  for (const route of ['ai-assistant', 'business-center', 'label-print', 'inbound', 'products', 'orders']) {
+    assert(server.includes(route), route);
+    assert(nginx.includes(route), route);
+  }
   assert(nginx.includes('web-(?:releases|current)'));
   assert(server.includes('web-(?:releases|current)'));
   assert.match(nginx, /location ~ \^\/\(\?:js\|css\|static\|assets\)\/ \{ try_files \$uri =404; \}/);
@@ -34,5 +38,5 @@ test('every AI navigation action opens a configured current page', () => {
     const route = plan.navigation.url.split('?')[0].slice(1);
     assert(config.includes("'" + route + "'"), plan.navigation.url);
   }
-  assert.equal(tools.prepare({}, { action: 'open_page', parameters: { page: 'finance' } }).navigation.url, '/pages/business-center/index?section=finance');
+  assert.equal(tools.prepare({}, { action: 'open_page', parameters: { page: 'finance' } }).navigation.url, '/pages/finance/index');
 });

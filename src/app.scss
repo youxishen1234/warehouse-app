@@ -1,102 +1,20 @@
-@use '@/styles/compat.scss';
-@use '@/styles/variables.scss' as *;
-
-// 全局样式
-html { color-scheme: light; }
-
-page {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Hiragino Sans GB',
-    sans-serif;
-  font-size: $font-size-md;
-  line-height: $line-height-normal;
-  color: $color-text-primary;
-  background: #fff;
-}
-
-/* The legacy launcher remains the keyboard-accessible entry for the detailed
-   corrugated roll calculator injected into the dashboard grid. */
-
 html,
 body,
+#app,
 .taro_router,
 .taro_page {
-  background: #fff;
-  overscroll-behavior-y: none;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #f4f7fc;
 }
 
-body, #app, .taro_router, .taro_page { min-height: 100%; }
-
-// Each page owns its surfaces and contrast. Broad class-substring overrides
-// previously erased coloured cards and left white text on white backgrounds.
-
-// 统一表单和内容文字基线，避免不同页面的输入框、按钮出现跳级字号。
-.taro_page input, .taro_page textarea, .taro_page button, .taro_page picker { font-size: $font-size-md; line-height: $line-height-normal; }
-.taro_page scroll-view { box-sizing: border-box; padding-bottom: env(safe-area-inset-bottom); }
-
-// ===== 离线模式提示条（全局，App 根节点挂载） =====
-.sg-offline-bar {
-  position: fixed;
-  top: calc(env(safe-area-inset-top, 0px) + 12px);
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 9997;
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-  padding: 14rpx 30rpx;
-  background: rgba(217, 119, 6, 0.95);
-  border-radius: $radius-round;
-  box-shadow: $shadow-float;
-  max-width: 90%;
+html {
+  color-scheme: light;
 }
 
-.sg-offline-bar-text {
-  font-size: $font-size-sm;
-  color: #fff;
-  @include text-ellipsis;
-}
-
-.sg-offline-retry {
-  flex: 0 0 auto;
-  padding: 6rpx 20rpx;
-  border-radius: $radius-round;
-  background: rgba(255, 255, 255, 0.24);
-  color: #fff;
-  font-size: $font-size-sm;
-  font-weight: $font-weight-medium;
-
-  &:active {
-    opacity: 0.85;
-  }
-}
-
-// ===== 安全区与白屏修复（App 全屏 WebView） =====
-// 【白屏根因】Taro H5 页面默认 transform: translate(100%,0) 停在屏幕外，
-// 靠 onLoad 回调注入 taro_page_show/taro_tabbar_page 类名才能移入；
-// Taro 路由源码自带 FIXME：iOS WKWebView 冷启动时该回调可能不执行 → 页面永远在屏幕外 → 纯白屏。
-// 强制所有页面常驻可见区域（代价：关闭页面滑动进场动画，功能无影响）。
-.taro_router > .taro_page {
-  transform: none !important;
-  transition: none !important;
-}
-
-// 顶部：页面内容避开 iPhone 灵动岛/状态栏（彩色头部页用负 margin 顶出，见 home/mine 样式）
-.taro_page {
-  padding-top: constant(safe-area-inset-top);
-  padding-top: env(safe-area-inset-top);
+* {
   box-sizing: border-box;
 }
-
-// Workbench headers own their safe area. Keep the scroll shell on the same
-// light colour so iOS edge scrolling never reveals a white page underneath.
-html[data-workbench-shell],
-html[data-workbench-shell] body,
-html[data-workbench-shell] .taro_router,
-html[data-workbench-shell] .taro_page {
-  background: #f4f7fb;
-}
-html[data-workbench-shell] .taro_page {
-  padding-top: 0;
-}
-
-// Navigation layout is shared with the current web shell stylesheet.

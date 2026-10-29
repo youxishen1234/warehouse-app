@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const vm = require('node:vm');
 const path = require('node:path');
 const Module = require('node:module');
 const ts = require('typescript');
@@ -8,6 +9,10 @@ const filename = path.resolve('src/utils/dimension-input.ts');
 const loaded = new Module(filename, module); loaded.filename = filename; loaded.paths = module.paths;
 loaded._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, filename);
 const { formatDimensionInput: format, maxDimensionSides, resolveDimensionGroup, startDimensionGroup } = loaded.exports;
+const preview = { window: {}, document: { addEventListener() {} }, HTMLInputElement: function HTMLInputElement() {} };
+vm.createContext(preview);
+vm.runInContext(fs.readFileSync('src/preview-pages/dimension-input.js', 'utf8'), preview);
+const formatPreview = preview.window.DimensionInput.format;
 
 // Type the digits one at a time, exactly as the input field receives them.
 const type = (digits, options) => { let value = ''; for (const digit of digits) value = format(value + digit, value, options); return value; };
@@ -56,4 +61,10 @@ test('pasted dimensions in any separator style are normalized', () => {
 test('free text typed into the size field is left untouched', () => {
   assert.equal(format('40×30×20 cm', '', carton), '40×30×20 cm');
   assert.equal(format('定制尺寸另议', '', carton), '定制尺寸另议');
+});
+test('current mobile preview uses two digits for cartons and three for paperboard', () => {
+  assert.equal(formatPreview('403030', 2, 3), '40×30×30');
+  assert.equal(formatPreview('120080', 3, 2), '120×80');
+  assert.equal(formatPreview('120100', 3, 2), '120×100');
+  assert.equal(formatPreview('40', 2, 3), '40×');
 });

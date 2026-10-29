@@ -1,7 +1,0 @@
-.business-page-header { display: flex; align-items: center; gap: 10PX; padding: 12PX 0 18PX; margin-bottom: 16PX; border-bottom: 1PX solid #e9eef5; color: #162741; }
-.business-page-header > taro-button-core { display: grid; place-items: center; flex-shrink: 0; width: 36PX; min-height: 44PX; height: 44PX; margin: 0; padding: 0; color: #2469ee; background: transparent; border: 0; border-radius: 6PX; font-size: 30PX; line-height: 1; }
-.business-page-header > taro-button-core::after { border: 0; }
-.business-page-header > taro-view-core { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.business-page-caption { color: #2469ee; font-size: 11PX; }
-.business-page-title { color: #162741; font-size: 22PX; line-height: 1.4; font-weight: 600; overflow-wrap: anywhere; }
-.business-page-date { color: #8290a4; font-size: 12PX; }

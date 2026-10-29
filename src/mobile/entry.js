@@ -1,15 +1,21 @@
-/* A real narrow viewport keeps CSS breakpoints, dialogs and navigation on the
-   phone layout even when this shareable entry is opened on a wide screen. */
 (function () {
   const frame = document.getElementById('mobile-app');
   const home = '#/pages/home/index';
-  const route = value => value.startsWith('#/pages/') && value.includes('/index') && !value.includes('//') ? value : home;
+  const routes = new Set([
+    '#/pages/home/index',
+    '#/pages/customers/index',
+    '#/pages/inventory/index',
+    '#/pages/finance/index',
+    '#/pages/suppliers/index',
+    '#/pages/print-center/index'
+  ]);
+  const route = value => routes.has(value) ? value : home;
   frame.src = '/embed/' + route(location.hash);
   const synchronize = () => {
     try {
       const hash = route(frame.contentWindow.location.hash);
       if (location.hash !== hash) history.replaceState(null, '', location.pathname + location.search + hash);
-    } catch { /* Wait for the same-origin application to finish loading. */ }
+  } catch {}
   };
   frame.addEventListener('load', () => {
     frame.contentWindow.addEventListener('hashchange', synchronize);

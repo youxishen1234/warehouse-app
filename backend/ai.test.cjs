@@ -201,9 +201,9 @@ test('AI commands integrate with real warehouse routes, accounting, receipts and
       assert.equal(inventory.status, 200);
       assert.equal(inventory.body.data.status, 'result');
       assert.ok(inventory.body.data.result.items.some(item => item.id === product.id), JSON.stringify(inventory.body.data));
-      const page = await command('打开商品管理');
+      const page = await command('打开客户管理');
       assert.equal(page.body.data.status, 'navigate');
-      assert.equal(page.body.data.navigation.url, '/pages/products/index');
+      assert.equal(page.body.data.navigation.url, '/pages/customers/index');
     });
     await t.test('multi-line delivery receipts resolve references, commit atomically and can be printed', async () => {
       const second = db.addProduct({ name: '测试胶带', unit: '卷', price: 3, stock: 10 });

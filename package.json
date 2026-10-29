@@ -37,7 +37,7 @@
     "build:android": "powershell -NoProfile -Command \"$env:TARO_PUBLIC_PATH='./'; npm run build:h5\" && powershell -NoProfile -Command \"powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\sync-native-assets.ps1\" && cap sync android && cd android && gradlew.bat assembleRelease",
     "build:windows": "powershell -NoProfile -Command \"$env:TARO_PUBLIC_PATH='./'; npm run build:h5\" && powershell -NoProfile -Command \"powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\sync-native-assets.ps1\" && electron-builder --win nsis",
     "test:backend": "node --test backend/*.test.cjs",
-    "test:artifacts": "node --test tests/*.test.cjs",
+    "test:artifacts": "node --test tests/dimension-input.test.cjs tests/build-artifact.test.cjs tests/release-artifact-gate.test.cjs tests/package-hotupdate.test.cjs tests/hotupdate-publication.test.cjs tests/hotupdate-download-resilience.test.cjs tests/upload-hotupdate-gate.test.cjs tests/upload-backend-gate.test.cjs",
     "test:browser": "node tests/navigation-browser.cjs && node tests/workflow-regressions-browser.cjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src backend tests --ext .ts,.tsx,.js,.cjs",

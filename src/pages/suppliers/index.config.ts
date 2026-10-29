@@ -1,1 +1,1 @@
-export default definePageConfig({ navigationBarTitleText: '供应商管理', enablePullDownRefresh: false, navigationStyle: 'custom' });
+export default definePageConfig({ navigationBarTitleText: '供货商', enablePullDownRefresh: false, navigationStyle: 'custom' });
