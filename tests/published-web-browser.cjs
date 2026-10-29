@@ -74,11 +74,33 @@ async function main() {
     await context.addInitScript(() => localStorage.setItem('sg_getting_started_seen_v1', JSON.stringify({ data: true })));
     const page = await context.newPage();
     page.on('pageerror', error => errors.push(error.message));
+    page.on('console', message => {
+      if (message.type() === 'error' && /Content Security Policy|violates the following Content Security Policy/i.test(message.text())) errors.push(message.text());
+    });
     await page.goto(origin + '/mobile.html');
     const frame = page.frameLocator('#mobile-app');
-    await expect(frame.getByRole('heading', { name: '业务总台', exact: true })).toBeVisible({ timeout: 30000 });
-    await expect(frame.getByRole('button', { name: '客户开单', exact: true })).toBeVisible();
-    await expect(frame.getByRole('link', { name: '库存', exact: true })).toBeVisible();
+    const orderButton = frame.getByRole('button', { name: '客户开单', exact: true });
+    await expect(orderButton).toBeVisible({ timeout: 30000 });
+    await expect(frame.getByRole('button', { name: '库存', exact: true })).toBeVisible();
+    await orderButton.click();
+    await expect(frame.getByRole('dialog').getByRole('heading', { name: '客户开单', exact: true })).toBeVisible();
+    await frame.getByRole('button', { name: '关闭', exact: true }).click();
+    for (const [pathname, heading] of [
+      ['/preview-pages/customers.html', '客户管理'],
+      ['/preview-pages/management.html?view=stock', '库存管理'],
+      ['/preview-pages/management.html?view=finance', '收付款'],
+      ['/preview-pages/management.html?view=suppliers', '供货商管理'],
+      ['/preview-pages/print.html', '打印中心']
+    ]) {
+      const view = await context.newPage();
+      view.on('pageerror', error => errors.push(error.message));
+      view.on('console', message => {
+        if (message.type() === 'error' && /Content Security Policy|violates the following Content Security Policy/i.test(message.text())) errors.push(message.text());
+      });
+      await view.goto(origin + pathname);
+      await expect(view.getByRole('heading', { name: heading, exact: true })).toBeVisible({ timeout: 30000 });
+      await view.close();
+    }
     assert.deepEqual(writes, [], 'Online verification must never change business data');
     assert.deepEqual(errors, []);
     console.log('PASS: published source revision, public framing headers and six-view mobile business console');
