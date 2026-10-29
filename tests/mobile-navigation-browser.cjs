@@ -60,16 +60,20 @@ async function swipe(page, dx, dy = 0) {
         await page.locator(`.sg-app-nav button[data-tab="${index}"]`).click();
         await page.waitForURL(new RegExp('/pages/' + name + '/index'));
         await expect(page.locator(`.sg-app-nav button[data-tab="${index}"]`)).toHaveAttribute('aria-current', 'page');
+        await expect.poll(() => page.evaluate(() => window.__lastNavigationState?.route)).toBe('/pages/' + name + '/index');
       }
       await swipe(page, -100);
       await page.waitForURL(/pages\/ai-assistant\/index/);
       await expect(page.locator('.sg-app-nav button[data-tab="1"]')).toHaveAttribute('aria-current', 'page');
+      await expect.poll(() => page.evaluate(() => window.__lastNavigationState?.route)).toBe('/pages/ai-assistant/index');
       await swipe(page, -100);
       await page.waitForURL(/pages\/inventory\/index/);
       await expect(page.locator('.sg-app-nav button[data-tab="2"]')).toHaveAttribute('aria-current', 'page');
+      await expect.poll(() => page.evaluate(() => window.__lastNavigationState?.route)).toBe('/pages/inventory/index');
       await swipe(page, 100);
       await page.waitForURL(/pages\/ai-assistant\/index/);
       await expect(page.locator('.sg-app-nav button[data-tab="1"]')).toHaveAttribute('aria-current', 'page');
+      await expect.poll(() => page.evaluate(() => window.__lastNavigationState?.route)).toBe('/pages/ai-assistant/index');
       await page.locator('.sg-app-nav button[data-tab="0"]').click();
       await page.waitForURL(/pages\/home\/index/);
       await swipe(page, 5, -120);
