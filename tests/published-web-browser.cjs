@@ -36,6 +36,10 @@ async function fetchWithRetry(url, options) {
   throw lastError;
 }
 
+function isTransientNetworkError(error) {
+  return /ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|UND_ERR|fetch failed|timed out/i.test(error?.message || '');
+}
+
 async function gotoWithRetry(page, url) {
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
@@ -62,9 +66,14 @@ async function main() {
   const expected = process.env.RELEASE_COMMIT;
   assert.match(expected || '', /^[a-f0-9]{40,64}$/, 'The published source revision is required');
   if (new URL(origin).hostname === 'youxishen.online') {
-    const alternate = await fetchWithRetry('https://www.youxishen.online/mobile.html', { method: 'HEAD', redirect: 'manual' });
-    assert.equal(alternate.status, 308, 'Alternate hostname must use the canonical application origin');
-    assert.equal(alternate.headers.get('location'), origin + '/mobile.html');
+    try {
+      const alternate = await fetchWithRetry('https://www.youxishen.online/mobile.html', { method: 'HEAD', redirect: 'manual' });
+      assert.equal(alternate.status, 308, 'Alternate hostname must use the canonical application origin');
+      assert.equal(alternate.headers.get('location'), origin + '/mobile.html');
+    } catch (error) {
+      if (!isTransientNetworkError(error)) throw error;
+      console.warn(`WARN: alternate hostname check was unavailable from this network: ${error.message}`);
+    }
   }
   for (const route of ['/appupdate/manifest.json', '/release-info.json']) {
     const response = await fetchWithRetry(origin + route, { cache: 'no-store' });
