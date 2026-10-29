@@ -103,7 +103,7 @@ verify_headers() {
   for route in /embed/ /embed/pages/print-center/index; do
     curl -fsSkI --resolve youxishen.online:443:127.0.0.1 "https://youxishen.online$route" > "$headers" || return 1
     grep -qi '^content-security-policy:.*frame-ancestors .*app:' "$headers" || return 1
-    if grep -qiE '^x-frame-options:|^content-security-policy:.*frame-ancestors .*none|^content-security-policy:.*script-src.*unsafe-inline' "$headers"; then return 1; fi
+    if grep -qiE '^x-frame-options:|^content-security-policy:.*frame-ancestors .*none|^content-security-policy:.*script-src [^;]*unsafe-inline' "$headers"; then return 1; fi
   done
   curl -fsSkI --resolve youxishen.online:443:127.0.0.1 https://youxishen.online/preview-pages/index.html > "$preview_headers" || return 1
   grep -qi '^content-security-policy:.*frame-ancestors .*app:' "$preview_headers" || return 1

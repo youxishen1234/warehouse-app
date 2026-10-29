@@ -34,7 +34,7 @@ test('embedded label viewer has a narrow framing exception', () => {
   assert.match(remote, /grep -qi .*"\$headers" \|\| return 1/);
   assert.match(remote, /if grep -qiE '\^x-frame-options:/);
   assert.match(remote, /script-src 'self' 'unsafe-inline'/);
-  assert.match(remote, /script-src\.\*unsafe-inline/);
+  assert.match(remote, /script-src \[\^;\]\*unsafe-inline/);
   assert.match(remote, /readlink -f --/);
   assert.match(remote, /wait_for_headers/);
   assert.match(remote, /cleanup\(\) \{[\s\S]*?sudo -n rm -f -- "\$backup"/);
