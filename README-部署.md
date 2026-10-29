@@ -75,7 +75,7 @@ chmod +x deploy.sh
 - 快捷操作（入库/领料/详情/二维码）
 
 ### 3️⃣ 纸板领料
-- 路径: `/pages/board-outbound/index`
+- 路径: `/pages/management/index?section=paperboard-movement`
 - 规格选择
 - 领料数量录入
 - 领料人与用途记录

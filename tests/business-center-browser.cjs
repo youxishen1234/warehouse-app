@@ -1,3 +1,4 @@
+const { clickWorkbenchAction } = require('./demo-ui-actions.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -38,8 +39,8 @@ async function main() {
     const page = await context.newPage(); page.setDefaultTimeout(15000);
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     const workbench = () => page.getByTestId('simple-workbench');
-    const go = async hash => { await page.goto('about:blank'); await page.goto(origin + '/#' + hash); await expect(workbench()).toBeVisible(); await expect(page.getByText('服务器数据已读取 · 多设备自动同步', { exact: true })).toBeVisible(); };
-    const click = (text, scope = page) => scope.getByText(text, { exact: true }).first().locator('xpath=ancestor-or-self::*[self::taro-button-core or self::button or self::div][1]').click();
+    const go = async hash => { await page.goto('about:blank'); await page.goto(origin + '/#' + hash); await expect(workbench()).toBeVisible(); await expect(page.getByText('● 已同步', { exact: true })).toBeVisible(); };
+    const click = (text, scope = page) => clickWorkbenchAction(scope, text);
 
     const batch = db.receiveBoard({ supplier: '示例板厂', date: '2026-10-19', boardLength: 160, boardWidth: 110, cartonLength: 40, cartonWidth: 30, cartonHeight: 20, fluteType: 'B', layers: 3, orderedQty: 120, receivedQty: 120, billedArea: 211.2, unitPrice: 1, deliveryNo: 'L001', location: 'A01' });
     db.completeProduction({ batch_id: batch.id, product_name: '成品纸箱', consumed_quantity: 20, quantity: 18 }, '验证操作员');
@@ -47,8 +48,8 @@ async function main() {
     db.addSupplier({ name: '示例供货商', payable: 211.2 });
     db.addOrder({ order_no: 'TEST-ORDER-1', customer_id: customer.id, customer_name: customer.name, specification: '40 × 30 × 20 cm', material: 'B楞', quantity: 18, unit: '个', unit_price: 18, amount: 324, delivery_date: '2026-10-25', status: '生产中', remark: '隔离验证订单' });
 
-    await go('/pages/business-center/index');
-    await expect(page.getByText('快捷办理', { exact: true })).toBeVisible();
+    await go('/pages/home/index');
+    await expect(page.getByText('更多', { exact: true })).toBeVisible();
     assert.equal(await page.getByTestId('workbench-actions').locator('taro-button-core').count(), 4);
     await page.screenshot({ path: path.join(artifacts, 'workbench-home.png'), fullPage: true });
 
@@ -85,7 +86,7 @@ async function main() {
     await page.goto(origin + '/#/pages/customers/index');
     await expect(page.getByTestId('customer-center')).toBeVisible();
     await expect(page.getByTestId('finance-center')).toHaveCount(0);
-    await expect(page.getByText('服务器数据已读取 · 多设备自动同步', { exact: true })).toBeVisible();
+    await expect(page.getByText('● 已同步', { exact: true })).toBeVisible();
     await expect(page.getByTestId('simple-workbench').getByText('客户管理', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('示例客户', { exact: true })).toBeVisible();
     await page.getByTestId('customer-center-add').click();
@@ -100,51 +101,52 @@ async function main() {
     await expect(page.getByTestId(`customer-management-card-${financeCreatedCustomer.id}`)).toBeVisible();
 
     await page.goto('about:blank');
-    await page.goto(origin + `/#/pages/business-center/index?section=finance&view=customer&party_id=${customer.id}`);
+    await page.goto(origin + `/#/pages/management/index?section=finance&view=customer&party_id=${customer.id}`);
     await expect(page.getByTestId('finance-center')).toBeVisible();
     await expect(page.getByTestId('finance-customer-view')).toBeVisible();
-    await expect(page.getByText('客户账单', { exact: true }).first()).toBeVisible();
+    await expect(page.getByTestId(`customer-bill-${customer.id}`)).toBeVisible();
     await expect(page.getByText('示例客户', { exact: true })).toBeVisible();
     await expect(page.getByText('客户单据照片', { exact: true })).toHaveCount(0);
 
     await page.goto('about:blank');
-    await page.goto(origin + '/#/pages/suppliers/index');
-    await expect(page.getByText('服务器数据已读取 · 多设备自动同步', { exact: true })).toBeVisible();
+    await page.goto(origin + '/#/pages/management/index?section=suppliers');
+    await expect(page.getByText('● 已同步', { exact: true })).toBeVisible();
     await expect(page.getByTestId('supplier-center')).toBeVisible();
-    await page.getByTestId('supplier-management-card-' + db.listSuppliers().find(row => row.name === '示例供货商').id).getByText('查看账单', { exact: true }).click();
+    await page.getByTestId('supplier-management-card-' + db.listSuppliers().find(row => row.name === '示例供货商').id).click();
+    await page.getByText('查看账单', { exact: true }).click();
     await expect(page.getByTestId('finance-supplier-view')).toBeVisible();
-    await expect(page.getByText('供货商账单', { exact: true }).first()).toBeVisible();
+    await expect(page.locator('[data-testid^="supplier-bill-"]').first()).toBeVisible();
     await expect(page.getByText('示例供货商', { exact: true })).toBeVisible();
     await page.screenshot({ path: path.join(artifacts, 'workbench-bills.png'), fullPage: true });
     await page.goto('about:blank');
     await page.goto(origin + '/#/pages/inventory/index');
-    await expect(page.getByText('纸板库存', { exact: false }).first()).toBeVisible();
-    await expect(page.getByText('服务器数据已读取 · 多设备自动同步', { exact: true })).toBeVisible();
+    await expect(page.getByText('纸板原料', { exact: true })).toBeVisible();
+    await expect(page.getByText('● 已同步', { exact: true })).toBeVisible();
     await expect(page.getByTestId('workbench-board')).toBeVisible();
 
-    await go('/pages/business-center/index?detail=1');
+    await go('/pages/management/index?detail=1');
     await expect(page.getByText('规格与订单', { exact: true })).toBeVisible();
     await expect(page.getByTestId('workbench-order')).toContainText('示例客户');
     await page.getByLabel('搜索订单').locator('input').fill('不存在订单');
     await expect(page.getByText('没有找到匹配订单', { exact: true })).toBeVisible();
     await page.getByLabel('搜索订单').locator('input').fill('TEST-ORDER-1');
     await click('核对出库');
-    await expect(page).toHaveURL(/\/pages\/outbound\/index/);
+    await expect(page).toHaveURL(/\/pages\/management\/index\?section=shipment/);
     await expect(page.getByText('出库', { exact: true }).first()).toBeVisible();
     await expect(page.getByLabel('出库数量')).toBeVisible();
     await expect(page.getByText('TEST-ORDER-1', { exact: false }).first()).toBeVisible();
 
-    await go('/pages/business-center/index');
+    await go('/pages/home/index');
     await click('生产纸箱并入库', page.getByTestId('workbench-actions'));
     await expect(page.getByText('纸箱生产入库', { exact: true })).toBeVisible();
     await page.screenshot({ path: path.join(artifacts, 'workbench-inbound.png'), fullPage: true });
 
-    await go('/pages/business-center/index?section=records');
+    await go('/pages/management/index?section=records');
     await click('票据原件');
     await expect(page.getByText('原件照片按业务账单保存', { exact: false })).toBeVisible();
 
     for (const width of [320, 390, 430, 736, 1280]) {
-      await go('/pages/business-center/index');
+      await go('/pages/home/index');
       await page.setViewportSize({ width, height: 1000 });
       assert.equal(await workbench().evaluate(el => el.scrollWidth <= el.clientWidth + 1), true, 'no horizontal overflow ' + width);
       await page.screenshot({ path: path.join(artifacts, 'workbench-' + width + '.png'), fullPage: true });

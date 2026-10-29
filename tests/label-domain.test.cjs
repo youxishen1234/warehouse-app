@@ -24,19 +24,19 @@ const board = (overrides = {}) => ({ id: batchId, specKey: 'internal', supplier:
 const problem = (run, field) => assert.throws(run, error => error instanceof domain.LabelValidationError && error.issues[0].field === field);
 
 test('new QR URLs round trip with fixed HTTPS origin, hash route and version', () => {
-  assert.equal(links.buildLabelUrl('finished-product', 7), 'https://youxishen.online/#/pages/label-resolver/index?v=1&kind=finished-product&id=7');
+  assert.equal(links.buildLabelUrl('finished-product', 7), 'https://youxishen.online/#/pages/management/index?section=label-lookup&v=1&kind=finished-product&id=7');
   for (const [kind, id] of [['finished-product', '7'], ['paperboard-batch', batchId]]) {
     assert.deepEqual(links.parseLabelUrl(links.buildLabelUrl(kind, id)), { version: 1, kind, id });
     assert.equal(Object.isFrozen(links.parseLabelUrl(links.buildLabelUrl(kind, id))), true);
   }
-  assert.equal(links.parseLabelUrl('https://youxishen.online/#/pages/label-resolver/index?id=7&v=1&kind=finished-product').id, '7');
+  assert.equal(links.parseLabelUrl('https://youxishen.online/#/pages/management/index?section=label-lookup&id=7&v=1&kind=finished-product').id, '7');
 });
 
 test('reject forged hosts, paths, credentials, versions, duplicate and unknown parameters', () => {
   const url = links.buildLabelUrl('finished-product', 7);
   const invalid = [url.replace('https:', 'http:'), url.replace('youxishen.online', 'youxishen.online.evil.test'),
     url.replace('youxishen.online', 'evil.test@youxishen.online'), url.replace('youxishen.online', 'youxishen.online:443'),
-    url.replace('/#/', '/warehouse/#/'), url.replace('/#/', '/?untrusted=1#/'), url.replace('label-resolver', 'products'),
+    url.replace('/#/', '/warehouse/#/'), url.replace('/#/', '/?untrusted=1#/'), url.replace('label-lookup', 'products'),
     url.replace('v=1', 'v=2'), url.replace('v=1', 'v=01'), url.replace('v=1', 'v=1&v=1'), url + '&x=1',
     url.replace('kind=finished-product', 'kind=product'), url.replace('&id=7', ''), url + '#suffix', url + '?next=1',
     ' ' + url, url + ' ', url.replace('v=1', '%76=1'), url.replace('&id=7', '&id=7&id=8'), url.replace('id=7', 'id=' + String.fromCharCode(10) + '7')];
@@ -45,7 +45,7 @@ test('reject forged hosts, paths, credentials, versions, duplicate and unknown p
 
 test('validate exact business IDs without coercing unsafe numbers or decoded path payloads', () => {
   for (const id of ['0', '01', '-1', '1e3', '1.0', '9007199254740992', '../7', '%2F7', '%252F7', '%00', '7+1', '%', '7%20']) {
-    assert.throws(() => links.parseLabelUrl(`https://youxishen.online/#/pages/label-resolver/index?v=1&kind=finished-product&id=${id}`), links.LabelLinkError, id);
+    assert.throws(() => links.parseLabelUrl(`https://youxishen.online/#/pages/management/index?section=label-lookup&v=1&kind=finished-product&id=${id}`), links.LabelLinkError, id);
   }
   for (const id of [NaN, Infinity, -1, 0, 1.1, Number.MAX_SAFE_INTEGER + 1]) assert.throws(() => links.buildLabelUrl('finished-product', id), links.LabelLinkError);
   for (const id of [batchId.toLowerCase(), 'BOARD-20261016-A1B2', batchId + '/other', '7']) assert.throws(() => links.buildLabelUrl('paperboard-batch', id), links.LabelLinkError);

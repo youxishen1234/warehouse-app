@@ -32,7 +32,7 @@ async function main() {
       }
       return route.abort();
     });
-    await page.goto(`${origin}/#/pages/inbound/index`);
+    await page.goto(`${origin}/#/pages/management/index?section=receipt`);
     await page.locator('.taro_page:visible').last().waitFor();
     const inputs = page.locator('input:visible');
     const remark = inputs.nth(5); // work order, driver, vehicle, operator, freight, remark

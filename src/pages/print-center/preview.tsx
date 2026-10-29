@@ -25,16 +25,17 @@ function readPreferredPrintTransport(bluetoothSupported: boolean): PrintTranspor
 function savePreferredPrintTransport(value: PrintTransport): void { Taro.setStorageSync(TRANSPORT_KEY, value); }
 
 
-export default function PrintPreview({ note, saved, postedSource = false, reprintIntent = false, autoSend = false, onClose }: {
+export default function PrintPreview({ note, saved, postedSource = false, reprintIntent = false, autoSend = false, showPrices = true, onClose }: {
   note: PrintNoteInput;
   saved?: SavedPrintNote;
   postedSource?: boolean;
   reprintIntent?: boolean;
   autoSend?: boolean;
+  showPrices?: boolean;
   onClose: () => void;
 }) {
   const [paper] = useState(note.paper);
-  const settings = useMemo(() => printSettings({ ...note, paper }), [note, paper]);
+  const settings = useMemo(() => ({ ...printSettings({ ...note, paper }), showPrices }), [note, paper, showPrices]);
   const doc = useMemo(() => printDocument(note, saved), [note, saved]);
   const html = useMemo(() => buildDotMatrixHtml(doc, settings), [doc, settings]);
   const [loaded, setLoaded] = useState('');

@@ -1,0 +1,91 @@
+.page {
+  min-height: 100%; color: #162741; background: #f4f7fc;
+  font: 14PX/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  &, * { box-sizing: border-box; }
+  :is(button, taro-button-core) { width: auto; min-width: 0; height: auto; margin: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; line-height: 1.5; white-space: normal; box-shadow: none; cursor: pointer; }
+  :is(button, taro-button-core)::after { border: 0; }
+  :is(button, taro-button-core):focus-visible { outline: 3PX solid #94baff; outline-offset: 2PX; }
+  :is(button, taro-button-core):disabled { opacity: .55; cursor: default; }
+  taro-image-core { flex-shrink: 0; }
+  taro-image-core img { position: absolute; inset: 0; width: 100%; height: 100%; transform: none; object-fit: contain; }
+}
+.surface { min-height: 100%; }
+.masthead { padding: 25PX 22PX 18PX; background: #fff; }
+.header, .heading, .status, .tools, .recentHeading, .homeHeading, .stockHeading, .flowHeading, .dialogHeading { display: flex; align-items: center; justify-content: space-between; gap: 10PX; }
+.heading { justify-content: flex-start; }
+.brand { display: grid; place-items: center; width: 43PX; height: 43PX; flex-shrink: 0; border-radius: 13PX; background: #edf3ff; color: #2469ee; }
+.brandCharacter { font-size: 24PX; font-weight: 800; }
+.headingText { min-width: 0; }
+.brandName { display: block; color: #8290a4; font-size: 11PX; }
+.title { display: block; margin: 0; font-size: 23PX; font-weight: 750; line-height: 1.35; overflow-wrap: anywhere; }
+.page .back { width: 32PX; height: 38PX; border-radius: 10PX; font-size: 29PX; color: #8290a4; }
+.page .refresh { display: grid; place-items: center; width: 38PX; height: 38PX; flex-shrink: 0; border-radius: 50%; background: #f1f6ff; color: #2469ee; font-size: 25PX; }
+.status { margin-top: 17PX; color: #8290a4; font-size: 11PX; }
+.synced { color: #3a987d; }.syncError { color: #b58031; }
+.content { padding: 17PX 18PX calc(104PX + env(safe-area-inset-bottom, 0PX)); }
+.page .attention { display: flex; align-items: center; gap: 9PX; padding: 12PX; margin-bottom: 19PX; background: #fff7e9; border: 1PX solid #f8e8c9; border-radius: 13PX; color: #9a681b; font-size: 12PX; }
+.attention > :first-child { padding: 0 4PX; border-radius: 5PX; background: #f0dfba; }.attention strong { font-weight: 650; }
+.page .attention button { margin-left: auto; color: #a36a19; font-size: 11PX; flex-shrink: 0; }
+.businessTabs { display: flex; gap: 4PX; padding: 4PX; margin-bottom: 16PX; border-radius: 13PX; background: #e9eef6; }
+.page .businessTab, .page .businessActive { width: 50%; min-height: 40PX; padding: 10PX; border-radius: 10PX; color: #7c8a9e; font-size: 13PX; font-weight: 600; }
+.page .businessActive { background: #fff; color: #2469ee; box-shadow: 0 2PX 8PX #152b4810; }
+.businessFlow { padding: 17PX; margin-bottom: 16PX; background: #fff; border: 1PX solid #edf1f6; border-radius: 18PX; }
+.sectionTitle { display: block; font-size: 16PX; font-weight: 700; }
+.eyebrow { display: block; color: #a0adc0; font-size: 10PX; margin-bottom: 3PX; }
+.sectionHint, .sectionCaption { color: #8290a4; font-size: 11PX; }
+.flowHeading { align-items: flex-start; margin-bottom: 15PX; }.flowHeading > :last-child { padding-top: 15PX; white-space: nowrap; }
+.flowSteps { display: flex; align-items: flex-start; margin: 7PX 0 13PX; }
+.page .flowStep { flex: 1; position: relative; font-size: 10PX; text-align: center; color: #7a8ba1; }
+.flowStep:not(:last-child)::before { content: '›'; position: absolute; right: -3PX; top: 5PX; color: #bbc8da; font-size: 18PX; }
+.flowNumber { display: grid; place-items: center; width: 29PX; height: 29PX; margin: 0 auto 7PX; border-radius: 10PX; background: #f1f5fc; color: #7793bc; font-size: 12PX; font-weight: 700; }
+.flowStep:first-child .flowNumber { color: #2469ee; background: #eaf1ff; }
+.flowNote { padding: 9PX 10PX; border-radius: 8PX; background: #f7f9fd; color: #8898ad; font-size: 10PX; }
+.flowActions { display: grid; grid-template-columns: 1fr 1fr; gap: 10PX; margin-top: 15PX; }
+.flowActions > :only-child, .flowActions > :nth-child(3) { grid-column: 1 / -1; }
+.page .primary, .page .button { display: inline-flex; align-items: center; justify-content: center; gap: 6PX; min-height: 36PX; padding: 8PX 13PX; border-radius: 8PX; border: 1PX solid #dae7ff; background: #eef4ff; color: #2469ee; font-size: 11PX; font-weight: 600; }
+.page .primary { background: #2469ee; color: #fff; border-color: #2469ee; }
+.page .flowActions > :is(button, taro-button-core) { min-height: 49PX; border: 0; border-radius: 12PX; font-size: 14PX; }
+.recentHeading, .homeHeading { margin: 23PX 1PX 12PX; }
+.page .textAction { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; gap: 5PX; min-height: 30PX; color: #8292a8; font-size: 11PX; }
+.nextOrder, .record { padding: 15PX; margin-bottom: 10PX; border: 1PX solid #edf1f6; border-radius: 15PX; background: #fff; }
+.orderHeading { display: flex; align-items: center; gap: 9PX; font-size: 14PX; }
+.avatar { display: grid; place-items: center; width: 32PX; height: 32PX; flex-shrink: 0; border-radius: 10PX; background: #eef3fc; color: #6682ac; font-size: 12PX; font-weight: 600; }
+.orderIdentity { flex: 1; min-width: 0; }.orderIdentity strong { display: block; font-weight: 650; overflow-wrap: anywhere; }.orderIdentity > :last-child { display: block; color: #9aa8ba; font-size: 10PX; }
+.orderBadge { margin-left: auto; padding: 3PX 7PX; border-radius: 5PX; color: #409477; background: #edf8f3; font-size: 10PX; }
+.orderGoods { display: flex; justify-content: space-between; gap: 10PX; margin: 13PX 0 12PX; font-size: 12PX; }.orderGoods > :last-child { flex-shrink: 0; color: #8b9ab0; font-size: 11PX; }
+.orderSpec { display: block; padding: 13PX 0; color: #8290a4; font-size: 12PX; }
+.orderNext { display: flex; align-items: center; justify-content: space-between; gap: 8PX; padding-top: 11PX; border-top: 1PX solid #f0f3f8; color: #8a99ae; font-size: 10PX; }.orderNext > :last-child { flex-shrink: 0; }
+.summary { display: grid; grid-template-columns: 1fr 1fr; padding: 5PX 17PX; margin-bottom: 16PX; border: 1PX solid #edf1f6; border-radius: 18PX; background: #fff; }
+.page .summaryItem { display: flex; flex-direction: column; align-items: flex-start; gap: 4PX; padding: 12PX 5PX; color: #8c9aaf; font-size: 11PX; text-align: left; }
+.summaryItem:nth-child(odd) { border-right: 1PX solid #e9eef5; }.summaryItem:nth-child(even) { padding-left: 22PX; }.summaryItem:nth-child(n+3) { border-top: 1PX solid #e9eef5; }
+.summaryItem strong { color: #162741; font-size: 20PX; font-weight: 650; font-variant-numeric: tabular-nums; }
+.shortcuts { display: flex; justify-content: space-between; padding: 5PX 1PX 10PX; }.page .shortcut { min-width: 55PX; text-align: center; color: #73849d; font-size: 10PX; }
+.shortcut > :first-child { display: grid; place-items: center; width: 41PX; height: 41PX; margin: 0 auto 7PX; border-radius: 13PX; border: 1PX solid #e8eef7; background: #fff; }
+.page .activity { display: flex; align-items: center; gap: 10PX; width: 100%; padding: 15PX; border: 1PX solid #edf1f6; border-radius: 15PX; background: #fff; text-align: left; margin-bottom: 10PX; }
+.activityBody { flex: 1; min-width: 0; }.activityTitle { display: block; font-size: 12PX; }.activityDetail { display: block; margin-top: 3PX; color: #96a3b6; font-size: 10PX; }
+.activityValue { color: #162741; font-size: 12PX; text-align: right; flex-shrink: 0; }.activityValue > * { display: block; }.activityStatus { color: #96a3b6; font-size: 10PX; }
+.emptyToday, .empty { display: flex; flex-direction: column; align-items: center; gap: 9PX; padding: 30PX 12PX; color: #96a3b6; font-size: 12PX; text-align: center; }.emptyToday > :last-child { font-size: 10PX; }
+.managementNav { display: flex; gap: 4PX; padding: 10PX 18PX; border-top: 1PX solid #f0f3f8; border-bottom: 1PX solid #e9eef5; background: #fff; }
+.page .managementNav > :is(button, taro-button-core) { flex: 1; min-height: 34PX; padding: 8PX 4PX; border-radius: 9PX; font-size: 12PX; color: #8290a4; }.page .managementNav .managementActive { color: #2469ee; background: #edf3ff; font-weight: 600; }
+.stockSummary { display: grid; grid-template-columns: 1fr 1fr; gap: 12PX; margin-bottom: 17PX; }.stockSummary > div, .stockSummary > taro-view-core { padding: 17PX 16PX; border: 1PX solid #e3ebf7; border-radius: 16PX; background: #edf3ff; }.stockSummary > :last-child { background: #edf8f3; border-color: #e2efe8; }
+.stockSummary :is(strong, taro-text-core) { display: block; }.stockSummary taro-text-core { color: #8290a4; font-size: 11PX; }.stockSummary strong { margin: 6PX 0; color: #2469ee; font-size: 25PX; font-weight: 650; }.stockSummary > :last-child strong { color: #3a987d; }.stockSummary small { margin-left: 5PX; font-size: 11PX; font-weight: 400; }
+.stockHeading { margin-bottom: 10PX; }.segment { display: flex; flex-wrap: wrap; gap: 7PX; margin: 15PX 0; }.page .segment .button, .page .segment .selected { min-height: 32PX; padding: 6PX 12PX; border: 1PX solid #e7edf5; border-radius: 9PX; background: #fff; color: #8290a4; font-size: 11PX; }.page .segment .selected { color: #2469ee; background: #eaf1ff; border-color: #dce7fc; }
+.page .stockCard { display: block; width: 100%; padding: 16PX; margin-bottom: 11PX; border: 1PX solid #edf1f6; border-radius: 16PX; background: #fff; text-align: left; }
+.stockTop { display: flex; align-items: flex-start; gap: 10PX; }.stockIdentity { flex: 1; min-width: 0; }.stockIdentity strong { display: block; font-size: 14PX; font-weight: 650; }.stockIdentity taro-text-core { display: block; margin-top: 4PX; color: #96a3b6; font-size: 10PX; }
+.stockAmount { flex-shrink: 0; color: #162741; font-size: 18PX; text-align: right; font-weight: 650; font-variant-numeric: tabular-nums; }.stockAmount taro-text-core { display: block; color: #96a3b6; font-size: 10PX; font-weight: 400; }
+.stockBottom { display: flex; align-items: flex-end; justify-content: space-between; gap: 10PX; padding-top: 12PX; margin-top: 13PX; border-top: 1PX solid #f0f3f8; color: #8290a4; font-size: 10PX; }.stockBottom > :first-child taro-text-core { display: block; line-height: 1.8; }.stockBottom > :last-child { flex-shrink: 0; }
+.detailRow { display: flex; justify-content: space-between; gap: 12PX; padding: 13PX 0; border-bottom: 1PX solid #e9eef5; font-size: 12PX; }.detailRow > :first-child { color: #8290a4; }.detailRow > :last-child { text-align: right; }
+.input { display: block; width: 100%; min-width: 0; height: 43PX; padding: 0 13PX; margin: 8PX 0 14PX; border: 1PX solid #e2e9f2; border-radius: 11PX; background: #fff; color: #162741; font: inherit; font-size: 12PX; line-height: 43PX; }
+.page .row { display: flex; align-items: flex-start; justify-content: space-between; width: 100%; gap: 12PX; padding: 16PX; margin-bottom: 11PX; border: 1PX solid #edf1f6; border-radius: 16PX; background: #fff; text-align: left; }.row > :first-child { flex: 1; min-width: 0; }.row > :last-child { display: flex; flex-direction: column; gap: 7PX; align-items: flex-end; flex-shrink: 0; }.row strong { display: block; font-size: 14PX; font-weight: 650; }.row taro-text-core { display: block; color: #8290a4; font-size: 11PX; margin-top: 4PX; }
+.record > :is(taro-text-core, strong) { display: block; margin-bottom: 6PX; font-size: 12PX; }.record taro-text-core { color: #8290a4; }.tools { justify-content: flex-start; flex-wrap: wrap; margin-top: 12PX; }
+.label { display: block; margin: 15PX 0 6PX; color: #8290a4; font-size: 11PX; }.form { padding: 18PX; background: #fff; border-radius: 18PX; }.twoFields { display: grid; grid-template-columns: 1fr 1fr; gap: 10PX; }.twoFields > * { min-width: 0; }
+.note { display: block; color: #8290a4; font-size: 11PX; line-height: 1.7; }.spec { padding: 12PX; margin: 10PX 0; border-radius: 9PX; background: #f7f9fd; }.spec > * { display: block; font-size: 12PX; }.spec taro-text-core { margin-top: 4PX; color: #8290a4; }
+.sectionError, .error { padding: 10PX 12PX; margin: 0 0 12PX; border-radius: 9PX; border: 1PX solid #f8e8c9; background: #fff7e9; color: #9a681b; font-size: 12PX; overflow-wrap: anywhere; }.sectionError { display: flex; align-items: center; justify-content: space-between; gap: 10PX; }
+.filterNotice { display: flex; align-items: center; justify-content: space-between; gap: 10PX; margin-bottom: 12PX; font-size: 12PX; color: #2469ee; }
+.overlay { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: flex-end; justify-content: center; background: #152a4355; backdrop-filter: blur(3PX); }
+.dialog { width: 100%; max-width: 430PX; max-height: 88dvh; overflow-y: auto; padding: 23PX 22PX calc(30PX + env(safe-area-inset-bottom, 0PX)); border-radius: 24PX 24PX 0 0; background: #fff; }.dialogHeading { margin-bottom: 16PX; font-size: 17PX; }.page .dialogHeading button { width: 30PX; height: 30PX; border-radius: 50%; color: #7b8ba1; background: #f0f3f8; font-size: 19PX; }
+.stocktakeSummary > * { display: block; color: #8290a4; font-size: 12PX; }.page .moreMenu button { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 14PX 0; border-bottom: 1PX solid #e9eef5; text-align: left; font-size: 13PX; }
+.choices { display: grid; gap: 12PX; margin: 17PX 0; }.page .choice { display: flex; align-items: center; gap: 12PX; padding: 17PX; background: #fff; border: 1PX solid #edf1f6; border-radius: 15PX; text-align: left; }.choice > :nth-child(2) { flex: 1; }.choice strong { font-size: 14PX; }.choice taro-text-core { display: block; margin-top: 4PX; font-size: 11PX; color: #8290a4; }
+.page .photoRow { display: flex; flex-direction: column; gap: 6PX; width: 100%; padding: 15PX; margin-bottom: 10PX; background: #fff; border-radius: 15PX; text-align: left; font-size: 12PX; }.photoRow taro-text-core { color: #8290a4; font-size: 11PX; }
+@media (min-width: 501PX) { .dialog { margin-bottom: 28PX; border-radius: 24PX; } }
+@media (max-width: 360PX) { .masthead { padding-left: 18PX; padding-right: 18PX; }.content { padding-left: 14PX; padding-right: 14PX; }.flowHeading { gap: 6PX; }.flowHeading > :last-child { font-size: 9PX; }.sectionTitle { font-size: 15PX; }.flowActions { gap: 7PX; }.page .flowActions > :is(button, taro-button-core) { font-size: 12PX; } }

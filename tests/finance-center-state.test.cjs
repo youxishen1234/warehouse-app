@@ -84,7 +84,7 @@ function createHarness({ entryId, ledger, getLedger = async () => [] }) {
   const container = dom.window.document.getElementById('root');
   const root = ReactDOM.createRoot(container);
   const props = {
-    entryId, ledger, customers: [], suppliers: [], deliveryNotes: [], loading: false, loadError: '', onReload: noop
+    entryId, initialView: 'ledger', ledger, customers: [], suppliers: [], deliveryNotes: [], loading: false, loadError: '', onReload: noop
   };
   const render = async next => act(async () => { root.render(React.createElement(FinanceCenter, { ...props, ...next })); });
   const click = async selector => {

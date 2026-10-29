@@ -4,7 +4,7 @@ const test = require('node:test');
 
 test('product edits stay in the products page and do not restore the retired route', () => {
   const config = fs.readFileSync('src/app.config.ts', 'utf8');
-  const products = fs.readFileSync('src/pages/products/index.tsx', 'utf8');
+  const products = fs.readFileSync('src/components/BusinessForms/GoodsCatalog/index.tsx', 'utf8');
   assert.doesNotMatch(config, /pages\/product-edit\/index/);
   for (const file of ['index.tsx', 'index.module.scss', 'index.config.ts']) {
     assert.equal(fs.existsSync(`src/pages/product-edit/${file}`), false, 'legacy product page file is removed: ' + file);

@@ -39,7 +39,7 @@ async function main() {
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
 
-    await page.goto(origin + '/#/pages/label-print/index?kind=finished-product');
+    await page.goto(origin + '/#/pages/management/index?section=labels&kind=finished-product');
     await page.getByText('从库存选择', { exact: true }).click();
     await page.getByText('成品标签', { exact: true }).click();
     const productLink = page.getByText('前往商品管理', { exact: true });
@@ -47,19 +47,19 @@ async function main() {
     await expect(productLink).toBeVisible();
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'product empty state has no horizontal overflow');
     await productLink.click();
-    await page.waitForURL(/pages\/products\/index/);
+    await page.waitForURL(/pages\/management\/index\?section=goods/);
 
     await page.close();
     const boardPage = await context.newPage();
     boardPage.setDefaultTimeout(12000);
     boardPage.on('pageerror', error => errors.push(error.message));
-    await boardPage.goto(origin + '/#/pages/label-print/index?kind=paperboard-batch');
+    await boardPage.goto(origin + '/#/pages/management/index?section=labels&kind=paperboard-batch');
     await boardPage.getByText('从库存选择', { exact: true }).click();
     const boardLink = boardPage.getByText('新增纸板批次', { exact: true });
     await expect(boardPage.getByText('当前共享仓库还没有纸板批次记录。', { exact: true })).toBeVisible();
     await expect(boardLink).toBeVisible();
     await boardLink.click();
-    await boardPage.waitForURL(/pages\/board-receive\/index/);
+    await boardPage.waitForURL(/pages\/management\/index\?section=paperboard-receipt/);
     assert.deepEqual(errors, [], 'no runtime errors');
   } finally {
     await browser.close();

@@ -36,7 +36,7 @@ async function main() {
       return route.abort();
     });
 
-    await page.goto(`http://127.0.0.1:${server.address().port}/#/pages/carton-calculator/index`);
+    await page.goto(`http://127.0.0.1:${server.address().port}/#/pages/management/index?section=carton-dimensions`);
     await page.locator('.taro_page:visible').last().waitFor();
     const inputs = page.locator('input:visible');
     assert.equal(await inputs.count(), 4, 'length, width, height and thickness inputs render');

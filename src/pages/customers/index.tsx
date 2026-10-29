@@ -1,4 +1,4 @@
-import Workbench from '@/pages/business-center/workbench';
+import Workbench from '@/components/Workspace/workbench';
 
 const CustomersPage: React.FC = () => <Workbench />;
 

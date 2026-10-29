@@ -17,15 +17,20 @@ async function main() {
   const page = await browser.newPage({ viewport: { width: 1366, height: 900 } });
   page.setDefaultTimeout(12000);
   const errors = [];
+  const pendingRoutes = new Set();
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.origin === origin || ['data:', 'blob:'].includes(url.protocol)) return route.continue();
     if (!url.pathname.startsWith('/api/')) return route.abort();
-    const response = await route.fetch({ url: origin + url.pathname + url.search });
-    return route.fulfill({ response });
+    const pending = (async () => {
+      const response = await route.fetch({ url: origin + url.pathname + url.search });
+      await route.fulfill({ response });
+    })();
+    pendingRoutes.add(pending);
+    try { await pending; } finally { pendingRoutes.delete(pending); }
   });
-  const tab = index => page.locator(`.sg-glass-items button[data-tab="${index}"]`);
+  const tab = index => page.locator(`.sg-app-nav button[data-tab="${index}"]`);
   const current = route => page.waitForFunction(route => {
     const pages = [...document.querySelectorAll('.taro_page')].filter(el => getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().height > 0);
     return location.hash.split('?')[0] === '#' + route && pages.some(el => el.id.split('?')[0] === route);
@@ -36,48 +41,39 @@ async function main() {
       await tab(index).click();
       await current(route);
     }
-    assert.equal(await page.locator('.sg-glass-items').evaluate(el => getComputedStyle(el).maskImage), 'none');
-    for (const name of ['inventory', 'customers', 'orders', 'print-center']) {
-      await page.locator(`button[data-nav="/pages/${name}/index"]`).click();
-      if (name === 'customers') {
-        await current('customers');
-        await page.getByTestId('simple-workbench').last().waitFor();
-      } else await current(name);
-      await page.goto(origin);
-      await current('home');
+
+    for (const width of [320, 390, 736, 1366]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(origin + '/#/pages/home/index');
+      await page.getByTestId('simple-workbench').filter({ visible: true }).last().waitFor();
+      const bounds = await page.getByTestId('simple-workbench').filter({ visible: true }).last().boundingBox();
+      assert.ok(bounds.width > 0 && bounds.width <= Math.min(width, 430) + 1, 'centered demo shell has a usable width');
+      assert.ok(Math.abs(bounds.x - (width - bounds.width) / 2) <= 1, 'demo shell is centered');
+      const dock = await page.locator('.sg-app-nav').boundingBox();
+      assert.ok(dock.y + dock.height <= 901 && dock.width <= 431, 'five-item navigation remains in the viewport');
+      await page.getByTestId('workbench-actions').filter({ visible: true }).last().getByTestId('workbench-customer-management').click();
+      await current('customers');
+      await page.getByTestId('customer-center').waitFor();
+      await tab(0).click(); await current('home');
+      await page.getByTestId('workbench-actions').filter({ visible: true }).last().locator('taro-button-core').filter({ hasText: '收付款' }).click();
+      await page.getByTestId('finance-overview-view').waitFor();
+      await page.getByTestId('finance-tab-ledger').click();
+      await page.getByTestId('finance-ledger-view').waitFor();
+      await page.goto(origin + '/#/pages/management/index?section=finance');
+      await current('management');
+      await page.getByTestId('finance-center').waitFor();
+      assert.equal(await tab(0).getAttribute('aria-current'), 'page');
+      assert.equal(await page.locator('taro-tabbar').isVisible(), true);
+      await tab(0).click(); await current('home');
     }
-    await page.locator('button[data-nav]').filter({ hasText: '账单中心' }).click();
-    await current('business-center');
-    await page.getByTestId('finance-center').filter({ visible: true }).last().waitFor();
-    await page.getByTestId('finance-ledger-view').filter({ visible: true }).last().waitFor();
-    assert.equal(await page.locator('taro-tabbar').isVisible(), true, 'business center keeps the shared liquid dock');
-    assert.equal(await tab(0).getAttribute('aria-current'), 'page', 'business center selects the home tab');
-    assert.equal(await page.evaluate(() => document.documentElement.hasAttribute('data-tab-context')), true);
-    await tab(0).click();
-    await current('home');
-    // Finance opens directly inside the current business center.
-    await page.goto(origin + '/#/pages/business-center/index?section=finance');
-    await current('business-center');
-    await page.getByTestId('finance-center').filter({ visible: true }).last().waitFor();
-    await page.getByTestId('finance-ledger-view').filter({ visible: true }).last().waitFor();
-    // Resizing restores the mobile lens and preserves its drag-to-select behavior.
-    await page.goto(origin + '/#/pages/mine/index');
-    await current('mine');
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.waitForFunction(() => getComputedStyle(document.querySelector('.sg-glass-lens')).display !== 'none');
-    await tab(3).click();
-    await current('print-center');
-    const first = await tab(0).boundingBox(), last = await tab(4).boundingBox();
-    await page.mouse.move(first.x + first.width / 2, first.y + first.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(last.x + last.width / 2, last.y + last.height / 2, { steps: 12 });
-    assert.match(page.url(), /print-center/);
-    await page.mouse.up();
-    await current('mine');
+    await tab(0).focus();
+    await page.keyboard.press('End'); await current('mine');
+    await page.keyboard.press('Home'); await current('home');
     assert.deepEqual(errors, []);
   } finally {
     try {
       // Finish proxy fetches before disposing the context used by route.fetch.
+      while (pendingRoutes.size) await Promise.all([...pendingRoutes]);
       await page.unrouteAll({ behavior: 'wait' });
     } finally {
       await browser.close();

@@ -52,7 +52,7 @@ export function installTabNavigation(nav: Navigation): () => void {
     if (disposed) return;
     const modal = modalOpen();
     root.toggleAttribute('data-tab-modal', modal);
-    if (['/pages/home/index', '/pages/business-center/index', '/pages/customers/index', '/pages/suppliers/index', '/pages/inventory/index'].includes(route())) {
+    if (['/pages/home/index', '/pages/management/index', '/pages/customers/index', '/pages/inventory/index'].includes(route())) {
       root.setAttribute('data-workbench-shell', '');
     } else {
       root.removeAttribute('data-workbench-shell');

@@ -47,15 +47,15 @@ async function verify(browser, name) {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data }) });
   });
   await page.goto(origin);
-  await page.waitForSelector('.sg-glass-tab[data-tab]');
+  await page.waitForSelector('.sg-app-nav button[data-tab]');
   const workbench = page.locator('[data-testid="simple-workbench"]:visible').first();
   await workbench.locator('[data-testid="workbench-actions"] > taro-button-core').first().waitFor();
   assert.equal(await workbench.locator('[data-testid="workbench-actions"] > taro-button-core').count(), 4);
   const before = await page.locator('taro-tabbar').boundingBox();
   assert.ok(before.y > 700 && before.y + before.height <= 845, JSON.stringify(before));
-  assert.equal(await page.locator('.sg-glass-tab[data-tab]').count(), 5);
+  assert.equal(await page.locator('.sg-app-nav button[data-tab]').count(), 5);
   assert.equal(await page.locator('.sg-glass-search').count(), 0, 'no search button');
-  assert.deepEqual(await page.locator('.sg-glass-tab[data-tab] span').allTextContents(), ['总台', 'AI助手', '库存', '打印', '我的']);
+  assert.deepEqual(await page.locator('.sg-app-nav button[data-tab] span').allTextContents(), ['总台', 'AI助手', '库存', '打印', '我的']);
   assert.ok(Math.abs((await page.locator('.sg-glass-rail').boundingBox()).width - (await page.locator('.sg-glass-dock').boundingBox()).width) < 1, 'five tabs fill the dock with no search gap');
   assert.equal(await page.locator('.weui-tabbar').isVisible(), false, 'old rectangular dock is replaced');
   const colors = await page.evaluate(() => ({
@@ -66,7 +66,7 @@ async function verify(browser, name) {
   assert.notEqual(colors.normal, colors.selected, 'dock labels and selected labels use distinct colors');
   assert.ok(colors.glass && colors.glass !== 'rgba(0, 0, 0, 0)', 'dock keeps an opaque liquid backing');
   await page.screenshot({ path: 'release/glass-' + name + '-rest.png' });
-  await page.goto(origin + '/#/pages/business-center/index');
+  await page.goto(origin + '/#/pages/management/index');
   const businessWorkbench = page.locator('[data-testid="simple-workbench"][data-tab-route="/pages/home/index"]:visible').first();
   await businessWorkbench.locator('[data-testid="workbench-actions"] > taro-button-core').first().waitFor();
   const businessState = await page.evaluate(() => ({
@@ -82,16 +82,16 @@ async function verify(browser, name) {
     }))
   }));
   assert.equal(businessState.context, true, 'business center restores the main-tab context: ' + JSON.stringify(businessState));
-  assert.equal(await page.locator('.sg-glass-tab[data-tab="0"]').getAttribute('aria-current'), 'page', 'business center belongs to the home tab');
+  assert.equal(await page.locator('.sg-app-nav button[data-tab="0"]').getAttribute('aria-current'), 'page', 'business center belongs to the home tab');
   assert.equal(await page.locator('taro-tabbar').isVisible(), true, 'business center keeps the shared liquid dock');
   assert.notEqual(await swipe(page, 110), 'none', 'business-center page swipe back to home follows the finger');
   await page.waitForURL(/home/);
-  await page.goto(origin + '/#/pages/business-center/index');
+  await page.goto(origin + '/#/pages/management/index');
   await businessWorkbench.locator('[data-testid="workbench-actions"] > taro-button-core').first().waitFor();
   assert.notEqual(await swipe(page, -110), 'none', 'business-center page swipe follows the finger');
   await page.waitForURL(/ai-assistant/);
   await page.waitForTimeout(500);
-  await page.locator('.sg-glass-tab[data-tab="0"]').click();
+  await page.locator('.sg-app-nav button[data-tab="0"]').click();
   await page.waitForURL(/home/);
   await page.waitForTimeout(500);
   const restingLens = await page.locator('.sg-glass-lens').boundingBox();
@@ -102,8 +102,8 @@ async function verify(browser, name) {
     assert.ok(Math.abs(lens.height - restingLens.height) < .1, 'drag does not inflate the capsule');
     assert.ok(lens.y >= railBounds.y + 3.9 && lens.y + lens.height <= railBounds.y + railBounds.height - 3.9, 'capsule never protrudes');
   }
-  const first = await page.locator('.sg-glass-tab[data-tab="0"]').boundingBox();
-  const last = await page.locator('.sg-glass-tab[data-tab="4"]').boundingBox();
+  const first = await page.locator('.sg-app-nav button[data-tab="0"]').boundingBox();
+  const last = await page.locator('.sg-app-nav button[data-tab="4"]').boundingBox();
   await page.mouse.move(first.x + first.width / 2, first.y + first.height / 2);
   await page.mouse.down();
   await assertStableLens();
@@ -116,13 +116,13 @@ async function verify(browser, name) {
   assert.equal(await page.locator('.sg-glass-lens-ink').evaluate(el => getComputedStyle(el).filter), 'none', 'icons are not distorted');
   assert.match(page.url(), /home/, 'drag previews without navigating until release');
   await page.screenshot({ path: 'release/glass-' + name + '-drag.png' });
-  await page.locator('.sg-glass-tab[data-tab="2"] span').waitFor();
+  await page.locator('.sg-app-nav button[data-tab="2"] span').waitFor();
   await page.mouse.move(last.x + last.width / 2, last.y + last.height / 2, { steps: 12 });
   await assertStableLens();
   await page.mouse.up();
   await page.waitForURL(/mine/);
   await page.waitForFunction(() => document.querySelector('[data-tab="4"]').getAttribute('aria-current') === 'page');
-  await page.locator('.sg-glass-tab[data-tab="0"]').click();
+  await page.locator('.sg-app-nav button[data-tab="0"]').click();
   await page.waitForURL(/home/);
   await page.waitForTimeout(400);
   if (name === 'chromium') {
@@ -134,7 +134,7 @@ async function verify(browser, name) {
     assert.match(page.url(), /home/);
     await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await page.waitForURL(/print-center/);
-    await page.locator('.sg-glass-tab[data-tab="0"]').click();
+    await page.locator('.sg-app-nav button[data-tab="0"]').click();
     await page.waitForURL(/home/);
     await touch.detach();
     await page.waitForTimeout(400);
@@ -177,7 +177,7 @@ async function verify(browser, name) {
   await page.waitForTimeout(500);
   await page.locator('.taro_page:visible').last().getByTestId('simple-workbench').waitFor();
   await page.setViewportSize({ width: 320, height: 740 });
-  const stockLabel = page.locator('.sg-glass-tab[data-tab="2"] span');
+  const stockLabel = page.locator('.sg-app-nav button[data-tab="2"] span');
   assert.equal(await stockLabel.innerText(), '库存');
   assert.ok(await stockLabel.evaluate(el => el.scrollWidth <= el.clientWidth && el.getBoundingClientRect().height < 20), 'stock label fits on one line at 320px');
   await page.screenshot({ path: 'release/board-dock-' + name + '-320.png' });

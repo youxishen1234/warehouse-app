@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const test = require('node:test');
 
 test('orders page memoizes rows and keeps status handler stable', () => {
-  const source = fs.readFileSync('src/pages/orders/index.tsx', 'utf8');
+  const source = fs.readFileSync('src/components/BusinessForms/Orders/index.tsx', 'utf8');
   assert.match(source, /const OrderListRow = React\.memo\(function OrderListRow/);
   assert.match(source, /const changeStatus = useCallback\(/);
   assert.match(source, /list\.map\(order => <OrderListRow/);

@@ -111,7 +111,7 @@ async function fixture(browser, origin, scenario, options = {}) {
   const feedback = page.locator('.label-printer-feedback');
   const modal = page.locator('.taro-modal__content:visible');
   const open = async () => {
-    await page.goto(origin + '/#/pages/label-print/index');
+    await page.goto(origin + '/#/pages/management/index?section=labels');
     await page.locator('taro-button-core').filter({ hasText: /^切换手机蓝牙打印$/ }).click();
     const settings = page.locator('taro-button-core').filter({ hasText: /^打印机设置$/ });
     await expectEnabled(settings);

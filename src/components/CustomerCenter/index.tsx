@@ -1,14 +1,14 @@
 import { useMemo, useState } from 'react';
 import { Button, Input, Text, View } from '@tarojs/components';
+import Taro from '@tarojs/taro';
 import type { Customer } from '@/types';
 import type { DimensionCustomer } from '@/services/customer-dimensions';
 import { session } from '@/services/session';
-import { PartySearchPanel } from '@/components/PartySearchPanel';
 import QuoteEditor from './QuoteEditor';
 import {
   buildCustomerManagementRows, customerSpecMissingFields, formatCustomerUnitPrice, MAX_VISIBLE_CUSTOMER_SPECS, specificationSearchText
 } from './model';
-import type { CustomerManagementRow, CustomerSpecView } from './model';
+import type { CustomerSpecView } from './model';
 import styles from './index.module.scss';
 
 type Props = {
@@ -17,11 +17,11 @@ type Props = {
   inactiveCustomerNames: string[];
   onEditParty: (type: 'customer', id?: number, initialName?: string) => void;
   onViewBills: (id: number) => void;
-  onOpenOrders: () => void;
+  onOpenOrders: (customerId?: number) => void;
   onSpecsSaved: () => void | Promise<void>;
 };
 
-type Filter = 'all' | 'account' | 'draft';
+type Filter = 'all' | 'pinned' | 'debt';
 
 function CustomerSpecs({ customer, specs, expanded, onToggle, editable, onAdd, onEdit }: {
   customer: string;
@@ -65,74 +65,20 @@ function CustomerSpecs({ customer, specs, expanded, onToggle, editable, onAdd, o
   </View>;
 }
 
-function CustomerCard({ row, expanded, onToggle, onEditParty, onViewBills, canEditSpecs, onAddSpec, onEditSpec }: {
-  row: CustomerManagementRow;
-  expanded: boolean;
-  onToggle: () => void;
-  onEditParty: Props['onEditParty'];
-  onViewBills: Props['onViewBills'];
-  canEditSpecs: boolean;
-  onAddSpec: (customer: Customer) => void;
-  onEditSpec: (customer: Customer, spec: CustomerSpecView) => void;
-}) {
-  const account = row.account;
-  if (!account) return <View className={styles.card} data-testid={`customer-specs-only-${row.key}`} key={row.key}>
-    <View className={styles.cardHeading}>
-      <View className={styles.customerIdentity}>
-        <Text className={styles.customerName}>{row.name}</Text>
-        <Text className={styles.draftStatus}>待建立客户资料 · 尺寸本客户</Text>
-      </View>
-      <Button
-        className={styles.primaryAction}
-        aria-label={`建立客户资料 ${row.name}`}
-        data-testid={`customer-create-from-dimension-${row.key}`}
-        onClick={() => onEditParty('customer', undefined, row.name)}
-      >建立资料</Button>
-    </View>
-    <CustomerSpecs customer={row.key} specs={row.specs} expanded={expanded} onToggle={onToggle} />
-  </View>;
-
-  return <View className={styles.card} data-testid={`customer-management-card-${account.id}`}>
-    <View className={styles.cardHeading}>
-      <View className={styles.customerIdentity}>
-        <Text className={styles.customerName}>{account.name}</Text>
-        <Text className={styles.accountStatus}>客户资料已建立</Text>
-      </View>
-      <View className={styles.cardActions}>
-        <Button
-          className={styles.secondaryAction}
-          aria-label={`编辑客户 ${account.name}`}
-          data-testid={`customer-edit-${account.id}`}
-          onClick={() => onEditParty('customer', account.id)}
-        >编辑客户</Button>
-        <Button
-          className={styles.primaryAction}
-          aria-label={`查看客户账单 ${account.name}`}
-          data-testid={`customer-view-bills-${account.id}`}
-          onClick={() => onViewBills(account.id)}
-        >查看账单</Button>
-      </View>
-    </View>
-    <View className={styles.contactLine}>
-      <Text>联系人：{account.contact || '未记录'}</Text>
-      <Text>电话：{account.phone || '未记录'}</Text>
-      <Text>地址：{account.address || '未记录'}</Text>
-    </View>
-    {(!account.contact || !account.phone || !account.address) && <Text className={styles.incomplete}>资料不完整 · 缺少{[!account.contact ? '联系人' : '', !account.phone ? '电话' : '', !account.address ? '地址' : ''].filter(Boolean).join('、')}，可编辑补充</Text>}
-    {account.remark && <Text className={styles.remark}>{account.remark}</Text>}
-    <CustomerSpecs customer={String(account.id)} specs={row.specs} expanded={expanded} onToggle={onToggle}
-      editable={canEditSpecs} onAdd={() => onAddSpec(account)} onEdit={spec => onEditSpec(account, spec)} />
-  </View>;
-}
-
 export default function CustomerCenter({
   customers, dimensionCustomers, inactiveCustomerNames, onEditParty, onViewBills, onOpenOrders, onSpecsSaved
 }: Props) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [expandedSpecs, setExpandedSpecs] = useState<Record<string, boolean>>({});
   const [editingSpec, setEditingSpec] = useState<{ customer: Customer; seed?: CustomerSpecView } | null>(null);
+  const [selectedKey, setSelectedKey] = useState('');
+  const [detailTab, setDetailTab] = useState<'goods' | 'info'>('goods');
+  const [expandedSpecs, setExpandedSpecs] = useState(false);
+  const [recentIds] = useState<number[]>(() => {
+    const saved = Taro.getStorageSync('party-search-recent-customer');
+    return Array.isArray(saved) ? saved : [];
+  });
   const [canEditSpecs] = useState(() => {
     const current = session();
     return !!current && current.user.role !== 'viewer' && !current.user.disabled;
@@ -141,19 +87,34 @@ export default function CustomerCenter({
     () => buildCustomerManagementRows(customers, dimensionCustomers, inactiveCustomerNames),
     [customers, dimensionCustomers, inactiveCustomerNames]
   );
-  const accountCount = useMemo(() => rows.filter(row => row.account).length, [rows]);
-  const draftCount = useMemo(() => rows.filter(row => !row.account).length, [rows]);
   const visibleRows = useMemo(() => {
     const normalizedQuery = specificationSearchText(query);
     return rows.filter(row =>
       (!selectedId || row.account?.id === selectedId) &&
-      (filter === 'all' || (filter === 'account' ? Boolean(row.account) : !row.account)) &&
+      (filter === 'all' || (filter === 'pinned' ? recentIds.includes(row.account?.id || 0) : Number(row.account?.debt || 0) > 0)) &&
       (!normalizedQuery || row.searchText.includes(normalizedQuery))
     );
-  }, [filter, query, rows, selectedId]);
-  const toggleSpecs = (key: string) => setExpandedSpecs(current => ({ ...current, [key]: !current[key] }));
+  }, [filter, query, rows, selectedId, recentIds]);
+
+  const selected = rows.find(row => row.key === selectedKey);
+  const quoteEditor = editingSpec && <QuoteEditor customer={editingSpec.customer} seed={editingSpec.seed}
+    onClose={() => setEditingSpec(null)} onSaved={async () => { setEditingSpec(null); await onSpecsSaved(); }} />;
+  if (selected) return <View className={styles.customerCenter} data-testid='customer-center'>
+    <Button className={styles.detailBack} onClick={() => setSelectedKey('')}>‹ 全部客户</Button>
+    <View className={styles.detailHero}><View><strong>{selected.name}</strong><Button data-testid={selected.account ? `customer-edit-${selected.account.id}` : `customer-create-from-dimension-${selected.key}`} onClick={() => onEditParty('customer', selected.account?.id, selected.name)}>{selected.account ? '编辑资料' : '建立客户资料'}</Button></View>
+      <Text>{[selected.account?.contact, selected.account?.phone].filter(Boolean).join(' · ')}</Text><Text>当前待收款</Text><strong>{formatCustomerUnitPrice(Number(selected.account?.debt || 0))}</strong></View>
+    <View className={styles.detailTabs}><Button aria-pressed={detailTab === 'goods'} onClick={() => setDetailTab('goods')}>常用货物</Button><Button onClick={() => selected.account ? onViewBills(selected.account.id) : onEditParty('customer', undefined, selected.name)}>往来账单</Button><Button aria-pressed={detailTab === 'info'} onClick={() => setDetailTab('info')}>客户资料</Button></View>
+    {detailTab === 'goods' ? <CustomerSpecs customer={selected.account ? String(selected.account.id) : selected.key} specs={selected.specs} expanded={expandedSpecs} onToggle={() => setExpandedSpecs(value => !value)}
+      editable={canEditSpecs && Boolean(selected.account)} onAdd={() => selected.account && setEditingSpec({ customer: selected.account })}
+      onEdit={spec => selected.account && setEditingSpec({ customer: selected.account, seed: spec })} /> : <View className={styles.detailInfo}>
+      {([['客户名称', selected.name], ['联系人', selected.account?.contact], ['联系电话', selected.account?.phone], ['地址', selected.account?.address], ['备注', selected.account?.remark]]).map(([label, value]) => <View key={label}><Text>{label}</Text><Text>{value || '—'}</Text></View>)}
+    </View>}
+    <View className={styles.detailActions}><Button className={styles.secondaryAction} disabled={!selected.account} onClick={() => selected.account && onViewBills(selected.account.id)}>登记收款</Button><Button className={styles.primaryAction} data-testid='customer-center-orders' onClick={() => onOpenOrders(selected.account?.id)}>＋ 给客户开单</Button></View>
+    {quoteEditor}
+  </View>;
 
   return <View className={styles.customerCenter} data-testid='customer-center'>
+    <View className={styles.summary}><View className={styles.summaryItem}><Text>全部客户</Text><strong>{rows.length}</strong></View><View className={styles.summaryItem}><Text>待收款客户</Text><strong>{rows.filter(row => Number(row.account?.debt || 0) > 0).length}</strong></View><View className={styles.summaryItem}><Text>待收合计</Text><strong>{formatCustomerUnitPrice(rows.reduce((sum, row) => sum + Number(row.account?.debt || 0), 0))}</strong></View></View>
     <Input
       className={styles.search}
       data-testid='customer-center-search'
@@ -165,39 +126,26 @@ export default function CustomerCenter({
     <View className={styles.filters} aria-label='客户筛选'>
       {([
         ['all', '全部客户'],
-        ['account', '客户档案'],
-        ['draft', '待建档']
+        ['pinned', '常用客户'],
+        ['debt', '有待收款']
       ] as const).map(([key, text]) => <Button key={key} aria-pressed={filter === key}
         className={filter === key ? styles.filterActive : styles.filter} data-testid={`customer-filter-${key}`}
-        onClick={() => { setFilter(key); setSelectedId(null); }}>{text}{key === 'draft' ? ` ${draftCount}` : key === 'account' ? ` ${accountCount}` : ` ${rows.length}`}</Button>)}
+        onClick={() => { setFilter(key); setSelectedId(null); }}>{text}</Button>)}
     </View>
     <View className={styles.toolbar}>
       <Button className={styles.primaryAction} data-testid='customer-center-add' onClick={() => onEditParty('customer')}>＋ 新增客户</Button>
-      <Button className={styles.ordersAction} data-testid='customer-center-orders' onClick={onOpenOrders}>客户订单</Button>
     </View>
-    <PartySearchPanel partyType='customer' parties={customers} selectedId={selectedId} onSelect={party => { setSelectedId(party?.id || null); setQuery(''); setFilter('all'); }} />
     <View className={styles.list} aria-live='polite'>
       {visibleRows.map(row => {
-        const specKey = row.account ? String(row.account.id) : row.key;
-        return <CustomerCard
-          key={row.key}
-          row={row}
-          expanded={Boolean(expandedSpecs[specKey])}
-          onToggle={() => toggleSpecs(specKey)}
-          onEditParty={onEditParty}
-          onViewBills={onViewBills}
-          canEditSpecs={canEditSpecs}
-          onAddSpec={customer => setEditingSpec({ customer })}
-          onEditSpec={(customer, seed) => setEditingSpec({ customer, seed })}
-        />;
+        return <Button className={styles.listCard} key={row.key} data-testid={row.account ? `customer-management-card-${row.account.id}` : `customer-specs-only-${row.key}`} onClick={() => { setSelectedKey(row.key); setDetailTab('goods'); setExpandedSpecs(false); }}>
+          <View className={styles.listCardTop}><View className={styles.partyAvatar}>{Array.from(row.name)[0]}</View><View className={styles.listCardIdentity}><strong>{row.name}</strong><Text>{[row.account?.contact, row.account?.phone].filter(Boolean).join(' · ')}</Text></View><Text className={styles.listChevron}>›</Text></View>
+          <View className={styles.listCardFoot}><Text>常用货物 {row.specs.length} 种</Text><Text>{Number(row.account?.debt || 0) > 0 ? `待收 ${formatCustomerUnitPrice(Number(row.account?.debt))}` : row.account ? '账款已结清' : '待建立客户资料'}</Text></View>
+        </Button>;
       })}
       {!visibleRows.length && <View className={styles.empty} data-testid='customer-center-empty'>
-        <Text>{query ? '没有找到匹配客户或规格' : filter === 'draft' ? '没有待建档客户' : '还没有客户资料'}</Text>
-        {filter === 'all' && <Text>新增客户后，可在客户资料中查看联系方式和规格。</Text>}
+        <Text>{query || filter !== 'all' ? '暂无匹配客户' : '暂无客户资料'}</Text>
       </View>}
     </View>
-    {editingSpec && <QuoteEditor customer={editingSpec.customer} seed={editingSpec.seed}
-      onClose={() => setEditingSpec(null)}
-      onSaved={async () => { setEditingSpec(null); await onSpecsSaved(); }} />}
+    {quoteEditor}
   </View>;
 }

@@ -32,19 +32,19 @@ async function main() {
     await active().getByTestId('workbench-board').first().waitFor();
     await search.fill('外箱正面版'); await active().getByTestId('workbench-board').first().waitFor();
     await search.fill('颜色肯定不存在'); await active().getByTestId('workbench-board').waitFor({ state: 'hidden' });
-    await search.fill(''); await active().getByTestId('workbench-board').filter({ hasText: batch.id }).getByText('查看 / 同规格入库', { exact: true }).click();
+    await search.fill(''); await active().locator(`[data-testid="workbench-board"][data-record-id="${batch.id}"]`).click();
     await active().getByText('打印批次标签', { exact: true }).click();
-    await page.waitForURL(/pages\/label-print\/index/);
+    await page.waitForURL(/pages\/management\/index\?section=labels/);
     const route = new URL(page.url()).hash;
     const params = new URLSearchParams(route.slice(route.indexOf('?') + 1));
     assert.equal(params.get('kind'), 'paperboard-batch'); assert.equal(params.get('id'), batch.id);
     await active().getByText('电脑 USB 打印 K3', { exact: true }).waitFor();
-    await page.goto(base + '/pages/board-detail/index?id=' + encodeURIComponent(batch.id));
+    await page.goto(base + '/pages/management/index?section=paperboard-batch&id=' + encodeURIComponent(batch.id));
     for (const [label, value] of [['客户', '客户搜索样例'], ['材质/配纸', '牛卡 / 高瓦'], ['印刷版名', '外箱正面版'], ['颜色', '红 / 黑']]) {
       await active().locator('.board-detail-row').filter({ hasText: label }).getByText(value, { exact: true }).waitFor();
     }
     await active().getByText('打印批次标签', { exact: true }).click();
-    await page.waitForURL(/pages\/label-print\/index/);
+    await page.waitForURL(/pages\/management\/index\?section=labels/);
     const detailParams = new URLSearchParams(new URL(page.url()).hash.split('?')[1]);
     assert.equal(detailParams.get('kind'), 'paperboard-batch'); assert.equal(detailParams.get('id'), batch.id);
     console.log('PASS: customer/material/plate/color search, batch detail fields, stock and detail print routes, USB is default transport');

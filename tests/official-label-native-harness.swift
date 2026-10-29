@@ -4,11 +4,11 @@ func check(_ condition: @autoclosure () -> Bool, _ message: String) {
     precondition(condition(), message)
 }
 
-let valid = URL(string: "https://youxishen.online/#/pages/label-resolver/index?v=1&kind=finished-product&id=7")!
+let valid = URL(string: "https://youxishen.online/#/pages/management/index?section=label-lookup&v=1&kind=finished-product&id=7")!
 check(valid.scheme == "https" && valid.host == "youxishen.online", "canonical host")
 check(valid.path == "/", "root path")
 let fragment = valid.fragment ?? ""
-check(fragment.hasPrefix("/pages/label-resolver/index?"), "resolver fragment")
+check(fragment.hasPrefix("/pages/management/index?section=label-lookup&"), "resolver fragment")
 let query = String(fragment.split(separator: "?", maxSplits: 1)[1])
 let items = query.split(separator: "&").map { $0.split(separator: "=", maxSplits: 1) }
 check(items.count == 3 && items.allSatisfy { $0.count == 2 }, "exact query fields")

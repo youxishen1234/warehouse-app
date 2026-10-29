@@ -48,7 +48,7 @@ async function main() {
     const response = await fetchWithRetry(origin + route, { method: 'HEAD', cache: 'no-store' });
     assert.equal(response.status, 404, route + ' must not fall back to old shared assets');
   }
-  for (const route of ['/embed/', '/embed/pages/label-print/index', '/pages/label-print/index']) {
+  for (const route of ['/embed/', '/embed/pages/management/index?section=labels', '/pages/management/index?section=labels']) {
     const response = await fetchWithRetry(origin + route, { method: 'HEAD', cache: 'no-store' });
     assert.equal(response.status, 200, route);
     const policy = response.headers.get('content-security-policy') || '';
@@ -67,9 +67,18 @@ async function main() {
     const writes = [], errors = [];
     await context.route('**/api/**', route => {
       const request = route.request();
-      if (['GET', 'HEAD', 'OPTIONS'].includes(request.method()) || new URL(request.url()).pathname === '/api/auth/guest') return route.continue();
-      writes.push(request.method() + ' ' + new URL(request.url()).pathname);
-      return route.abort();
+      const pathname = new URL(request.url()).pathname;
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method()) && pathname !== '/api/auth/guest') {
+        writes.push(request.method() + ' ' + pathname);
+        return route.abort();
+      }
+      let data = [];
+      if (pathname.endsWith('/auth/guest')) data = { token: 'published-ui-check', user: { id: 1, username: '界面验证', role: 'viewer' } };
+      if (pathname.endsWith('/sync')) data = { revision: 1 };
+      if (pathname.endsWith('/stats')) data = { todayIn: 0, todayOut: 0, totalProducts: 0, totalStock: 0, lowStock: 0, totalValue: 0 };
+      if (pathname.endsWith('/print-notes')) data = { items: [], total: 0, page: 1, page_size: 30 };
+      if (pathname.includes('dimensions')) data = { schemaVersion: 1, revision: 0, customers: [], inactiveCustomerNames: [], theme: {} };
+      return route.fulfill({ status: request.method() === 'OPTIONS' ? 204 : 200, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET,POST,OPTIONS' }, contentType: 'application/json', body: JSON.stringify({ success: true, data }) });
     });
     await context.addInitScript(() => localStorage.setItem('sg_getting_started_seen_v1', JSON.stringify({ data: true })));
     const page = await context.newPage();
@@ -77,16 +86,19 @@ async function main() {
     await page.goto(origin + '/mobile.html');
     const frame = page.frameLocator('#mobile-app');
     await expect(frame.getByTestId('workbench-business-flow')).toBeVisible({ timeout: 30000 });
-    await expect(frame.getByTestId('workbench-sync-status')).toContainText('服务器数据已读取', { timeout: 30000 });
-    await frame.locator('.sg-glass-items [data-tab="2"]').click();
+    await frame.locator('.sg-app-nav [data-tab="2"]').click();
     await expect(frame.locator('[data-testid="simple-workbench"][data-panel="stock"]')).toBeVisible();
-    await frame.locator('.sg-glass-items [data-tab="3"]').click();
-    await expect(frame.getByRole('button', { name: '从出库单自动开单', exact: true })).toBeVisible();
-    await expect(frame.getByText('手动填写送货单', { exact: true })).toBeVisible();
-    await expect(frame.getByRole('heading', { name: '我的单据', exact: true })).toBeVisible();
+    await frame.locator('.sg-app-nav [data-tab="3"]').click();
+    await expect(frame.getByRole('button', { name: '选择出库单', exact: true })).toBeVisible();
+    await expect(frame.getByRole('button', { name: '新建送货单', exact: true })).toBeVisible();
+    await expect(frame.getByRole('heading', { name: '最近单据', exact: true })).toBeVisible();
+    await frame.getByRole('button', { name: '对账单', exact: true }).click();
+    await expect(frame.getByLabel('选择对账单位')).toBeVisible();
+    await frame.locator('.sg-app-nav [data-tab="4"]').click();
+    await expect(frame.getByText('我的工作空间', { exact: true })).toBeVisible();
     assert.deepEqual(writes, [], 'Online verification must never change business data');
     assert.deepEqual(errors, []);
-    console.log('PASS: published source revision, public framing headers, mobile homepage, live data, inventory and automatic/manual printing');
+    console.log('PASS: published source revision, public framing headers, homepage, inventory, print modes and Mine UI');
   } finally {
     await browser.close();
   }

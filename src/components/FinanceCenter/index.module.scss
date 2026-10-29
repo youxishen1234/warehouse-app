@@ -14,9 +14,12 @@
   :is(button, taro-button-core):focus-visible { outline: 2PX solid #1677ff; outline-offset: 2PX; }
 }
 
-.tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6PX; padding: 5PX; margin-bottom: 18PX; border: 1PX solid #e2e8f0; border-radius: 8PX; background: #fff; }
-.finance .tab { min-height: 42PX; padding: 7PX 4PX; border: 1PX solid transparent; border-radius: 6PX; background: transparent; color: #475569; font-size: 13PX; text-align: center; overflow-wrap: anywhere; }
-.finance .tabActive { background: #1677ff; color: #fff; border-color: #1677ff; font-weight: 600; }
+.tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6PX; padding: 0; margin: 15PX 0; border: 0; background: transparent; }
+.finance .tab { min-height: 32PX; padding: 7PX 4PX; border: 1PX solid #e7edf5; border-radius: 9PX; background: #fff; color: #8290a4; font-size: 11PX; text-align: center; overflow-wrap: anywhere; }
+.finance .tabActive { background: #eaf1ff; color: #2469ee; border-color: #dce7fc; font-weight: 600; }
+.overviewTotals { display: flex; justify-content: space-between; gap: 12PX; padding: 18PX; margin-bottom: 16PX; border: 1PX solid #edf1f6; border-radius: 17PX; background: #fff; }.overviewTotals > :last-child { text-align: right; }.overviewTotals taro-text-core { display: block; color: #8290a4; font-size: 11PX; }.overviewTotals strong { display: block; margin-top: 6PX; color: #2469ee; font-size: 22PX; font-weight: 650; }.overviewTotals > :last-child strong { color: #b38135; font-size: 18PX; }
+.overviewCard { padding: 16PX; margin-bottom: 11PX; border: 1PX solid #edf1f6; border-radius: 16PX; background: #fff; }.overviewRow { display: flex; align-items: center; gap: 10PX; }.overviewAvatar { display: grid; place-items: center; width: 34PX; height: 34PX; border-radius: 11PX; background: #eef3fc; color: #6682ac; font-size: 12PX; flex-shrink: 0; }.overviewIdentity { flex: 1; min-width: 0; }.overviewIdentity strong { display: block; font-size: 14PX; font-weight: 650; }.overviewIdentity taro-text-core { display: block; margin-top: 4PX; color: #96a3b6; font-size: 10PX; }.overviewAmount { flex-shrink: 0; font-size: 16PX; font-weight: 650; }
+.overviewFoot { display: flex; align-items: center; justify-content: space-between; gap: 10PX; margin-top: 13PX; padding-top: 12PX; border-top: 1PX solid #f0f3f8; }.finance .overviewDetail { padding: 7PX 0; background: transparent; color: #8290a4; font-size: 10PX; border: 0; }.finance .overviewSettle { min-height: 36PX; padding: 8PX 13PX; border: 1PX solid #dae7ff; border-radius: 8PX; background: #eef4ff; color: #2469ee; font-size: 11PX; font-weight: 600; }
 
 .toolbar, .periodTabs, .headingActions, .partyToolbar { display: flex; align-items: center; gap: 7PX; min-width: 0; }
 .toolbar { justify-content: space-between; flex-wrap: wrap; margin-bottom: 12PX; }

@@ -97,9 +97,7 @@ async function main() {
     await page.goto(origin + '/#/pages/home/index');
     const flow = page.getByTestId('workbench-factory-flow');
     await expect(flow).toHaveCount(0);
-    await page.getByText('查看流程', { exact: true }).click();
-    await expect(flow).toBeVisible();
-    await page.getByTestId('workbench-customer-orders').click();
+    await page.getByText('全部订单', { exact: true }).click();
     await expect(page.getByTestId('order-stock-flow')).toBeVisible();
     await expect(page.getByText(/不重复生产入库/)).toBeVisible();
     await page.getByText('＋新增订单', { exact: true }).click();
@@ -127,7 +125,7 @@ async function main() {
 
     const orderCard = page.locator('[class*="item___"]:visible').filter({ has: page.getByText('FLOW-ORDER-01 · 流程测试客户', { exact: true }) });
     await orderCard.getByText('出库', { exact: true }).click();
-    await expect(page).toHaveURL(/pages\/outbound\/index/);
+    await expect(page).toHaveURL(/pages\/management\/index\?section=shipment/);
     await expect(page.getByLabel('客户 / 订单')).toContainText('FLOW-ORDER-01');
     await expect(page.getByLabel('出库数量').locator('input')).toHaveValue('5');
     await expect(page.getByText(/可选待发货订单/)).toBeVisible();

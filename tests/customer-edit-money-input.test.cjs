@@ -20,6 +20,6 @@ test('balance input keeps two decimals and rejects sign, exponent and over-limit
 });
 
 test('customer edit binds the balance input to the shared non-negative money sanitizer', () => {
-  const page = fs.readFileSync('src/pages/customer-edit/index.tsx', 'utf8');
+  const page = fs.readFileSync('src/components/BusinessForms/PartyDetails/index.tsx', 'utf8');
   assert.match(page, /sanitizeNonNegativeMoneyInput\(e\.detail\.value\)/);
 });

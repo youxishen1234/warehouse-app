@@ -271,7 +271,7 @@ async function main() {
       return geometry;
     };
 
-    await page.goto(`${origin}/#/pages/label-print/index`);
+    await page.goto(`${origin}/#/pages/management/index?section=labels`);
     await expect(manualMode).toHaveClass(/tabActive/, 'manual entry is the default before pairing');
     await fillRequired();
     await expect(field('纸板高（cm）*')).toHaveValue('60');
@@ -287,7 +287,7 @@ async function main() {
     await scrollPageTop();
 
     // Re-enter with pairing after the preview-only draft and verify the paired flow starts clean.
-    await page.goto(`${origin}/#/pages/label-print/index?print_pair=${token}`);
+    await page.goto(`${origin}/#/pages/management/index?section=labels&print_pair=${token}`);
     await expect(manualMode).toHaveClass(/tabActive/, 'manual entry is the default');
     await expect(page.getByText(`在线 · ${printerName}`, { exact: true })).toBeVisible();
     assert.ok(!page.url().includes(token), 'pair token is removed from the page URL');

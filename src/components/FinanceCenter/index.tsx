@@ -28,7 +28,7 @@ import styles from './index.module.scss';
 import Statement from './statement';
 import type { StatementData } from './statement';
 
-export type FinanceView = 'ledger' | 'customer' | 'supplier';
+export type FinanceView = 'overview' | 'ledger' | 'customer' | 'supplier';
 type PartyType = 'customer' | 'supplier';
 type FinanceCenterProps = {
   initialView?: FinanceView;
@@ -116,10 +116,11 @@ const LedgerListRow = React.memo(function LedgerListRow({ entry, onOpen }: Ledge
 });
 
 export default function FinanceCenter({
-  initialView = 'ledger', partyType, partyId, entryId, ledger, customers, suppliers, dimensionCustomers = [], inactiveCustomerNames = [], deliveryNotes,
+  initialView = 'overview', partyType, partyId, entryId, ledger, customers, suppliers, dimensionCustomers = [], inactiveCustomerNames = [], deliveryNotes,
   loading, loadError, onReload, onViewChange, onEditParty
 }: FinanceCenterProps) {
   const [view, setView] = useState<FinanceView>(initialView);
+  const [partyDetailsOpen, setPartyDetailsOpen] = useState(Boolean(partyId));
   const [type, setType] = useState<LedgerType | ''>('');
   const [keyword, setKeyword] = useState('');
   const [range, setRange] = useState(() => monthRange());
@@ -218,7 +219,7 @@ export default function FinanceCenter({
   const supplierRows = useMemo(() => suppliers.filter(party => !party.deleted_at && (!selectedId || selectedType !== 'supplier' || party.id === selectedId) &&
     (!partySearch.trim() || `${party.name} ${party.contact || ''} ${party.phone || ''}`.toLowerCase().includes(partySearch.trim().toLowerCase()))), [partySearch, selectedId, selectedType, suppliers]);
 
-  const changeView = (next: FinanceView) => { setView(next); openEntry(null); setPartySearch(''); };
+  const changeView = (next: FinanceView) => { setView(next); setPartyDetailsOpen(false); openEntry(null); setPartySearch(''); };
   const choosePeriod = (value: string) => {
     setPeriod(value);
     setRange(value === '全部时间' ? { from: '', to: '' } : monthRange(value === '上月' ? -1 : 0));
@@ -308,16 +309,32 @@ export default function FinanceCenter({
   };
 
   const tabLabels: { id: FinanceView; label: string }[] = [
-    { id: 'ledger', label: '账单流水' },
-    { id: 'customer', label: '客户账单' },
-    { id: 'supplier', label: '供货商账单' }
+    { id: 'overview', label: '全部往来' },
+    { id: 'customer', label: '待收款' },
+    { id: 'supplier', label: '待付款' },
+    { id: 'ledger', label: '收支流水' }
   ];
   const partyTitle = view === 'supplier' ? '供货商账单' : '客户账单';
+  const parties = [
+    ...(view === 'supplier' ? [] : customerRows.flatMap(row => row.account && Number(row.account.debt || 0) > 0 ? [{ type: 'customer' as const, id: row.account.id, name: row.name, balance: Number(row.account.debt) }] : [])),
+    ...(view === 'customer' ? [] : supplierRows.filter(row => Number(row.payable || 0) > 0).map(row => ({ type: 'supplier' as const, id: row.id, name: row.name, balance: Number(row.payable) })))
+  ];
 
   return <View className={styles.finance} data-testid='finance-center'>
+    <View className={styles.overviewTotals}><View><Text>客户待收款</Text><strong>{loading && !customers.length ? '—' : formatMoney(customerReceivable)}</strong></View><View><Text>供货商待付款</Text><strong>{loading && !suppliers.length ? '—' : formatMoney(suppliers.filter(row => !row.deleted_at).reduce((sum, row) => sum + Number(row.payable || 0), 0))}</strong></View></View>
+    {!partyDetailsOpen && <Input className={styles.partySearch} aria-label='搜索客户、供货商或收付款记录' placeholder='搜索客户、供货商或收付款记录' value={view === 'ledger' ? keyword : partySearch} onInput={e => view === 'ledger' ? setKeyword(e.detail.value) : setPartySearch(e.detail.value)} />}
     <View className={styles.tabs} data-testid='finance-tabs' role='tablist' aria-label='账单中心分类'>
       {tabLabels.map(tab => <FinanceButton key={tab.id} role='tab' aria-selected={view === tab.id} aria-pressed={view === tab.id} data-testid={`finance-tab-${tab.id}`} className={`${styles.tab} ${view === tab.id ? styles.tabActive : ''}`} onClick={() => changeView(tab.id)}>{tab.label}</FinanceButton>)}
     </View>
+    {view !== 'ledger' && !partyDetailsOpen && <View data-testid={`finance-${view}-view`}>
+      {parties.map(party => <View key={`${party.type}-${party.id}`} className={styles.overviewCard}>
+        <View className={styles.overviewRow}><View className={styles.overviewAvatar}>{party.type === 'customer' ? '客' : '供'}</View><View className={styles.overviewIdentity}><strong>{party.name}</strong><Text>{party.type === 'customer' ? '客户应收' : '供货商应付'}</Text></View><strong className={styles.overviewAmount}>{formatMoney(party.balance)}</strong></View>
+        <View className={styles.overviewFoot}><FinanceButton className={styles.overviewDetail} onClick={() => { setView(party.type); setPartyFilter({ type: party.type, id: party.id }); setPartyDetailsOpen(true); }}>查看明细 ›</FinanceButton><FinanceButton className={styles.overviewSettle} data-testid={`finance-settle-${party.type}-${party.id}`} onClick={() => { setSettling(party); setSettlementAmount(''); setSettlementError(''); }}>登记{party.type === 'customer' ? '收款' : '付款'}</FinanceButton></View>
+      </View>)}
+      {!parties.length && <View className={styles.empty}><Text>{loading ? '正在同步往来记录…' : partySearch ? '暂无匹配记录' : '暂无待结算往来'}</Text></View>}
+      {(view === 'customer' || view === 'supplier') && <FinanceButton className={styles.overviewDetail} data-testid={`finance-add-${view}`} onClick={() => onEditParty?.(view)}>{view === 'customer' ? '客户管理' : '供货商管理'} ›</FinanceButton>}
+      <View className={styles.ledgerActions}><FinanceButton className={styles.primary} data-testid='finance-add-entry' onClick={() => { openEntry(null); setShow(true); }}>＋ 记一笔</FinanceButton></View>
+    </View>}
 
     {view === 'ledger' && <View className={styles.ledgerView} data-testid='finance-ledger-view'>
       <View className={styles.toolbar}>
@@ -356,7 +373,8 @@ export default function FinanceCenter({
       <View className={styles.ledgerActions}><FinanceButton className={styles.primary} data-testid='finance-add-entry' onClick={() => { openEntry(null); setShow(true); }}>＋ 记一笔</FinanceButton></View>
     </View>}
 
-    {(view === 'customer' || view === 'supplier') && <View className={styles.partyView} data-testid={`finance-${view}-view`}>
+    {partyDetailsOpen && (view === 'customer' || view === 'supplier') && <View className={styles.partyView} data-testid={`finance-${view}-view`}>
+      <FinanceButton className={styles.overviewDetail} onClick={() => { setPartyDetailsOpen(false); setPartyFilter(null); }}>‹ 返回往来列表</FinanceButton>
       <View className={styles.partyToolbar}>
         <FinanceButton className={`${styles.primary} ${styles.partyAddButton}`} data-testid={`finance-add-${view}`} onClick={() => onEditParty?.(view)}><Icon name='notebook' color='#fff' /><Text>{view === 'customer' ? '客户管理' : '供货商管理'}</Text></FinanceButton>
         <Input className={styles.partySearch} data-testid='finance-party-search' aria-label={view === 'customer' ? '搜索客户、规格或联系方式' : `搜索${partyTitle}`} placeholder={view === 'customer' ? '搜索客户、规格或联系方式' : `搜索${partyTitle}对象`} value={partySearch} onInput={e => setPartySearch(e.detail.value)} />

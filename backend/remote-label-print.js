@@ -7,7 +7,7 @@ const hash = value => crypto.createHash('sha256').update(String(value || '')).di
 const terminal = new Set(['queued', 'failed', 'expired']);
 const labelKinds = new Set(['finished-product', 'paperboard-batch', 'paperboard-manual']);
 const labelOrigin = 'https://youxishen.online';
-const resolverPath = '/pages/label-resolver/index';
+const resolverPath = '/pages/management/index?section=label-lookup';
 const profileFields = ['profileId', 'printerName', 'widthMm', 'heightMm', 'paperStyle', 'density', 'marginMm', 'calibrated'];
 const finishedFields = ['productId', 'name', 'specification', 'unit', 'productUrl', 'material', 'corrugation', 'layers', 'weight', 'stockSnapshot', 'printedAt'];
 const boardFields = ['customerName', 'material', 'printPlate', 'printColor', 'batchId', 'boardLength', 'boardWidth', 'fluteType', 'supplier', 'batchUrl', 'layers', 'faceGsm', 'linerGsm', 'flutingGsm', 'cartonLength', 'cartonWidth', 'cartonHeight', 'receivedDate', 'location', 'receivedQty', 'remainingQtySnapshot'];
@@ -33,7 +33,7 @@ function validateLabelId(kind, id) {
 }
 
 function labelUrl(kind, id) {
-  return `${labelOrigin}/#${resolverPath}?v=1&kind=${kind}&id=${encodeURIComponent(id)}`;
+  return `${labelOrigin}/#${resolverPath}&v=1&kind=${kind}&id=${encodeURIComponent(id)}`;
 }
 
 function valueText(value, label, required = true, max = 120) {

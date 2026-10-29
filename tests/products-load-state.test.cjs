@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const test = require('node:test');
 
 test('products page keeps loading, error and empty states distinct', () => {
-  const source = fs.readFileSync('src/pages/products/index.tsx', 'utf8');
+  const source = fs.readFileSync('src/components/BusinessForms/GoodsCatalog/index.tsx', 'utf8');
   assert.match(source, /import \{ useRemoteData \} from '\@\/hooks\/useRemoteData'/);
   assert.match(source, /const remote = useRemoteData\(loadProductData/);
   assert.match(source, /const loading = remote\.loading/);

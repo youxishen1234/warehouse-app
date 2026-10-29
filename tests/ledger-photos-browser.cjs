@@ -71,7 +71,7 @@ async function main() {
       await page.getByRole('button', { name, exact: true }).click();
       await (await chooser).setFiles(files);
     };
-    await page.goto(`${origin}/#/pages/business-center/index?section=finance&view=ledger`);
+    await page.goto(`${origin}/#/pages/management/index?section=finance&view=ledger`);
     await expect(page.getByTestId('finance-center')).toBeVisible();
     await expect(rows).toHaveCount(2);
     await rows.filter({ hasText: '新星食品（示例）' }).click();

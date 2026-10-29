@@ -323,12 +323,12 @@ async function main() {
       });
     }
     const countTotal = db.listPrintNotes().length;
-    const countPending = db.listPrintNotes().filter(note => !note.outbound_at).length;
     assert.ok(countTotal > 30, 'seed more notes than one history page');
     await page.goto(origin + '/#/pages/print-center/index'); await page.reload();
     await page.locator('.team-boot').waitFor({ state: 'hidden' });
-    await expect(page.locator('[class*="briefBody"]')).toContainText(`全部单据${countTotal}待出库${countPending}`);
     await expect(page.locator('[class*="recentHeading"] p')).toContainText(`共 ${countTotal} 张`);
+    await page.getByRole('button', { name: '全部单据', exact: true }).click();
+    await expect(page.getByText('SH-20261028-00033', { exact: false }).first()).toBeVisible();
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ engine, savedEditReload: 'passed', customersAndStaleSearch: 'passed', saveFailure: 'passed', conflict: 'passed', mobileWidths: [320, 375, 390, 430], twoDigitSpecification: 'passed', previewZoom: 'passed', paperSelector: 'removed', multipage: 12, screenshots: artifacts }));
   } catch (error) {

@@ -1,3 +1,4 @@
+const { clickWorkbenchAction } = require('./demo-ui-actions.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -33,8 +34,8 @@ async function main() {
     const page = await context.newPage(); page.on('pageerror', e => errors.push(e.message)); page.setDefaultTimeout(12000);
     return page;
   };
-  const go = async page => { await page.goto('about:blank'); await page.goto(origin + '/#/pages/business-center/index'); await expect(page.getByText('快捷办理', { exact: true })).toBeVisible(); await expect(page.getByText('服务器数据已读取 · 多设备自动同步', { exact: true })).toBeVisible(); };
-  const button = (scope, text) => scope.getByText(text, { exact: true }).last().locator('xpath=ancestor-or-self::*[self::taro-button-core or self::button][1]');
+  const go = async page => { await page.goto('about:blank'); await page.goto(origin + '/#/pages/home/index'); await expect(page.getByText('更多', { exact: true })).toBeVisible(); await expect(page.getByText('● 已同步', { exact: true })).toBeVisible(); };
+  const button = (scope, text) => ({ click: () => clickWorkbenchAction(scope, text) });
   const workbench = page => page.getByTestId('simple-workbench');
   try {
     const first = await setup(390), second = await setup(430); await go(first); await go(second);

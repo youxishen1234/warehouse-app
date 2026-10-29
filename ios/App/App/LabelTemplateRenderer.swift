@@ -35,7 +35,7 @@ enum LabelInput {
         guard let outer = URLComponents(string: raw), outer.scheme == "https", outer.host == "youxishen.online",
               outer.user == nil, outer.password == nil, outer.port == nil, outer.path == "/", outer.query == nil,
               let fragment = outer.fragment, let route = URLComponents(string: fragment),
-              route.path == "/pages/label-resolver/index", route.fragment == nil, let items = route.queryItems, items.count == 3,
+              route.path == "/pages/management/index?section=label-lookup", route.fragment == nil, let items = route.queryItems, items.count == 3,
               Set(items.map { $0.name }) == Set(["v", "kind", "id"]),
               items.first(where: { $0.name == "v" })?.value == "1",
               items.first(where: { $0.name == "kind" })?.value == kind,

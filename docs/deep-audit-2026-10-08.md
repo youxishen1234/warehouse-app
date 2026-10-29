@@ -47,7 +47,7 @@
 
 另测：A 清点填 98，B 随后领走 20，库存变 80；刷新后旧实盘 98 仍可提交，产生盘盈 +18。若 98 是领料前清点值，后续实际应剩 78；库存变动后必须要求复核。
 
-位置：[request.ts:318](E:/aoo/warehouse-app/src/services/request.ts:318)、[request.ts:353](E:/aoo/warehouse-app/src/services/request.ts:353)、[board-outbound/index.tsx:14](E:/aoo/warehouse-app/src/pages/board-outbound/index.tsx:14)。修复：表单保存编辑/清点时的资源版本和库存基准；背景刷新不能替用户确认新版本，冲突时保留草稿并要求重数。纸板字符串 ID 也纳入版本策略。
+位置：[request.ts:318](E:/aoo/warehouse-app/src/services/request.ts:318)、[request.ts:353](E:/aoo/warehouse-app/src/services/request.ts:353)、[board-outbound/index.tsx:14](E:/aoo/warehouse-app/src/components/BusinessForms/PaperboardMovement/index.tsx:14)。修复：表单保存编辑/清点时的资源版本和库存基准；背景刷新不能替用户确认新版本，冲突时保留草稿并要求重数。纸板字符串 ID 也纳入版本策略。
 
 ### 4. P1/P2：恢复旧备份后仍重放失效的成功回执
 
@@ -89,11 +89,11 @@
 - 预印模板漏行：6 条各 10 元只显示前 4 条，合计 60，仍可打印。[dot-matrix-print.ts:227](E:/aoo/warehouse-app/src/utils/dot-matrix-print.ts:227) 容量校验和实际行数不一致。统一容量或分页，核对每行和各页合计。
 - 预印 7 条使打印中心消失：渲染直接抛错，无法切换模板。[DotMatrixPrint/index.tsx:64](E:/aoo/warehouse-app/src/components/DotMatrixPrint/index.tsx:64)。改为可恢复错误状态。
 - 预印关闭价格仍输出合计数字和大写金额。[dot-matrix-print.ts:238](E:/aoo/warehouse-app/src/utils/dot-matrix-print.ts:238)。统一隐藏明细与合计。
-- 纸板标签打印裁掉二维码：手机尺寸正常滚到打印按钮，scrollTop=453，实际 PDF 无二维码；滚回顶部恢复，下载 PNG 可扫码。[BoardUI/style.scss:71](E:/aoo/warehouse-app/src/components/BoardUI/style.scss:71)、[board-detail/index.tsx:39](E:/aoo/warehouse-app/src/pages/board-detail/index.tsx:39)。独立打印节点/iframe 避免父滚动裁剪。
+- 纸板标签打印裁掉二维码：手机尺寸正常滚到打印按钮，scrollTop=453，实际 PDF 无二维码；滚回顶部恢复，下载 PNG 可扫码。[BoardUI/style.scss:71](E:/aoo/warehouse-app/src/components/BoardUI/style.scss:71)、[board-detail/index.tsx:39](E:/aoo/warehouse-app/src/components/BusinessForms/PaperboardBatch/index.tsx:39)。独立打印节点/iframe 避免父滚动裁剪。
 - 纸板金额半分错误：1.005 × 1 存 1.00，主账本为 1.01。[boards.js:16](E:/aoo/warehouse-app/backend/boards.js:16)。统一十进制金额规则。
 - 规格预警不能降低关闭：旧阈值 600、新同规格设 0、合计库存 501 仍待补货。[board-stock/index.tsx:16](E:/aoo/warehouse-app/src/pages/board-stock/index.tsx:16) 取历史最大值；应将预警独立存为规格设置。
 - 单据标题改不动：自定义输入立即恢复默认。[dot-matrix-print.ts:50](E:/aoo/warehouse-app/src/utils/dot-matrix-print.ts:50) 强制覆盖值。尊重输入或移除无效控件。
-- 商品图片不能上传：两引擎选择有效 PNG 后没有上传请求，读取 blob URL 被页面和服务器 CSP 阻止。测试浏览器内改用直接读 Blob 后上传成功。位置：[products/index.tsx:144](E:/aoo/warehouse-app/src/pages/products/index.tsx:144)、[server.js:17](E:/aoo/warehouse-app/backend/server.js:17)、[index.html:13](E:/aoo/warehouse-app/src/index.html:13)。直接读原始 File 与 FileReader，保持必要 CSP。
+- 商品图片不能上传：两引擎选择有效 PNG 后没有上传请求，读取 blob URL 被页面和服务器 CSP 阻止。测试浏览器内改用直接读 Blob 后上传成功。位置：[products/index.tsx:144](E:/aoo/warehouse-app/src/components/BusinessForms/GoodsCatalog/index.tsx:144)、[server.js:17](E:/aoo/warehouse-app/backend/server.js:17)、[index.html:13](E:/aoo/warehouse-app/src/index.html:13)。直接读原始 File 与 FileReader，保持必要 CSP。
 - 损坏凭证图片被确认保存：35 字节只有 PNG 头的损坏文件上传 200，照片数增加但不能解码。[ledger-attachments.js:11](E:/aoo/warehouse-app/backend/ledger-attachments.js:11) 仅验文件头。保存前验证可解码和像素尺寸。
 - 照片详情反复下载全部原图做缩略图：应服务端生成缩略图、原图按需加载。20 张 × 12 MiB 的 base64 约 320 MiB 是上限推算，本轮未做该规模压力测试。
 

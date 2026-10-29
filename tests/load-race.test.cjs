@@ -7,7 +7,7 @@ const root = path.resolve(__dirname, '..');
 const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 
 test('stock workflow pages guard stale responses and initial duplicate refreshes', () => {
-  const pages = ['src/pages/inbound/index.tsx', 'src/pages/records/index.tsx'];
+  const pages = ['src/components/BusinessForms/Receipt/index.tsx', 'src/components/BusinessForms/Transactions/index.tsx'];
   for (const file of pages) {
     const source = read(file);
     assert.match(source, /useRef\(0\)/, `${file} should keep a request sequence ref`);
@@ -16,13 +16,13 @@ test('stock workflow pages guard stale responses and initial duplicate refreshes
   }
   // The order-based outbound page has a single initial loader; its races and
   // draft preservation are exercised by workflow-regressions-browser.cjs.
-  for (const file of ['src/pages/inbound/index.tsx']) {
+  for (const file of ['src/components/BusinessForms/Receipt/index.tsx']) {
     const source = read(file);
     assert.match(source, /useDidShow/, `${file} should refresh on page display`);
     assert.match(source, /loadedAt\.current/, `${file} should gate duplicate requests`);
   }
   const home = read('src/pages/home/index.tsx');
-  const workbench = read('src/pages/business-center/workbench.tsx');
+  const workbench = read('src/components/Workspace/workbench.tsx');
   const remoteHook = read('src/hooks/useRemoteData.ts');
   assert.match(home, /<Workbench embedded initial='home' \/>/);
   assert.match(workbench, /useWorkbenchData\(\)/);
@@ -31,7 +31,7 @@ test('stock workflow pages guard stale responses and initial duplicate refreshes
   assert.match(sourceHook, /current !== sequence\.current/);
   assert.match(remoteHook, /const current = \+\+sequence\.current/);
   assert.match(remoteHook, /current !== sequence\.current/);
-  for (const file of ['src/pages/records/index.tsx']) {
+  for (const file of ['src/components/BusinessForms/Transactions/index.tsx']) {
     const source = read(file);
     assert.match(source, /lastLoadAt/, `${file} should gate repeated refreshes`);
     assert.match(source, /startedAt - lastLoadAt\.current < 250/, `${file} should suppress same-tick reloads`);
@@ -39,7 +39,7 @@ test('stock workflow pages guard stale responses and initial duplicate refreshes
 });
 
 test('orders uses the real shared sequence guard rather than a comment-only contract', () => {
-  const source = read('src/pages/orders/index.tsx');
+  const source = read('src/components/BusinessForms/Orders/index.tsx');
   const hook = read('src/hooks/useRemoteData.ts');
   assert.ok(source.includes('const loadOrders = useCallback(async () => {'));
   assert.ok(source.includes('useRemoteData(loadOrders,'));

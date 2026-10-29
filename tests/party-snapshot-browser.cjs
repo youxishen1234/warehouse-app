@@ -40,7 +40,7 @@ async function main() {
           }
           return route.abort();
         });
-        await page.goto(origin + '/pages/records/index');
+        await page.goto(origin + '/pages/management/index?section=transactions');
         const retry = page.getByText('记录加载失败，请点击重试', { exact: true });
         await expect(retry).toBeVisible();
         await expect(page.getByText('暂无记录', { exact: true })).toHaveCount(0);

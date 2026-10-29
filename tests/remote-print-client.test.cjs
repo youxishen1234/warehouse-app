@@ -178,13 +178,13 @@ test('pairing validation uses the candidate token without storing invalid pairin
 });
 test('connection links and raw QR payloads resolve the pairing token and can be cleaned', () => {
   const { api } = setup(() => { throw new Error('unused'); });
-  const link = 'https://youxishen.online/#/pages/label-print/index?print_pair=' + token + '&kind=finished-product';
+  const link = 'https://youxishen.online/#/pages/management/index?section=labels&print_pair=' + token + '&kind=finished-product';
   assert.equal(api.parsePrintPairToken(token), token);
   assert.equal(api.parsePrintPairToken(link), token);
   assert.equal(api.parsePrintPairToken('https://youxishen.online/?print_pair=bad'), '');
   assert.equal(
     api.cleanPrintPairUrl(link),
-    'https://youxishen.online/#/pages/label-print/index?kind=finished-product'
+    'https://youxishen.online/#/pages/management/index?section=labels&kind=finished-product'
   );
   assert.equal(
     api.cleanPrintPairUrl('https://youxishen.online/?print_pair=' + token + '&tab=stock'),

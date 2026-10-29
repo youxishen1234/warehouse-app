@@ -115,9 +115,9 @@ async function main() {
         const detail = selected + ': styled, touch-sized, equal-width mode controls: ' + JSON.stringify(geometry);
         assert.ok(control.height >= 44, detail);
         assert.ok(Math.abs(control.width - geometry.available / 3) <= 1.5, detail);
-        assert.ok(Math.abs(control.fontSize - 14) <= .1, detail);
-        assert.ok(control.radius >= 8 && control.borderWidth === 0, detail);
-        assert.equal(control.background, control.selected ? 'rgb(255, 255, 255)' : 'rgba(0, 0, 0, 0)', detail);
+        assert.ok(Math.abs(control.fontSize - 12) <= .1, detail);
+        assert.ok(control.radius >= 8 && control.borderWidth === 1, detail);
+        assert.equal(control.background, control.selected ? 'rgb(237, 243, 255)' : 'rgb(255, 255, 255)', detail);
       }
       assert.ok(Math.abs(geometry.buttons[0].height - geometry.buttons[1].height) <= 1, 'both modes share the same height');
       layoutEvidence.push({ label: 'mode-controls', selected, viewport: page.viewportSize(), ...geometry });
@@ -179,7 +179,7 @@ async function main() {
     const labelAndBack = async expectedView => {
       await expectModes('送货单');
       await modes().getByRole('button', { name: '标签打印', exact: true }).click();
-      await page.waitForURL(/pages\/label-print\/index/);
+      await page.waitForURL(/pages\/management\/index\?section=labels/);
       await expectModes('标签打印');
       await expect(active().getByText('电脑 USB 打印 K3', { exact: true })).toBeVisible();
       await expect(active().getByText('70 × 100 mm · 手机不连接蓝牙', { exact: true })).toBeVisible();
@@ -228,7 +228,7 @@ async function main() {
       await page.setViewportSize({ width, height: 844 });
       await noOverflow('edit ' + width);
       await modes().getByRole('button', { name: '标签打印', exact: true }).click();
-      await page.waitForURL(/pages\/label-print\/index/);
+      await page.waitForURL(/pages\/management\/index\?section=labels/);
       await expectModes('标签打印');
       await noOverflow('label ' + width);
       if (width === 320) await page.screenshot({ path: path.join(artifacts, 'label-modes-320.png') });
@@ -262,7 +262,7 @@ async function main() {
 
     const direct = await context.newPage();
     direct.setDefaultTimeout(15000); direct.on('pageerror', error => errors.push(error.message));
-    await direct.goto(webOrigin + '/#/pages/label-print/index');
+    await direct.goto(webOrigin + '/#/pages/management/index?section=labels');
     const directModes = direct.getByRole('navigation', { name: '打印类型', exact: true });
     await expect(directModes.getByRole('button', { name: '标签打印', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await directModes.getByRole('button', { name: '送货单', exact: true }).click();
@@ -282,7 +282,7 @@ async function main() {
     await installFixture(nativeContext, webOrigin, true);
     const nativePage = await nativeContext.newPage();
     nativePage.setDefaultTimeout(15000); nativePage.on('pageerror', error => errors.push(error.message));
-    await nativePage.goto(webOrigin + '/#/pages/label-print/index');
+    await nativePage.goto(webOrigin + '/#/pages/management/index?section=labels');
     await nativePage.locator('taro-button-core').filter({ hasText: /^切换手机蓝牙打印$/ }).click();
     await expect(nativePage.getByText('测试原生状态：K3 真机尚未完成验收，正式打印保持关闭。', { exact: true })).toBeVisible();
     await expect(nativePage.getByText('正式打印等待 K3 验收', { exact: true })).toHaveAttribute('disabled');

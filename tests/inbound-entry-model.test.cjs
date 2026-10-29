@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
-const { completeGood, matchingProducts, lineAmount, draftTotal } = require('../src/pages/inbound/entry-model');
+const { completeGood, matchingProducts, lineAmount, draftTotal } = require('../src/components/BusinessForms/Receipt/entry-model');
 
 const good = overrides => ({ goods: '客户货号甲', specification: '30×20×15 cm', material: 'AB', unit: '个', price: 2.5, ...overrides });
 const products = [{ id: 4, name: '库存商品乙', category: '纸箱', specification: '300×200×150 mm', material: 'ab', unit: '个', price: 1, stock: 0 }];

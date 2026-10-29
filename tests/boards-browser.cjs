@@ -30,7 +30,7 @@ async function main() {
     await page.emulateMedia({ colorScheme: 'dark' }); await page.screenshot({ path: dir + '/stock-dark.png', fullPage: true }); await page.emulateMedia({ colorScheme: 'light' });
     for (const width of [320, 390, 768]) { await page.setViewportSize({ width, height: 844 }); assert.equal(await active().evaluate(el => el.scrollWidth <= el.clientWidth + 1), true, 'no horizontal overflow ' + width); }
     await page.setViewportSize({ width: 390, height: 844 }); await active().locator('.inventory-shortcut').filter({ hasText: '扫码找纸板' }).click();
-    const qrPath = path.resolve(dir, 'test-batch-qr.png'); await QRCode.toFile(qrPath, 'https://youxishen.online/#/pages/board-detail/index?id=' + batch.id, { width: 700 });
+    const qrPath = path.resolve(dir, 'test-batch-qr.png'); await QRCode.toFile(qrPath, 'https://youxishen.online/#/pages/management/index?section=paperboard-batch&id=' + batch.id, { width: 700 });
     await active().locator('input[type=file]').setInputFiles(qrPath); await page.waitForURL(/board-detail/); await expect(active().locator('.board-summary-number')).toContainText('504');
     await button('盘点这批').click(); await field('实盘数量').fill('500'); await field('盘点原因').fill('实际清点少4张'); await button('确认盘点调整').click(); await page.waitForURL(/board-detail/); assert.equal(db.listBoards()[0].remainingQty, 500);
     await button('再进同规格').click(); await expect(field('板厂名称')).toHaveValue('恒盛纸业'); await expect(field('纸板长')).toHaveValue('165'); await expect(field('实收数')).toHaveValue('');
@@ -53,7 +53,7 @@ async function main() {
     await active().locator('.board-template-list .board-button').first().click();
     await expect(field('实收数')).toHaveValue(''); await expect(field('计费平米')).toHaveValue('');
     await expect(active().locator('.board-reuse-summary')).toBeVisible();
-    await page.goto(base + '/pages/board-detail/index?id=' + batch.id); await expect(active().locator('.board-summary-number')).toContainText('500');
+    await page.goto(base + '/pages/management/index?section=paperboard-batch&id=' + batch.id); await expect(active().locator('.board-summary-number')).toContainText('500');
     await page.goto(base + '/pages/inventory/index'); await button('查看批次 ›').click();
     const row = active().locator('.board-timeline').filter({ hasText: repeated.id });
     await row.getByText('编辑', { exact: true }).click(); await expect(field('实收数')).toHaveValue('102');

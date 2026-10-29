@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const ts = require('typescript');
 const test = require('node:test');
 
-const source = fs.readFileSync(path.resolve('src/pages/carton-calculator/math.ts'), 'utf8');
+const source = fs.readFileSync(path.resolve('src/components/BusinessForms/CartonCalculator/math.ts'), 'utf8');
 const compiled = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS } }).outputText;
 const api = {};
 vm.runInNewContext(compiled, { exports: api, require: () => require(path.resolve('backend/stock-math.js')) });

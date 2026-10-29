@@ -42,7 +42,7 @@ async function buildLargePaperboardLabel({ data, profile, width, height, margin,
   const batch = when(data.batchId);
   const url = when(data.batchUrl);
   const warnings = [];
-  if (!manual && !/^https:\/\/youxishen\.online\/#\/pages\/label-resolver\/index\?v=1&kind=paperboard-batch&id=BOARD-[0-9]{8}-[A-F0-9]{12}$/.test(url)) {
+  if (!manual && !/^https:\/\/youxishen\.online\/#\/pages\/management\/index\?section=label-lookup&v=1&kind=paperboard-batch&id=BOARD-[0-9]{8}-[A-F0-9]{12}$/.test(url)) {
     warnings.push('二维码链接与当前纸板批次不一致，已停止打印');
   }
   let qr = '';
@@ -198,7 +198,7 @@ async function buildLabelHtml({ kind, data, profile }) {
   const kindLabel = isBoard ? '纸板批次标签' : '成品标签';
   const qrSize = Math.min(px(26), Math.max(px(18), Math.round(usableWidth * 0.34)));
   let qrHtml = '';
-  if (!/^https:\/\/youxishen\.online\/#\/pages\/label-resolver\/index\?v=1&kind=/.test(url)) {
+  if (!/^https:\/\/youxishen\.online\/#\/pages\/management\/index\?section=label-lookup&v=1&kind=/.test(url)) {
     warnings.push('标签二维码链接缺失或格式无效，已停止打印');
   } else {
     const png = await QRCode.toDataURL(url, { errorCorrectionLevel: 'M', margin: 4, width: qrSize, color: { dark: '#000000ff', light: '#ffffffff' } });

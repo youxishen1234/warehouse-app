@@ -15,7 +15,7 @@ test('ledger page separates loading, load failure and empty results', () => {
 
 test('ledger deep links scope parties and retrieve exact entries without replacing the list', () => {
   const source = fs.readFileSync('src/components/FinanceCenter/index.tsx', 'utf8');
-  const workbench = fs.readFileSync('src/pages/business-center/workbench.tsx', 'utf8');
+  const workbench = fs.readFileSync('src/components/Workspace/workbench.tsx', 'utf8');
   assert.match(source, /partyType\?: PartyType/);
   assert.match(source, /partyId\?: number/);
   assert.match(source, /getLedger\(\{ id: entryId, include_voided: true \}\)/);

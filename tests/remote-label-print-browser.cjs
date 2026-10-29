@@ -182,7 +182,7 @@ async function main() {
   try {
     // Keep this regression on the prior finished-product inventory flow now
     // that the label page opens in manual paperboard mode by default.
-    await page.goto(`${origin}/#/pages/label-print/index?kind=finished-product&id=12&print_pair=${token}`);
+    await page.goto(`${origin}/#/pages/management/index?section=labels&kind=finished-product&id=12&print_pair=${token}`);
     await expect(page.getByText('电脑 USB 打印 K3', { exact: true })).toBeVisible();
     await expect(page.getByText('在线 · K3-I911020404', { exact: true })).toBeVisible();
     await expect(page.getByLabel('打印电脑配对码')).toHaveCount(0);
@@ -266,7 +266,7 @@ async function main() {
       'manual paper confirmation records a result without resubmitting the label');
 
     holdPaperboardFonts = true;
-    await page.goto(origin + '/#/pages/label-print/index?kind=paperboard-batch&id=' + board.id);
+    await page.goto(origin + '/#/pages/management/index?section=labels&kind=paperboard-batch&id=' + board.id);
     const sendBoard = page.locator('taro-button-core').filter({ hasText: /^(复核最新资料并发送到 K3|请先完成一次校准)$/ });
     const densityThreeBoardProfile = page.locator('taro-button-core').filter({ hasText: /^70 × 100 mm · 浓度 3 · 已校准$/ });
     await expect(page.getByText(/浓度：4（电脑直接设置）/)).toBeVisible();

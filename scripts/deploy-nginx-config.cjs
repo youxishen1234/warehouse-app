@@ -55,7 +55,7 @@ function inspect() {
   return ssh(`set -eu
 sudo -n nginx -T 2>&1 | grep -E '^# configuration file|^[[:space:]]*(listen |server_name |root |location |proxy_pass |add_header (X-Frame-Options|Content-Security-Policy))'
 for origin in local public; do
-  for route in /embed/ /embed/pages/label-print/index /pages/label-print/index; do
+  for route in /embed/ /embed/pages/management/index?section=labels /pages/management/index?section=labels; do
     echo "Gateway check: $origin $route"
     if [ "$origin" = local ]; then
       curl -fsSkI --resolve youxishen.online:443:127.0.0.1 "https://youxishen.online$route"
@@ -92,12 +92,12 @@ rollback() {
   fi
 }
 verify_headers() {
-  for route in /embed/ /embed/pages/label-print/index; do
+  for route in /embed/ /embed/pages/management/index?section=labels; do
     curl -fsSkI --resolve youxishen.online:443:127.0.0.1 "https://youxishen.online$route" > "$headers" || return 1
     grep -qi '^content-security-policy:.*frame-ancestors .*app:' "$headers" || return 1
     if grep -qiE '^x-frame-options:|^content-security-policy:.*frame-ancestors .*none' "$headers"; then return 1; fi
   done
-  curl -fsSkI --resolve youxishen.online:443:127.0.0.1 https://youxishen.online/pages/label-print/index > "$normal_headers" || return 1
+  curl -fsSkI --resolve youxishen.online:443:127.0.0.1 https://youxishen.online/pages/management/index?section=labels > "$normal_headers" || return 1
   grep -qi '^x-frame-options: DENY' "$normal_headers" || return 1
   grep -qi '^content-security-policy:.*frame-ancestors .*none' "$normal_headers" || return 1
 }

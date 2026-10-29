@@ -31,7 +31,7 @@ async function main(){
   await expect(page.getByTestId('customer-center')).toBeVisible();
   await expect(page.getByTestId('simple-workbench').getByText('客户管理', { exact: true }).first()).toBeVisible();
   await expect(page.getByTestId('finance-center')).toHaveCount(0);
-  await page.goto(origin+'/#/pages/customer-photos/index');
+  await page.goto(origin+'/#/pages/management/index?section=originals');
   await expect(page.getByRole('heading', { name: '客户单据照片' })).toBeVisible();
   await page.screenshot({path:path.resolve('release/customer-photos-20261011/customer-list.png'),fullPage:true});
   await expect(page.locator('main h1')).toContainText('客户单据照片');

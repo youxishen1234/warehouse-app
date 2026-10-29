@@ -51,7 +51,7 @@ test('server dates always display in Beijing time and never device local time', 
 });
 
 test('private daily downloads have no clipboard, storage or background-phone backup fallback', () => {
-  const source = fs.readFileSync('src/pages/backup/daily-status.tsx', 'utf8');
+  const source = fs.readFileSync('src/components/BusinessForms/BackupSettings/daily-status.tsx', 'utf8');
   assert.doesNotMatch(source, /setClipboardData|writeText|localStorage|setStorageSync|setInterval/);
   assert.match(source, /aria-live='polite'/);
   assert(source.includes('current === requestId.current'));

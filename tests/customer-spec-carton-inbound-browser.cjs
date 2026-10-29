@@ -151,7 +151,7 @@ async function main() {
     return db.getCustomer(customer.id);
   };
   const openCarton = async customerName => {
-    await go('/pages/inbound/index?kind=carton');
+    await go('/pages/management/index?section=receipt&kind=carton');
     await expect(page.getByText('纸箱生产入库', { exact: true })).toBeVisible();
     await expect(input('货物 1 本次完工数量')).toBeVisible();
     await choose('选择客户', customerName);
@@ -307,7 +307,7 @@ async function main() {
     const failedCustomerLoad = page.waitForResponse(response =>
       new URL(response.url()).pathname === '/api/production-inbound/customers' && response.status() === 503
     );
-    await go('/pages/inbound/index?kind=carton');
+    await go('/pages/management/index?section=receipt&kind=carton');
     await failedCustomerLoad;
     await expect(page.locator('[role="alert"]')).toBeVisible();
     failCartonCustomerRead = false;

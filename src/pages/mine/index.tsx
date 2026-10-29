@@ -1,17 +1,21 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, Input } from '@tarojs/components';
+import { View, Text, ScrollView, Input, Button } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
 import Icon from '@/components/Icon';
-import BusinessHeader from '@/components/BusinessHeader';
 
 import { autoBestBase, checkServerHealth, getBaseUrl, setBaseUrl } from '@/services/request';
 import { checkAndUpdate } from '@/services/update';
 import { WEB_DISPLAY_VERSION } from '@/config/release';
 import styles from './index.module.scss';
 
-import { PUBLIC_ORIGIN, TEAM_ORIGIN } from '@/services/session';
+import { PUBLIC_ORIGIN, TEAM_ORIGIN, session, watchSession } from '@/services/session';
 
 const MineContent: React.FC = () => {
+  const [currentSession, setCurrentSession] = useState(session);
+  React.useEffect(() => watchSession(() => setCurrentSession(session())), []);
+  const userName = currentSession?.user?.username || '我的账户';
+  const roleName = currentSession?.user?.role === 'admin' ? '管理员' : currentSession?.user?.role === 'operator' ? '操作员' : currentSession?.user?.role === 'viewer' ? '查看员' : '尚未登录';
+  const openPage = (url: string) => void Taro.navigateTo({ url });
   const [addrOpen, setAddrOpen] = useState(false);
   const [addrVal, setAddrVal] = useState('');
   const [saving, setSaving] = useState(false);
@@ -168,7 +172,6 @@ const MineContent: React.FC = () => {
   };
 
   const addrSummary = getBaseUrl().replace(/^https?:\/\//, '');
-  const ipaSummary = 'youxishen.online/shuguang.ipa';
 
   const doCheck = async () => {
     if (checking || ipaDownloading) return;
@@ -198,45 +201,64 @@ const MineContent: React.FC = () => {
 
   return (
     <ScrollView scrollY className={styles.container}>
-      <BusinessHeader title='我的与设置' />
+      <View className={styles.pageHeader}>
+        <View><Text className={styles.pageEyebrow}>曙 光 库 存</Text><Text className={styles.pageTitle}>我的</Text></View>
+        <View className={styles.headerMark}><Icon name='mine' color='#2469ee' className={styles.headerIcon} /></View>
+      </View>
+      <View className={styles.content}>
       <View className={styles.hero}>
         <View className={styles.heroTop}>
-          <View className={styles.brandMark}>曙</View>
+          <View className={styles.brandMark}><Icon name='mine' color='#2469ee' className={styles.avatarIcon} /></View>
           <View className={styles.heroCopy}>
-            <Text className={styles.eyebrow}>曙光业务总台</Text>
-            <Text className={styles.heroTitle}>连接与更新</Text>
-            <Text className={styles.heroSubtitle}>连接与更新设置</Text>
+            <Text className={styles.heroTitle}>{userName}</Text>
+            <Text className={styles.heroSubtitle}>{roleName} · 共享仓库</Text>
           </View>
-          <View className={`${styles.heroBadge} ${connectionDetail ? styles.connectionError : ''}`} onClick={() => { void refreshConnection(); }}><View className={styles.liveDot} /><Text>{connection}</Text></View>
+          <Button aria-label='刷新连接状态' className={`${styles.heroBadge} ${connectionDetail ? styles.connectionError : ''}`} onClick={() => { void refreshConnection(); }}><View className={styles.liveDot} /><Text>{connection}</Text></Button>
         </View>
         {connectionDetail && <Text className={styles.connectionDetail}>{connectionDetail}</Text>}
-        <View className={styles.connectionBar} onClick={() => setAddrOpen(true)}>
-          <View className={styles.connectionIcon}><Icon name="trend" color="#2563eb" className={styles.connectionIconImg} /></View>
-          <View className={styles.connectionCopy}><Text>当前服务节点</Text><Text>{addrSummary}</Text></View>
-          <Text className={styles.connectionAction}>设置</Text>
-        </View>
+        <View className={styles.profileFoot}><Text>我的工作空间</Text><Text>曙光库存</Text></View>
       </View>
 
-      <View className={styles.sectionHead}><Text>系统与连接</Text><Text>设备设置</Text></View>
+      <View className={styles.sectionHead}><Text>仓库管理</Text><Text>WORKSPACE</Text></View>
+      <View className={styles.menuGrid}>
+        <Button className={styles.menuCard} onClick={() => openPage('/pages/management/index?section=team')}>
+          <View className={`${styles.menuIcon} ${styles.blue}`}><Icon name='mine' color='#2469ee' className={styles.menuIconImg} /></View>
+          <Text className={styles.menuText}>团队管理</Text><Text className={styles.menuDesc}>成员与访问权限</Text>
+          <Icon name='chevron' color='#b2bfd0' className={styles.menuArrow} />
+        </Button>
+        <Button className={styles.menuCard} onClick={() => openPage('/pages/management/index?section=backup')}>
+          <View className={`${styles.menuIcon} ${styles.cyan}`}><Icon name='box' color='#3a987d' className={styles.menuIconImg} /></View>
+          <Text className={styles.menuText}>数据备份</Text><Text className={styles.menuDesc}>备份与恢复记录</Text>
+          <Icon name='chevron' color='#b2bfd0' className={styles.menuArrow} />
+        </Button>
+      </View>
+
+      <View className={styles.sectionHead}><Text>系统设置</Text><Text>SETTINGS</Text></View>
       <View className={styles.systemStack}>
-        <View className={styles.systemCard} onClick={doCheck}>
-          <View className={`${styles.systemIcon} ${styles.cyan}`}><Icon name="trend" color="#0f766e" className={styles.systemIconImg} /></View>
-          <View className={styles.systemCopy}><Text>检查更新</Text><Text>{checking ? '正在检查版本…' : `网页版本 ${WEB_DISPLAY_VERSION}`}</Text></View>
-          <Text className={styles.systemAction}>{checking ? '检查中' : '检查'}</Text>
-        </View>
-        <View className={styles.systemCard} onClick={() => setAddrOpen(true)}>
-          <View className={`${styles.systemIcon} ${styles.purple}`}><Icon name="edit" color="#7c3aed" className={styles.systemIconImg} /></View>
-          <View className={styles.systemCopy}><Text>服务器 / 更新地址</Text><Text>{addrSummary}</Text></View>
-          <View className={styles.systemActions}><Text onClick={(e) => { e.stopPropagation(); openUpdateAddress(); }}>官网</Text><Text>设置</Text></View>
-        </View>
-        <View className={styles.systemCard} onClick={downloadIpa}>
-          <View className={`${styles.systemIcon} ${styles.blue}`}><Icon name="download" color="#2563eb" className={styles.systemIconImg} /></View>
-          <View className={styles.systemCopy}><Text>App 安装包下载</Text><Text>{ipaSummary}</Text></View>
-          <Text className={styles.systemAction}>下载</Text>
-        </View>
+        <Button className={styles.systemCard} onClick={doCheck} disabled={checking || ipaDownloading}>
+          <View className={`${styles.systemIcon} ${styles.blue}`}><Icon name="trend" color="#2469ee" className={styles.systemIconImg} /></View>
+          <View className={styles.systemCopy}><Text>检查更新</Text><Text>{checking ? '正在检查版本…' : `当前版本 ${WEB_DISPLAY_VERSION}`}</Text></View>
+          <Text className={styles.versionTag}>{checking ? '检查中' : '检查'}</Text><Icon name='chevron' color='#b2bfd0' className={styles.rowArrow} />
+        </Button>
+        <Button className={styles.systemCard} onClick={() => setAddrOpen(true)}>
+          <View className={`${styles.systemIcon} ${styles.purple}`}><Icon name="edit" color="#8a79b6" className={styles.systemIconImg} /></View>
+          <View className={styles.systemCopy}><Text>连接设置</Text><Text>{addrSummary}</Text></View>
+          <Icon name='chevron' color='#b2bfd0' className={styles.rowArrow} />
+        </Button>
+        <Button className={styles.systemCard} onClick={downloadIpa} disabled={ipaDownloading}>
+          <View className={`${styles.systemIcon} ${styles.cyan}`}><Icon name="download" color="#3a987d" className={styles.systemIconImg} /></View>
+          <View className={styles.systemCopy}><Text>下载安装包</Text><Text>iOS App 安装与升级</Text></View>
+          <Icon name='chevron' color='#b2bfd0' className={styles.rowArrow} />
+        </Button>
+        <Button className={styles.systemCard} onClick={openUpdateAddress}>
+          <View className={`${styles.systemIcon} ${styles.slate}`}><Icon name='home' color='#73849d' className={styles.systemIconImg} /></View>
+          <View className={styles.systemCopy}><Text>官方网站</Text><Text>应用下载与版本信息</Text></View>
+          <Icon name='chevron' color='#b2bfd0' className={styles.rowArrow} />
+        </Button>
       </View>
 
-      <View className={styles.footerInfo}><Text>曙光库存 · 共享仓库</Text><Text>{nativeVersion ? nativeVersion : 'Web 控制台'}</Text></View>
+      <View className={styles.footerInfo}><View className={styles.footerBrand}>曙</View><Text>曙光库存 · 让每一笔业务井然有序</Text><Text>{nativeVersion || 'Web 控制台'}</Text></View>
+      </View>
 
       {ipaDownloading && (
         <View className={styles.mask}>

@@ -1,3 +1,4 @@
+const { clickWorkbenchAction } = require('./demo-ui-actions.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -108,16 +109,15 @@ async function main() {
   page.setDefaultTimeout(15000);
   page.on('pageerror', error => errors.push(error.message));
   const workbench = page.getByTestId('simple-workbench');
-  const button = (scope, text) => scope.getByText(text, { exact: true }).last()
-    .locator('xpath=ancestor-or-self::*[self::taro-button-core or self::button][1]');
+  const button = (scope, text) => ({ click: () => clickWorkbenchAction(scope, text) });
   try {
-    await page.goto(origin + '/#/pages/business-center/index');
+    await page.goto(origin + '/#/pages/home/index');
     await initialProductionGate.started.promise;
     await expect(page.getByTestId('workbench-actions')).toBeVisible();
     await expect(page.getByTestId('workbench-summary')).toBeVisible();
     await expect(page.getByTestId('workbench-initial-loading')).toHaveCount(0);
     initialProductionGate.release.resolve();
-    await expect(page.getByText('服务器数据已读取 · 多设备自动同步', { exact: true })).toBeVisible();
+    await expect(page.getByText('● 已同步', { exact: true })).toBeVisible();
     await expect(page.getByTestId('workbench-today')).toContainText('刷新验收纸板厂 · 纸板入库');
 
     // On the home panel, keep the actions and activity visible while a manual
@@ -132,7 +132,7 @@ async function main() {
     await expect(page.getByTestId('workbench-today')).toContainText('刷新验收纸板厂 · 纸板入库');
     await expect(page.getByTestId('workbench-initial-loading')).toHaveCount(0);
     homeRefreshGate.release.resolve();
-    await expect(page.getByText('服务器数据已读取 · 多设备自动同步', { exact: true })).toBeVisible();
+    await expect(page.getByText('● 已同步', { exact: true })).toBeVisible();
 
     // Manual refresh must keep the prior usable snapshot, activity and an
     // unfinished production form mounted while the slow endpoint is pending.
@@ -163,7 +163,7 @@ async function main() {
     });
     assert.deepEqual(probeDuringRefresh, { connected: true, focused: true, marker: 'same-node', value: '7' });
     refreshGate.release.resolve();
-    await expect(page.getByText('服务器数据已读取 · 多设备自动同步', { exact: true })).toBeVisible();
+    await expect(page.getByText('● 已同步', { exact: true })).toBeVisible();
     await expect(consumed).toHaveValue('7');
     await expect(consumed).toHaveAttribute('data-refresh-probe', 'same-node');
     await page.screenshot({ path: path.join(artifacts, 'refresh-preserves-draft.png'), fullPage: true });
@@ -177,11 +177,11 @@ async function main() {
     await expect(consumed).toHaveValue('7');
     failProductionReads = 0;
     await button(workbench, '重新读取').click();
-    await expect(page.getByText('服务器数据已读取 · 多设备自动同步', { exact: true })).toBeVisible();
+    await expect(page.getByText('● 已同步', { exact: true })).toBeVisible();
     await expect(consumed).toHaveValue('7');
 
     // Empty search results should explain the state and offer a one-tap reset.
-    await page.goto(origin + '/#/pages/business-center/index?section=stock');
+    await page.goto(origin + '/#/pages/management/index?section=stock');
     await expect(page.getByTestId('workbench-board')).toBeVisible();
     await page.getByLabel('搜索库存').locator('input').fill('没有这款纸板');
     await expect(page.getByTestId('workbench-stock-empty')).toContainText('没有找到匹配库存');
@@ -195,14 +195,14 @@ async function main() {
 
     // Opening a prior collection detail and then taking the supplier shortcut
     // must not reopen the stale detail over the requested supplier bill view.
-    await page.goto(origin + '/#/pages/business-center/index');
-    await expect(page.getByText('服务器数据已读取 · 多设备自动同步', { exact: true })).toBeVisible();
+    await page.goto(origin + '/#/pages/home/index');
+    await expect(page.getByText('● 已同步', { exact: true })).toBeVisible();
     await button(page, '刷新验收客户 · 收款记录').click();
     await expect(page.getByRole('dialog', { name: '流水详情' })).toBeVisible();
     await page.getByRole('button', { name: '关闭流水详情' }).click();
     await expect(page.getByRole('dialog', { name: '流水详情' })).toHaveCount(0);
     await page.locator('[aria-label="返回总台"]:visible').last().click();
-    await button(workbench, '收付款 / 账单').click();
+    await button(workbench, '收付款').click();
     await page.getByTestId('finance-tab-supplier').click();
     await expect(page.getByTestId('finance-center')).toBeVisible();
     await expect(page.getByTestId('finance-supplier-view')).toBeVisible();

@@ -32,10 +32,15 @@ module.exports = function sourcePreview(db, options = {}) {
           const moduleCss = sass.compile(raw).css;
           const prefix = `preview${compiledStyles.size}_`;
           const scopedClasses = {};
-          css += moduleCss.replace(/\.([A-Za-z][\w-]*)/g, (_, className) => {
+          const globalSelectors = [];
+          const moduleSelectors = moduleCss.replace(/:global\(([^)]+)\)/g, (_, selector) => {
+            globalSelectors.push(selector);
+            return `__GLOBAL_SELECTOR_${globalSelectors.length - 1}__`;
+          });
+          css += moduleSelectors.replace(/\.([A-Za-z][\w-]*)/g, (_, className) => {
             scopedClasses[className] = prefix + className;
             return '.' + prefix + className;
-          });
+          }).replace(/__GLOBAL_SELECTOR_(\d+)__/g, (_, index) => globalSelectors[Number(index)]);
           modules.set(raw, { source: 'module.exports = ' + JSON.stringify(scopedClasses), deps: {} });
         }
         deps[name] = raw; continue;

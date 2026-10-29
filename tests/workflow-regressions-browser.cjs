@@ -44,7 +44,7 @@ async function main() {
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     const active = () => page.locator('.taro_page:visible').last();
     for (const [party, record] of [['customer', customer], ['supplier', supplier]]) {
-      await page.goto(origin + '/pages/customer-edit/index?id=' + record.id + '&party=' + party);
+      await page.goto(origin + '/pages/management/index?section=party-details&id=' + record.id + '&party=' + party);
       const name = active().locator('input').nth(0);
       await expect(name).toHaveValue(record.name);
       await active().locator('input').nth(1).fill(party + '-updated-contact');
@@ -52,7 +52,7 @@ async function main() {
       await expect.poll(() => (party === 'customer' ? db.getCustomer(record.id) : db.getSupplier(record.id)).contact).toBe(party + '-updated-contact');
       assert.equal((party === 'customer' ? db.getCustomer(record.id) : db.getSupplier(record.id)).phone, '123456');
     }
-    await page.goto(origin + '/pages/orders/index');
+    await page.goto(origin + '/pages/management/index?section=orders');
     await active().getByText('DRAFT-KEEP · 客户编辑回归', { exact: true }).waitFor();
     await active().getByText('出库', { exact: true }).click();
     await page.waitForURL(/outbound/);
@@ -102,10 +102,10 @@ async function main() {
     assert.equal(db.getCustomer(customer.id).debt, 4);
     const outbound = db.listTx({ type: 'out' }).find(row => row.order_id === order.id);
     assert.equal(outbound.quantity, 2); assert.equal(outbound.remark, '保留这份出库草稿');
-    await page.goto(origin + '/pages/business-center/index');
+    await page.goto(origin + '/pages/home/index');
     await expect(page.getByTestId('simple-workbench')).toBeVisible();
     await page.getByText('收付款 / 账单', { exact: true }).locator('xpath=ancestor-or-self::taro-button-core[1]').click();
-    await page.goto(origin + '/pages/business-center/index');
+    await page.goto(origin + '/pages/home/index');
     await expect(page.getByTestId('simple-workbench')).toBeVisible();
     await page.getByTestId('workbench-customer-management').click();
     await page.getByTestId('customer-center-add').click();

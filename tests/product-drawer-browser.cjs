@@ -34,7 +34,7 @@ const server = http.createServer((request, response) => {
         : url.pathname === '/api/products' ? { id: 101, name: '抽屉商品', unit: '件', price: 0, stock: 0, safety_stock: 0 } : [];
       return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ success: true, data }) });
     });
-    await page.goto(origin + '/#/pages/products/index');
+    await page.goto(origin + '/#/pages/management/index?section=goods');
     await page.getByText('+ 新增', { exact: true }).click();
     const sheet = page.locator('[class*="editorSheet"]');
     await expect(sheet).toBeVisible();
@@ -50,7 +50,7 @@ const server = http.createServer((request, response) => {
     assert.equal(writes[0].body.name, '抽屉商品');
     assert.equal(await page.locator('[class*="editorSheet"]').count(), 0, 'drawer closes after a successful save');
     assert.deepEqual(errors, []);
-    assert.ok(await page.evaluate(() => location.href.includes('/pages/products/index')), 'product editor never navigates to the retired page');
+    assert.ok(await page.evaluate(() => location.href.includes('/pages/management/index?section=goods')), 'product editor never navigates to the retired page');
     console.log(JSON.stringify({ drawer: 'visible', nameLimit: 50, write: writes[0].method, route: 'products' }));
   } finally {
     await browser.close();

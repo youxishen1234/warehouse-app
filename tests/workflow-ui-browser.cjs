@@ -40,9 +40,9 @@ async function check(engine, name, base) {
         await page.getByRole('button', { name: ['总台', 'AI助手', '库存', '打印', '我的'][index], exact: true }).click();
         await page.waitForURL(new RegExp('/pages/' + route + '/index'));
         const active = page.locator('.taro_page:visible').last();
-        assert.equal(await page.locator('taro-tabbar:visible .sg-glass-tab[data-tab]').count(), 5, `${name}/${width}/${route}: five dock tabs`);
+        assert.equal(await page.locator('taro-tabbar:visible .sg-app-nav button[data-tab]').count(), 5, `${name}/${width}/${route}: five dock tabs`);
         if (route === 'print-center') {
-          await page.waitForFunction(() => document.querySelector('taro-tabbar .sg-glass-tab[data-tab="3"]')?.getAttribute('aria-current') === 'page');
+          await page.waitForFunction(() => document.querySelector('taro-tabbar .sg-app-nav button[data-tab="3"]')?.getAttribute('aria-current') === 'page');
           await active.getByRole('heading', { name: '打印工作台' }).waitFor();
         }
         if (route === 'home' || route === 'inventory') await active.getByTestId('simple-workbench').first().waitFor();

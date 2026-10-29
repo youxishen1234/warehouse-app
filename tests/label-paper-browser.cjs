@@ -72,7 +72,7 @@ const server = http.createServer((request, response) => {
     const page = await context.newPage();
     page.setDefaultTimeout(12000);
     page.on('pageerror', error => errors.push(error.message));
-    await page.goto(origin + '/#/pages/label-print/index');
+    await page.goto(origin + '/#/pages/management/index?section=labels');
     // Remote USB is now the default; this suite exercises the native page.
     await page.locator('taro-button-core').filter({ hasText: /^切换手机蓝牙打印$/ }).click();
     const field = label => page.getByLabel(label).locator('input');

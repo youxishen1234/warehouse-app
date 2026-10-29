@@ -111,7 +111,7 @@ async function buildLargePaperboardLabel(
     : text('receivedDate' in data ? data.receivedDate : undefined) || '未填写';
   const url = manual || !('batchUrl' in data) ? '' : text(data.batchUrl);
   const warnings: string[] = [];
-  if (!manual && !url.startsWith('https://youxishen.online/#/pages/label-resolver/index?v=1&kind=paperboard-batch&id=')) {
+  if (!manual && !url.startsWith('https://youxishen.online/#/pages/management/index?section=label-lookup&v=1&kind=paperboard-batch&id=')) {
     warnings.push('二维码链接与当前纸板批次不一致，已停止打印');
   }
   const qr = !manual && !warnings.length
@@ -204,7 +204,7 @@ export async function buildRemoteLabelHtml(input: {
   if (!rows.length) throw new Error('标签资料为空');
   const url = text(board ? ('batchUrl' in data ? data.batchUrl : '') : ('productUrl' in data ? data.productUrl : ''));
   const warnings: string[] = [];
-  if (!url.startsWith(`https://youxishen.online/#/pages/label-resolver/index?v=1&kind=${kind}&id=`)) {
+  if (!url.startsWith(`https://youxishen.online/#/pages/management/index?section=label-lookup&v=1&kind=${kind}&id=`)) {
     warnings.push('二维码链接与当前标签记录不一致，已停止打印');
   }
   const headline = board && 'boardLength' in data

@@ -272,7 +272,7 @@ export default function AiAssistantPage() {
         <DraftForm schema={schema} value={draft} disabled={!canEdit} onChange={value => { setDraft(value); setDirty(true); }} />
         <div className={styles.actions}><button data-ai-control="button" className={styles.secondary} disabled={!canEdit} onClick={checkDraft}>{conflict ? '刷新并重新核对' : '核对填写内容'}</button>
           {plan.status === 'ready' && <button data-ai-control="button" className={plan.destructive ? styles.danger : styles.primary} disabled={busy || dirty} onClick={execute}>{busy ? '处理中…' : unconfirmed ? '核对本次提交结果' : plan.intent.action.startsWith('print') ? '生成打印预览' : plan.destructive ? '确认执行作废/停用' : '确认提交'}</button>}</div>
-        <button data-ai-control="button" className={styles.textButton} disabled={!canEdit} onClick={() => void navigate('/pages/products/index')}>查看商品与编号 ›</button>
+        <button data-ai-control="button" className={styles.textButton} disabled={!canEdit} onClick={() => void navigate('/pages/management/index?section=goods')}>查看商品与编号 ›</button>
       </div>}
       {plan?.result && <div className={styles.card}><span className={styles.sectionTitle}>{plan.result.title} · 共 {plan.result.total} 条</span>
         {plan.result.items.length === 0 && <span className={styles.hint}>没有符合条件的记录</span>}

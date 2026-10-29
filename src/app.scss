@@ -1,20 +1,17 @@
 @use '@/styles/compat.scss';
 @use '@/styles/variables.scss' as *;
+@use '@/styles/demo.scss';
 
 // 全局样式
 html { color-scheme: light; }
 
 page {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Hiragino Sans GB',
-    sans-serif;
-  font-size: $font-size-md;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  font-size: 14PX;
   line-height: $line-height-normal;
   color: $color-text-primary;
   background: #fff;
 }
-
-/* The legacy launcher remains the keyboard-accessible entry for the detailed
-   corrugated roll calculator injected into the dashboard grid. */
 
 html,
 body,

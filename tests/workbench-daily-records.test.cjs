@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
 const exportsObject = {};
-const source = fs.readFileSync('src/pages/business-center/daily-records.ts', 'utf8');
+const source = fs.readFileSync('src/components/Workspace/daily-records.ts', 'utf8');
 vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, { exports: exportsObject, Date });
 const { dailyRecords, localDay, partyMonthSummary } = exportsObject;
 const now = new Date(2026, 9, 19, 12).getTime();

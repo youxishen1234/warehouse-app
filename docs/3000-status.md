@@ -122,7 +122,7 @@
 - **47 · 记录已完成** 金额上限、数量上限（MAX_SAFE_INTEGER 相关）校验需在前后端一致，超限给出「数值过大」提示而不是 500。
   - 实施记录：已通过；?????????????????????????????????????；验证：backend/stock.test.cjs???73???
 - **48 · 记录已完成** lineAmount 对 quantity×price 超界抛错的场景，前端 previewAmount 当前静默返回 0，需把「超界」与「未填写」区分开，超界给错误提示。
-  - 实施记录：已通过；??/????????????????????????????；验证：src/pages/inbound/index.tsx?outbound?backend/stock.test.cjs?preview-overflow.test.cjs???73???
+  - 实施记录：已通过；??/????????????????????????????；验证：src/components/BusinessForms/Receipt/index.tsx?outbound?backend/stock.test.cjs?preview-overflow.test.cjs???73???
 - **49 · 记录已完成** 客户期初应收、供应商期初应付在创建时应同步生成一条 opening 类型账本流水（当前直接改余额无流水），保证余额可逐笔追溯。
   - 实施记录：已通过；客户/供应商创建期初余额时同步生成 receivable/payable 账本流水；验证：`backend/stock.test.cjs`
 - **50 · 记录已完成** 客户 debt、供应商 payable 调整（编辑页）导致余额下降时会生成 settlement 流水；余额上升（补录欠款）当前无流水，需补 receivable/payable 流水。
@@ -573,7 +573,7 @@
 - **375 · 记录已完成** 预览金额 previewAmount 与服务端 lineAmount 结果一致性写测试（同一组数量价格）。
   - 实施记录：已通过；???? previewAmount ???? lineAmount???????????????????????????????；验证：tests/preview-line-amount.test.cjs?tests/stock-browser.cjs?Chromium realPosting??????CSV???????????
 - **376 · 记录已完成** 面积/长宽解析 dimensions 的前端行为与服务端一致，补规格解析单测。
-  - 实施记录：已通过；?????????????? helper???/???????????；验证：src/pages/carton-calculator/math.ts?tests/carton-math.test.cjs?????
+  - 实施记录：已通过；?????????????? helper???/???????????；验证：src/components/BusinessForms/CartonCalculator/math.ts?tests/carton-math.test.cjs?????
 - **377 · 待实施／待核对** 所有页面 index.config.ts 补全标题与需要的配置，保持自定义导航（navigationStyle custom）现状。
 - **378 · 待实施／待核对** suppliers、team 页缺 index.module.scss（用 style.scss），保持现状但确认样式不串全局。
 - **379 · 待实施／待核对** 页面样式与主题变量（variables/theme/compat）统一引用，禁止页面硬编码颜色新增视觉差异（保持 UI 不动）。
@@ -635,7 +635,7 @@
   - 实施记录：已通过；现有关键词入口（商品选择器、库存查询）统一增加 300ms 防抖，输入展示与实际过滤状态分离；验证：`src/components/StockProductPicker/index.tsx`、`src/pages/inventory/index.tsx`
   - 实施记录：已通过；商品编辑页规格/材质历史建议增加 300ms 防抖并使用 memo 过滤，避免每次输入全量计算；验证：`src/pages/product-edit/index.tsx`、TypeScript/H5 构建
 - **413 · 记录已完成** 列表过滤、面积/金额计算结果用 useMemo 缓存，输入变化才重算，避免渲染中重复计算。
-  - 实施记录：已通过；入库/出库金额与库存计算使用 memo，客户流水统计按往来对象建立索引，减少渲染中重复过滤；验证：`src/pages/inbound/index.tsx`、`src/pages/outbound/index.tsx`、`src/pages/customers/index.tsx`
+  - 实施记录：已通过；入库/出库金额与库存计算使用 memo，客户流水统计按往来对象建立索引，减少渲染中重复过滤；验证：`src/components/BusinessForms/Receipt/index.tsx`、`src/components/BusinessForms/Shipment/index.tsx`、`src/pages/customers/index.tsx`
   - 实施记录：已通过；库存过滤、库存盘点记录索引和首页流转最大值使用 memo，减少渲染中重复计算；验证：`src/pages/inventory/index.tsx`、`src/pages/home/index.tsx`
 - **414 · 记录已完成** 大列表行组件 memo 化，避免某行输入导致整列表重渲染。
   - 实施记录：已通过；Seven list-page React.memo row tests pass.；验证：待补充
@@ -1886,7 +1886,7 @@
 - **1607 · 待实施／待核对** GET /api/stocktakes（盘点记录）：伪造来源（任意 Origin、X-Forwarded-For）用例，断言按 CORS/限流策略安全处理、不绕过限制。
 - **1608 · 待实施／待核对** 库存查询页：页面内所有可见文案走 copy 文案服务，不新增硬编码字符串，留空回退默认。
 - **1609 · 记录已完成** 文本字段「客户/供应商名称」：长度上限校验（与输入框 maxlength 一致），超长拒绝并提示。
-  - 实施记录：已通过；客户/供应商名称编辑输入上限 50 字符，长文本粘贴被浏览器限制；验证：src/pages/customer-edit/index.tsx、tests/customer-edit-money-browser.cjs；Chromium输入边界测试通过
+  - 实施记录：已通过；客户/供应商名称编辑输入上限 50 字符，长文本粘贴被浏览器限制；验证：src/components/BusinessForms/PartyDetails/index.tsx、tests/customer-edit-money-browser.cjs；Chromium输入边界测试通过
 - **1610 · 待实施／待核对** POST /api/stock/in（单笔入库）：成功响应严格遵循 { success, data } 壳与字段类型，补契约测试。
 - **1611 · 待实施／待核对** GET /api/stocktakes（盘点记录）：枚举/范围非法值与公式注入内容用例，断言安全处理（400/转义）。
 - **1612 · 待实施／待核对** 库存查询页：网络不可达时按全局离线状态提示，不在页面内重复弹窗，恢复后自动重载。
@@ -1935,7 +1935,7 @@
 - **1655 · 待实施／待核对** POST /api/delivery-notes（新增送货单）：超大请求体/超长字段/高频重复调用用例，断言 413/400/429 且无数据写入。
 - **1656 · 待实施／待核对** 库存查询页：金额/数量随输入实时预览，预览计算复用共享 stock-math，与提交后结果完全一致。
 - **1657 · 记录已完成** 文本字段「联系人」：长度上限校验（与输入框 maxlength 一致），超长拒绝并提示。
-  - 实施记录：已通过；联系人编辑输入 maxlength 与后端一致限制为 50 字符；验证：src/pages/customer-edit/index.tsx、tests/customer-edit-money-browser.cjs；Chromium验收通过
+  - 实施记录：已通过；联系人编辑输入 maxlength 与后端一致限制为 50 字符；验证：src/components/BusinessForms/PartyDetails/index.tsx、tests/customer-edit-money-browser.cjs；Chromium验收通过
 - **1658 · 待实施／待核对** POST /api/stock/out/batch（批量出库）：查询/请求参数做类型与范围校验，非法参数 400 并说明字段与允许值。
 - **1659 · 待实施／待核对** GET /api/delivery-notes/:id（送货单详情）：缺少必填字段/空 body 用例，断言 400 且数据无任何变化。
 - **1660 · 待实施／待核对** 库存查询页：库存相关提示统一口径（roundDecimal 后比较），避免「显示够、提交报不足」。
@@ -1984,7 +1984,7 @@
 - **1703 · 待实施／待核对** GET /api/delivery-notes/:id.csv（送货单CSV）：错误类型与畸形值（字符串当数字、嵌套对象、超长字符串）用例，断言被拒绝。
 - **1704 · 待实施／待核对** 库存查询页：核对页面默认不展示作废/停用数据，切换「显示历史」时汇总数据不被作废项污染。
 - **1705 · 记录已完成** 电话字段「手机号」：长度上限校验（与输入框 maxlength 一致），超长拒绝并提示。
-  - 实施记录：已通过；客户/供应商电话编辑输入 maxlength 限制为 20 字符；验证：src/pages/customer-edit/index.tsx、tests/customer-edit-money-browser.cjs；Chromium验收通过
+  - 实施记录：已通过；客户/供应商电话编辑输入 maxlength 限制为 20 字符；验证：src/components/BusinessForms/PartyDetails/index.tsx、tests/customer-edit-money-browser.cjs；Chromium验收通过
 - **1706 · 待实施／待核对** GET /api/transactions（出入库流水）：成功响应严格遵循 { success, data } 壳与字段类型，补契约测试。
 - **1707 · 待实施／待核对** GET /api/delivery-notes/:id.csv（送货单CSV）：伪造来源（任意 Origin、X-Forwarded-For）用例，断言按 CORS/限流策略安全处理、不绕过限制。
 - **1708 · 待实施／待核对** 库存查询页：补充该页面核心交互的 E2E 用例（正常/失败/重连/刷新），随页面改动维护。
@@ -2028,14 +2028,14 @@
 - **1746 · 待实施／待核对** GET /api/ledger（账本流水）：无登录环境下按默认访问口径可用，验证请求不依赖任何会话头即可按契约访问。
 - **1747 · 待实施／待核对** POST /api/backup（恢复备份）：缺失/伪造幂等键与版本头、异常设备标识用例，断言安全拒绝（400/409）且无数据写入。
 - **1748 · 记录已完成** 商品列表页：加载失败时在现有错误提示位置给出原因与「点击重试」，重试走相同加载入口，不新增任何按钮版块。
-  - 实施记录：已通过；??????????????????????????????；验证：src/pages/products/index.tsx?tests/products-load-state.test.cjs????TypeScript?ESLint?H5??
+  - 实施记录：已通过；??????????????????????????????；验证：src/components/BusinessForms/GoodsCatalog/index.tsx?tests/products-load-state.test.cjs????TypeScript?ESLint?H5??
 - **1749 · 待实施／待核对** 文本字段「地址」：执行 trim 与首尾空白清理，纯空白按空值处理。
 - **1750 · 待实施／待核对** GET /api/ledger（账本流水）：高频与异常来源调用按 IP+设备限流，超限 429 带 Retry-After，正常调用不受影响。
 - **1751 · 待实施／待核对** POST /api/backup（恢复备份）：并发冲突与重放用例（错误版本、同键不同内容、超时重发），断言只生效一次。
 - **1752 · 记录已完成** 商品列表页：无数据时在现有列表位置显示明确空状态文案，加载中显示占位，避免空白页被误认为卡死。
-  - 实施记录：已通过；?????? loading/error/empty ????????????；验证：src/pages/products/index.tsx?tests/products-load-state.test.cjs????????????
+  - 实施记录：已通过；?????? loading/error/empty ????????????；验证：src/components/BusinessForms/GoodsCatalog/index.tsx?tests/products-load-state.test.cjs????????????
 - **1753 · 记录已完成** 文本字段「地址」：长度上限校验（与输入框 maxlength 一致），超长拒绝并提示。
-  - 实施记录：已通过；客户/供应商地址编辑输入 maxlength 限制为 200 字符；验证：src/pages/customer-edit/index.tsx、tests/customer-edit-money-browser.cjs；Chromium验收通过
+  - 实施记录：已通过；客户/供应商地址编辑输入 maxlength 限制为 200 字符；验证：src/components/BusinessForms/PartyDetails/index.tsx、tests/customer-edit-money-browser.cjs；Chromium验收通过
 - **1754 · 待实施／待核对** GET /api/ledger（账本流水）：查询/请求参数做类型与范围校验，非法参数 400 并说明字段与允许值。
 - **1755 · 待实施／待核对** POST /api/backup（恢复备份）：超大请求体/超长字段/高频重复调用用例，断言 413/400/429 且无数据写入。
 - **1756 · 待实施／待核对** 商品列表页：所有定时器/轮询在页面卸载时清理，切到后台时暂停，回前台立即同步一次。
@@ -2085,7 +2085,7 @@
 - **1799 · 待实施／待核对** GET /api/export/ledger.csv（账本CSV导出）：缺少必填字段/空 body 用例，断言 400 且数据无任何变化。
 - **1800 · 待实施／待核对** 商品列表页：页面内所有可见文案走 copy 文案服务，不新增硬编码字符串，留空回退默认。
 - **1801 · 记录已完成** 长文本字段「备注」：长度上限校验（与输入框 maxlength 一致），超长拒绝并提示。
-  - 实施记录：已通过；客户/供应商备注编辑输入 maxlength 限制为 500 字符；验证：src/pages/customer-edit/index.tsx、tests/customer-edit-money-browser.cjs；Chromium验收通过
+  - 实施记录：已通过；客户/供应商备注编辑输入 maxlength 限制为 500 字符；验证：src/components/BusinessForms/PartyDetails/index.tsx、tests/customer-edit-money-browser.cjs；Chromium验收通过
 - **1802 · 待实施／待核对** POST /api/ledger（新增账本流水）：成功响应严格遵循 { success, data } 壳与字段类型，补契约测试。
 - **1803 · 待实施／待核对** GET /api/export/ledger.csv（账本CSV导出）：错误类型与畸形值（字符串当数字、嵌套对象、超长字符串）用例，断言被拒绝。
 - **1804 · 待实施／待核对** 商品列表页：网络不可达时按全局离线状态提示，不在页面内重复弹窗，恢复后自动重载。
@@ -2161,7 +2161,7 @@
 - **1871 · 待实施／待核对** GET /api/appupdate/stats（热更统计）：枚举/范围非法值与公式注入内容用例，断言安全处理（400/转义）。
 - **1872 · 待实施／待核对** 商品列表页：可访问性检查：文字对比度、可点击区域尺寸、聚焦顺序，视觉外观不变。
 - **1873 · 记录已完成** 金额字段「期初应收」：非负/正数规则按业务固定，小数位数符合口径（金额 2 位、数量 6 位），输入时即限制。
-  - 实施记录：已通过；客户/供应商余额输入即时限制为非负两位小数，拒绝负号、正号、科学计数法和超范围金额；服务端仍独立校验；验证：src/pages/customer-edit/index.tsx、src/utils/form-input.ts、tests/customer-edit-money-input.test.cjs、customer-edit-money-browser.cjs；Chromium输入边界回归通过
+  - 实施记录：已通过；客户/供应商余额输入即时限制为非负两位小数，拒绝负号、正号、科学计数法和超范围金额；服务端仍独立校验；验证：src/components/BusinessForms/PartyDetails/index.tsx、src/utils/form-input.ts、tests/customer-edit-money-input.test.cjs、customer-edit-money-browser.cjs；Chromium输入边界回归通过
 - **1874 · 待实施／待核对** POST /api/orders（新增订单）：无登录环境下按默认访问口径可用，验证请求不依赖任何会话头即可按契约访问。
 - **1875 · 待实施／待核对** GET /api/appupdate/stats（热更统计）：畸形查询参数（数组、对象、脚本片段）与异常头用例，断言安全拒绝且不触发异常堆栈外泄。
 - **1876 · 待实施／待核对** 商品列表页：把可复用的计算（过滤、合计、百分比）用 useMemo 缓存，避免渲染中重复计算。
@@ -3204,7 +3204,7 @@
 - **2884 · 待实施／待核对** 纸箱尺寸换算页：页面内所有可见文案走 copy 文案服务，不新增硬编码字符串，留空回退默认。
 - **2885 · 待实施／待核对** 纸箱尺寸换算页：网络不可达时按全局离线状态提示，不在页面内重复弹窗，恢复后自动重载。
 - **2886 · 记录已完成** 纸箱尺寸换算页：数字类输入实时校验（非负、小数位、上限），非法输入即时提示且不进入提交数据。
-  - 实施记录：已通过；??????????/???????? sanitizeDecimalInput??????????????????；验证：src/pages/carton-calculator/index.tsx?tests/carton-calculator-input.test.cjs?TypeScript?ESLint???????
+  - 实施记录：已通过；??????????/???????? sanitizeDecimalInput??????????????????；验证：src/components/BusinessForms/CartonCalculator/index.tsx?tests/carton-calculator-input.test.cjs?TypeScript?ESLint???????
 - **2887 · 待实施／待核对** 纸箱尺寸换算页：把页面数据加载逻辑抽成 useRemoteData/hook 并补单测，页面只保留现有渲染结构。
 - **2888 · 待实施／待核对** 纸箱尺寸换算页：进入页面（useDidShow）与首次加载（useEffect）的刷新去重，避免瞬间重复请求。
 - **2889 · 待实施／待核对** 纸箱尺寸换算页：下拉刷新与自动刷新共用同一加载函数并受序号守卫，刷新动画在结束后正确复位。
@@ -3216,7 +3216,7 @@
 - **2894 · 待实施／待核对** 纸箱尺寸换算页：长文本字段执行长度上限（与 maxlength 一致），超长在输入时即提示。
 - **2895 · 待实施／待核对** 纸箱尺寸换算页：输入框粘贴内容做清洗（trim、去多小数点、去控制字符），非法粘贴不进入表单。
 - **2896 · 记录已完成** 纸箱尺寸换算页：金额/数量随输入实时预览，预览计算复用共享 stock-math，与提交后结果完全一致。
-  - 实施记录：已通过；?????????????????????? helper????????????；验证：src/pages/carton-calculator/math.ts?tests/carton-math.test.cjs???????????tests/carton-calculator-browser.cjs Chromium ????
+  - 实施记录：已通过；?????????????????????? helper????????????；验证：src/components/BusinessForms/CartonCalculator/math.ts?tests/carton-math.test.cjs???????????tests/carton-calculator-browser.cjs Chromium ????
 - **2897 · 待实施／待核对** 纸箱尺寸换算页：库存相关提示统一口径（roundDecimal 后比较），避免「显示够、提交报不足」。
 - **2898 · 待实施／待核对** 纸箱尺寸换算页：会话失效后自动静默重连并重载数据，期间显示现有连接状态，不出现任何登录/密码提示。
 - **2899 · 待实施／待核对** 纸箱尺寸换算页：页面内并发的多个请求任一失败时不进入可操作 ready 态，避免半数据下操作。

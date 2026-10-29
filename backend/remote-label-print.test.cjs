@@ -23,7 +23,7 @@ const productFixture = () => ({
 });
 const productSnapshot = (stockSnapshot = 6) => ({
   productId: 12, name: '成品 A', specification: '70 × 100 mm', unit: '个',
-  productUrl: 'https://youxishen.online/#/pages/label-resolver/index?v=1&kind=finished-product&id=12',
+  productUrl: 'https://youxishen.online/#/pages/management/index?section=label-lookup&v=1&kind=finished-product&id=12',
   material: '牛皮纸', stockSnapshot, printedAt: '2026-10-23T10:00:00.000Z'
 });
 const manualBoardFixture = () => ({
@@ -178,7 +178,7 @@ test('canonical snapshots are rebuilt from current product and board records, re
 
   const board = {
     batchId: batch.id, boardLength: 100, boardWidth: 70, fluteType: 'B', supplier: '纸板厂',
-    batchUrl: 'https://youxishen.online/#/pages/label-resolver/index?v=1&kind=paperboard-batch&id=BOARD-20261023-ABCDEF123456',
+    batchUrl: 'https://youxishen.online/#/pages/management/index?section=label-lookup&v=1&kind=paperboard-batch&id=BOARD-20261023-ABCDEF123456',
     layers: 3, cartonLength: 40, cartonWidth: 30, cartonHeight: 20,
     receivedDate: '2026-10-23', location: 'A-01', receivedQty: 80, remainingQtySnapshot: 72
   };
@@ -316,7 +316,7 @@ test('HTTP routes reuse X-Print-Client pairing, separate label jobs from the leg
 test('business board fields are canonical, reject stale or forged values without inventory writes', () => {
  const batch={id:'BOARD-20261023-ABCDEF123456',boardLength:100,boardWidth:70,fluteType:'B',supplier:'纸板厂',customerName:'客户甲',material:'牛卡',printPlate:'包装A',printColor:'红黑',remainingQty:0};
  const db={listBoards:()=>[batch]};
- const base={batchId:batch.id,boardLength:100,boardWidth:70,fluteType:'B',supplier:'纸板厂',batchUrl:'https://youxishen.online/#/pages/label-resolver/index?v=1&kind=paperboard-batch&id='+batch.id};
+ const base={batchId:batch.id,boardLength:100,boardWidth:70,fluteType:'B',supplier:'纸板厂',batchUrl:'https://youxishen.online/#/pages/management/index?section=label-lookup&v=1&kind=paperboard-batch&id='+batch.id};
  const snapshot={...base,customerName:batch.customerName,material:batch.material,printPlate:batch.printPlate,printColor:batch.printColor,remainingQtySnapshot:0};
  const before=JSON.stringify(batch);
  assert.deepEqual(canonicalSnapshot(db,'paperboard-batch',snapshot),snapshot);
@@ -341,7 +341,7 @@ test('HTTP board jobs accept print-only metadata without changing the batch or a
     batchId: batch.id, boardLength: 100, boardWidth: 70, fluteType: 'B', supplier: 'Board Mill',
     customerName: 'Customer A', material: 'Kraft', printPlate: printFields.printPlate,
     printColor: printFields.printColor, remainingQtySnapshot: 7,
-    batchUrl: 'https://youxishen.online/#/pages/label-resolver/index?v=1&kind=paperboard-batch&id=' + batch.id
+    batchUrl: 'https://youxishen.online/#/pages/management/index?section=label-lookup&v=1&kind=paperboard-batch&id=' + batch.id
   };
   const db = { listBoards: () => [batch] };
   const express = require('express'), app = express(), router = express.Router();

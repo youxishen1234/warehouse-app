@@ -138,7 +138,7 @@ async function main() {
 
     const input = label => page.locator(`[aria-label=${JSON.stringify(label)}] input, input[aria-label=${JSON.stringify(label)}]`).first();
     const buttonContainingText = label => page.locator('taro-button-core, button').filter({ hasText: label }).last();
-    const productionPath = '/#/pages/inbound/index?kind=carton';
+    const productionPath = '/#/pages/management/index?section=receipt&kind=carton';
     const openProductionEntry = async () => {
       await page.goto(`${origin}${productionPath}`);
       await expect(page.locator('[data-testid="stock-entry-page"]')).toBeVisible();
@@ -291,7 +291,7 @@ async function main() {
     await expect(page.getByText('LEGACY-CUSTOMER-SUPPLY', { exact: false })).toHaveCount(0);
     await page.screenshot({ path: path.join(evidence, 'carton-production-saved.png'), fullPage: true });
 
-    await page.goto(`${origin}/#/pages/inbound/index`);
+    await page.goto(`${origin}/#/pages/management/index?section=receipt`);
     await expect(page.getByText('采购入库', { exact: true }).first()).toBeVisible();
     await buttonContainingText('最近入库单').click();
     await expect(page.getByText('LEGACY-SUPPLIER-INBOUND', { exact: true }).last()).toBeVisible();

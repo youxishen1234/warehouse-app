@@ -75,7 +75,7 @@ async function main() {
     const typeTabs = page.locator('[class*="__typeTabs___"]');
     const sheet = page.locator('[class*="__sheet___"]');
     const search = page.locator('input[placeholder="搜索客户、供应商或备注"]');
-    await page.goto(`${origin}/#/pages/business-center/index?section=finance`);
+    await page.goto(`${origin}/#/pages/management/index?section=finance`);
     await expect(rowButtons).toHaveCount(7);
     await expect(page.locator('[class*="__netAmount___"]')).toHaveText('¥11,300.00');
     await rowButtons.first().locator('img').first().waitFor({ state: 'visible' });

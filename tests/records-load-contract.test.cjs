@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 
 test('records page keeps loading, retryable error, empty and ready states atomic', () => {
-  const source = fs.readFileSync('src/pages/records/index.tsx', 'utf8');
+  const source = fs.readFileSync('src/components/BusinessForms/Transactions/index.tsx', 'utf8');
   assert.match(source, /useRemoteData/);
   assert.match(source, /await Promise\.all\(\[/, 'transactions and products must load as one ready gate');
   assert.match(source, /recordsInvalidDates/);

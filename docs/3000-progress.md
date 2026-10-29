@@ -213,7 +213,7 @@ extOrderId` | `backend/db.js`、`backend/stock.test.cjs` |
 | 372 | 已通过 | formatTime/formatShortTime 对非法时间返回稳定占位，formatMoney 对 NaN/Infinity 返回安全金额 | `src/utils/format.ts`、TypeScript/H5 构建 |
 | 370 | 已通过 | 页面金额展示统一使用 utils/format，修复首页和打印页重复货币符号；结算输入使用 formatMoneyInput 保持无符号、无分组的两位小数，审计时间使用 formatTime；源码检索剩余页面 toFixed 仅用于尺寸／面积计算 | `src/utils/format.ts`、首页／客户／审计／打印页面；格式化单测与首页、账本、打印 Chromium/WebKit 回归 |
 | 371 | 已通过 | formatMoney 对零、负数、分组金额、NaN／Infinity／非数字保持稳定输出；账本收入与支出分别显示 +¥7.25、-¥2.50，保留业务方向且仅含一个货币符号 | `tests/format.test.cjs`、`tests/reporting-browser.cjs`；金额边界单测、账本 Chromium/WebKit 回归 |
-| 413 | 已通过 | 入库/出库金额与库存计算使用 memo，客户流水统计按往来对象建立索引，减少渲染中重复过滤 | `src/pages/inbound/index.tsx`、`src/pages/outbound/index.tsx`、`src/pages/customers/index.tsx` |
+| 413 | 已通过 | 入库/出库金额与库存计算使用 memo，客户流水统计按往来对象建立索引，减少渲染中重复过滤 | `src/components/BusinessForms/Receipt/index.tsx`、`src/components/BusinessForms/Shipment/index.tsx`、`src/pages/customers/index.tsx` |
 | 384 | 已通过 | 主要页面加载在卸载时递增序号守卫，所有过期响应回调被丢弃，避免卸载后 setState 与旧数据覆盖 | 相关页面、TypeScript/H5 构建 |
 | 297 | 已通过 | 通用 POST/PUT 写入口拒绝非 JSON 或非对象请求体，返回中文 400 | `backend/team.js`、`backend/team.test.cjs` |
 | 301 | 已通过 | 通用资料字段增加服务端长度上限（名称、规格、备注、地址等），超限不落库 | `backend/team.js`、`backend/team.test.cjs` |
@@ -245,7 +245,7 @@ ative_version`，便于兼容性统计 | `src/services/update.ts`、TypeScript �
 | 448 | 已通过 | 网络错误写请求最多重试两次并使用 250ms/500ms 指数退避，始终复用原幂等键，避免重复入账与重试风暴 | `src/services/request.ts`、TypeScript/后端回归 |
 
 | 412 | 已通过 | 商品编辑页规格/材质历史建议增加 300ms 防抖并使用 memo 过滤，避免每次输入全量计算 | `src/pages/product-edit/index.tsx`、TypeScript/H5 构建 |
-| 336 | 已通过 | 补齐 BackupMetadata／WarehouseBackupData／BackupExport 与供应商删除响应类型；getBackup 返回 BackupExport，restoreBackup 返回 Stats，文件解析与恢复输入用 unknown 保留后端完整校验边界；api.ts 无显式 any 或无类型 request 调用 | `src/types/index.ts`、`src/services/api.ts`、`src/pages/backup/index.tsx`；
+| 336 | 已通过 | 补齐 BackupMetadata／WarehouseBackupData／BackupExport 与供应商删除响应类型；getBackup 返回 BackupExport，restoreBackup 返回 Stats，文件解析与恢复输入用 unknown 保留后端完整校验边界；api.ts 无显式 any 或无类型 request 调用 | `src/types/index.ts`、`src/services/api.ts`、`src/components/BusinessForms/BackupSettings/index.tsx`；
 px tsc --noEmit`、Chromium/WebKit 备份下载／取消／恢复回归 |
 | 337 | 已通过 | 新增 Supplier 类型并让供应商 API 返回 Supplier，保留与客户页面的结构兼容 | `src/types/index.ts`、`src/services/api.ts` |
 | 338 | 已通过 | 盘点、账本、送货单、订单事件类型统一集中到 `src/types`；`api.ts` 仅保留兼容性 type re-export | `src/types/index.ts`、`src/services/api.ts` | 
@@ -291,7 +291,7 @@ ode tests/stock-browser.cjs`（Chromium/WebKit，18 routes、390/1280 宽度、�
 ode tests/team-browser.cjs`（游客启动、商品新增、部分结算与双会话可见性）均通过；四个 Tab 次序未变。
 - 
 ode tests/reporting-browser.cjs` 与 `REPORT_BROWSER=webkit`：冷启动、405 条分页、第二页失败重试、打印样式、账本 CSV 保存、收支金额符号、备份下载／取消／恢复均通过，无页面错误。Chromium PDF 为 8 页；`release/reporting-check/` 中均为隔离测试数据。
-- 本批定向 ESLint 为 0 errors：使用 `--no-eslintrc --config node_modules/eslint-config-taro/index.js`；前端按现有约定关闭 `react/react-in-jsx-scope`、`jsx-quotes`，CommonJS 测试关闭 `@typescript-eslint/no-var-requires`、`import/no-commonjs`。保留 `src/pages/team/index.tsx` 既有 load 依赖的 `react-hooks/exhaustive-deps` warning，配置仍提示 React 版本；未宣称全仓 lint 无告警。
+- 本批定向 ESLint 为 0 errors：使用 `--no-eslintrc --config node_modules/eslint-config-taro/index.js`；前端按现有约定关闭 `react/react-in-jsx-scope`、`jsx-quotes`，CommonJS 测试关闭 `@typescript-eslint/no-var-requires`、`import/no-commonjs`。保留 `src/components/BusinessForms/TeamSettings/index.tsx` 既有 load 依赖的 `react-hooks/exhaustive-deps` warning，配置仍提示 React 版本；未宣称全仓 lint 无告警。
 - 原生相对路径构建通过：以 `TARO_PUBLIC_PATH=./`、`TARO_OUTPUT_DIR=release/native-list-query` 执行 
 pm run build:h5`，日志为 `release/build-native-list-query.log`。对照 `release/native-list-query-before.json` 的 231 个旧资源哈希同步 48 个构建文件到 `www/`，保留 `www/js/home-search.js` 与 `www/css/polish.css` 字节，未删除旧文件；`NAV_WEB_DIR=www` 的 Chromium/WebKit 四 Tab、原生握手、手势和布局回归通过。未制作或上传 iOS 安装包。
 - 
@@ -428,7 +428,7 @@ ode tests/navigation-browser.cjs` 已确认 Chromium 与 WebKit 均通过；发�
 
 | 38 | 已通过 | stats ?? totalReceivable/totalPayable??????????????????????????????/???? | backend/db.js?backend/stats-precision.test.cjs?src/types/index.ts?src/pages/home/index.tsx??????ESLint???30??? |
 
-| 48 |  已通过  | ??/???????????????????????????? | src/pages/inbound/index.tsx?outbound?backend/stock.test.cjs?preview-overflow.test.cjs???73??? |
+| 48 |  已通过  | ??/???????????????????????????? | src/components/BusinessForms/Receipt/index.tsx?outbound?backend/stock.test.cjs?preview-overflow.test.cjs???73??? |
 
 | 375 | 已通过 | ???? previewAmount ???? lineAmount??????????????????????????????? | tests/preview-line-amount.test.cjs?tests/stock-browser.cjs?Chromium realPosting??????CSV??????????? |
 | 39 |  已通过  | ??????????????????????????????????? | backend/stock.test.cjs??? HTTP ???????????? |
@@ -464,8 +464,8 @@ ode tests/navigation-browser.cjs` 已确认 Chromium 与 WebKit 均通过；发�
 | 2267 |  已通过  | /api/appupdate/stats ???IP+??ID?????60?/?????2?1000???429? Retry-After | backend/team.js?backend/updates.test.cjs??? HTTP ???????66??? |
 | 2243 |  已通过  | ?? report ??? IP+?? ID ?????429? Retry-After | backend/team.js?backend/updates.test.cjs???66??? |
 | 2261 |  已通过  | ????????????????????? | backend/team.js?backend/updates.test.cjs?backend/package-download.test.cjs??????? request-id ??? JSONL/console ??????????? |
-| 1748 |  已通过  | ?????????????????????????????? | src/pages/products/index.tsx?tests/products-load-state.test.cjs????TypeScript?ESLint?H5?? |
-| 1752 |  已通过  | ?????? loading/error/empty ???????????? | src/pages/products/index.tsx?tests/products-load-state.test.cjs???????????? |
+| 1748 |  已通过  | ?????????????????????????????? | src/components/BusinessForms/GoodsCatalog/index.tsx?tests/products-load-state.test.cjs????TypeScript?ESLint?H5?? |
+| 1752 |  已通过  | ?????? loading/error/empty ???????????? | src/components/BusinessForms/GoodsCatalog/index.tsx?tests/products-load-state.test.cjs???????????? |
 | 2632 |  已通过  | ????????????????????? | src/pages/ledger/index.tsx?tests/ledger-load-state.test.cjs????TypeScript?ESLint???????? |
 | 2634 |  已通过  | ????? loading/error/empty ????????????? | src/pages/ledger/index.tsx?tests/ledger-load-state.test.cjs??????????? |
 | 2276 |  已通过  | ??? stats ? latest ????? manifest size?sha256?integrity ?????????????? secretPath | backend/updates.js?backend/updates.test.cjs???68??? |
@@ -474,18 +474,18 @@ ode tests/navigation-browser.cjs` 已确认 Chromium 与 WebKit 均通过；发�
 | 2303 |  已通过  | /api/app/downloads ?????????????????????????? | backend/server.js?backend/package-download.test.cjs???HTTP???? |
 | 2279 |  已通过  | ??? stats ???????????? recent ?????0/201/?????? | backend/updates.js?backend/updates.test.cjs???9????72??? |
 | 2285 |  已通过  | ??? stats ?? recent ????400???????????? request-id | backend/updates.js?backend/updates.test.cjs???72??? |
-| 2886 |  已通过  | ??????????/???????? sanitizeDecimalInput?????????????????? | src/pages/carton-calculator/index.tsx?tests/carton-calculator-input.test.cjs?TypeScript?ESLint??????? |
-| 2896 |  已通过  | ?????????????????????? helper???????????? | src/pages/carton-calculator/math.ts?tests/carton-math.test.cjs???????????tests/carton-calculator-browser.cjs Chromium ????|
+| 2886 |  已通过  | ??????????/???????? sanitizeDecimalInput?????????????????? | src/components/BusinessForms/CartonCalculator/index.tsx?tests/carton-calculator-input.test.cjs?TypeScript?ESLint??????? |
+| 2896 |  已通过  | ?????????????????????? helper???????????? | src/components/BusinessForms/CartonCalculator/math.ts?tests/carton-math.test.cjs???????????tests/carton-calculator-browser.cjs Chromium ????|
 | 47 |  已通过  | ????????????????????????????????????? | backend/stock.test.cjs???73??? |
-| 376 |  已通过  | ?????????????? helper???/??????????? | src/pages/carton-calculator/math.ts?tests/carton-math.test.cjs????? |
+| 376 |  已通过  | ?????????????? helper???/??????????? | src/components/BusinessForms/CartonCalculator/math.ts?tests/carton-math.test.cjs????? |
 | 2309 |  已通过  | /api/app/downloads ???????? JSON???? request-id???????????????????????? | backend/server.js?backend/package-download.test.cjs????? HTTP ?????74???; package-download fault injection verifies generic JSON, request-id and no internal path leak?backend/package-download.test.cjs ?????? 500?request-id???????????????|
-| 1873 | 已通过 | 客户/供应商余额输入即时限制为非负两位小数，拒绝负号、正号、科学计数法和超范围金额；服务端仍独立校验 | src/pages/customer-edit/index.tsx、src/utils/form-input.ts、tests/customer-edit-money-input.test.cjs、customer-edit-money-browser.cjs；Chromium输入边界回归通过 |
+| 1873 | 已通过 | 客户/供应商余额输入即时限制为非负两位小数，拒绝负号、正号、科学计数法和超范围金额；服务端仍独立校验 | src/components/BusinessForms/PartyDetails/index.tsx、src/utils/form-input.ts、tests/customer-edit-money-input.test.cjs、customer-edit-money-browser.cjs；Chromium输入边界回归通过 |
 | 851 | 已通过 | 商品名称输入 maxlength 限制为50字符，长文本粘贴时即截断，与后端校验一致 | src/pages/product-edit/index.tsx、tests/product-name-length-browser.cjs；Chromium 输入边界测试通过 |
-| 1609 | 已通过 | 客户/供应商名称编辑输入上限 50 字符，长文本粘贴被浏览器限制 | src/pages/customer-edit/index.tsx、tests/customer-edit-money-browser.cjs；Chromium输入边界测试通过 |
-| 1657 | 已通过 | 联系人编辑输入 maxlength 与后端一致限制为 50 字符 | src/pages/customer-edit/index.tsx、tests/customer-edit-money-browser.cjs；Chromium验收通过 |
-| 1705 | 已通过 | 客户/供应商电话编辑输入 maxlength 限制为 20 字符 | src/pages/customer-edit/index.tsx、tests/customer-edit-money-browser.cjs；Chromium验收通过 |
-| 1753 | 已通过 | 客户/供应商地址编辑输入 maxlength 限制为 200 字符 | src/pages/customer-edit/index.tsx、tests/customer-edit-money-browser.cjs；Chromium验收通过 |
-| 1801 | 已通过 | 客户/供应商备注编辑输入 maxlength 限制为 500 字符 | src/pages/customer-edit/index.tsx、tests/customer-edit-money-browser.cjs；Chromium验收通过 |
+| 1609 | 已通过 | 客户/供应商名称编辑输入上限 50 字符，长文本粘贴被浏览器限制 | src/components/BusinessForms/PartyDetails/index.tsx、tests/customer-edit-money-browser.cjs；Chromium输入边界测试通过 |
+| 1657 | 已通过 | 联系人编辑输入 maxlength 与后端一致限制为 50 字符 | src/components/BusinessForms/PartyDetails/index.tsx、tests/customer-edit-money-browser.cjs；Chromium验收通过 |
+| 1705 | 已通过 | 客户/供应商电话编辑输入 maxlength 限制为 20 字符 | src/components/BusinessForms/PartyDetails/index.tsx、tests/customer-edit-money-browser.cjs；Chromium验收通过 |
+| 1753 | 已通过 | 客户/供应商地址编辑输入 maxlength 限制为 200 字符 | src/components/BusinessForms/PartyDetails/index.tsx、tests/customer-edit-money-browser.cjs；Chromium验收通过 |
+| 1801 | 已通过 | 客户/供应商备注编辑输入 maxlength 限制为 500 字符 | src/components/BusinessForms/PartyDetails/index.tsx、tests/customer-edit-money-browser.cjs；Chromium验收通过 |
 | 911 | 已通过 | 商品分类输入 maxlength 限制为50字符，长文粘贴与后端字段长度一致 | src/pages/product-edit/index.tsx、tests/product-name-length-browser.cjs；Chromium实测通过 |
 | 971 | 已通过 | 商品规格输入 maxlength 限制为100字符 | src/pages/product-edit/index.tsx、tests/product-name-length-browser.cjs；Chromium实测通过 |
 | 1031 | 已通过 | 商品材质输入 maxlength 限制为100字符 | src/pages/product-edit/index.tsx、tests/product-name-length-browser.cjs；Chromium实测通过 |

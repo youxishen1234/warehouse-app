@@ -7,7 +7,7 @@ const ts = require('typescript');
 const { buildLabelHtml } = require('../scripts/k3-layout.cjs');
 
 const batchId = 'BOARD-20261025-A1B2C3D4E5F6';
-const batchUrl = `https://youxishen.online/#/pages/label-resolver/index?v=1&kind=paperboard-batch&id=${batchId}`;
+const batchUrl = `https://youxishen.online/#/pages/management/index?section=label-lookup&v=1&kind=paperboard-batch&id=${batchId}`;
 const profile = {
   widthMm: 70, heightMm: 100,
   marginMm: { top: 0.6, right: 0.5, bottom: 0.5, left: 0.5 },
@@ -110,7 +110,7 @@ test('legacy empty fields display 未填写, long business text remains fit-chec
   const product = await buildLabelHtml({
     kind: 'finished-product',
     profile,
-    data: { productId: 3, productUrl: 'https://youxishen.online/#/pages/label-resolver/index?v=1&kind=finished-product&id=3', name: '成品纸箱', specification: '70 × 100 mm', unit: '个' },
+    data: { productId: 3, productUrl: 'https://youxishen.online/#/pages/management/index?section=label-lookup&v=1&kind=finished-product&id=3', name: '成品纸箱', specification: '70 × 100 mm', unit: '个' },
   });
   assert.match(product.html, /成品标签/);
   assert.equal(product.html.includes('SourceHanSansSC-Heavy'), false);

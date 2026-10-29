@@ -11,6 +11,7 @@
     "framework": "React"
   },
   "scripts": {
+    "build": "npm run build:h5",
     "print:desktop": "electron desktop/print-tool/main.cjs",
     "build:weapp": "taro build --type weapp",
     "build:swan": "taro build --type swan",

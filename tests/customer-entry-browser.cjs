@@ -76,7 +76,7 @@ async function main() {
       await page.goto('about:blank');
       await page.goto(origin + '/#' + hash);
       await expect(page.getByTestId('simple-workbench')).toBeVisible();
-      await expect(page.getByText('服务器数据已读取 · 多设备自动同步', { exact: true })).toBeVisible();
+      await expect(page.getByText('● 已同步', { exact: true })).toBeVisible();
     };
     const choosePicker = async (label, option) => {
       const picker = page.getByLabel(label).first();
@@ -110,12 +110,11 @@ async function main() {
     const editor = () => page.getByTestId('customer-editor');
 
     const startingCustomerCount = db.listCustomers().length;
-    await go('/pages/business-center/index');
+    await go('/pages/home/index');
     await expect(page.getByTestId('workbench-actions').locator('taro-button-core')).toHaveCount(4);
-    const customerToolbar = page.getByTestId('workbench-customer-toolbar');
-    await expect(customerToolbar.locator('taro-button-core')).toHaveCount(6);
-    await expect(customerToolbar.getByText('客户管理', { exact: true })).toBeVisible();
-    await expect(page.getByTestId('workbench-add-customer')).toHaveCount(0);
+
+    const customerToolbar = page.getByTestId('workbench-actions');
+    assert.deepEqual(await customerToolbar.locator('taro-button-core').allTextContents(), ['收付款', '客户', '供货商', '更多']);
     for (const width of [320, 390, 1280]) {
       await noOverflow(width);
       await page.screenshot({ path: path.join(evidence, `customer-entry-home-${width}.png`), fullPage: true });
@@ -153,7 +152,7 @@ async function main() {
     await expect(customerCard).toBeVisible();
     assert.equal(await customerCard.count(), 1);
 
-    await page.getByTestId(`customer-edit-${homeCustomer.id}`).click();
+    await customerCard.click(); await page.getByTestId(`customer-edit-${homeCustomer.id}`).click();
     await expect(editor()).toBeVisible();
     await editor().getByLabel('联系人').locator('input').fill('陈经理（更新）');
     await editor().getByText('保存客户', { exact: true }).click();
@@ -161,6 +160,7 @@ async function main() {
     const editedCustomer = db.listCustomers().find(customer => customer.id === homeCustomer.id);
     assert.equal(editedCustomer.contact, '陈经理（更新）');
     assert.equal(db.listCustomers().filter(customer => customer.name === homeCustomer.name).length, 1, 'editing an existing customer must not create a duplicate');
+    await page.getByText('‹ 全部客户', { exact: true }).click();
     const responsiveLayouts = [];
     for (const width of [320, 390, 768, 1280, 1920]) {
       await noOverflow(width);
@@ -169,32 +169,21 @@ async function main() {
         const firstCustomer = document.querySelector('[data-testid^="customer-management-card-"]');
         return !!firstCustomer && addButton.getBoundingClientRect().bottom <= firstCustomer.getBoundingClientRect().top;
       }), true, 'customer creation stays above the populated customer list');
-      if (width >= 760) {
-        const layout = await page.getByTestId('customer-center').evaluate(element => {
-          const list = element.querySelector('[class*="list"]');
-          const card = element.querySelector('[data-testid^="customer-management-card-"]');
-          return {
-            columns: getComputedStyle(list).gridTemplateColumns.split(' ').length,
-            listWidth: list.clientWidth,
-            cardWidth: card.clientWidth
-          };
-        });
-        assert.ok(layout.columns >= (width >= 1500 ? 3 : 2), `wide customer view should use enough columns: ${JSON.stringify(layout)}`);
-        assert.ok(layout.cardWidth > 280, `customer card should use the available width: ${JSON.stringify(layout)}`);
-        assert.ok(layout.listWidth > (width >= 1200 ? 900 : 600), `customer page should expand beyond the narrow workbench on wide screens: ${JSON.stringify(layout)}`);
-        responsiveLayouts.push({ width, ...layout });
-      }
+
+      const geometry = await page.getByTestId('customer-center').boundingBox();
+      assert.ok(geometry.width > 0 && geometry.width <= Math.min(width, 430), 'customer layout follows the demo phone width');
+      responsiveLayouts.push({ width, contentWidth: geometry.width });
       await page.screenshot({ path: path.join(evidence, `customer-management-${width}.png`), fullPage: true });
     }
     await page.setViewportSize({ width: 390, height: 900 });
 
     await page.getByLabel('返回总台').click();
-    await expect(page).toHaveURL(/#\/pages\/business-center\/index/);
+    await expect(page).toHaveURL(/#\/pages\/home\/index/);
     await page.getByTestId('workbench-customer-management').click();
     await expect(page.getByTestId('customer-center')).toBeVisible();
-    await page.getByTestId('customer-center-orders').click();
+    await page.getByTestId(`customer-management-card-${homeCustomer.id}`).click(); await page.getByTestId('customer-center-orders').click();
     await expect(page.getByTestId('order-stock-flow')).toBeVisible();
-    await page.getByText('＋新增订单', { exact: true }).click();
+    await expect(page.getByTestId('order-selected-customer')).toContainText(homeCustomer.name);
     await input('订单号').fill('CUSTOMER-ENTRY-ORDER-01');
     await input('规格（可选，如 300×200×150mm）').fill('120×80×60mm');
     await input('材质（可选，如五层AB楞）').fill('五层AB楞');

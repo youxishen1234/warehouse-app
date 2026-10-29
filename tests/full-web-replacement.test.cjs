@@ -51,5 +51,5 @@ test('every AI navigation action opens a configured current page', () => {
     const route = plan.navigation.url.split('?')[0].slice(1);
     assert(config.includes("'" + route + "'"), plan.navigation.url);
   }
-  assert.equal(tools.prepare({}, { action: 'open_page', parameters: { page: 'finance' } }).navigation.url, '/pages/business-center/index?section=finance');
+  assert.equal(tools.prepare({}, { action: 'open_page', parameters: { page: 'finance' } }).navigation.url, '/pages/management/index?section=finance');
 });

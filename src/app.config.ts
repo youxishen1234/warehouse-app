@@ -2,29 +2,11 @@ export default defineAppConfig({
   pages: [
     'pages/home/index',
     'pages/ai-assistant/index',
-    'pages/business-center/index',
-    'pages/label-print/index',
-    'pages/label-resolver/index',
-    'pages/board-calculator/index',
-    'pages/board-receive/index',
-    'pages/board-detail/index',
-    'pages/board-scan/index',
-    'pages/board-outbound/index',
-    'pages/inbound/index',
-    'pages/outbound/index',
+    'pages/management/index',
     'pages/mine/index',
-    'pages/products/index',
     'pages/inventory/index',
-    'pages/records/index',
-    'pages/orders/index',
-    'pages/team/index',
-    'pages/suppliers/index',
     'pages/customers/index',
-    'pages/customer-edit/index'
-    ,'pages/custom-copy/index'
-    ,'pages/backup/index'
-    ,'pages/print-center/index'
-    ,'pages/customer-photos/index'
+    'pages/print-center/index'
   ],
   window: {
     backgroundTextStyle: 'dark',
@@ -32,12 +14,12 @@ export default defineAppConfig({
     navigationBarTitleText: '曙光库存',
     navigationBarTextStyle: 'black',
     navigationStyle: 'custom',
-    backgroundColor: '#f5f6f8'
+    backgroundColor: '#f4f7fc'
   },
   tabBar: {
-    color: '#ffffff',
-    selectedColor: '#24a6f8',
-    backgroundColor: 'rgba(44, 44, 48, 0.68)',
+    color: '#96a3b6',
+    selectedColor: '#2469ee',
+    backgroundColor: '#ffffff',
     borderStyle: 'white',
     list: [
       {

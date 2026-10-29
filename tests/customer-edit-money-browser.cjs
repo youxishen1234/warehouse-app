@@ -32,7 +32,7 @@ async function main() {
       }
       return route.abort();
     });
-    await page.goto(`${origin}/#/pages/customer-edit/index?party=customer`);
+    await page.goto(`${origin}/#/pages/management/index?section=party-details&party=customer`);
     await page.locator('.taro_page:visible').last().waitFor();
     const amount = page.locator('input:visible').last();
     await amount.fill('12.345');

@@ -155,7 +155,7 @@ async function main() {
   let cleanupError;
   let successMessage;
   const openCarton = async () => {
-    await go('/pages/inbound/index?kind=carton');
+    await go('/pages/management/index?section=receipt&kind=carton');
     await expect(page.getByText('纸箱生产入库', { exact: true })).toBeVisible();
     await expect(input('货物 1 本次完工数量')).toBeVisible();
     await choose('选择客户', customer.name);
@@ -215,7 +215,7 @@ async function main() {
     await expect(page.getByTestId('customer-center')).toBeVisible();
     await expect(page.getByTestId('finance-center')).toHaveCount(0);
     const customerProfileCard = page.getByTestId(`customer-management-card-${customer.id}`);
-    await expect(customerProfileCard).toBeVisible();
+    await expect(customerProfileCard).toBeVisible(); await customerProfileCard.click();
     const customerSpecs = page.getByTestId(`customer-specs-${customer.id}`);
     await expect(customerSpecs).toContainText('常用销售资料');
     await expect(customerSpecs).toContainText('客户自产纸箱');
@@ -231,10 +231,12 @@ async function main() {
     await expect(customerSpecs).toContainText('50×40×30 cm');
     await page.getByTestId(`customer-specs-toggle-${customer.id}`).click();
     await expect(customerSpecs).not.toContainText('50×40×30 cm', { timeout: 1000 });
+    await page.locator('taro-button-core').filter({ hasText: '‹ 全部客户' }).click();
     const dimensionOnlyCard = page.getByTestId('customer-specs-only-dimension:1');
     await expect(dimensionOnlyCard).toContainText('尺寸本独立客户');
-    await expect(dimensionOnlyCard).toContainText('51×36×28 cm');
     await expect(dimensionOnlyCard).toContainText('待建立客户资料');
+    await dimensionOnlyCard.click();
+    await expect(page.getByTestId('customer-specs-dimension:1')).toContainText('51×36×28 cm');
     await expect(page.getByTestId('customer-create-from-dimension-dimension:1')).toBeVisible();
     await expect(page.getByText('已停用规格客户', { exact: true })).toHaveCount(0);
     const accountsBeforeDimensionConversion = db.listCustomers().length;
@@ -245,7 +247,8 @@ async function main() {
     await dimensionEditor.getByText('取消', { exact: true }).click();
     await expect(dimensionEditor).toHaveCount(0);
     assert.equal(db.listCustomers().length, accountsBeforeDimensionConversion, 'canceling account setup must not create a customer');
-    await dimensionOnlyCard.screenshot({ path: path.join(evidence, 'customer-specs-only-390.png') });
+    await page.getByTestId('customer-center').screenshot({ path: path.join(evidence, 'customer-specs-only-390.png') });
+    await page.locator('taro-button-core').filter({ hasText: '‹ 全部客户' }).click();
     const partySearch = page.getByTestId('customer-center-search').locator('input');
     await partySearch.fill('45x30x25');
     await expect(customerProfileCard).toBeVisible();
@@ -268,6 +271,7 @@ async function main() {
     await expect(dimensionOnlyCard).toBeVisible();
     await expect(page.getByText(/测试.*规格服务/)).toBeHidden({ timeout: 5000 });
 
+    await dimensionOnlyCard.click();
     await page.getByTestId('customer-create-from-dimension-dimension:1').click();
     const conversionEditor = page.getByTestId('customer-editor');
     await expect(conversionEditor.getByLabel('公司名称').locator('input')).toHaveValue('尺寸本独立客户');
@@ -280,11 +284,15 @@ async function main() {
     }).toBeTruthy();
     await expect(page.getByTestId('customer-specs-only-dimension:1')).toHaveCount(0);
     const convertedProfileCard = page.getByTestId(`customer-management-card-${convertedCustomer.id}`);
-    await expect(convertedProfileCard).toContainText('51×36×28 cm');
-    await expect(convertedProfileCard).toContainText('价格未记录');
+    await convertedProfileCard.click();
+    await expect(page.getByTestId(`customer-specs-${convertedCustomer.id}`)).toContainText('51×36×28 cm');
+    await expect(page.getByTestId(`customer-specs-${convertedCustomer.id}`)).toContainText('价格未记录');
 
-    await page.getByTestId(`customer-view-bills-${customer.id}`).click();
-    await expect(page).toHaveURL(new RegExp(`/pages/business-center/index\\?section=finance&view=customer&party_type=customer&party_id=${customer.id}`));
+    await page.locator('taro-button-core').filter({ hasText: '‹ 全部客户' }).click();
+    await expect(convertedProfileCard).toBeVisible();
+    await customerProfileCard.click();
+    await page.locator('taro-button-core').filter({ hasText: /^往来账单$/ }).click();
+    await expect(page).toHaveURL(new RegExp(`/pages/management/index\\?section=finance&view=customer&party_type=customer&party_id=${customer.id}`));
     await expect(page.getByTestId('customer-center')).toHaveCount(0);
     await expect(page.getByTestId('finance-center')).toBeVisible();
     const customerCard = page.getByTestId(`customer-bill-${customer.id}`);
@@ -334,6 +342,7 @@ async function main() {
       await expect(page.getByTestId(`ledger-entry-${row.id}`)).toBeVisible();
     }
     await page.getByTestId('finance-tab-supplier').click();
+    await page.getByText('查看明细 ›', { exact: true }).first().click();
     const supplierCard = page.getByTestId(`supplier-bill-${supplier.id}`);
     await expect(supplierCard).toContainText('50.00');
     await page.getByRole('button', { name: `查看供货商账单明细 ${supplier.name}`, exact: true }).click();
@@ -347,9 +356,9 @@ async function main() {
     await page.getByRole('button', { name: '全部时间', exact: true }).click();
     await assertNoOverflow(320); await assertNoOverflow(1440);
     await page.screenshot({ path: path.join(evidence, 'finance-three-views.png'), fullPage: true });
-    await go(`/pages/business-center/index?section=finance&party_type=customer&party_id=${customer.id}`);
+    await go(`/pages/management/index?section=finance&party_type=customer&party_id=${customer.id}`);
     await expect(page.getByTestId('finance-center')).toBeVisible();
-    await expect(page).toHaveURL(/pages\/business-center\/index/);
+    await expect(page).toHaveURL(/pages\/management\/index/);
     assert.doesNotThrow(() => db.validateBackup(db.backupData()));
     assert.deepEqual(errors, []);
     assert.equal(requests.filter(row => row.method === 'POST' && row.path === '/delivery-notes').length, 2);

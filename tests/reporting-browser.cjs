@@ -48,7 +48,7 @@ async function main() {
     page.on('pageerror', error => errors.push(error.message));
 
     // Delivery-note printing is exercised in print-center-browser.cjs.
-    await page.goto(base + '/pages/business-center/index?section=finance');
+    await page.goto(base + '/pages/management/index?section=finance');
     await page.getByText('expense-test', { exact: false }).waitFor();
     await expect(page.getByText('+¥7.25', { exact: true })).toBeVisible();
     await expect(page.getByText('-¥2.50', { exact: true })).toBeVisible();
@@ -65,7 +65,7 @@ async function main() {
     assert.match(csv, /expense-test/);
     assert.match(csv, /7\.25/);
 
-    await page.goto(base + '/pages/backup/index');
+    await page.goto(base + '/pages/management/index?section=backup');
     await expect(page.locator('textarea')).toHaveCount(0);
     const backupDownload = page.waitForEvent('download');
     await page.getByText('导出备份 JSON', { exact: true }).click();

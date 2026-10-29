@@ -75,7 +75,7 @@ async function main() {
       const page = await context.newPage();
       page.on('pageerror', error => errors.push(error.message));
       page.on('response', response => { if (response.status() >= 400 && ['.js', '.css'].includes(path.extname(new URL(response.url()).pathname))) failedAssets.push(response.url()); });
-      await page.goto(base + '/#/pages/backup/index');
+      await page.goto(base + '/#/pages/management/index?section=backup');
       await expect(page.getByText('每日备份正常', { exact: true })).toBeVisible();
       await expect(page.getByText('北京时间 02:00', { exact: true })).toBeVisible();
       await expect(page.getByText('最近 30 份 · 存在服务器', { exact: true })).toBeVisible();

@@ -36,7 +36,7 @@ async function main() {
       }
       return route.abort();
     });
-    await page.goto(`${origin}/#/pages/business-center/index?section=finance&view=ledger`);
+    await page.goto(`${origin}/#/pages/management/index?section=finance&view=ledger`);
     await page.getByTestId('finance-center').waitFor({ state: 'visible' });
     await page.getByTestId('finance-tab-ledger').click();
     await page.getByTestId('finance-add-entry').click();

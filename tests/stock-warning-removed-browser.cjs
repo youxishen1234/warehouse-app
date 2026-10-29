@@ -1,3 +1,4 @@
+const { clickWorkbenchAction } = require('./demo-ui-actions.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -70,7 +71,7 @@ async function main() {
   const activeRoot = page => page.locator('.taro_page:visible').last().getByTestId('simple-workbench');
   const assertWarningSummary = async root => {
     await expect(root.getByTestId('workbench-summary')).toContainText('库存预警');
-    await expect(root.getByTestId('workbench-task-stock')).toContainText('项库存预警');
+    await expect(root.getByTestId('workbench-summary').getByText('库存预警', { exact: true })).toBeVisible();
   };
   const assertNoOverflow = async (page, root, width) => {
     assert.ok(await root.evaluate(element => element.scrollWidth <= element.clientWidth + 1), `workbench overflow at ${width}px`);
@@ -87,12 +88,12 @@ async function main() {
     assert.equal(statsEnvelope.data.todayIn, 6);
     assert.equal(statsEnvelope.data.todayOut, 2);
 
-    for (const [routeName, routePath] of [['home', '/#/pages/home/index'], ['business-center', '/#/pages/business-center/index']]) {
+    for (const [routeName, routePath] of [['home', '/#/pages/home/index'], ['business-center', '/#/pages/home/index']]) {
       const page = await setup(390);
       await page.goto(origin + routePath);
-      await expect(page.getByText('快捷办理', { exact: true })).toBeVisible();
+      await expect(page.getByText('更多', { exact: true })).toBeVisible();
       const root = activeRoot(page);
-      await expect(root.getByTestId('workbench-sync-status')).toContainText('服务器数据已读取 · 多设备自动同步');
+      await expect(root.getByTestId('workbench-sync-status')).toContainText('● 已同步');
       await assertWarningSummary(root);
       await expect(root.getByText('sjfhjs', { exact: true })).toHaveCount(0, 'zero-stock product is not surfaced on the home workbench');
       const feed = root.getByTestId('workbench-today');
@@ -110,7 +111,7 @@ async function main() {
       const refresh = root.locator('[aria-label="刷新服务器数据"]');
       await expect(refresh).toBeVisible();
       await refresh.click();
-      await expect(root.getByTestId('workbench-sync-status')).toContainText('服务器数据已读取 · 多设备自动同步');
+      await expect(root.getByTestId('workbench-sync-status')).toContainText('● 已同步');
       await assertWarningSummary(root);
       await page.close();
     }
@@ -118,11 +119,11 @@ async function main() {
     const inventoryPage = await setup(390);
     await inventoryPage.goto(origin + '/#/pages/home/index');
     await expect(activeRoot(inventoryPage).getByTestId('workbench-summary')).toBeVisible();
-    await inventoryPage.locator('.sg-glass-dock button[data-tab="2"]').click();
+    await inventoryPage.locator('.sg-app-nav button[data-tab="2"]').click();
     await inventoryPage.waitForURL(/\/pages\/inventory\/index/);
     const inventoryRoot = activeRoot(inventoryPage);
     await expect(inventoryRoot).toHaveAttribute('data-panel', 'stock');
-    await expect(inventoryRoot.getByText('查看库存', { exact: true })).toBeVisible();
+    await expect(inventoryRoot.getByText('原料与成品', { exact: true })).toBeVisible();
     await inventoryRoot.getByText('纸箱', { exact: true }).click();
     const inventoryRow = inventoryRoot.getByTestId('workbench-carton').filter({ hasText: 'sjfhjs' });
     await expect(inventoryRow).toContainText('sjfhjs');

@@ -40,7 +40,7 @@
         "unit": "个",
         "weight": 250,
         "stockSnapshot": 10,
-        "productUrl": "https://youxishen.online/#/pages/label-resolver/index?v=1&kind=finished-product&id=990001"
+        "productUrl": "https://youxishen.online/#/pages/management/index?section=label-lookup&v=1&kind=finished-product&id=990001"
       },
       "expectedTextTokens": ["测试成品纸箱", "40 × 30 × 20 cm", "250 g/m²", "10 个"]
     },
@@ -55,7 +55,7 @@
         "fluteType": "B楞",
         "supplier": "测试板厂",
         "faceGsm": 250,
-        "batchUrl": "https://youxishen.online/#/pages/label-resolver/index?v=1&kind=paperboard-batch&id=BOARD-20261019-A1B2C3D4E5F6"
+        "batchUrl": "https://youxishen.online/#/pages/management/index?section=label-lookup&v=1&kind=paperboard-batch&id=BOARD-20261019-A1B2C3D4E5F6"
       },
       "expectedTextTokens": ["120 × 80 cm", "B楞", "测试板厂", "250 g/m²"]
     }

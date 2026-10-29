@@ -1,5 +1,5 @@
 export const LABEL_ORIGIN = 'https://youxishen.online';
-export const LABEL_RESOLVER_PATH = '/pages/label-resolver/index';
+export const LABEL_RESOLVER_PATH = '/pages/management/index?section=label-lookup';
 export const LABEL_LINK_VERSION = 1 as const;
 export type LabelKind = 'finished-product' | 'paperboard-batch';
 export type LabelTarget = Readonly<{ version: 1; kind: LabelKind; id: string }>;
@@ -25,7 +25,8 @@ function validateKind(kind: unknown): LabelKind {
 export function parseLabelRouteParams(params: Record<string, unknown>): LabelTarget {
   if (!params || typeof params !== 'object' || Array.isArray(params)) throw new LabelLinkError('标签参数无效');
   const keys = Object.keys(params);
-  if (keys.length !== 3 || keys.some(key => !['v', 'kind', 'id'].includes(key))) throw new LabelLinkError('标签参数缺失或包含未知字段');
+  const labelKeys = keys.filter(key => key !== 'section');
+  if ((params.section !== undefined && params.section !== 'label-lookup') || labelKeys.length !== 3 || labelKeys.some(key => !['v', 'kind', 'id'].includes(key))) throw new LabelLinkError('标签参数缺失或包含未知字段');
   if (params.v !== '1') throw new LabelLinkError('不支持的标签版本，请联系仓库人员');
   if (typeof params.id !== 'string') throw new LabelLinkError('标签记录编号无效');
   const kind = validateKind(params.kind);
@@ -33,7 +34,7 @@ export function parseLabelRouteParams(params: Record<string, unknown>): LabelTar
 }
 
 export function parseLabelUrl(raw: string): LabelTarget {
-  if (typeof raw !== 'string' || raw !== raw.trim() || raw.length > 512 || Array.from(raw).some(character => character.charCodeAt(0) <= 32 || character.charCodeAt(0) === 127) || !raw.startsWith(`${LABEL_ORIGIN}/#${LABEL_RESOLVER_PATH}?`)) {
+  if (typeof raw !== 'string' || raw !== raw.trim() || raw.length > 512 || Array.from(raw).some(character => character.charCodeAt(0) <= 32 || character.charCodeAt(0) === 127) || !raw.startsWith(`${LABEL_ORIGIN}/#${LABEL_RESOLVER_PATH}&`)) {
     throw new LabelLinkError('这不是受支持的仓库标签链接');
   }
   let url: URL;
@@ -42,8 +43,8 @@ export function parseLabelUrl(raw: string): LabelTarget {
     throw new LabelLinkError('标签站点或路径无效');
   }
   const [path, query, ...extra] = url.hash.slice(1).split('?');
-  if (path !== LABEL_RESOLVER_PATH || !query || extra.length || query.includes('#')) throw new LabelLinkError('标签路径或参数无效');
-  const entries = query.split('&');
+  if (path !== '/pages/management/index' || !query?.startsWith('section=label-lookup&') || extra.length || query.includes('#')) throw new LabelLinkError('标签路径或参数无效');
+  const entries = query.slice('section=label-lookup&'.length).split('&');
   if (entries.length !== 3) throw new LabelLinkError('标签参数缺失或重复');
   const params: Record<string, string> = {};
   for (const entry of entries) {
@@ -57,7 +58,7 @@ export function parseLabelUrl(raw: string): LabelTarget {
 export function buildLabelUrl(kind: LabelKind, id: number | string): string {
   const checkedKind = validateKind(kind);
   const checkedId = validateLabelId(checkedKind, id);
-  return `${LABEL_ORIGIN}/#${LABEL_RESOLVER_PATH}?v=${LABEL_LINK_VERSION}&kind=${checkedKind}&id=${encodeURIComponent(checkedId)}`;
+  return `${LABEL_ORIGIN}/#${LABEL_RESOLVER_PATH}&v=${LABEL_LINK_VERSION}&kind=${checkedKind}&id=${encodeURIComponent(checkedId)}`;
 }
 
 /** Parse a page's raw URL before router parameter flattening can hide duplicate keys. */

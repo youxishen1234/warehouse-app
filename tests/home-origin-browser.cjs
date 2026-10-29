@@ -53,14 +53,14 @@ async function main() {
     await page.getByText('实时数据', { exact: true }).waitFor();
 
     // A cached but hidden Tab must not keep its midnight timer running.
-    await page.locator('.sg-glass-tab[data-tab="3"]').click();
+    await page.locator('.sg-app-nav button[data-tab="3"]').click();
     await page.waitForURL(/mine/);
     await page.getByText('库存管理 · 清晰如一', { exact: true }).waitFor();
     await page.clock.runFor(500);
     const beforeHiddenTab = statsCount();
     await page.clock.fastForward(24 * 60 * 60 * 1000);
     assert.equal(statsCount(), beforeHiddenTab);
-    await page.locator('.sg-glass-tab[data-tab="0"]').click();
+    await page.locator('.sg-app-nav button[data-tab="0"]').click();
     await page.waitForURL(/home/);
     await page.getByText('10月2日 · 星期五', { exact: true }).waitFor();
     await expect.poll(statsCount).toBeGreaterThan(beforeHiddenTab);

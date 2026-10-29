@@ -180,7 +180,7 @@ async function main() {
     });
     await page.reload();
     await page.waitForTimeout(800);
-    await page.locator('.sg-glass-tab[data-tab="0"]').click();
+    await page.locator('.sg-app-nav button[data-tab="0"]').click();
     await page.waitForURL(/home/);
     await page.waitForTimeout(700);
     // The app mounts its global banner on the next rendered page.

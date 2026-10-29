@@ -56,7 +56,7 @@ async function harness(options = {}) {
   const pages = {
     home: new HTMLElement('/pages/home/index', ['taro_page']),
     mine: new HTMLElement('/pages/mine/index', ['taro_page', 'taro_page_shade']),
-    business: new HTMLElement('/pages/business-center/index', ['taro_page', 'taro_page_shade'])
+    business: new HTMLElement('/pages/management/index', ['taro_page', 'taro_page_shade'])
   };
   pages.business.tabRoute = '/pages/home/index';
   const window = new EventTarget();
@@ -252,7 +252,7 @@ test('non-page and animated dock class changes do not schedule navigation sync',
 test('business-center claims home for dock state and acknowledgments but still leaves for home', async () => {
   const h = await harness();
   try {
-    h.setRoute('/pages/business-center/index');
+    h.setRoute('/pages/management/index');
     await h.flush();
     h.nativeReady();
     await h.flush();
@@ -270,7 +270,7 @@ test('business-center claims home for dock state and acknowledgments but still l
 });
 
 test('business-center starts page swipes at the home dock position', async () => {
-  const h = await harness({ route: '/pages/business-center/index', depth: 2, reduced: true });
+  const h = await harness({ route: '/pages/management/index', depth: 2, reduced: true });
   try {
     await h.touch('touchstart', 200, 160);
     await h.touch('touchmove', 80, 160);
@@ -284,7 +284,7 @@ test('business-center starts page swipes at the home dock position', async () =>
 });
 
 test('business-center swipes right to the real home route', async () => {
-  const h = await harness({ route: '/pages/business-center/index', depth: 2, reduced: true });
+  const h = await harness({ route: '/pages/management/index', depth: 2, reduced: true });
   try {
     await h.touch('touchstart', 120, 160);
     await h.touch('touchmove', 220, 160);
@@ -300,7 +300,7 @@ test('business-center swipes right to the real home route', async () => {
 });
 
 test('iOS edge-back uses the real alias route instead of the claimed home tab', async () => {
-  const h = await harness({ route: '/pages/business-center/index', depth: 2, reduced: true });
+  const h = await harness({ route: '/pages/management/index', depth: 2, reduced: true });
   try {
     await h.touch('touchstart', 20, 160);
     await h.touch('touchmove', 150, 160);
@@ -315,7 +315,7 @@ test('iOS edge-back uses the real alias route instead of the claimed home tab', 
 });
 
 test('ending a page swipe with another finger still down cancels the selection', async () => {
-  const h = await harness({ route: '/pages/business-center/index', depth: 2, reduced: true });
+  const h = await harness({ route: '/pages/management/index', depth: 2, reduced: true });
   try {
     await h.touch('touchstart', 200, 160);
     await h.touch('touchmove', 80, 160);

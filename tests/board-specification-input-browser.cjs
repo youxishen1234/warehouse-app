@@ -116,7 +116,7 @@ async function main() {
       .locator('xpath=ancestor-or-self::*[self::taro-button-core or self::button][1]');
     const buttonContainingText = label => page.locator('taro-button-core, button').filter({ hasText: label }).last();
     const openBoardEntry = async query => {
-      await page.goto(`${origin}/#/pages/board-receive/index${query || ''}`);
+      await page.goto(`${origin}/#/pages/management/index?section=paperboard-receipt${query?.replace(/^\?/, '&') || ''}`);
       await expect(page.locator('.team-boot')).toBeHidden();
       await expect(page.locator('[aria-label="纸板规格尺寸"]')).toBeVisible();
       await expect(page.locator('[aria-label="成箱规格尺寸"]')).toBeVisible();
