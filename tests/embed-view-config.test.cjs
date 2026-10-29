@@ -13,14 +13,15 @@ test('embedded label viewer has a narrow framing exception', () => {
   assert.equal(isEmbeddedViewPath('/pages/print-center/index'), false);
   assert.equal(isEmbeddedViewPath('/embedding'), false);
   assert.doesNotThrow(() => validateConfig(nginx));
-  assert.throws(() => validateConfig(nginx.replace("frame-ancestors 'self' app:", "frame-ancestors 'none'")), /Embedded browser policy/);
+  assert.throws(() => validateConfig(nginx.replace("frame-ancestors 'self' app:", "frame-ancestors 'none'")), /browser policy/);
   assert.throws(() => validateConfig(nginx.replace('location ^~ /embed/ {', 'location ^~ /embedded/ {')), /location is missing/);
+  assert.throws(() => validateConfig(nginx.replace('location ^~ /preview-pages/ {', 'location ^~ /previews/ {')), /Preview browser location is missing/);
   const remote = buildRemoteCommand('/tmp/shuguang-nginx-test', '/etc/nginx/sites-available/shuguang', 'a'.repeat(64));
   assert.match(remote, /sha256sum/);
   assert.match(remote, /nginx -t/);
   assert.match(remote, /rollback/);
   assert.match(remote, /frame-ancestors .*app:/);
-  assert.match(remote, /for route in \/embed\/ \/embed\/pages\/print-center\/index/);
+  assert.match(remote, /for route in \/embed\/ \/embed\/pages\/print-center\/index \/preview-pages\/index\.html/);
   assert.match(remote, /grep -qi .*"\$headers" \|\| return 1/);
   assert.match(remote, /if grep -qiE '\^x-frame-options:/);
   assert.match(remote, /readlink -f --/);

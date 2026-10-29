@@ -20,8 +20,12 @@ function validateConfig(config) {
   if (!text.includes('add_header X-Frame-Options DENY always;')) throw new Error('Normal routes must keep frame denial');
   const embed = text.match(/location \^~ \/embed\/ \{([\s\S]*?)\n    \}/)?.[1] || '';
   if (!embed) throw new Error('Embedded browser location is missing');
+  const preview = text.match(/location \^~ \/preview-pages\/ \{([\s\S]*?)\n    \}/)?.[1] || '';
+  if (!preview) throw new Error('Preview browser location is missing');
   if (!embed.includes("frame-ancestors 'self' app:")) throw new Error('Embedded browser policy must admit only the local app');
   if (/X-Frame-Options/i.test(embed)) throw new Error('Embedded browser location must not override the CSP with X-Frame-Options');
+  if (!preview.includes("frame-ancestors 'self' app:")) throw new Error('Preview browser policy must admit only the local app');
+  if (/X-Frame-Options/i.test(preview)) throw new Error('Preview browser location must not override the CSP with X-Frame-Options');
   return text;
 }
 
@@ -55,7 +59,7 @@ function inspect() {
   return ssh(`set -eu
 sudo -n nginx -T 2>&1 | grep -E '^# configuration file|^[[:space:]]*(listen |server_name |root |location |proxy_pass |add_header (X-Frame-Options|Content-Security-Policy))'
 for origin in local public; do
-  for route in /embed/ /embed/pages/print-center/index /pages/print-center/index; do
+  for route in /embed/ /embed/pages/print-center/index /preview-pages/index.html /pages/print-center/index; do
     echo "Gateway check: $origin $route"
     if [ "$origin" = local ]; then
       curl -fsSkI --resolve youxishen.online:443:127.0.0.1 "https://youxishen.online$route"
@@ -92,7 +96,7 @@ rollback() {
   fi
 }
 verify_headers() {
-  for route in /embed/ /embed/pages/print-center/index; do
+  for route in /embed/ /embed/pages/print-center/index /preview-pages/index.html; do
     curl -fsSkI --resolve youxishen.online:443:127.0.0.1 "https://youxishen.online$route" > "$headers" || return 1
     grep -qi '^content-security-policy:.*frame-ancestors .*app:' "$headers" || return 1
     if grep -qiE '^x-frame-options:|^content-security-policy:.*frame-ancestors .*none' "$headers"; then return 1; fi

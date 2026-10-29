@@ -48,11 +48,11 @@ async function main() {
     const response = await fetchWithRetry(origin + route, { method: 'HEAD', cache: 'no-store' });
     assert.equal(response.status, 404, route + ' must not fall back to old shared assets');
   }
-  for (const route of ['/embed/', '/pages/home/index']) {
+  for (const route of ['/embed/', '/preview-pages/index.html', '/pages/home/index']) {
     const response = await fetchWithRetry(origin + route, { method: 'HEAD', cache: 'no-store' });
     assert.equal(response.status, 200, route);
     const policy = response.headers.get('content-security-policy') || '';
-    if (route.startsWith('/embed/')) {
+    if (route.startsWith('/embed/') || route.startsWith('/preview-pages/')) {
       assert.match(policy, /frame-ancestors 'self' app:/, route);
       assert.doesNotMatch(policy, /frame-ancestors 'none'/, route);
       assert.equal(response.headers.get('x-frame-options'), null, route);
