@@ -17,13 +17,44 @@ function fetchIPv4(url, options) {
 }
 
 async function fetchWithRetry(url, options) {
-  for (let attempt = 0; ; attempt++) {
-    try { return await fetch(url, { ...options, signal: AbortSignal.timeout(30000) }); }
-    catch (error) {
-      if (attempt === 2) return fetchIPv4(url, options);
-      await new Promise(resolve => setTimeout(resolve, 2000 * (attempt + 1)));
+  let lastError;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      const response = attempt < 3
+        ? await fetch(url, { ...options, signal: AbortSignal.timeout(30000) })
+        : await fetchIPv4(url, options);
+      if ([408, 425, 429, 500, 502, 503, 504].includes(response.status) && attempt < 5) {
+        await new Promise(resolve => setTimeout(resolve, 1500 * (attempt + 1)));
+        continue;
+      }
+      return response;
+    } catch (error) {
+      lastError = error;
+      if (attempt < 5) await new Promise(resolve => setTimeout(resolve, 1500 * (attempt + 1)));
     }
   }
+  throw lastError;
+}
+
+async function gotoWithRetry(page, url) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      return await page.goto(url, { waitUntil: 'domcontentloaded' });
+    } catch (error) {
+      if (attempt === 3 || !/ERR_(?:CONNECTION|TIMED_OUT|NETWORK|NAME|SSL|CERT)|navigation timeout/i.test(error.message)) throw error;
+      await new Promise(resolve => setTimeout(resolve, 1500 * (attempt + 1)));
+    }
+  }
+}
+
+async function waitForFrame(page, predicate, timeout = 30000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const frame = page.frames().find(predicate);
+    if (frame) return frame;
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  throw new Error('The published mobile application frame did not load');
 }
 
 async function main() {
@@ -77,9 +108,9 @@ async function main() {
     page.on('console', message => {
       if (message.type() === 'error' && /Content Security Policy|violates the following Content Security Policy/i.test(message.text())) errors.push(message.text());
     });
-    await page.goto(origin + '/mobile.html');
-    const frame = page.frameLocator('#mobile-app');
-    const orderButton = frame.getByRole('button', { name: '客户开单', exact: true });
+    await gotoWithRetry(page, origin + '/mobile.html');
+    const frame = await waitForFrame(page, candidate => candidate.url().includes('/preview-pages/index.html'));
+    const orderButton = frame.getByRole('button', { name: '＋ 客户开单', exact: true });
     await expect(orderButton).toBeVisible({ timeout: 30000 });
     await expect(frame.getByRole('button', { name: '库存', exact: true })).toBeVisible();
     await orderButton.click();
@@ -97,7 +128,7 @@ async function main() {
       view.on('console', message => {
         if (message.type() === 'error' && /Content Security Policy|violates the following Content Security Policy/i.test(message.text())) errors.push(message.text());
       });
-      await view.goto(origin + pathname);
+      await gotoWithRetry(view, origin + pathname);
       await expect(view.getByRole('heading', { name: heading, exact: true })).toBeVisible({ timeout: 30000 });
       await view.close();
     }
