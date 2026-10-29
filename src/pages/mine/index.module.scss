@@ -17,7 +17,7 @@
 .heroCopy { flex: 1; min-width: 0; }
 .heroTitle { display: block; color: #162741; font-size: 18PX; font-weight: 700; overflow-wrap: anywhere; }
 .heroSubtitle { display: block; margin-top: 5PX; color: #8290a4; font-size: 11PX; }
-.container .heroBadge { display: flex; align-items: center; flex-shrink: 0; gap: 5PX; min-height: 32PX; padding: 5PX 9PX; border: 0; border-radius: 7PX; background: #edf8f3; color: #409477; font-size: 10PX; }
+.container .heroBadge { display: flex; align-items: center; flex: 0 0 auto; width: auto; max-width: 110PX; gap: 5PX; min-height: 32PX; padding: 5PX 9PX; border: 0; border-radius: 7PX; background: #edf8f3; color: #409477; font-size: 10PX; white-space: nowrap; }
 .liveDot { width: 5PX; height: 5PX; border-radius: 50%; background: currentColor; }
 .container .connectionError { color: #b58031; background: #fff4e5; }
 .connectionDetail { display: block; margin-top: 14PX; color: #b58031; font-size: 12PX; }

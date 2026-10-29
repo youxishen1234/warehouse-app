@@ -75,6 +75,16 @@ async function main() {
     await page.getByLabel('刷新连接状态', { exact: true }).click();
     await page.getByText('连接异常', { exact: true }).waitFor();
     await page.getByText('服务器暂时不可用（HTTP 503），请稍后重试', { exact: true }).waitFor();
+    for (const width of [320, 390, 430]) {
+      await page.setViewportSize({ width, height: 844 });
+      const profile = await page.locator('[class*="heroTop"]').evaluate(element => {
+        const bounds = element.getBoundingClientRect();
+        const copy = element.querySelector('[class*="heroCopy"]').getBoundingClientRect();
+        const badge = element.querySelector('[aria-label="刷新连接状态"]').getBoundingClientRect();
+        return { right: bounds.right, copyWidth: copy.width, badgeRight: badge.right };
+      });
+      assert.ok(profile.copyWidth >= 60 && profile.badgeRight <= profile.right + 1, 'profile name and status stay inside the card');
+    }
     unhealthy = false;
     await page.getByLabel('刷新连接状态', { exact: true }).click();
     await page.getByText('已连接', { exact: true }).waitFor();
