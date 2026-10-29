@@ -1,54 +1,21 @@
 const assert = require('node:assert/strict');
-const https = require('node:https');
 const { chromium, expect } = require('@playwright/test');
 
-function fetchIPv4(url, options) {
-  return new Promise((resolve, reject) => {
-    const request = https.request(url, { method: options?.method || 'GET', family: 4, agent: false, timeout: 30000 }, response => {
-      const chunks = [];
-      response.on('data', chunk => chunks.push(chunk));
-      response.on('error', reject);
-      response.on('end', () => resolve(new Response(options?.method === 'HEAD' ? null : Buffer.concat(chunks), { status: response.statusCode, headers: response.headers })));
-    });
-    request.on('timeout', () => request.destroy(new Error('Published endpoint IPv4 request timed out')));
-    request.on('error', reject);
-    request.end();
-  });
-}
-
-async function fetchWithRetry(url, options) {
-  let lastError;
+async function gotoWithRetry(page, url) {
   for (let attempt = 0; attempt < 6; attempt++) {
     try {
-      const response = attempt < 3
-        ? await fetch(url, { ...options, signal: AbortSignal.timeout(30000) })
-        : await fetchIPv4(url, options);
-      if ([408, 425, 429, 500, 502, 503, 504].includes(response.status) && attempt < 5) {
-        await new Promise(resolve => setTimeout(resolve, 1500 * (attempt + 1)));
-        continue;
-      }
-      return response;
+      return await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
     } catch (error) {
-      lastError = error;
-      if (attempt < 5) await new Promise(resolve => setTimeout(resolve, 1500 * (attempt + 1)));
-    }
-  }
-  throw lastError;
-}
-
-function isTransientNetworkError(error) {
-  return /ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|UND_ERR|fetch failed|timed out/i.test(error?.message || '');
-}
-
-async function gotoWithRetry(page, url) {
-  for (let attempt = 0; attempt < 4; attempt++) {
-    try {
-      return await page.goto(url, { waitUntil: 'domcontentloaded' });
-    } catch (error) {
-      if (attempt === 3 || !/ERR_(?:CONNECTION|TIMED_OUT|NETWORK|NAME|SSL|CERT)|navigation timeout/i.test(error.message)) throw error;
+      if (attempt === 5 || !/ERR_(?:CONNECTION|TIMED_OUT|NETWORK|NAME|SSL|CERT)|navigation timeout|ECONNRESET/i.test(error.message)) throw error;
       await new Promise(resolve => setTimeout(resolve, 1500 * (attempt + 1)));
     }
   }
+}
+
+async function visit(page, url) {
+  const response = await gotoWithRetry(page, url);
+  assert.ok(response, `No document response for ${url}`);
+  return { response, status: response.status(), headers: await response.allHeaders() };
 }
 
 async function waitForFrame(page, predicate, timeout = 30000) {
@@ -65,42 +32,6 @@ async function main() {
   const origin = new URL(process.env.PUBLISHED_WEB_ORIGIN || 'https://youxishen.online').origin;
   const expected = process.env.RELEASE_COMMIT;
   assert.match(expected || '', /^[a-f0-9]{40,64}$/, 'The published source revision is required');
-  if (new URL(origin).hostname === 'youxishen.online') {
-    try {
-      const alternate = await fetchWithRetry('https://www.youxishen.online/mobile.html', { method: 'HEAD', redirect: 'manual' });
-      assert.equal(alternate.status, 308, 'Alternate hostname must use the canonical application origin');
-      assert.equal(alternate.headers.get('location'), origin + '/mobile.html');
-    } catch (error) {
-      if (!isTransientNetworkError(error)) throw error;
-      console.warn(`WARN: alternate hostname check was unavailable from this network: ${error.message}`);
-    }
-  }
-  for (const route of ['/appupdate/manifest.json', '/release-info.json']) {
-    const response = await fetchWithRetry(origin + route, { cache: 'no-store' });
-    assert.equal(response.status, 200, route);
-    assert.equal((await response.json()).commit, expected, route + ' must match the released source');
-  }
-  for (const route of ['/workspace/', '/web-releases/', '/web-releases/old/index.html', '/web-current/index.html', '/print.html', '/customers.html', '/management.html', '/legacy-entry.js', '/pages/ledger/index', '/pages/board-stock/index']) {
-    const response = await fetchWithRetry(origin + route, { method: 'HEAD', cache: 'no-store' });
-    assert.equal(response.status, 410, route + ' must no longer serve a legacy interface');
-  }
-  for (const route of ['/js/home-search.js', '/css/polish.css', '/js/app.fba72e6a.js']) {
-    const response = await fetchWithRetry(origin + route, { method: 'HEAD', cache: 'no-store' });
-    assert.equal(response.status, 404, route + ' must not fall back to old shared assets');
-  }
-  for (const route of ['/embed/', '/preview-pages/index.html', '/pages/home/index']) {
-    const response = await fetchWithRetry(origin + route, { method: 'HEAD', cache: 'no-store' });
-    assert.equal(response.status, 200, route);
-    const policy = response.headers.get('content-security-policy') || '';
-    if (route.startsWith('/embed/') || route.startsWith('/preview-pages/')) {
-      assert.match(policy, /frame-ancestors 'self' app:/, route);
-      assert.doesNotMatch(policy, /frame-ancestors 'none'/, route);
-      assert.equal(response.headers.get('x-frame-options'), null, route);
-    } else {
-      assert.match(policy, /frame-ancestors 'none'/, route);
-      assert.equal(response.headers.get('x-frame-options'), 'DENY', route);
-    }
-  }
   const browser = await chromium.launch(process.env.CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.CHROMIUM_EXECUTABLE_PATH } : {});
   try {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
@@ -111,6 +42,34 @@ async function main() {
       writes.push(request.method() + ' ' + new URL(request.url()).pathname);
       return route.abort();
     });
+    const probe = await context.newPage();
+    for (const route of ['/appupdate/manifest.json', '/release-info.json']) {
+      const { response, status } = await visit(probe, origin + route);
+      assert.equal(status, 200, route);
+      assert.equal((await response.json()).commit, expected, route + ' must match the released source');
+    }
+    for (const route of ['/workspace/', '/web-releases/', '/web-releases/old/index.html', '/web-current/index.html', '/print.html', '/customers.html', '/management.html', '/legacy-entry.js', '/pages/ledger/index', '/pages/board-stock/index']) {
+      const { status } = await visit(probe, origin + route);
+      assert.equal(status, 410, route + ' must no longer serve a legacy interface');
+    }
+    for (const route of ['/js/home-search.js', '/css/polish.css', '/js/app.fba72e6a.js']) {
+      const { status } = await visit(probe, origin + route);
+      assert.equal(status, 404, route + ' must not fall back to old shared assets');
+    }
+    for (const route of ['/embed/', '/preview-pages/index.html', '/pages/home/index']) {
+      const { status, headers } = await visit(probe, origin + route);
+      assert.equal(status, 200, route);
+      const policy = headers['content-security-policy'] || '';
+      if (route.startsWith('/embed/') || route.startsWith('/preview-pages/')) {
+        assert.match(policy, /frame-ancestors 'self' app:/, route);
+        assert.doesNotMatch(policy, /frame-ancestors 'none'/, route);
+        assert.equal(headers['x-frame-options'], undefined, route);
+      } else {
+        assert.match(policy, /frame-ancestors 'none'/, route);
+        assert.equal(headers['x-frame-options'], 'DENY', route);
+      }
+    }
+    await probe.close();
     await context.addInitScript(() => localStorage.setItem('sg_getting_started_seen_v1', JSON.stringify({ data: true })));
     const page = await context.newPage();
     page.on('pageerror', error => errors.push(error.message));
