@@ -24,13 +24,20 @@ assert.ok(fs.existsSync(path.join(webRoot, 'index.html')), `Missing H5 build: ${
 assert.ok(fs.existsSync(path.join(webRoot, 'preview-pages/dimension-input.js')), 'Missing dimension input script');
 
 const app = express();
+app.use('/embed', (_request, response) => {
+  response.sendFile(path.join(webRoot, 'index.html'));
+});
 app.use(express.static(webRoot));
 const server = app.listen(0, '127.0.0.1');
 
 async function main() {
   await new Promise(resolve => server.once('listening', resolve));
-  const origin = `http://127.0.0.1:${server.address().port}`;
-  const browser = await chromium.launch(process.env.CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.CHROMIUM_EXECUTABLE_PATH } : {});
+  const host = 'codex-demo.test';
+  const origin = `http://${host}:${server.address().port}`;
+  const browser = await chromium.launch({
+    ...(process.env.CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.CHROMIUM_EXECUTABLE_PATH } : {}),
+    args: [`--host-resolver-rules=MAP ${host} 127.0.0.1`, '--no-proxy-server']
+  });
   const failures = [];
 
   try {
@@ -41,7 +48,7 @@ async function main() {
     });
 
     for (const [route, title] of routes) {
-      await page.goto(`${origin}/#${route}`);
+      await page.goto(`${origin}/embed/#${route}`);
       const frame = page.frameLocator('iframe[title="曙光库存业务页面"]');
       await expect(frame.getByRole('heading', { name: title, exact: true })).toBeVisible();
     }

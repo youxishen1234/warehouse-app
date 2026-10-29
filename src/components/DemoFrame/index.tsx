@@ -10,7 +10,9 @@ type DemoFrameProps = {
 
 const pageUrl = ({ page, view }: DemoFrameProps) => {
   const path = `preview-pages/${page}${view ? `?view=${view}` : ''}`;
-  return typeof window === 'undefined' ? `/${path}` : new URL(path, window.location.href).href;
+  if (typeof window === 'undefined') return `/${path}`;
+  const base = window.location.protocol === 'file:' ? window.location.href : window.location.origin + '/';
+  return new URL(path, base).href;
 };
 
 const routeForFrame = (value: string) => {
