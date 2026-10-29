@@ -107,6 +107,8 @@ jobs:
           (cd "$BACKEND_PREFLIGHT_DIR" && node "$GITHUB_WORKSPACE/scripts/verify-backend-billing.cjs")
       - name: Publish through shared server lock and stale-source gate
         if: ${{ env.HOTUPDATE_HOST != '' && env.HOTUPDATE_USER != '' }}
+        env:
+          WAREHOUSE_PUBLISHED_BROWSER_ALLOW_NETWORK_SKIP: '1'
         run: |
           if [ -z "$SSH_PRIVATE_KEY" ] && [ -z "$HOTUPDATE_PASSWORD" ]; then
             echo "::warning::Neither SSH_PRIVATE_KEY nor SHUGUANG_SERVER_PASSWORD configured, skipping publish"

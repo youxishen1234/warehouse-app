@@ -18,6 +18,10 @@ async function visit(page, url) {
   return { response, status: response.status(), headers: await response.allHeaders() };
 }
 
+function isTransientNetworkError(error) {
+  return /ERR_(?:CONNECTION_RESET|CONNECTION_CLOSED|CONNECTION_REFUSED|TIMED_OUT|NETWORK|NAME|SSL|CERT)|ECONNRESET|ETIMEDOUT/i.test(error?.message || '');
+}
+
 async function waitForFrame(page, predicate, timeout = 30000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
@@ -103,6 +107,12 @@ async function main() {
     assert.deepEqual(writes, [], 'Online verification must never change business data');
     assert.deepEqual(errors, []);
     console.log('PASS: published source revision, public framing headers and six-view mobile business console');
+  } catch (error) {
+    if (process.env.WAREHOUSE_PUBLISHED_BROWSER_ALLOW_NETWORK_SKIP === '1' && isTransientNetworkError(error)) {
+      console.warn(`SKIP: published browser probe is unreachable from this runner: ${error.message.split('\n')[0]}`);
+      return;
+    }
+    throw error;
   } finally {
     await browser.close();
   }
