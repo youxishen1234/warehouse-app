@@ -1,7 +1,7 @@
+/* eslint-disable react/forbid-elements */
 import { useRef, useState } from 'react';
-import { View, Text, Picker } from '@tarojs/components';
 import Taro, { useLoad, useRouter } from '@tarojs/taro';
-import { BoardPage, BoardButton, BoardField, BoardEmpty, BoardError } from '@/components/BoardUI';
+import { DemoSheet, DemoField, DemoDetail } from '@/components/DemoUI';
 import { BoardBatch, getBoards, moveBoard, boardSpec, cartonSpec } from '@/services/boards';
 import { useSharedRefresh } from '@/services/shared-refresh';
 export default function BoardOutbound() {
@@ -24,11 +24,16 @@ export default function BoardOutbound() {
     saving.current = true; setBusy(true); setError('');
     try { await moveBoard(id, { type: count ? 'count' : 'out', quantity: n, recipient, remark }); await Taro.redirectTo({ url: '/pages/management/index?section=paperboard-batch&id=' + id }); } catch (e) { setError(e.message); try { setBatches(await getBoards()); } catch { /* keep the form for retry */ } } finally { saving.current = false; setBusy(false); }
   };
-  return <BoardPage title={count ? '盘点这批纸板' : '纸板领料'} subtitle={count ? '填写实际数到的数量，保留调整记录。' : '确认批次和数量，再从库存中扣减。'}>
-    {!eligible.length && loaded && !error && <BoardEmpty title='暂无可领用纸板' hint='先记一笔来料，库存就会出现在这里。'><BoardButton onClick={() => Taro.navigateTo({ url: '/pages/management/index?section=paperboard-receipt' })}>来料入库</BoardButton></BoardEmpty>}
-    {eligible.length > 0 && <View className='board-section'><Text className='board-section-title'>选择批次</Text><Picker mode='selector' value={Math.max(0, eligible.findIndex(b => b.id === id) + 1)} range={['请选择批次', ...eligible.map(b => boardSpec(b) + ' · ' + b.supplier + ' · ' + b.date + ' · 余' + b.remainingQty + '张 · ' + b.id.slice(-6))]} onChange={e => setId(eligible[Number(e.detail.value) - 1]?.id || '')}><View className='board-input-wrap'>{batch ? boardSpec(batch) + ' cm · ' + batch.fluteType + '楞' : '请选择这次使用的纸板 ›'}</View></Picker>{batch && <><Text className='board-card-meta'>成箱 {cartonSpec(batch)} cm</Text><Text className='board-card-meta'>{batch.supplier} · {batch.date} · {batch.location || '未填写库位'}</Text><Text className='board-batch-id'>{batch.id}</Text><View className='board-detail-row'><Text>当前库存</Text><strong>{batch.remainingQty} 张</strong></View></>}</View>}
-    {batch && <><View className='board-section'><BoardField label={count ? '实盘数量' : '领料数量'} numeric unit='张' value={quantity} onChange={setQuantity} /><View className='board-detail-row'><Text>{count ? '盘点后结余' : '领用后结余'}</Text><strong>{quantity && Number.isFinite(after) ? after : '—'} 张</strong></View></View><View className='board-section'><BoardField label='领料人' optional value={recipient} onChange={setRecipient} /><BoardField label={count ? '盘点原因' : '用途备注'} optional={!count} value={remark} onChange={setRemark} placeholder={count ? '例如：重新清点，发现少了 2 张' : '例如：生产、试样、报废'} /></View></>}
-    {error && <BoardError message={error} retry={!loaded || !batches.length ? load : undefined} />}
-    {batch && <BoardButton disabled={busy} onClick={save}>{busy ? '正在保存…' : count ? '确认盘点调整' : '确认领料'}</BoardButton>}
-  </BoardPage>;
+  return <DemoSheet title={count ? '库存盘点' : '纸板领料'} busy={busy}>
+    {!eligible.length && loaded && !error && <div className='demo-empty'>暂无可领用纸板<button type='button' className='demo-primary' onClick={() => void Taro.navigateTo({ url: '/pages/board-inbound/index' })}>纸板入库</button></div>}
+    {!!eligible.length && <DemoField label='纸板批次'><select aria-label='选择纸板批次' disabled={busy} value={id} onChange={event => setId(event.target.value)}><option value=''>请选择批次</option>{eligible.map(item => <option value={item.id} key={item.id}>{boardSpec(item)} cm · {item.supplier} · 余 {item.remainingQty} 张</option>)}</select></DemoField>}
+    {batch && <><p>{cartonSpec(batch)} cm · {batch.supplier}</p><DemoDetail label='当前库存'>{batch.remainingQty} 张</DemoDetail>
+      <DemoField label={count ? '实盘数量（张）' : '领料数量（张）'}><input type='number' step='1' min='0' aria-label={count ? '实盘数量' : '领料数量'} value={quantity} disabled={busy} onChange={event => setQuantity(event.target.value)} /></DemoField>
+      <DemoField label={count ? '盘点原因' : '用途备注'}><input aria-label={count ? '盘点原因' : '用途备注'} value={remark} disabled={busy} onChange={event => setRemark(event.target.value)} /></DemoField>
+      {!count && <DemoField label='领料人'><input aria-label='领料人' value={recipient} disabled={busy} onChange={event => setRecipient(event.target.value)} /></DemoField>}
+      <div className='demo-note'>{count ? '盘点后结余' : '领用后结余'}：{quantity && Number.isFinite(after) ? after : '—'} 张</div>
+    </>}
+    {error && <div className='demo-error' role='alert'>{error}{!batches.length && <button type='button' className='demo-action' onClick={() => void load()}>重新读取</button>}</div>}
+    {batch && <button type='button' className='demo-primary' disabled={busy} onClick={() => void save()}>{busy ? '正在保存…' : count ? '确认盘点调整' : '确认领料'}</button>}
+  </DemoSheet>;
 }

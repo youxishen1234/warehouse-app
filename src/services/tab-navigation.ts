@@ -37,7 +37,7 @@ export function installTabNavigation(nav: Navigation): () => void {
   const activePage = () => Array.from(document.querySelectorAll<HTMLElement>('.taro_page')).reverse().find(visiblePage);
   const pageFor = (actual: string) => Array.from(document.querySelectorAll<HTMLElement>('.taro_page'))
     .find(element => normalizeRoute(element.id) === actual && visiblePage(element));
-  const modalOpen = () => Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"], .sg-calc-overlay, .taro-modal, [class*="mask___"]'))
+  const modalOpen = () => Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"], .sg-calc-overlay, .taro__modal, .taro-modal, [class*="mask___"]'))
     .some(el => getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().height > 0);
   const ownedRoute = (actual: string) => {
     if (tabRoutes.includes(actual)) return actual;
@@ -74,19 +74,19 @@ export function installTabNavigation(nav: Navigation): () => void {
     }
     const capability = win.__sgNativeDock;
     const bridge = win.webkit?.messageHandlers?.nativeTabSelected;
-    const native = capability?.api === 2 && bridge;
+    // The web navigation is the single owner on every device. An installed
+    // native shell can retain routes from a previous release.
+    const native = false;
     root.classList.toggle('sg-native-ios', !!native);
     const host = document.querySelector<HTMLElement>('taro-tabbar');
     if (dock && dock.host !== host) { dock.destroy(); dock = null; }
     if (host && !dock) dock = createGlassTabBar(host, index => { void switchTo(tabRoutes[index]); }, url => { void switchTo(url, undefined, true); });
     if (!state?.locked && !busy) dock?.update(Math.max(0, ownerIndex));
-    if (native) {
-      root.style.setProperty('--sg-native-bottom-space', String(capability.bottomSpace ?? 84) + 'px');
-    }
+    root.style.removeProperty('--sg-native-bottom-space');
     // A route is acknowledged only after its navigation settles. Sending the
     // previous route during selection makes UIKit snap its glass lens back.
     if (capability && bridge && !busy && !queued) {
-      const message = { route: owner, ready: true, modal, requestId: acknowledgedRequest, navigationFailed };
+      const message = { route: owner, ready: false, presentation: 'web', modal, requestId: acknowledgedRequest, navigationFailed };
       const serialized = JSON.stringify(message);
       if (serialized !== lastNativeState) {
         lastNativeState = serialized;
@@ -146,14 +146,14 @@ export function installTabNavigation(nav: Navigation): () => void {
   const start = (event: TouchEvent) => {
     if (busy || event.touches.length !== 1) { cancel(); return; }
     const target = event.target as HTMLElement;
-    if (target.closest('input, textarea, select, button, a, video, [role="button"], taro-button-core, taro-input-core, taro-picker-core, taro-textarea-core, .weui-tabbar, .sg-glass-dock, [class*="wrap___"], [data-no-tab-swipe]') || modalOpen()) return;
+    if (target.closest('input, textarea, select, video, taro-input-core, taro-picker-core, taro-textarea-core, .weui-tabbar, .sg-app-nav, [data-no-tab-swipe]') || modalOpen()) return;
     const touch = event.touches[0];
     const actual = route();
     const owner = ownedRoute(actual);
     const index = tabRoutes.indexOf(owner);
     const back = !android && !tabRoutes.includes(actual) && nav.depth() > 1 && touch.clientX < 35;
     // Reserve both Android system-back edges. Tab gestures also stay central on iOS.
-    if (!back && (touch.clientX < 50 || touch.clientX > innerWidth - 50)) return;
+    if (!back && (touch.clientX < 24 || touch.clientX > innerWidth - 24)) return;
     const page = activePage();
     if (!page || (index < 0 && !back)) return;
     state = { x: touch.clientX, y: touch.clientY, dx: 0, locked: false, index, page, back, ownerAlias: index >= 0 && owner !== actual };
@@ -204,6 +204,7 @@ export function installTabNavigation(nav: Navigation): () => void {
     }
   };
   const blockClick = (event: MouseEvent) => {
+    if ((event.target as Element)?.closest('.sg-app-nav')) return;
     if (Date.now() < suppressClickUntil) { event.preventDefault(); event.stopImmediatePropagation(); }
   };
   // Touch only: installing pointer and touch handlers together double-switches iOS tabs.

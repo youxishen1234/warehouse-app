@@ -1,6 +1,6 @@
 'use strict';
 
-const { dimensionsInCm, findCustomerSpecification, matchCustomerSpecification } = require('../../../../backend/production-pricing');
+const { dimensionsInCm, findCustomerSpecification, matchCustomerSpecification } = require('../../../backend/production-pricing');
 
 function matchesSpecification(customer, product, specId) {
   try {

@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const test = require('node:test');
 
 test('inbound recent delivery note rows are memoized', () => {
-  const source = fs.readFileSync('src/components/BusinessForms/Receipt/index.tsx', 'utf8');
+  const source = fs.readFileSync('src/features/carton-inbound/index.tsx', 'utf8');
   assert.match(source, /const InboundNoteRow = React\.memo\(function InboundNoteRow/);
   assert.match(source, /notes\.map\(note => <InboundNoteRow/);
   assert.match(source, /onOpen=\{setPreview\}/);

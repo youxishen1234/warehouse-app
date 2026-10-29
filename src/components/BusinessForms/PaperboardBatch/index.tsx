@@ -1,7 +1,7 @@
+/* eslint-disable react/forbid-elements */
 import { useCallback, useState } from 'react';
-import { View, Text } from '@tarojs/components';
 import Taro, { useDidShow, useRouter } from '@tarojs/taro';
-import { BoardPage, BoardButton, BoardError } from '@/components/BoardUI';
+import { DemoSheet, DemoDetail } from '@/components/DemoUI';
 import { BoardBatch, getBoard, boardSpec, cartonSpec, deleteBoard } from '@/services/boards';
 import { useSharedRefresh } from '@/services/shared-refresh';
 export default function BoardDetail() {
@@ -15,19 +15,26 @@ export default function BoardDetail() {
     try { await deleteBoard(id); void Taro.switchTab({ url: '/pages/inventory/index' }); }
     catch (e) { setError(e instanceof Error ? e.message : '删除失败'); }
   };
-  const row = (title: string, value: string | number) => <View className='board-detail-row' key={title}><Text className='board-muted'>{title}</Text><Text>{value}</Text></View>;
-  return <BoardPage title='这批纸板' subtitle={batch ? batch.supplier + ' · ' + batch.date + ' 到货' : '读取批次资料…'}>
-    {error && <BoardError message={error} retry={load} />}
+  const row = (title: string, value: string | number) => <DemoDetail label={title} key={title}>{value}</DemoDetail>;
+  const go = (section: string, extra = '') => void Taro.navigateTo({ url: `/pages/management/index?section=${section}&id=${encodeURIComponent(id)}${extra}` });
+  return <DemoSheet title={batch ? batch.name || `${batch.layers}层 ${batch.fluteType}楞纸板` : '纸板库存明细'} testId='paperboard-detail-sheet'>
+    {error && <div className='demo-error' role='alert'>{error}<button type='button' className='demo-action' onClick={() => void load()}>重新读取</button></div>}
+    {!batch && !error && <p>正在读取批次资料…</p>}
     {batch && <>
-      {params.received === '1' && <Text className='board-note'>已入库。批次编号 {batch.id}</Text>}
-      <View className='board-summary'><Text className='board-muted'>{boardSpec(batch)} cm · {batch.layers}层{batch.fluteType}楞</Text><Text className='board-summary-number'>{batch.remainingQty.toLocaleString()}<small>张剩余</small></Text><Text className='board-muted'>对应成箱 {cartonSpec(batch)} cm</Text></View>
-      <BoardButton disabled={batch.remainingQty === 0} onClick={() => Taro.navigateTo({ url: '/pages/management/index?section=production&batch_id=' + encodeURIComponent(batch.id) })}>生产入库</BoardButton>
-      <View className='board-actions'><BoardButton secondary disabled={batch.boardDimensionsPending} onClick={() => Taro.navigateTo({ url: '/pages/management/index?section=labels&kind=paperboard-batch&id=' + encodeURIComponent(batch.id) })}>{batch.boardDimensionsPending ? '补齐纸板尺寸后打印标签' : '打印批次标签'}</BoardButton><BoardButton disabled={batch.remainingQty === 0} onClick={() => Taro.navigateTo({ url: '/pages/management/index?section=paperboard-movement&id=' + id })}>领用这批纸板</BoardButton></View>
-      <View className='board-detail-row'><Text>入库金额状态</Text><Text>{batch.amountMode === 'pending' ? '待补金额，未生成应付' : batch.amountMode === 'manual' ? '按本批金额入账' : '按平米计价'}</Text></View>
-      <View className='board-section'><Text className='board-section-title'>来料信息</Text>{row('客户', batch.customerName || '未填写')}{row('材质/配纸', batch.material || '未填写')}{row('印刷版名', batch.printPlate || '未填写')}{row('颜色', batch.printColor || '未填写')}{row('板厂', batch.supplier)}{row('库位', batch.location || '未填写')}{row('送货单号', batch.deliveryNo || '未填写')}{row('登记时间', new Date(batch.createdAt).toLocaleString('zh-CN'))}{row('克重 g/m²', '面 ' + batch.faceGsm + ' / 里 ' + batch.linerGsm + ' / 楞 ' + batch.flutingGsm)}{row('订购 / 实收', batch.orderedQty + ' / ' + batch.receivedQty + ' 张')}{row('多送 / 少送', batch.giftQty + ' / ' + batch.shortageQty + ' 张')}{row('计费平米', batch.billedArea + ' m²')}{row('单价', '¥ ' + batch.unitPrice + ' / m²')}{row('本批货款', batch.amountMode === 'pending' ? '待补金额' : '¥ ' + batch.amount.toFixed(2))}{row('备注', batch.remark || '无')}<Text className='board-batch-id'>{id}</Text></View>
-      <View className='board-section'><Text className='board-section-title'>出入库记录</Text>{batch.movements.map(m => <View className='board-timeline' key={m.id}><View className='board-row'><strong>{m.type === 'in' ? '来料入库' : m.type === 'out' ? '生产领料' : '盘点调整'}</strong><strong>{m.type === 'out' ? '−' : m.quantity >= 0 ? '+' : ''}{m.quantity} 张</strong></View><Text className='board-muted'>{m.date || new Date(m.createdAt).toLocaleString('zh-CN')} · 结余 {m.balance} 张</Text>{(m.remark || m.recipient) && <Text className='board-muted'>{[m.recipient, m.remark].filter(Boolean).join(' · ')}</Text>}</View>)}</View>
-      <View className='board-actions'><BoardButton secondary onClick={() => Taro.navigateTo({ url: '/pages/management/index?section=paperboard-receipt&from=' + id })}>再进同规格</BoardButton><BoardButton secondary onClick={() => Taro.navigateTo({ url: '/pages/management/index?section=paperboard-movement&id=' + id + '&mode=count' })}>盘点这批</BoardButton></View>
-      <View className='board-actions'><BoardButton secondary onClick={() => Taro.navigateTo({ url: '/pages/management/index?section=paperboard-receipt&id=' + encodeURIComponent(id) })}>编辑批次</BoardButton><BoardButton secondary onClick={() => void remove()}>删除批次</BoardButton></View>
+      {row('规格', `${boardSpec(batch)} cm`)}{row('对应成箱', `${cartonSpec(batch)} cm`)}
+      {row('入库日期时间', batch.enteredAt?.replace('T', ' ') || batch.date)}{row('系统登记时间', new Date(batch.createdAt).toLocaleString('zh-CN'))}
+      {row('入库金额', batch.amountMode === 'pending' ? '未记录 / 待核算' : `¥ ${batch.amount.toFixed(2)}`)}
+      {row('采购单价', `¥ ${batch.unitPrice} / ㎡`)}{row('总面积', `${batch.billedArea} ㎡`)}
+      {row('当前库存', `${batch.remainingQty} 张`)}{row('安全库存', `${batch.warningQty} 张`)}
+      {row('库位', batch.location || '未填写')}{row('关联客户', batch.customerName || '公共备货')}{row('供货来源', batch.supplier || '未关联供货商')}
+      <p>数量变化记录</p>{batch.movements.map(movement => row(`${movement.type === 'in' ? '来料入库' : movement.type === 'out' ? '生产领料' : '盘点调整'} · ${movement.date || new Date(movement.createdAt).toLocaleDateString('zh-CN')}`, `${movement.type === 'out' ? '−' : '+'}${movement.quantity} 张`))}
+      <div className='demo-two'><button type='button' className='demo-primary' onClick={() => void Taro.navigateTo({ url: '/pages/board-inbound/index?from=' + encodeURIComponent(id) })}>同规格入库</button><button type='button' className='demo-primary demo-secondary' onClick={() => go('paperboard-movement', '&mode=count')}>库存盘点</button></div>
+      <details className='demo-more'><summary>批次操作</summary><div className='demo-menu'>
+        <button type='button' disabled={batch.remainingQty === 0} onClick={() => void Taro.navigateTo({ url: '/pages/production-inbound/index?batch_id=' + encodeURIComponent(id) })}>生产入库<span>›</span></button>
+        <button type='button' disabled={batch.remainingQty === 0} onClick={() => go('paperboard-movement')}>领用这批纸板<span>›</span></button>
+        <button type='button' disabled={batch.boardDimensionsPending} onClick={() => go('labels', '&kind=paperboard-batch')}>打印批次标签<span>›</span></button>
+        <button type='button' onClick={() => void Taro.navigateTo({ url: '/pages/board-inbound/index?id=' + encodeURIComponent(id) })}>编辑批次<span>›</span></button><button type='button' onClick={() => void remove()}>删除批次<span>›</span></button>
+      </div><p>{id}</p>{row('材质 / 配纸', batch.material || '未填写')}{row('送货单号', batch.deliveryNo || '未填写')}{row('备注', batch.remark || '未填写')}</details>
     </>}
-  </BoardPage>;
+  </DemoSheet>;
 }

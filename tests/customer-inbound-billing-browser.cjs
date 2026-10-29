@@ -1,3 +1,4 @@
+const { openGoods, chooseReceipt } = require('./receipt-ui-actions.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -133,20 +134,10 @@ async function main() {
     pendingRoutes.add(task);
     return task.finally(() => pendingRoutes.delete(task));
   });
-  const input = label => page.locator(`[aria-label=${JSON.stringify(label)}] input, input[aria-label=${JSON.stringify(label)}]`).first();
+  const input = label => page.locator(`[aria-label=${JSON.stringify(label.replace('货物名称', '纸箱名称（必填）'))}] input, input[aria-label=${JSON.stringify(label.replace('货物名称', '纸箱名称（必填）'))}]`).first();
   const click = label => page.locator('taro-button-core, button, [role="button"]').filter({ hasText: label }).last().click();
   const go = async route => { await page.goto('about:blank'); await page.goto(origin + '/#' + route); };
-  const choose = async (label, text) => {
-    if (label === '选择客户') {
-      await page.getByTestId('customer-search-open').click();
-      await page.getByRole('dialog', { name: '选择客户', exact: true }).getByText(text, { exact: true }).locator('xpath=ancestor::taro-button-core[1]').click();
-      const confirm = page.locator('.taro-model__confirm:visible');
-      if (await confirm.count()) await confirm.click();
-      return;
-    }
-    const name = typeof text === 'string' ? text : '客户自产纸箱';
-    await page.getByTestId('party-goods-cards').getByText(name, { exact: true }).locator('xpath=ancestor::taro-button-core[1]').click();
-  };
+  const choose = (label, fragment) => chooseReceipt(page, label, fragment);
   const assertNoOverflow = async width => {
     await page.setViewportSize({ width, height: 900 });
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1 && document.body.scrollWidth <= innerWidth + 1)).toBe(true);
@@ -155,12 +146,12 @@ async function main() {
   let cleanupError;
   let successMessage;
   const openCarton = async () => {
-    await go('/pages/management/index?section=receipt&kind=carton');
-    await expect(page.getByText('纸箱生产入库', { exact: true })).toBeVisible();
+    await go('/pages/carton-inbound/index');
+    await expect(page.getByRole('heading', { name: '纸箱入库', exact: true })).toBeVisible();
     await expect(input('货物 1 本次完工数量')).toBeVisible();
     await choose('选择客户', customer.name);
-    await expect(page.getByTestId('party-goods-cards')).toBeVisible();
-    await choose('货物 1 客户常用规格', /客户自产纸箱 · 30×20×15 cm · 牛皮纸 · 个 ·/);
+    await expect(page.getByLabel('常用货物', { exact: true })).toBeVisible();
+    await choose('货物 1 客户常用规格', /客户自产纸箱/);
     await expect(input('货物 1 货物名称')).toHaveValue(spec.goods);
     assert.equal(requests.filter(row => row.method === 'POST' && row.path === '/products').length, 0, '选择客户规格不得创建库存商品');
   };
@@ -168,10 +159,10 @@ async function main() {
     await expect(input('货物 1 入库单价')).toHaveValue(String(price));
     await input('货物 1 本次完工数量').fill('100');
     await expect(page.getByTestId('inbound-total-amount')).toContainText(`¥${(price * 100).toFixed(2)}`);
-    await click('更多信息');
+    await page.locator('.demo-dialog summary').filter({ hasText: '更多信息' }).click();
     await input('工单编号或采购单号').fill(number);
     const response = page.waitForResponse(row => row.request().method() === 'POST' && new URL(row.url()).pathname === '/api/delivery-notes');
-    await click('确认入库');
+    await click('确认纸箱入库');
     const result = await response;
     assert.equal(result.status(), 200, await result.text());
     const note = db.listDeliveryNotes().find(row => row.work_order_no === number);
@@ -184,10 +175,10 @@ async function main() {
     await openCarton();
     await expect(input('货物 1 入库单价')).toHaveValue('3');
     await choose('选择客户', other.name);
-    await choose('货物 1 客户常用规格', /客户自产纸箱 · 30×20×15 cm · 牛皮纸 · 个 ·/);
+    await choose('货物 1 客户常用规格', /客户自产纸箱/);
     await expect(input('货物 1 入库单价')).toHaveValue('5');
     await choose('选择客户', customer.name);
-    await choose('货物 1 客户常用规格', /客户自产纸箱 · 30×20×15 cm · 牛皮纸 · 个 ·/);
+    await choose('货物 1 客户常用规格', /客户自产纸箱/);
     await expect(input('货物 1 入库单价')).toHaveValue('3');
     const first = await saveReceipt('CUSTOMER-INBOUND-300', 3);
     assert.equal(db.getCustomer(customer.id).debt, 0);
@@ -208,6 +199,8 @@ async function main() {
     const priorDate = `${previousMonth.getFullYear()}-${String(previousMonth.getMonth() + 1).padStart(2, '0')}-${String(previousMonth.getDate()).padStart(2, '0')}`;
     const historical = db.backupData();
     historical.delivery_notes.find(row => row.id === first.id).date = priorDate;
+    historical.delivery_notes.find(row => row.id === first.id).entered_at = priorDate + 'T08:00';
+    for (const tx of historical.transactions.filter(row => row.delivery_note_id === first.id)) tx.entered_at = priorDate + 'T08:00';
     historical.ledger.find(row => row.party_type === 'supplier' && row.party_id === supplier.id).created_at = new Date(`${priorDate}T12:00:00+08:00`).getTime();
     db.restoreData(historical);
 
@@ -217,10 +210,10 @@ async function main() {
     const customerProfileCard = page.getByTestId(`customer-management-card-${customer.id}`);
     await expect(customerProfileCard).toBeVisible(); await customerProfileCard.click();
     const customerSpecs = page.getByTestId(`customer-specs-${customer.id}`);
-    await expect(customerSpecs).toContainText('常用销售资料');
+    await expect(customerSpecs).toContainText('常用规格');
     await expect(customerSpecs).toContainText('客户自产纸箱');
     await expect(customerSpecs).toContainText('30×20×15 cm');
-    await expect(customerSpecs).toContainText('¥2.00/个');
+    await expect(customerSpecs).toContainText('¥2.00 / 个');
     await expect(customerSpecs.locator(`[data-testid^="customer-spec-${customer.id}-"]`)).toHaveCount(3);
     await expect(customerSpecs).toContainText('160×110 cm');
     await expect(customerSpecs).toContainText('纸板');
@@ -231,7 +224,7 @@ async function main() {
     await expect(customerSpecs).toContainText('50×40×30 cm');
     await page.getByTestId(`customer-specs-toggle-${customer.id}`).click();
     await expect(customerSpecs).not.toContainText('50×40×30 cm', { timeout: 1000 });
-    await page.locator('taro-button-core').filter({ hasText: '‹ 全部客户' }).click();
+    await page.getByText('‹ 全部客户', { exact: true }).click();
     const dimensionOnlyCard = page.getByTestId('customer-specs-only-dimension:1');
     await expect(dimensionOnlyCard).toContainText('尺寸本独立客户');
     await expect(dimensionOnlyCard).toContainText('待建立客户资料');
@@ -243,13 +236,13 @@ async function main() {
     await page.getByTestId('customer-create-from-dimension-dimension:1').click();
     const dimensionEditor = page.getByTestId('customer-editor');
     await expect(dimensionEditor).toBeVisible();
-    await expect(dimensionEditor.getByLabel('公司名称').locator('input')).toHaveValue('尺寸本独立客户');
-    await dimensionEditor.getByText('取消', { exact: true }).click();
+    await expect(dimensionEditor.getByLabel('公司名称').locator('xpath=self::input | .//input')).toHaveValue('尺寸本独立客户');
+    await dimensionEditor.getByRole('button', { name: '关闭', exact: true }).click();
     await expect(dimensionEditor).toHaveCount(0);
     assert.equal(db.listCustomers().length, accountsBeforeDimensionConversion, 'canceling account setup must not create a customer');
     await page.getByTestId('customer-center').screenshot({ path: path.join(evidence, 'customer-specs-only-390.png') });
-    await page.locator('taro-button-core').filter({ hasText: '‹ 全部客户' }).click();
-    const partySearch = page.getByTestId('customer-center-search').locator('input');
+    await page.getByText('‹ 全部客户', { exact: true }).click();
+    const partySearch = page.getByTestId('customer-center-search').locator('xpath=self::input | .//input');
     await partySearch.fill('45x30x25');
     await expect(customerProfileCard).toBeVisible();
     await expect(dimensionOnlyCard).toHaveCount(0);
@@ -274,8 +267,8 @@ async function main() {
     await dimensionOnlyCard.click();
     await page.getByTestId('customer-create-from-dimension-dimension:1').click();
     const conversionEditor = page.getByTestId('customer-editor');
-    await expect(conversionEditor.getByLabel('公司名称').locator('input')).toHaveValue('尺寸本独立客户');
-    await conversionEditor.getByText('保存客户', { exact: true }).click();
+    await expect(conversionEditor.getByLabel('公司名称').locator('xpath=self::input | .//input')).toHaveValue('尺寸本独立客户');
+    await conversionEditor.getByText('保存客户资料', { exact: true }).click();
     await expect(conversionEditor).toHaveCount(0);
     let convertedCustomer;
     await expect.poll(() => {
@@ -288,10 +281,10 @@ async function main() {
     await expect(page.getByTestId(`customer-specs-${convertedCustomer.id}`)).toContainText('51×36×28 cm');
     await expect(page.getByTestId(`customer-specs-${convertedCustomer.id}`)).toContainText('价格未记录');
 
-    await page.locator('taro-button-core').filter({ hasText: '‹ 全部客户' }).click();
+    await page.getByText('‹ 全部客户', { exact: true }).click();
     await expect(convertedProfileCard).toBeVisible();
     await customerProfileCard.click();
-    await page.locator('taro-button-core').filter({ hasText: /^往来账单$/ }).click();
+    await page.getByText('往来账单', { exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/pages/management/index\\?section=finance&view=customer&party_type=customer&party_id=${customer.id}`));
     await expect(page.getByTestId('customer-center')).toHaveCount(0);
     await expect(page.getByTestId('finance-center')).toBeVisible();
@@ -299,7 +292,7 @@ async function main() {
     await expect(customerCard).toContainText('500.00');
     const partySummary = page.getByTestId('finance-party-summary');
     await expect(partySummary).toContainText('0.00');
-    const financeSearch = page.getByTestId('finance-party-search').locator('input');
+    const financeSearch = page.getByTestId('finance-party-search').locator('xpath=self::input | .//input');
     await financeSearch.fill('45x30x25');
     await expect(customerCard).toBeVisible();
     await expect(partySummary).toContainText('0.00');

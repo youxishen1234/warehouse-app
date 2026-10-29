@@ -52,7 +52,7 @@ async function main() {
       await expect.poll(() => (party === 'customer' ? db.getCustomer(record.id) : db.getSupplier(record.id)).contact).toBe(party + '-updated-contact');
       assert.equal((party === 'customer' ? db.getCustomer(record.id) : db.getSupplier(record.id)).phone, '123456');
     }
-    await page.goto(origin + '/pages/management/index?section=orders');
+    await page.goto(origin + '/pages/customer-orders/index');
     await active().getByText('DRAFT-KEEP · 客户编辑回归', { exact: true }).waitFor();
     await active().getByText('出库', { exact: true }).click();
     await page.waitForURL(/outbound/);

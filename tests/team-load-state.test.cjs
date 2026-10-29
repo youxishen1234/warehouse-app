@@ -7,8 +7,9 @@ test('team admin data distinguishes loading and retryable failure from empty lis
   assert.match(source, /const \[loading, setLoading\] = useState\(true\)/);
   assert.match(source, /loadError, setLoadError\] = useState\(''\)/);
   assert.match(source, /setLoadError\(text\)/);
-  assert.match(source, /\{loading \? <Text className=\"team-message\"\>/);
-  assert.match(source, /loadError \? <Text className=\"team-message\" onClick=\{load\}/);
-  assert.match(source, /members\.length === 0 \? <Text className=\"team-message\"/);
-  assert.match(source, /events\.length === 0 \? <Text className=\"team-message\"/);
+  assert.match(source, /\{loading \? <p>/);
+  assert.match(source, /loadError \? <div className='demo-error' role='alert'/);
+  assert.match(source, /onClick=\{\(\) => void load\(\)\}/);
+  assert.match(source, /!members\.length \? <div className='demo-empty'/);
+  assert.match(source, /!events\.length && <div className='demo-empty'/);
 });

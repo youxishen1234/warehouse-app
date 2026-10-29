@@ -122,7 +122,7 @@
 - **47 · 记录已完成** 金额上限、数量上限（MAX_SAFE_INTEGER 相关）校验需在前后端一致，超限给出「数值过大」提示而不是 500。
   - 实施记录：已通过；?????????????????????????????????????；验证：backend/stock.test.cjs???73???
 - **48 · 记录已完成** lineAmount 对 quantity×price 超界抛错的场景，前端 previewAmount 当前静默返回 0，需把「超界」与「未填写」区分开，超界给错误提示。
-  - 实施记录：已通过；??/????????????????????????????；验证：src/components/BusinessForms/Receipt/index.tsx?outbound?backend/stock.test.cjs?preview-overflow.test.cjs???73???
+  - 实施记录：已通过；??/????????????????????????????；验证：src/features/carton-inbound/index.tsx?outbound?backend/stock.test.cjs?preview-overflow.test.cjs???73???
 - **49 · 记录已完成** 客户期初应收、供应商期初应付在创建时应同步生成一条 opening 类型账本流水（当前直接改余额无流水），保证余额可逐笔追溯。
   - 实施记录：已通过；客户/供应商创建期初余额时同步生成 receivable/payable 账本流水；验证：`backend/stock.test.cjs`
 - **50 · 记录已完成** 客户 debt、供应商 payable 调整（编辑页）导致余额下降时会生成 settlement 流水；余额上升（补录欠款）当前无流水，需补 receivable/payable 流水。
@@ -629,13 +629,13 @@
 ### 八、前端性能（启动 / 渲染 / 列表 / 包体）
 
 - **410 · 待实施／待核对** 商品选择器、库存列表、记录列表在数据量大时需虚拟列表/窗口化渲染（只渲染可视行），外观与滚动行为保持一致。
-- **411 · 记录已完成** 当前 StockProductPicker 一次渲染 matches.slice(0,50)，数据量大时过滤计算随输入频繁执行，搜索输入加防抖。
-  - 实施记录：已通过；StockProductPicker 搜索输入增加 300ms 防抖，匹配结果使用 useMemo 缓存；验证：`src/components/StockProductPicker/index.tsx`
+- **411 · 记录已完成** 当前 货物选择框 一次渲染 matches.slice(0,50)，数据量大时过滤计算随输入频繁执行，搜索输入加防抖。
+  - 实施记录：已通过；货物选择框 搜索输入增加 300ms 防抖，匹配结果使用 useMemo 缓存；验证：`src/features/carton-inbound/index.tsx`
 - **412 · 记录已完成** 各页搜索/关键词输入统一 300ms 防抖，避免每次按键全量 filter。
-  - 实施记录：已通过；现有关键词入口（商品选择器、库存查询）统一增加 300ms 防抖，输入展示与实际过滤状态分离；验证：`src/components/StockProductPicker/index.tsx`、`src/pages/inventory/index.tsx`
+  - 实施记录：已通过；现有关键词入口（商品选择器、库存查询）统一增加 300ms 防抖，输入展示与实际过滤状态分离；验证：`src/features/carton-inbound/index.tsx`、`src/pages/inventory/index.tsx`
   - 实施记录：已通过；商品编辑页规格/材质历史建议增加 300ms 防抖并使用 memo 过滤，避免每次输入全量计算；验证：`src/pages/product-edit/index.tsx`、TypeScript/H5 构建
 - **413 · 记录已完成** 列表过滤、面积/金额计算结果用 useMemo 缓存，输入变化才重算，避免渲染中重复计算。
-  - 实施记录：已通过；入库/出库金额与库存计算使用 memo，客户流水统计按往来对象建立索引，减少渲染中重复过滤；验证：`src/components/BusinessForms/Receipt/index.tsx`、`src/components/BusinessForms/Shipment/index.tsx`、`src/pages/customers/index.tsx`
+  - 实施记录：已通过；入库/出库金额与库存计算使用 memo，客户流水统计按往来对象建立索引，减少渲染中重复过滤；验证：`src/features/carton-inbound/index.tsx`、`src/components/BusinessForms/Shipment/index.tsx`、`src/pages/customers/index.tsx`
   - 实施记录：已通过；库存过滤、库存盘点记录索引和首页流转最大值使用 memo，减少渲染中重复计算；验证：`src/pages/inventory/index.tsx`、`src/pages/home/index.tsx`
 - **414 · 记录已完成** 大列表行组件 memo 化，避免某行输入导致整列表重渲染。
   - 实施记录：已通过；Seven list-page React.memo row tests pass.；验证：待补充
@@ -1461,7 +1461,7 @@
 - **1183 · 待实施／待核对** DELETE /api/customers/:id（停用客户）：并发冲突与重放用例（错误版本、同键不同内容、超时重发），断言只生效一次。
 - **1184 · 待实施／待核对** E2E · 供应商列表页：进入二级页再返回，断言页面状态、滚动位置与已填内容按预期保留或重置。
 - **1185 · 记录已完成** 入库开单页：弹窗/选择器关闭时清理其临时搜索词与大列表引用，再次打开为干净初始态。
-  - 实施记录：已通过；???????????????????????????????；验证：src/components/StockProductPicker/index.tsx?tests/stock-picker-cleanup.test.cjs?TypeScript?ESLint???????
+  - 实施记录：已通过；???????????????????????????????；验证：src/features/carton-inbound/index.tsx?tests/carton-production-inbound-browser.cjs?TypeScript?ESLint???????
 - **1186 · 待实施／待核对** 数字字段「克重(g/㎡)」：错误输入不应清空用户已填内容，只提示并保留，便于修改。
 - **1187 · 待实施／待核对** DELETE /api/products/:id（停用商品）：携带错误 If-Match 时返回 409 并带回当前 revision，客户端据此刷新。
 - **1188 · 待实施／待核对** DELETE /api/customers/:id（停用客户）：超大请求体/超长字段/高频重复调用用例，断言 413/400/429 且无数据写入。

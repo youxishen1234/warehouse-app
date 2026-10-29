@@ -1,3 +1,4 @@
+const { openGoods, chooseReceipt } = require('./receipt-ui-actions.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -100,17 +101,10 @@ async function main() {
     return task.finally(() => pendingRoutes.delete(task));
   });
 
-  const input = label => page.locator(`[aria-label=${JSON.stringify(label)}] input, input[aria-label=${JSON.stringify(label)}]`).first();
+  const input = label => page.locator(`[aria-label=${JSON.stringify(label.replace('货物名称', '纸箱名称（必填）'))}] input, input[aria-label=${JSON.stringify(label.replace('货物名称', '纸箱名称（必填）'))}]`).first();
   const clickText = label => page.locator('taro-button-core, button, [role="button"]').filter({ hasText: label }).last().click();
   const go = async route => { await page.goto('about:blank'); await page.goto(origin + '/#' + route); };
-  const choose = async (label, fragment) => {
-    if (label === '选择客户') {
-      await page.getByTestId('customer-search-open').click();
-      await page.getByRole('dialog', { name: '选择客户', exact: true }).getByText(fragment, { exact: true }).locator('xpath=ancestor::taro-button-core[1]').click();
-      const confirm = page.locator('.taro-model__confirm:visible');
-      if (await confirm.count()) await confirm.click();
-    } else await page.getByTestId('party-goods-cards').getByText(fragment, { exact: true }).locator('xpath=ancestor::taro-button-core[1]').click();
-  };
+  const choose = (label, fragment) => chooseReceipt(page, label, fragment);
   const assertNoOverflow = async width => {
     await page.setViewportSize({ width, height: 900 });
     await expect.poll(() => page.evaluate(() => {
@@ -129,18 +123,19 @@ async function main() {
     await page.getByTestId('customer-center-add').click();
     const editor = page.getByTestId('customer-editor');
     await expect(editor).toBeVisible();
-    await editor.getByLabel('公司名称').locator('input').fill(name);
+    await editor.getByLabel('公司名称').locator('xpath=self::input | .//input').fill(name);
     for (let index = 0; index < specs.length; index += 1) {
+      if (index === 0) await editor.locator('details').filter({ has: page.getByText('常用货物', { exact: true }) }).locator('summary').click();
       await editor.locator('[aria-label="添加客户规格"]').click();
       const row = index + 1;
-      await editor.getByLabel(`规格 ${row} 货物名称`).locator('input').fill(specs[index].goods);
-      await editor.getByLabel(`规格 ${row} 规格尺寸`).locator('input').fill(specs[index].specification);
-      await editor.getByLabel(`规格 ${row} 材质`).locator('input').fill(specs[index].material);
-      await editor.getByLabel(`规格 ${row} 单位`).locator('input').fill(specs[index].unit);
-      if (specs[index].price !== null) await editor.getByLabel(`规格 ${row} 单价`).locator('input').fill(String(specs[index].price));
+      await editor.getByLabel(`规格 ${row} 货物名称`).locator('xpath=self::input | .//input').fill(specs[index].goods);
+      await editor.getByLabel(`规格 ${row} 规格尺寸`).locator('xpath=self::input | .//input').fill(specs[index].specification);
+      await editor.getByLabel(`规格 ${row} 材质`).locator('xpath=self::input | .//input').fill(specs[index].material);
+      await editor.getByLabel(`规格 ${row} 单位`).locator('xpath=self::input | .//input').fill(specs[index].unit);
+      if (specs[index].price !== null) await editor.getByLabel(`规格 ${row} 单价`).locator('xpath=self::input | .//input').fill(String(specs[index].price));
     }
     const write = page.waitForResponse(response => ['POST', 'PUT'].includes(response.request().method()) && /\/api\/customers(?:\/\d+)?$/.test(new URL(response.url()).pathname));
-    await clickText('保存客户');
+    await clickText('保存客户资料');
     const response = await write;
     assert.equal(response.status(), 200, `保存客户失败：${await response.text()}`);
     await expect(editor).toHaveCount(0);
@@ -151,11 +146,11 @@ async function main() {
     return db.getCustomer(customer.id);
   };
   const openCarton = async customerName => {
-    await go('/pages/management/index?section=receipt&kind=carton');
-    await expect(page.getByText('纸箱生产入库', { exact: true })).toBeVisible();
+    await go('/pages/carton-inbound/index');
+    await expect(page.getByRole('heading', { name: '纸箱入库', exact: true })).toBeVisible();
     await expect(input('货物 1 本次完工数量')).toBeVisible();
     await choose('选择客户', customerName);
-    await expect(page.getByTestId('party-goods-cards')).toBeVisible();
+    await expect(page.getByLabel('常用货物', { exact: true })).toBeVisible();
   };
   const chooseCustomerSpec = (fragment, index = 1) => choose(`货物 ${index} 客户常用规格`, fragment);
   const saveReceipt = async (workOrder, quantity, manualPrice = null) => {
@@ -167,10 +162,10 @@ async function main() {
     if (await create.count()) {
       await create.click(); await page.locator('.taro-model__confirm:visible').click();
     }
-    await clickText('更多信息');
+    await page.locator('.demo-dialog summary').filter({ hasText: '更多信息' }).click();
     await input('工单编号或采购单号').fill(workOrder);
     const responseWait = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/delivery-notes');
-    await clickText('确认入库');
+    await clickText('确认纸箱入库');
     const response = await responseWait;
     assert.equal(response.status(), 200, `保存入库失败：${await response.text()}`);
     const note = db.listDeliveryNotes().find(row => row.work_order_no === workOrder);
@@ -210,7 +205,8 @@ async function main() {
     db.updateCustomer(customer.id, { specs: [...db.getCustomer(customer.id).specs, hiddenAccountSpec] });
 
     await openCarton(customer.name);
-    await expect(page.getByTestId('party-goods-cards')).toBeVisible();
+    await expect(page.getByLabel('常用货物', { exact: true })).toBeVisible();
+    await openGoods(page);
     await expect(input('货物 1 入库单价')).toHaveValue('');
     await chooseCustomerSpec('零报价客户纸箱');
     const zeroPrice = input('货物 1 入库单价');
@@ -269,7 +265,7 @@ async function main() {
     await expect(manualPrice).toHaveValue('');
     assert.equal(await manualPrice.evaluate(node => Boolean(node.disabled || node.readOnly)), false);
     await manualPrice.fill('2.1');
-    await page.locator('.stock-entry-refresh').click();
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
     await expect(input('货物 1 入库单价')).toHaveValue('2.1');
     const unpriced = await saveReceipt('CUSTOMER-SPEC-UNPRICED', 4, 2.25);
     assert.equal(unpriced.lines[0].customer_spec_snapshot.price, 2.25);
@@ -290,6 +286,7 @@ async function main() {
 
     await openCarton(legacyCustomer.name);
     await chooseCustomerSpec('旧尺寸本纸箱');
+    await openGoods(page);
     await expect(input('货物 1 入库单价')).toHaveValue('');
     const legacyNote = await saveReceipt('CUSTOMER-SPEC-LEGACY', 2, 1.75);
     assert.match(legacyNote.lines[0].customer_spec_id, /^dimension:/);
@@ -307,7 +304,7 @@ async function main() {
     const failedCustomerLoad = page.waitForResponse(response =>
       new URL(response.url()).pathname === '/api/production-inbound/customers' && response.status() === 503
     );
-    await go('/pages/management/index?section=receipt&kind=carton');
+    await go('/pages/carton-inbound/index');
     await failedCustomerLoad;
     await expect(page.locator('[role="alert"]')).toBeVisible();
     failCartonCustomerRead = false;
@@ -318,7 +315,7 @@ async function main() {
     await retriedCustomerLoad;
     await expect(page.locator('[role="alert"]')).toHaveCount(0);
     await choose('选择客户', customer.name);
-    await expect(page.getByTestId('party-goods-cards')).toBeVisible();
+    await expect(page.getByLabel('常用货物', { exact: true })).toBeVisible();
     await chooseCustomerSpec(longGoodsName);
     await expect(input('货物 1 入库单价')).toHaveValue('3.5');
 

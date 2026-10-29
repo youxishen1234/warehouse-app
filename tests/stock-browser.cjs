@@ -48,7 +48,7 @@ async function main() {
       await input('搜索商品名称、规格、楞型').fill(name);
       await text(name).click();
     };
-    await page.goto(base + '/pages/management/index?section=receipt');
+    await page.goto(base + '/pages/carton-inbound/index?kind=purchase');
     await text('入库开单').waitFor();
     await page.locator('.team-boot').waitFor({ state: 'detached' });
     await chooseProduct(a.name);
@@ -105,7 +105,7 @@ async function main() {
     await expect.poll(() => db.getProduct(a.id).stock).toBe(stockBeforeOutbound - quantity);
     assert.equal(db.listTx({ type: 'out' }).length, 1);
     assert.equal(db.getProduct(a.id).stock, stockBeforeOutbound - quantity);
-    await page.goto(base + '/pages/management/index?section=receipt'); await text('入库开单').waitFor();
+    await page.goto(base + '/pages/carton-inbound/index?kind=purchase'); await text('入库开单').waitFor();
     const inboundNote = page.locator('[class*=note___]').filter({ hasText: '入库单 #1' });
     await expect(inboundNote).toContainText('已入库');
     await inboundNote.click();

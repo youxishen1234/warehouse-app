@@ -1,10 +1,9 @@
+/* eslint-disable react/forbid-elements */
 import { useState } from 'react';
-import { View, Text, ScrollView } from '@tarojs/components';
+import { DemoPage } from '@/components/DemoUI';
 import Taro from '@tarojs/taro';
 import { getBackup, restoreBackup } from '@/services/api';
-import styles from '@/components/BusinessForms/BackupSettings/index.module.scss';
 import DailyBackupStatus from '@/components/BusinessForms/BackupSettings/daily-status';
-import BusinessHeader from '@/components/BusinessHeader';
 
 type BrowserFileInput = HTMLInputElement & { files: FileList | null };
 
@@ -89,16 +88,10 @@ export default function BackupPage() {
     input.click();
   };
 
-  return (
-    <ScrollView scrollY className={styles.page}>
-      <BusinessHeader title='备份与恢复' />
-      <DailyBackupStatus />
-      <Text className={styles.hint}>备份包含商品、客户、供应商、客户尺寸本、纸板批次、库存、流水、订单和盘点记录。旧版备份没有尺寸本时，会保留当前尺寸本。恢复请求默认支持 64 MiB，服务器可按需配置。</Text>
-      <View className={styles.actions}>
-        <View className={styles.primary} onClick={busy ? undefined : exportBackup}>{busy ? '处理中…' : '导出备份 JSON'}</View>
-        <View className={styles.secondary} onClick={busy ? undefined : chooseRestoreFile}>选择 JSON 恢复</View>
-      </View>
-      <Text className={styles.hint}>{status}</Text>
-    </ScrollView>
-  );
+  return <DemoPage title='备份与恢复'>
+    <DailyBackupStatus />
+    <article className='demo-card'><h3>导出备份</h3><p>保存当前仓库的业务资料和库存记录。</p><button type='button' className='demo-primary' disabled={busy} onClick={() => void exportBackup()}>{busy ? '处理中…' : '导出备份 JSON'}</button></article>
+    <article className='demo-card'><h3>从文件恢复</h3><p>选择已保存的备份文件，恢复前请核对文件和当前资料。</p><button type='button' className='demo-primary demo-secondary' disabled={busy} onClick={chooseRestoreFile}>选择 JSON 恢复</button></article>
+    <p role='status'>{status}</p>
+  </DemoPage>;
 }

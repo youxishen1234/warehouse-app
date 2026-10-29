@@ -32,7 +32,7 @@ async function main() {
       }
       return route.abort();
     });
-    await page.goto(`${origin}/#/pages/management/index?section=orders`);
+    await page.goto(`${origin}/#/pages/customer-orders/index`);
     await page.getByText('＋新增订单', { exact: true }).click();
     const orderNo = page.locator('input[placeholder="订单号"]:visible');
     await orderNo.waitFor();

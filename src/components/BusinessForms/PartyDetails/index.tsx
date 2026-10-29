@@ -1,12 +1,11 @@
+/* eslint-disable react/forbid-elements */
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, Input, Textarea, ScrollView } from '@tarojs/components';
+import { DemoSheet, DemoField } from '@/components/DemoUI';
 import Taro, { useRouter } from '@tarojs/taro';
 import { getCustomer, addCustomer, updateCustomer, getSupplier, addSupplier, updateSupplier } from '@/services/api';
 import type { CustomerForm } from '@/types';
 import { sanitizeNonNegativeMoneyInput } from '@/utils/form-input';
 import { session, watchSession } from '@/services/session';
-import styles from '@/components/BusinessForms/PartyDetails/index.module.scss';
-import BusinessHeader from '@/components/BusinessHeader';
 
 const CustomerEditPage: React.FC = () => {
   const router = useRouter();
@@ -81,43 +80,20 @@ const CustomerEditPage: React.FC = () => {
     } catch (e) { saveLock.current = false; Taro.showToast({ title: e?.message || '保存失败', icon: 'none' }); } finally { setSaving(false); }
   };
 
-  return (
-    <ScrollView scrollY className={styles.container}>
-      <BusinessHeader title={(isEdit ? '编辑' : '新增') + label} />
-      {loading && <View>正在加载{label}资料…</View>}
-      {loadError && <View onClick={() => setRetry(value => value + 1)}>{loadError} · 点击重试</View>}
-      {!loading && !loadError &&
-      <View className={styles.form}>
-        <View className={styles.field}>
-          <Text className={styles.label}>{label}名称 *</Text>
-          <Input className={styles.input} maxlength={50} placeholder="如：晨光文具店" value={name} onInput={e => setName(e.detail.value)} />
-        </View>
-
-        <View className={styles.field}>
-          <Text className={styles.label}>联系人</Text>
-          <Input className={styles.input} maxlength={50} placeholder="如：李老板" value={contact} onInput={e => setContact(e.detail.value)} />
-        </View>
-
-        <View className={styles.field}>
-          <Text className={styles.label}>联系电话</Text>
-          <Input className={styles.input} type="number" maxlength={20} placeholder="客户手机号" value={phone} onInput={e => setPhone(e.detail.value)} />
-        </View>
-
-        <View className={styles.field}>
-          <Text className={styles.label}>地址</Text>
-          <Input className={styles.input} maxlength={200} placeholder="选填" value={address} onInput={e => setAddress(e.detail.value)} />
-        </View>
-
-        <View className={styles.field}>
-          <Text className={styles.label}>备注</Text>
-          <Textarea className={styles.textarea} maxlength={500} placeholder="选填，如结算方式、偏好等" value={remark} onInput={e => setRemark(e.detail.value)} />
-        </View>
-
-        <View className={styles.field}><Text className={styles.label}>{supplier ? '应付款（元）' : '当前欠款（元）'}</Text><Input className={styles.input} type="digit" value={balance} onInput={e => setBalance(sanitizeNonNegativeMoneyInput(e.detail.value))} /></View>
-        <View className={styles.btnPrimary} onClick={handleSave}>{saving ? '保存中' : '保存'}</View>
-      </View>}
-    </ScrollView>
-  );
+  return <DemoSheet title={(isEdit ? '编辑' : '新增') + label + '资料'} busy={saving}>
+    <p>{label}资料保存后，开单、送货和结算时直接复用。</p>
+    {loading && <p>正在加载{label}资料…</p>}
+    {loadError && <div role='alert' className='demo-error'>{loadError}<button type='button' className='demo-action' onClick={() => setRetry(value => value + 1)}>重新读取</button></div>}
+    {!loading && !loadError && <>
+      <DemoField label={label + '名称（必填）'}><input aria-label={label + '名称'} maxLength={50} value={name} disabled={saving} onChange={event => setName(event.target.value)} /></DemoField>
+      <DemoField label='联系人'><input aria-label='联系人' maxLength={50} value={contact} disabled={saving} onChange={event => setContact(event.target.value)} /></DemoField>
+      <DemoField label='手机号码'><input type='tel' aria-label='联系电话' maxLength={20} value={phone} disabled={saving} onChange={event => setPhone(event.target.value)} /></DemoField>
+      <DemoField label='送货地址'><input aria-label='地址' maxLength={200} value={address} disabled={saving} onChange={event => setAddress(event.target.value)} /></DemoField>
+      <DemoField label='业务备注'><textarea aria-label='备注' maxLength={500} value={remark} disabled={saving} onChange={event => setRemark(event.target.value)} /></DemoField>
+      <details className='demo-more'><summary>{supplier ? '应付款' : '应收款'}</summary><DemoField label={supplier ? '应付款（元）' : '当前欠款（元）'}><input type='number' value={balance} disabled={saving} onChange={event => setBalance(sanitizeNonNegativeMoneyInput(event.target.value))} /></DemoField></details>
+      <button type='button' className='demo-primary' disabled={saving} onClick={() => void handleSave()}>{saving ? '保存中…' : '保存' + label + '资料'}</button>
+    </>}
+  </DemoSheet>;
 };
 
 export default CustomerEditPage;

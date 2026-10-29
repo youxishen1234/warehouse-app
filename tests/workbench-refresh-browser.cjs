@@ -109,6 +109,12 @@ async function main() {
   page.setDefaultTimeout(15000);
   page.on('pageerror', error => errors.push(error.message));
   const workbench = page.getByTestId('simple-workbench');
+  const active = () => page.locator('.taro_page:visible').last();
+  let refreshSequence = 0;
+  const refreshWhileEditing = async () => {
+    db.transact({ username: 'isolated-refresh' }, `refresh-${++refreshSequence}`, `refresh-${refreshSequence}`, String(db.revision()), 'test refresh', () => db.addCustomer({ name: `同步刷新触发-${refreshSequence}` }));
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  };
   const button = (scope, text) => ({ click: () => clickWorkbenchAction(scope, text) });
   try {
     await page.goto(origin + '/#/pages/home/index');
@@ -137,7 +143,7 @@ async function main() {
     // Manual refresh must keep the prior usable snapshot, activity and an
     // unfinished production form mounted while the slow endpoint is pending.
     await button(workbench, '领纸板生产').click();
-    const consumed = page.getByLabel('领用纸板数').locator('input');
+    const consumed = page.getByLabel('领用纸板数').locator('xpath=self::input | .//input');
     await consumed.fill('7');
     await consumed.evaluate(element => {
       element.dataset.refreshProbe = 'same-node';
@@ -146,9 +152,9 @@ async function main() {
     const refreshGate = { kind: 'draft-refresh', started: deferred(), release: deferred() };
     productionGates.push(refreshGate);
     productionBehavior = refreshGate;
-    await button(workbench, '刷新').click();
-    await refreshGate.started.promise;
-    await expect(page.getByTestId('workbench-sync-status')).toContainText('当前数据仍可查看');
+    await refreshWhileEditing();
+    await Promise.race([refreshGate.started.promise, new Promise((_, reject) => setTimeout(() => reject(new Error('shared refresh did not start')), 12000))]);
+    await expect(active().getByTestId('workbench-sync-status')).toContainText('当前数据仍可查看');
     await expect(consumed).toBeVisible();
     await expect(page.getByTestId('workbench-initial-loading')).toHaveCount(0);
     const probeDuringRefresh = await page.evaluate(() => {
@@ -163,7 +169,7 @@ async function main() {
     });
     assert.deepEqual(probeDuringRefresh, { connected: true, focused: true, marker: 'same-node', value: '7' });
     refreshGate.release.resolve();
-    await expect(page.getByText('● 已同步', { exact: true })).toBeVisible();
+    await expect(active().getByText('● 已同步', { exact: true })).toBeVisible();
     await expect(consumed).toHaveValue('7');
     await expect(consumed).toHaveAttribute('data-refresh-probe', 'same-node');
     await page.screenshot({ path: path.join(artifacts, 'refresh-preserves-draft.png'), fullPage: true });
@@ -171,13 +177,13 @@ async function main() {
     // A failed read must leave the last successful screen usable and clearly
     // identify the snapshot as stale until a retry succeeds.
     failProductionReads = 10;
-    await button(workbench, '刷新').click();
-    await expect(page.getByRole('alert')).toContainText('隔离测试模拟读取失败');
-    await expect(page.getByTestId('workbench-sync-status')).toContainText('当前显示上次成功数据');
+    await refreshWhileEditing();
+    await expect(active().getByRole('alert').first()).toContainText('隔离测试模拟读取失败');
+    await expect(active().getByTestId('workbench-sync-status')).toContainText('当前显示上次成功数据');
     await expect(consumed).toHaveValue('7');
     failProductionReads = 0;
-    await button(workbench, '重新读取').click();
-    await expect(page.getByText('● 已同步', { exact: true })).toBeVisible();
+    await refreshWhileEditing();
+    await expect(active().getByText('● 已同步', { exact: true })).toBeVisible();
     await expect(consumed).toHaveValue('7');
 
     // Empty search results should explain the state and offer a one-tap reset.

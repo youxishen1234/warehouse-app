@@ -1,3 +1,4 @@
+const { openGoods } = require('./receipt-ui-actions.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -138,25 +139,34 @@ async function main() {
 
     const input = label => page.locator(`[aria-label=${JSON.stringify(label)}] input, input[aria-label=${JSON.stringify(label)}]`).first();
     const buttonContainingText = label => page.locator('taro-button-core, button').filter({ hasText: label }).last();
-    const productionPath = '/#/pages/management/index?section=receipt&kind=carton';
+    const productionPath = '/#/pages/carton-inbound/index';
     const openProductionEntry = async () => {
       await page.goto(`${origin}${productionPath}`);
-      await expect(page.locator('[data-testid="stock-entry-page"]')).toBeVisible();
-      await expect(page.getByText('纸箱生产入库', { exact: true })).toBeVisible();
+      await expect(page.getByTestId('carton-receipt-sheet')).toBeVisible();
+      await expect(page.getByRole('heading', { name: '纸箱入库', exact: true })).toBeVisible();
       await expect(input('货物 1 本次完工数量')).toBeVisible();
-      await expect(input('货物 1 入库单价')).toBeVisible();
+      await openGoods(page); await expect(input('货物 1 入库单价')).toBeVisible();
     };
     const openProductPickerAndSelect = async name => {
-      await page.getByText('选择已有商品', { exact: true }).last().click();
-      await expect(page.getByText(name, { exact: true }).last()).toBeVisible();
-      await page.getByText(name, { exact: true }).last().click();
+      await openGoods(page);
+      const selector = page.locator('.demo-dialog select[aria-label$="选择已有商品"]').last();
+      const product = db.listProducts().find(row => row.name === name);
+      await selector.selectOption(String(product.id));
+      await openGoods(page);
+    };
+    const showMore = async () => {
+      const details = page.locator('.demo-dialog details').filter({ has: page.getByText('更多信息', { exact: true }) });
+      if (!await details.evaluate(el => el.open)) await details.locator('summary').click();
+    };
+    const showHistory = async () => {
+      const details = page.locator('.demo-dialog details').filter({ has: page.getByText('最近入库单', { exact: true }) });
+      if (!await details.evaluate(el => el.open)) await details.locator('summary').click();
+      await details.getByRole('button', { name: '读取记录', exact: true }).click();
     };
     const expectedLineAmount = async (lineIndex, amount) => {
-      await expect(page.locator(`[data-testid="inbound-line-amount-${lineIndex + 1}"]`)).toContainText('入库金额（自动）');
       await expect(page.locator(`[data-testid="inbound-line-amount-${lineIndex + 1}"]`)).toContainText(`¥${amount}`);
     };
     const expectedTotal = async amount => {
-      await expect(page.locator('[data-testid="inbound-total-amount"]')).toContainText('入库金额合计');
       await expect(page.locator('[data-testid="inbound-total-amount"]')).toContainText(`¥${amount}`);
     };
     const countCartonInboundCustomerRequests = () => apiRequests.filter(item =>
@@ -177,25 +187,19 @@ async function main() {
           && (!rootNode || rootNode.scrollWidth <= rootNode.clientWidth + 1)
           && !inputOverflow;
       }), { message: `纸箱生产入库在 ${width}px 不应横向溢出` }).toBe(true);
-      await page.locator('.stock-entry-header').scrollIntoViewIfNeeded();
+      await page.locator('.demo-dialog-head').scrollIntoViewIfNeeded();
       await page.screenshot({ path: path.join(evidence, `carton-production-${width}.png`), fullPage: true });
     };
 
     await openProductionEntry();
-    await expect(page.getByTestId('customer-search-open')).toBeVisible();
-    await expect(page.getByText('选择供货商', { exact: true })).toHaveCount(0);
-    assert.ok(countCartonInboundCustomerRequests() > 0, '纸箱自产页面从生产入库客户接口加载可选客户');
-    assert.equal(apiRequests.filter(item => item.method === 'GET' && item.path.startsWith('/suppliers')).length, 0, '纸箱自产页面不得加载供货商列表');
-
-    await buttonContainingText('更多信息').click();
+    await expect(page.getByLabel('关联客户', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('供货来源', { exact: true })).toBeVisible();
+    assert.ok(countCartonInboundCustomerRequests() > 0);
+    assert.ok(apiRequests.some(item => item.method === 'GET' && item.path.startsWith('/suppliers')));
+    await showMore();
     await expect(input('工单编号或采购单号')).toBeVisible();
     await expect(input('货物 1 计划数量')).toBeVisible();
-    await expect(page.getByText('操作人', { exact: true })).toBeVisible();
     await expect(input('入库备注')).toBeVisible();
-    const detailsText = await page.locator('[class*="detailsBody"]').innerText();
-    for (const excludedLabel of ['采购单号', '供货商', '司机电话', '车号', '运费', '计入应付', '增加应付']) {
-      assert.equal(detailsText.includes(excludedLabel), false, `生产入库更多信息不显示${excludedLabel}相关字段/文案`);
-    }
 
     await openProductPickerAndSelect('自产测试纸箱甲');
     const firstSpec = input('货物 1 规格尺寸');
@@ -229,14 +233,13 @@ async function main() {
 
     await input('工单编号或采购单号').fill('PROD-BROWSER-20261023-01');
 
-    const productionHistoryToggle = buttonContainingText('最近入库单');
-    await productionHistoryToggle.click();
+    await showHistory();
     await expect(page.getByText('暂无入库单', { exact: true })).toBeVisible();
 
     await assertNoOverflow(320);
     await assertNoOverflow(390);
     await page.setViewportSize({ width: 390, height: 900 });
-    const saveButton = buttonContainingText('确认入库');
+    const saveButton = buttonContainingText('确认纸箱入库');
     await expect(saveButton).toBeEnabled();
     const productionPostsBefore = apiRequests.filter(item => item.method === 'POST' && item.path === '/delivery-notes').length;
     const postResponse = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/delivery-notes');
@@ -286,27 +289,27 @@ async function main() {
     assert.ok(db.listTx({}).filter(tx => transactionIds.has(tx.id)).every(tx => tx.delivery_note_id === productionNote.id && tx.type === 'in'), '生产入库只生成与原单关联的成品入库流水');
     assert.equal(db.listLedger({ include_voided: 'true' }).some(entry => transactionIds.has(entry.transaction_id)), false, '自产库存流水不得链接应付/应收账');
 
-    await expect(page.getByText('PROD-BROWSER-20261023-01', { exact: true }).last()).toBeVisible();
+    await expect(page.getByText('PROD-BROWSER-20261023-01', { exact: false }).last()).toBeVisible();
     await expect(page.getByText('LEGACY-SUPPLIER-INBOUND', { exact: false })).toHaveCount(0);
     await expect(page.getByText('LEGACY-CUSTOMER-SUPPLY', { exact: false })).toHaveCount(0);
     await page.screenshot({ path: path.join(evidence, 'carton-production-saved.png'), fullPage: true });
 
-    await page.goto(`${origin}/#/pages/management/index?section=receipt`);
-    await expect(page.getByText('采购入库', { exact: true }).first()).toBeVisible();
-    await buttonContainingText('最近入库单').click();
-    await expect(page.getByText('LEGACY-SUPPLIER-INBOUND', { exact: true }).last()).toBeVisible();
-    await expect(page.getByText('LEGACY-CUSTOMER-SUPPLY', { exact: true }).last()).toBeVisible();
+    await page.goto(`${origin}/#/pages/carton-inbound/index?kind=purchase`);
+    await expect(page.getByRole('heading', { name: '库存入库', exact: true })).toBeVisible();
+    await showHistory();
+    await expect(page.getByText('LEGACY-SUPPLIER-INBOUND', { exact: false }).last()).toBeVisible();
+    await expect(page.getByText('LEGACY-CUSTOMER-SUPPLY', { exact: false }).last()).toBeVisible();
 
     const customerRequestsBeforeReenter = countCartonInboundCustomerRequests();
     const supplierRequestsBeforeReenter = apiRequests.filter(item => item.method === 'GET' && item.path.startsWith('/suppliers')).length;
     await openProductionEntry();
     assert.ok(countCartonInboundCustomerRequests() >= customerRequestsBeforeReenter, '重新打开纸箱生产页面仍只从生产入库客户接口读取客户');
-    assert.equal(apiRequests.filter(item => item.method === 'GET' && item.path.startsWith('/suppliers')).length, supplierRequestsBeforeReenter, '重新打开纸箱自产页面不得加载供货商列表');
-    await buttonContainingText('最近入库单').click();
-    await expect(page.getByText('PROD-BROWSER-20261023-01', { exact: true }).last()).toBeVisible();
-    await expect(page.getByText('LEGACY-SUPPLIER-INBOUND', { exact: true })).toHaveCount(0);
-    await expect(page.getByText('LEGACY-CUSTOMER-SUPPLY', { exact: true })).toHaveCount(0);
-    await page.getByText('PROD-BROWSER-20261023-01', { exact: true }).last().click();
+    assert.ok(apiRequests.filter(item => item.method === 'GET' && item.path.startsWith('/suppliers')).length > supplierRequestsBeforeReenter, '重新打开时刷新供货来源');
+    await showHistory();
+    await expect(page.getByText('PROD-BROWSER-20261023-01', { exact: false }).last()).toBeVisible();
+    await expect(page.getByText('LEGACY-SUPPLIER-INBOUND', { exact: false })).toHaveCount(0);
+    await expect(page.getByText('LEGACY-CUSTOMER-SUPPLY', { exact: false })).toHaveCount(0);
+    await page.getByText('PROD-BROWSER-20261023-01', { exact: false }).last().click();
     const voidButton = buttonContainingText('作废整张入库单');
     await expect(voidButton).toBeVisible();
     await voidButton.click();
@@ -324,7 +327,7 @@ async function main() {
     // Exercise a separate zero-valued receipt so that a free in-house product
     // is accepted and still follows the same idempotent, stock-only workflow.
     await openProductionEntry();
-    await buttonContainingText('更多信息').click();
+    await showMore();
     await expect(input('工单编号或采购单号')).toBeVisible();
     await openProductPickerAndSelect('自产测试成品乙');
     await input('货物 1 本次完工数量').fill('2');
@@ -333,7 +336,7 @@ async function main() {
     await expectedTotal('0.00');
     await input('工单编号或采购单号').fill('PROD-ZERO-BROWSER-20261023-01');
     const zeroPostResponse = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/delivery-notes');
-    await buttonContainingText('确认入库').click();
+    await buttonContainingText('确认纸箱入库').click();
     const zeroResponse = await zeroPostResponse;
     assert.equal(zeroResponse.status(), 200);
     const zeroNote = db.listDeliveryNotes().find(note => note.work_order_no === 'PROD-ZERO-BROWSER-20261023-01');

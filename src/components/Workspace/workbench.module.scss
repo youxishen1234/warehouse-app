@@ -10,14 +10,14 @@
   taro-image-core img { position: absolute; inset: 0; width: 100%; height: 100%; transform: none; object-fit: contain; }
 }
 .surface { min-height: 100%; }
-.masthead { padding: 25PX 22PX 18PX; background: #fff; }
+.masthead { padding: calc(20PX + env(safe-area-inset-top, 0PX)) 18PX 16PX; background: #fff; }
 .header, .heading, .status, .tools, .recentHeading, .homeHeading, .stockHeading, .flowHeading, .dialogHeading { display: flex; align-items: center; justify-content: space-between; gap: 10PX; }
 .heading { justify-content: flex-start; }
 .brand { display: grid; place-items: center; width: 43PX; height: 43PX; flex-shrink: 0; border-radius: 13PX; background: #edf3ff; color: #2469ee; }
 .brandCharacter { font-size: 24PX; font-weight: 800; }
 .headingText { min-width: 0; }
 .brandName { display: block; color: #8290a4; font-size: 11PX; }
-.title { display: block; margin: 0; font-size: 23PX; font-weight: 750; line-height: 1.35; overflow-wrap: anywhere; }
+.title { display: block; margin: 0; font-size: 22PX; font-weight: 750; line-height: 1.35; overflow-wrap: anywhere; }
 .page .back { width: 32PX; height: 38PX; border-radius: 10PX; font-size: 29PX; color: #8290a4; }
 .page .refresh { display: grid; place-items: center; width: 38PX; height: 38PX; flex-shrink: 0; border-radius: 50%; background: #f1f6ff; color: #2469ee; font-size: 25PX; }
 .status { margin-top: 17PX; color: #8290a4; font-size: 11PX; }

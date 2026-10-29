@@ -12,10 +12,10 @@ test('products page keeps loading, error and empty states distinct', () => {
   assert.match(fs.readFileSync('src/hooks/useRemoteData.ts', 'utf8'), /current !== sequence\.current/);
   assert.match(fs.readFileSync('src/hooks/useRemoteData.ts', 'utf8'), /mounted = useRef\(true\)/);
   assert.match(fs.readFileSync('src/hooks/useRemoteData.ts', 'utf8'), /!mounted\.current/);
-  assert.match(source, /\{loading \? \(/);
-  assert.match(source, /\) : loadError \? \(/);
-  assert.match(source, /onClick=\{load\}/);
-  assert.match(source, /\) : list\.length === 0 \? \(/);
+  assert.match(source, /\{loading \? <div/);
+  assert.match(source, /: loadError \? <div/);
+  assert.match(source, /onClick=\{\(\) => void load\(\)\}/);
+  assert.match(source, /: !list\.length \? <div/);
 });
 
 test('remote loader invalidates stale requests on unmount', () => {

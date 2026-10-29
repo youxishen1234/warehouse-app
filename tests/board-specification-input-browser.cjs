@@ -109,206 +109,96 @@ async function main() {
       return route.abort();
     });
 
-    const fieldInput = label => page.locator(
-      `taro-input-core[aria-label=${JSON.stringify(label)}] input, [aria-label=${JSON.stringify(label)}] input, input[aria-label=${JSON.stringify(label)}]`,
-    ).first();
-    const buttonByText = label => page.getByText(label, { exact: true }).last()
-      .locator('xpath=ancestor-or-self::*[self::taro-button-core or self::button][1]');
-    const buttonContainingText = label => page.locator('taro-button-core, button').filter({ hasText: label }).last();
-    const openBoardEntry = async query => {
-      await page.goto(`${origin}/#/pages/management/index?section=paperboard-receipt${query?.replace(/^\?/, '&') || ''}`);
-      await expect(page.locator('.team-boot')).toBeHidden();
-      await expect(page.locator('[aria-label="纸板规格尺寸"]')).toBeVisible();
-      await expect(page.locator('[aria-label="成箱规格尺寸"]')).toBeVisible();
+    const fieldInput = label => page.getByLabel(label, { exact: true });
+    const openDetails = async label => {
+      const details = page.locator('.demo-dialog details').filter({ has: page.getByText(label, { exact: true }) });
+      if (!await details.evaluate(el => el.open)) await details.locator('summary').click();
     };
-    const boardSpec = fieldInput('纸板规格尺寸');
-    const cartonSpec = fieldInput('成箱规格尺寸');
-    const saveButton = () => buttonByText('确认入库 · 生成批次标签');
-    const assertNoOverflow = async width => {
-      await page.setViewportSize({ width, height: 900 });
-      await expect.poll(() => page.evaluate(() => {
-        const rootNode = document.querySelector('.stock-entry-page') || document.body;
-        const inputOverflow = [...document.querySelectorAll('input, textarea')]
-          .filter(input => input.getClientRects().length > 0 && getComputedStyle(input).visibility !== 'hidden')
-          .some(input => {
-          const bounds = input.getBoundingClientRect();
-          return bounds.left < -1 || bounds.right > innerWidth + 1;
-        });
-        return document.documentElement.scrollWidth <= innerWidth + 1
-          && document.body.scrollWidth <= innerWidth + 1
-          && rootNode.scrollWidth <= rootNode.clientWidth + 1
-          && !inputOverflow;
-      }), { message: `纸板入库表单在 ${width}px 不应横向溢出` }).toBe(true);
-      await page.locator('.stock-entry-header').scrollIntoViewIfNeeded();
-      await page.screenshot({ path: path.join(evidence, `board-entry-${width}.png`), fullPage: true });
+    const openBoardEntry = async (query = '') => {
+      await page.goto('about:blank');
+      await page.goto(`${origin}/#/pages/board-inbound/index${query}`);
+      await expect(page.getByTestId('paperboard-receipt-sheet')).toBeVisible();
+      await openDetails('采购纸板尺寸 · 查看 / 调整');
     };
-
+    const length = fieldInput('实际纸板长'), width = fieldInput('实际纸板宽');
+    const carton = fieldInput('纸箱尺寸：长 × 宽 × 高');
     await openBoardEntry();
-    await buttonContainingText('选择已有规格').click();
-    await expect(page.getByText('历史入库规格', { exact: true })).toBeVisible();
-    await buttonByText('160 × 110 cm · B楞 · 历史模板板厂').click();
-    await expect(boardSpec).toHaveValue('160×110');
-    await expect(cartonSpec).toHaveValue('40×30×20');
+    await openDetails('选择已有规格');
+    await page.getByRole('button', { name: /160 × 110 cm.*历史模板板厂/ }).click();
+    await expect(length).toHaveValue('160'); await expect(width).toHaveValue('110');
+    await expect(carton).toHaveValue('40×30×20');
     assert.equal(db.listBoards().find(batch => batch.id === historyBoard.id).boardLength, 160);
 
     await openBoardEntry(`?id=${encodeURIComponent(decimalHistory.id)}`);
-    await expect(boardSpec).toHaveValue('30.5×20.25');
-    await expect(cartonSpec).toHaveValue('40.5×30.25×20.75');
-    await buttonByText('保存修改').click();
-    await expect(page.getByText(`历史模板板厂 · ${historyDate} 到货`, { exact: true })).toBeVisible();
-    const savedDecimal = db.listBoards().find(batch => batch.id === decimalHistory.id);
-    assert.deepEqual(
-      [savedDecimal.boardLength, savedDecimal.boardWidth, savedDecimal.cartonLength, savedDecimal.cartonWidth, savedDecimal.cartonHeight],
-      [30.5, 20.25, 40.5, 30.25, 20.75],
-      '编辑保存必须保留历史批次纸板和成箱规格中的小数尺寸'
-    );
-    assert.deepEqual(
-      [savedDecimal.customerName, savedDecimal.material, savedDecimal.printPlate, savedDecimal.printColor],
-      ['历史客户', '历史材质', '历史版名', '蓝 / 黑'],
-      '编辑历史批次时仍保留已隐藏的印刷资料'
-    );
-    assert.equal(db.getSupplier(historicalSupplier.id).payable, historyPayable, '历史批次编辑不能重复计入货款');
+    await expect(length).toHaveValue('30.5'); await expect(width).toHaveValue('20.25');
+    await expect(carton).toHaveValue('40.5×30.25×20.75');
+    await page.getByRole('button', { name: '保存修改', exact: true }).click();
+    await expect(page.getByTestId('paperboard-detail-sheet')).toBeVisible();
+    const savedDecimal = db.listBoards().find(row => row.id === decimalHistory.id);
+    assert.deepEqual([savedDecimal.boardLength, savedDecimal.boardWidth, savedDecimal.cartonLength, savedDecimal.cartonWidth, savedDecimal.cartonHeight], [30.5, 20.25, 40.5, 30.25, 20.75]);
+    assert.deepEqual([savedDecimal.customerName, savedDecimal.material, savedDecimal.printPlate, savedDecimal.printColor], ['历史客户', '历史材质', '历史版名', '蓝 / 黑']);
+    assert.equal(db.getSupplier(historicalSupplier.id).payable, historyPayable, '编辑不得重复计入应付');
 
-    // Start a clean form after checking the history template, then exercise
-    // actual keyboard input so the auto-inserted separator behavior is covered.
+    const receiptSupplier = db.addSupplier({ name: '规格验收板厂' });
     await openBoardEntry();
-    const receiptSupplier = db.addSupplier({ name: '演示纸板入库板厂' });
-    await page.locator('.stock-entry-refresh').click();
-    await page.getByTestId('supplier-search-open').click();
-    await page.getByTestId(`supplier-search-result-${receiptSupplier.id}`).click();
+    await fieldInput('供货商').selectOption(String(receiptSupplier.id));
+    await length.fill('30'); await width.fill('20');
+    await carton.fill(''); await carton.pressSequentially('302015');
+    await expect(carton).toHaveValue('30×20×15');
+    await carton.press('Backspace'); await expect(carton).toHaveValue('30×20×1');
+    await carton.pressSequentially('5'); await expect(carton).toHaveValue('30×20×15');
+    await fieldInput('材质 / 配纸（选填）').fill('牛卡 / 高强瓦楞');
+    await fieldInput('实收数').fill('8'); await fieldInput('每平米单价').fill('2.4');
+    await openDetails('更多信息');
     await fieldInput('客户').fill('青禾纸品');
-    await fieldInput('材质 / 配纸').fill('牛卡 / 120g高强瓦楞 / 140g芯纸');
-    await expect(fieldInput('印刷版名')).toHaveCount(0);
-    await expect(fieldInput('颜色')).toHaveCount(0);
-    await fieldInput('实收数').fill('8');
-    await fieldInput('计费平米').fill('50');
-    await fieldInput('每平米单价').fill('2.4');
-    await buttonContainingText('更多信息').click();
-    await fieldInput('订购数').fill('8');
-
-    await boardSpec.fill('');
-    await expect(boardSpec).toHaveValue('');
-    await boardSpec.type('30');
-    await expect(boardSpec).toHaveValue('30×');
-    await boardSpec.pressSequentially('20');
-    await expect(boardSpec).toHaveValue('30×20');
-    await boardSpec.press('Backspace');
-    await expect(boardSpec).toHaveValue('30×2');
-    await boardSpec.pressSequentially('0');
-    await expect(boardSpec).toHaveValue('30×20');
-
-    await cartonSpec.fill('');
-    await cartonSpec.type('30');
-    await expect(cartonSpec).toHaveValue('30×');
-    await cartonSpec.pressSequentially('2015');
-    await expect(cartonSpec).toHaveValue('30×20×15');
-    await cartonSpec.press('Backspace');
-    await expect(cartonSpec).toHaveValue('30×20×1');
-    await cartonSpec.pressSequentially('5');
-    await expect(cartonSpec).toHaveValue('30×20×15');
-    await expect(page.locator('.board-detail-row').filter({ hasText: '本批货款' })).toContainText('¥ 120.00');
-
-    const boardCountBeforeInvalid = db.listBoards().length;
-    const postsBeforeInvalid = boardPosts.length;
-    const tryInvalidSave = async () => {
-      const save = saveButton();
-      if (await save.isEnabled()) await save.click();
-      await expect(boardSpec).toBeVisible();
-      await expect(cartonSpec).toBeVisible();
-      await page.waitForTimeout(150);
-      assert.equal(boardPosts.length, postsBeforeInvalid, '规格不完整或维度过多时不得发起纸板入库提交');
-      assert.equal(db.listBoards().length, boardCountBeforeInvalid, '无效规格不得生成批次或增加库存');
-      assert.equal(db.getSupplier(historicalSupplier.id).payable, historyPayable, '无效规格不得改变货款');
+    await fieldInput('计费平米').fill('50'); await fieldInput('订购数').fill('8');
+    const baselineCount = db.listBoards().length, baselinePosts = boardPosts.length;
+    const invalidSave = async () => {
+      await page.getByRole('button', { name: '确认纸板入库', exact: true }).click();
+      await expect(page.getByRole('alert')).toBeVisible();
+      assert.equal(boardPosts.length, baselinePosts); assert.equal(db.listBoards().length, baselineCount);
+      assert.equal(db.getSupplier(receiptSupplier.id).payable, 0);
     };
-
-    await boardSpec.fill('');
-    await expect(boardSpec).toHaveValue('');
-    await boardSpec.type('30');
-    await expect(boardSpec).toHaveValue('30×');
-    await tryInvalidSave();
-    await boardSpec.fill('30×20×10');
-    await expect(boardSpec).toHaveValue('30×20×10');
-    await tryInvalidSave();
-    await boardSpec.fill('30×20');
-    await cartonSpec.fill('30×20');
-    await expect(cartonSpec).toHaveValue('30×20');
-    await tryInvalidSave();
-    await cartonSpec.fill('30×20×15×5');
-    await expect(cartonSpec).toHaveValue('30×20×15×5');
-    await tryInvalidSave();
-
-    await boardSpec.fill('30×20');
-    await cartonSpec.fill('30×20×15');
-    const displayedDate = await page.locator('.board-simple-entry .stock-entry-field')
-      .filter({ hasText: '业务日期' }).innerText();
-    const dateMatch = displayedDate.match(/[0-9]{4}-[0-9]{2}-[0-9]{2}/);
-    assert.ok(dateMatch, `业务日期应显示 ISO 日期，实际字段：${displayedDate}`);
-    const date = dateMatch[0];
-    const amountBefore = 50 * 2.4;
-    assert.equal(db.getSupplier(historicalSupplier.id).payable, historyPayable, '填写规格、数量和计费信息时不应提前记货款');
-    assert.equal(db.listBoards().length, boardCountBeforeInvalid, '填写但未提交时库存批次数不变');
-    assert.deepEqual(db.listProducts().map(product => ({ id: product.id, stock: product.stock })), stockBefore, '纸板尺寸录入不能改动成品库存');
-
-    await assertNoOverflow(320);
-    await assertNoOverflow(390);
-    await page.setViewportSize({ width: 390, height: 900 });
-    await saveButton().click();
-    await expect(page.getByText('已入库。批次编号', { exact: false })).toBeVisible();
-
-    const saved = db.listBoards().find(batch => batch.supplier === '演示纸板入库板厂');
-    assert.ok(saved, '确认入库后后端应保存新纸板批次');
-    assert.deepEqual(
-      [saved.customerName, saved.material, saved.printPlate, saved.printColor],
-      ['青禾纸品', '牛卡 / 120g高强瓦楞 / 140g芯纸', '', ''],
-      '新批次保存客户和材质，印刷版名与颜色留到打印时填写'
-    );
-    assert.deepEqual(
-      [saved.boardLength, saved.boardWidth, saved.cartonLength, saved.cartonWidth, saved.cartonHeight],
-      [30, 20, 30, 20, 15],
-      'API 应收到实际解析出的2维纸板尺寸和3维纸箱尺寸'
-    );
-    assert.equal(saved.date, date, '保存日期应与表单显示日期一致');
-    assert.equal(saved.orderedQty, 8);
-    assert.equal(saved.receivedQty, 8);
-    assert.equal(saved.remainingQty, 8);
-    assert.equal(saved.billedArea, 50);
-    assert.equal(saved.unitPrice, 2.4);
-    assert.equal(saved.amount, amountBefore, '本批货款继续按计费平米 × 单价计算，而非规格或实收数');
-    assert.equal(db.getSupplier(saved.supplier_id).name, '演示纸板入库板厂');
-    assert.equal(db.getSupplier(saved.supplier_id).payable, amountBefore, '供应商应付只增加本单货款');
-    assert.equal(db.getSupplier(historicalSupplier.id).payable, historyPayable);
+    await width.fill(''); await invalidSave(); await width.fill('20');
+    await carton.fill('30×20'); await invalidSave();
+    await carton.fill('30×20×15×5'); await invalidSave();
+    await carton.fill('30×20×15');
+    const dateTime = await fieldInput('入库日期时间').inputValue();
+    assert.match(dateTime, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+    await expect(page.getByTestId('board-cost-preview')).toContainText('120.00');
     assert.deepEqual(db.listProducts().map(product => ({ id: product.id, stock: product.stock })), stockBefore);
-
-    await expect(page.getByText(`演示纸板入库板厂 · ${date} 到货`, { exact: true })).toBeVisible();
-    await expect(page.getByText('8 / 8 张', { exact: true })).toBeVisible();
-    await expect(page.getByText('¥ 120.00', { exact: true })).toBeVisible();
-    await page.screenshot({ path: path.join(evidence, 'saved-board-batch.png'), fullPage: true });
-
-    await openBoardEntry(`?id=${encodeURIComponent(saved.id)}`);
-    await expect(boardSpec).toHaveValue('30×20');
-    await expect(cartonSpec).toHaveValue('30×20×15');
-    await expect(page.getByTestId('supplier-search-open')).toContainText('演示纸板入库板厂');
-    await expect(fieldInput('客户')).toHaveValue('青禾纸品');
-    await expect(fieldInput('材质 / 配纸')).toHaveValue('牛卡 / 120g高强瓦楞 / 140g芯纸');
-    await expect(fieldInput('印刷版名')).toHaveCount(0);
-    await expect(fieldInput('颜色')).toHaveCount(0);
-    await expect(fieldInput('实收数')).toHaveValue('8');
-    await page.reload();
-    await expect(page.locator('.team-boot')).toBeHidden();
-    await expect(boardSpec).toHaveValue('30×20');
-    await expect(cartonSpec).toHaveValue('30×20×15');
-    await expect(page.getByTestId('supplier-search-open')).toContainText('演示纸板入库板厂');
-    await expect(fieldInput('客户')).toHaveValue('青禾纸品');
-    await expect(fieldInput('材质 / 配纸')).toHaveValue('牛卡 / 120g高强瓦楞 / 140g芯纸');
-    await expect(fieldInput('印刷版名')).toHaveCount(0);
-    await expect(fieldInput('颜色')).toHaveCount(0);
-    await expect(fieldInput('实收数')).toHaveValue('8');
-    await expect(fieldInput('计费平米')).toHaveValue('50');
-    await expect(fieldInput('每平米单价')).toHaveValue('2.4');
-    assert.deepEqual(pageErrors, [], '浏览器页面不应产生运行时异常');
-    assert.ok(externalBlocked.every(request => !request.includes('youxishen.online')), '被拦截的外部网络请求不得到达生产域名');
-    console.log(`PASS: two-/three-dimension string input, keyboard separator/deletion, invalid dimensions, historical templates and metadata, persisted edit reload, amount/supplier/quantity/date, print-only plate/color entry, isolated local API, 320/390px layouts. Evidence: ${evidence}`);
+    for (const phoneWidth of [320, 390]) {
+      await page.setViewportSize({ width: phoneWidth, height: 844 });
+      const overflowing = await page.locator('.demo-dialog').evaluate(el => el.scrollWidth > el.clientWidth + 1);
+      assert.equal(overflowing, false);
+      await page.screenshot({ path: path.join(evidence, `board-entry-${phoneWidth}.png`) });
+    }
+    await page.getByRole('button', { name: '确认纸板入库', exact: true }).click();
+    await expect(page.getByTestId('paperboard-detail-sheet')).toBeVisible();
+    const saved = db.listBoards().find(batch => batch.supplier_id === receiptSupplier.id);
+    assert.ok(saved);
+    assert.deepEqual([saved.boardLength, saved.boardWidth, saved.cartonLength, saved.cartonWidth, saved.cartonHeight], [30, 20, 30, 20, 15]);
+    assert.equal(saved.date, dateTime.slice(0, 10)); assert.equal(saved.enteredAt, dateTime);
+    assert.equal(saved.orderedQty, 8); assert.equal(saved.receivedQty, 8); assert.equal(saved.remainingQty, 8);
+    assert.equal(saved.billedArea, 50); assert.equal(saved.unitPrice, 2.4); assert.equal(saved.amount, 120);
+    assert.equal(db.getSupplier(receiptSupplier.id).payable, 120); assert.equal(db.getSupplier(historicalSupplier.id).payable, historyPayable);
+    assert.deepEqual([saved.customerName, saved.material, saved.printPlate, saved.printColor], ['青禾纸品', '牛卡 / 高强瓦楞', '', '']);
+    assert.deepEqual(db.listProducts().map(product => ({ id: product.id, stock: product.stock })), stockBefore);
+    await page.getByText('批次操作', { exact: true }).click();
+    await page.getByRole('button', { name: '编辑批次' }).click();
+    await expect(page).toHaveURL(/pages\/board-inbound\/index\?id=/);
+    await openDetails('采购纸板尺寸 · 查看 / 调整');
+    await expect(length).toHaveValue('30'); await expect(width).toHaveValue('20');
+    await page.reload(); await expect(fieldInput('供货商')).toHaveValue(String(receiptSupplier.id));
+    await openDetails('采购纸板尺寸 · 查看 / 调整'); await openDetails('更多信息');
+    await expect(length).toHaveValue('30'); await expect(width).toHaveValue('20');
+    await expect(carton).toHaveValue('30×20×15'); await expect(fieldInput('客户')).toHaveValue('青禾纸品');
+    await expect(fieldInput('计费平米')).toHaveValue('50'); await expect(fieldInput('每平米单价')).toHaveValue('2.4');
+    await expect(fieldInput('入库日期时间')).toHaveValue(dateTime);
+    assert.deepEqual(pageErrors, []); assert.deepEqual(externalBlocked, []);
+    console.log('PASS new board entry: separate dimensions, decimal history, invalid input, native keyboard formatting, metadata/edit reload, supplier accounting, 320/390px.');
   } finally {
+    await context.unrouteAll({ behavior: 'wait' });
     await context.close();
     await browser.close();
     server.closeAllConnections();

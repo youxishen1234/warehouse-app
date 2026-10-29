@@ -1,7 +1,7 @@
 'use strict';
 
-const { dimensionsInCm } = require('../../../../backend/production-pricing');
-const { lineAmount: calculateAmount, roundDecimal } = require('../../../../backend/stock-math');
+const { dimensionsInCm } = require('../../../backend/production-pricing');
+const { lineAmount: calculateAmount, roundDecimal } = require('../../../backend/stock-math');
 const normalized = value => String(value ?? '').trim().replace(/\s+/g, '').toLowerCase();
 
 function sameSize(left, right) {

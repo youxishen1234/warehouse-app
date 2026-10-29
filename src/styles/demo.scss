@@ -1,29 +1,10 @@
 html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif; }
 #app .business-sheet-screen { min-height: 100%; background: #f4f7fc; color: #162741; font: 14PX/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif; }
 #app .business-sheet-screen *, #app .business-sheet-screen *::before, #app .business-sheet-screen *::after { box-sizing: border-box; }
-#app .business-sheet-screen > [class*='container___'], #app .business-sheet-screen > [class*='page___'] { min-height: 100%; padding: 20PX 18PX calc(104PX + env(safe-area-inset-bottom, 0PX)); background: #f4f7fc; color: #162741; font-family: inherit; }
-#app .business-sheet-screen [class*='hero___'] { padding: 0 0 18PX; margin: 0 0 17PX; border: 0; border-bottom: 1PX solid #e9eef5; border-radius: 0; background: transparent; color: #162741; box-shadow: none; }
-#app .business-sheet-screen [class*='hero___'] * { color: inherit; }
-#app .business-sheet-screen [class*='hero___'] [class*='title___'] { font-size: 23PX; font-weight: 750; }
-#app .business-sheet-screen [class*='hero___'] [class*='eyebrow___'], #app .business-sheet-screen [class*='hero___'] [class*='subtitle___'], #app .business-sheet-screen [class*='hero___'] [class*='subTitle___'] { color: #8290a4; font-size: 11PX; }
-#app .business-sheet-screen [class*='card___'] { border-color: #edf1f6; border-radius: 16PX; box-shadow: none; }
-#app .business-sheet-screen [class*='input___'], #app .business-sheet-screen [class*='field___'] input { border-color: #e2e9f2; border-radius: 10PX; background: #f9fbfe; color: #162741; font-size: 13PX; }
 #app .business-sheet-screen :is([type='button'], taro-button-core) { font-family: inherit; }
-#app .business-sheet-screen [class*='primary___'], #app .business-sheet-screen [class*='btnPrimary___'] { background: #2469ee; border-color: #2469ee; color: #fff; box-shadow: none; }
-#app .business-sheet-screen [class*='mask___'], #app .business-sheet-screen [class*='overlay___'] { background-color: #152a4355; backdrop-filter: blur(3PX); }
 #app .business-sheet-screen [class*='printModes___'] { gap: 8PX; padding: 0; border: 0; background: transparent; }
 #app .business-sheet-screen [class*='printModes___'] [type='button'] { min-height: 52PX; border: 1PX solid #e5ecf5; border-radius: 13PX; background: #fff; color: #8290a4; font-size: 12PX; }
 #app .business-sheet-screen [class*='printModes___'] [type='button'][aria-pressed='true'] { border-color: #cfe0ff; background: #edf3ff; color: #2469ee; }
-#app .business-sheet-screen .board-page { --board-ink: #162741; --board-muted: #8290a4; --board-line: #e9eef5; padding: 20PX 18PX calc(104PX + env(safe-area-inset-bottom, 0PX)); background: #f4f7fc; font-family: inherit; }
-#app .business-sheet-screen .board-title { font-size: 23PX; letter-spacing: 0; }#app .business-sheet-screen .board-eyebrow { color: #8290a4; letter-spacing: 0; font-size: 11PX; }#app .business-sheet-screen .board-subtitle { color: #8290a4; font-size: 11PX; }
-#app .business-sheet-screen .board-header { padding-bottom: 18PX; border-bottom: 1PX solid #e9eef5; }#app .business-sheet-screen .board-back { border: 0; background: none; color: #8290a4; }
-#app .business-sheet-screen .board-button { min-height: 45PX; border-radius: 11PX; background: #2469ee; font-size: 13PX; }#app .business-sheet-screen .board-button.is-secondary { background: #edf3ff; color: #2469ee; }#app .business-sheet-screen .board-section { padding: 16PX; border-color: #edf1f6; border-radius: 16PX; }
-#app .business-sheet-screen .board-input-wrap { padding: 11PX 12PX; border-color: #e2e9f2; border-radius: 10PX; background: #f9fbfe; }#app .business-sheet-screen .board-input-wrap input { color: #162741; font-family: inherit; font-size: 13PX; }#app .business-sheet-screen .board-note { background: #f1f5fc; color: #8290a4; border-radius: 9PX; font-size: 11PX; }
-#app .business-sheet-screen .stock-entry-page { --entry-line: #e9eef5; --entry-ink: #162741; --entry-muted: #8290a4; --entry-green: #2469ee; --entry-soft: #edf3ff; min-height: 100%; padding: 0 0 calc(104PX + env(safe-area-inset-bottom, 0PX)); background: #f4f7fc; font-family: inherit; }
-#app .business-sheet-screen .stock-entry-page .stock-entry-surface { max-width: none; border: 0; border-radius: 0; background: transparent; overflow: visible; }#app .business-sheet-screen .stock-entry-page .stock-entry-header { padding: 24PX 22PX 20PX; border-bottom: 1PX solid #edf1f6; background: #fff; }#app .business-sheet-screen .stock-entry-page .stock-entry-heading-title { color: #162741; font-size: 23PX; font-weight: 750; }#app .business-sheet-screen .stock-entry-page .stock-entry-date, #app .business-sheet-screen .stock-entry-page .stock-entry-subtitle { color: #8290a4; font-size: 11PX; }#app .business-sheet-screen .stock-entry-page .stock-entry-content { padding: 18PX; }
-#app .business-sheet-screen .stock-entry-page .stock-entry-block { padding: 16PX; border: 1PX solid #edf1f6; border-radius: 16PX; background: #fff; }#app .business-sheet-screen .stock-entry-page .stock-entry-input { border-color: #e2e9f2; border-radius: 10PX; background: #f9fbfe; }#app .business-sheet-screen .stock-entry-page input { font-size: 13PX; }
-#app .business-sheet-screen .stock-entry-page .stock-entry-primary { border-color: #2469ee; background: #2469ee; border-radius: 11PX; font-size: 13PX; }
-.business-page-header { background: #fff; }
 #app .business-sheet-screen > [class*='page___'] { width: 100%; max-width: 430PX; }
 #app .business-sheet-screen > [class*='remote-module__page___'], #app .business-sheet-screen > [class*='index-module__page___']:has([aria-label='打印类型']) { position: fixed; top: env(safe-area-inset-top, 0PX); bottom: 0; left: max(0PX, calc((100vw - 430PX) / 2)); right: auto; width: min(100%, 430PX); }
 #app .business-sheet-screen [class*='printModes___'] { display: flex; gap: 8PX; margin-bottom: 17PX; padding: 0; background: transparent; }

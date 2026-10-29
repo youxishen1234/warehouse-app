@@ -1,6 +1,6 @@
+/* eslint-disable react/forbid-elements */
 import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { Button, Input, Text, View } from '@tarojs/components';
+import { DemoSheet, DemoField } from '@/components/DemoUI';
 import Taro from '@tarojs/taro';
 import { getCustomer, getSupplier, updateCustomer, updateSupplier } from '@/services/api';
 import { session, watchSession } from '@/services/session';
@@ -8,7 +8,7 @@ import { formatDimensionInput } from '@/utils/dimension-input';
 import type { Customer, CustomerSpec } from '@/types';
 import { appendCustomerSpecQuote, sameCustomerSpecQuote } from './model';
 import type { CustomerSpecView } from './model';
-import styles from './index.module.scss';
+
 
 type Props = { customer: Customer; supplier?: boolean; seed?: CustomerSpecView; onClose: () => void; onSaved: () => void | Promise<void> };
 type Kind = '成品' | '纸板';
@@ -177,45 +177,20 @@ export default function QuoteEditor({ customer, supplier = false, seed, onClose,
     }
   };
 
-  const dialog = <View className={styles.quoteMask} onClick={() => { if (!saving) onClose(); }}>
-    <View role='dialog' aria-modal='true' aria-label={seed ? '编辑常用规格' : '新增常用规格'} data-testid='customer-quote-editor'
-      className={styles.quoteDialog} onClick={event => event.stopPropagation()}>
-      <View className={styles.quoteHeading}><Text>{seed ? '编辑常用规格' : '新增常用规格'}</Text>
-        <Button aria-label='关闭规格编辑' disabled={saving} onClick={onClose}>×</Button></View>
-      <Text className={styles.quoteCustomer}>{customer.name}</Text>
-      <Text className={styles.quoteHint}>{supplier ? '常用采购资料' : '常用销售资料'} · 五项货物字段均可选填，至少填写一项；缺失资料可继续编辑。</Text>
-      <View className={styles.quoteField}><Text>货物</Text><Input aria-label='规格货物' maxlength={100} value={draft.goods}
-        disabled={saving || !writable} onInput={event => setDraft(value => ({ ...value, goods: event.detail.value }))} /></View>
-      <View className={styles.quoteField}><Text>尺寸</Text><Input aria-label='规格尺寸' maxlength={90} value={draft.size}
-        disabled={saving || !writable} onInput={event => setDraft(current => ({ ...current,
-          size: quoteDimensionInput(event.detail.value, current.size, current.kind, current.sizeUnit) }))} />
-        <View className={styles.quoteChoices}>{(['cm', 'mm'] as const).map(value =>
-          <Button key={value} aria-pressed={draft.sizeUnit === value}
-            className={draft.sizeUnit === value ? styles.quoteChoiceActive : styles.quoteChoice}
-            disabled={saving || !writable} onClick={() => setDraft(current => ({ ...current, sizeUnit: value }))}>{value}</Button>)}</View></View>
-      <View className={styles.quoteField}><Text>类别</Text><View className={styles.quoteChoices}>{(['纸箱', '纸板', '其他'] as const).map(value =>
-        <Button key={value} aria-pressed={draft.category === value}
-          className={draft.category === value ? styles.quoteChoiceActive : styles.quoteChoice}
-          disabled={saving || !writable} onClick={() => setDraft(current => ({ ...current, category: value, kind: value === '纸板' ? '纸板' : '成品' }))}>{value}</Button>)}</View></View>
-      {supplier && draft.category === '纸板' && <View className={styles.quoteBoardFields}>
-        {(Object.keys(boardFieldLabels) as BoardField[]).map(key => <View className={styles.quoteField} key={key}><Text>{boardFieldLabels[key]}（选填）</Text>
-          <Input aria-label={`规格${boardFieldLabels[key]}`} type={key === 'fluteType' ? undefined : 'digit'} value={draft[key]} disabled={saving || !writable}
-            onInput={event => setDraft(current => ({ ...current, [key]: event.detail.value }))} /></View>)}
-      </View>}
-      <View className={styles.quoteField}><Text>材质</Text><Input aria-label='规格材质' maxlength={100} value={draft.material}
-        disabled={saving || !writable} onInput={event => setDraft(value => ({ ...value, material: event.detail.value }))} /></View>
-      <View className={styles.quoteField}><Text>单位</Text><Input aria-label='规格单位' maxlength={10} value={draft.unit}
-        disabled={saving || !writable} onInput={event => setDraft(value => ({ ...value, unit: event.detail.value }))} /></View>
-      <View className={styles.quoteField}><Text>{supplier ? '采购单价（选填）' : '销售单价（选填）'}</Text><Input aria-label='规格常用单价' type='digit' maxlength={20}
-        value={draft.price} disabled={saving || !writable}
-        onInput={event => setDraft(value => ({ ...value, price: event.detail.value }))} />
-        <Text className={styles.quoteHint}>留空表示价格未记录，不会保存成 0 元或自动生成金额</Text></View>
-      {!writable && <Text className={styles.quoteHint}>当前账号仅可查看规格</Text>}
-      {error && <View role='alert' className={styles.quoteError}>{error}</View>}
-      <View className={styles.quoteActions}><Button disabled={saving} onClick={onClose}>取消</Button>
-        <Button className={styles.quoteSave} data-testid='customer-quote-save' disabled={saving || !writable}
-          onClick={() => void save()}>{saving ? '保存中…' : '保存规格'}</Button></View>
-    </View>
-  </View>;
-  return typeof document === 'undefined' ? dialog : createPortal(dialog, document.body);
+  const input = (key: 'goods' | 'material' | 'unit' | 'price', label: string, aria: string, limit: number) => <DemoField label={label}><input aria-label={aria} type={key === 'price' ? 'number' : 'text'} maxLength={limit} value={draft[key]} disabled={saving || !writable} onChange={event => setDraft(value => ({ ...value, [key]: event.target.value }))} /></DemoField>;
+  return <DemoSheet title={seed ? '编辑常用货物' : '添加常用货物'} onClose={onClose} busy={saving} testId='customer-quote-editor'>
+    <p>保存货名、规格和参考单价，下次直接选择。历史单据保留原价格。</p>
+    {input('goods', '货物名称', '规格货物', 100)}
+    <DemoField label='尺寸 / 规格'><input aria-label='规格尺寸' maxLength={90} value={draft.size} disabled={saving || !writable} onChange={event => setDraft(current => ({ ...current, size: quoteDimensionInput(event.target.value, current.size, current.kind, current.sizeUnit) }))} /></DemoField>
+    {input('material', '材质 / 楞型', '规格材质', 100)}
+    {input('price', '参考单价（元 / ' + (draft.unit || '个') + '）', '规格常用单价', 20)}
+    <details className='demo-more'><summary>单位与类别</summary>
+      <div className='demo-two'><DemoField label='尺寸单位'><select aria-label='尺寸单位' value={draft.sizeUnit} disabled={saving || !writable} onChange={event => setDraft(current => ({ ...current, sizeUnit: event.target.value as 'cm' | 'mm' }))}>{['cm', 'mm'].map(value => <option key={value}>{value}</option>)}</select></DemoField><DemoField label='类别'><select aria-label='货物类别' value={draft.category} disabled={saving || !writable} onChange={event => { const category = event.target.value as Category; setDraft(current => ({ ...current, category, kind: category === '纸板' ? '纸板' : '成品' })); }}>{['纸箱', '纸板', '其他'].map(value => <option key={value}>{value}</option>)}</select></DemoField></div>
+      {input('unit', '单位', '规格单位', 10)}
+      {supplier && draft.category === '纸板' && boardFields.map(key => <DemoField label={boardFieldLabels[key]} key={key}><input aria-label={`规格${boardFieldLabels[key]}`} type={key === 'fluteType' ? 'text' : 'number'} value={draft[key]} disabled={saving || !writable} onChange={event => setDraft(current => ({ ...current, [key]: event.target.value }))} /></DemoField>)}
+    </details>
+    {!writable && <p>当前账号仅可查看规格</p>}
+    {error && <div role='alert' className='demo-error'>{error}</div>}
+    <button type='button' className='demo-primary' data-testid='customer-quote-save' disabled={saving || !writable} onClick={() => void save()}>{saving ? '保存中…' : '保存常用货物'}</button>
+  </DemoSheet>;
 }

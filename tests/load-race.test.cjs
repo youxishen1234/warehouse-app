@@ -7,7 +7,7 @@ const root = path.resolve(__dirname, '..');
 const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 
 test('stock workflow pages guard stale responses and initial duplicate refreshes', () => {
-  const pages = ['src/components/BusinessForms/Receipt/index.tsx', 'src/components/BusinessForms/Transactions/index.tsx'];
+  const pages = ['src/features/carton-inbound/index.tsx', 'src/components/BusinessForms/Transactions/index.tsx'];
   for (const file of pages) {
     const source = read(file);
     assert.match(source, /useRef\(0\)/, `${file} should keep a request sequence ref`);
@@ -16,7 +16,7 @@ test('stock workflow pages guard stale responses and initial duplicate refreshes
   }
   // The order-based outbound page has a single initial loader; its races and
   // draft preservation are exercised by workflow-regressions-browser.cjs.
-  for (const file of ['src/components/BusinessForms/Receipt/index.tsx']) {
+  for (const file of ['src/features/carton-inbound/index.tsx']) {
     const source = read(file);
     assert.match(source, /useDidShow/, `${file} should refresh on page display`);
     assert.match(source, /loadedAt\.current/, `${file} should gate duplicate requests`);
@@ -39,7 +39,7 @@ test('stock workflow pages guard stale responses and initial duplicate refreshes
 });
 
 test('orders uses the real shared sequence guard rather than a comment-only contract', () => {
-  const source = read('src/components/BusinessForms/Orders/index.tsx');
+  const source = read('src/features/customer-orders/index.tsx');
   const hook = read('src/hooks/useRemoteData.ts');
   assert.ok(source.includes('const loadOrders = useCallback(async () => {'));
   assert.ok(source.includes('useRemoteData(loadOrders,'));

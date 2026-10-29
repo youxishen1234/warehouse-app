@@ -9,8 +9,8 @@ test('carton calculator sanitizes dimension and thickness inputs consistently', 
   assert.match(math, /function sanitizeDimensionInput\(value: string\)/);
   assert.match(math, /sanitizeDecimalInput\(value, 6\)/);
   assert.match(math, /numeric <= MAX_QUANTITY_VALUE/);
-  assert.match(source, /dimensions\[key\].*sanitizeDimensionInput\(event\.detail\.value\)/);
-  assert.match(source, /setThickness\(sanitizeDimensionInput\(event\.detail\.value\)/);
+  assert.match(source, /dimensions\[key\].*sanitizeDimensionInput\(event\.target\.value\)/);
+  assert.match(source, /setThickness\(sanitizeDimensionInput\(event\.target\.value\)/);
 });
 
 test('carton calculator has no remote request to survive page unload', () => {

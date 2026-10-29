@@ -44,7 +44,7 @@ async function check(engine, name, base) {
     // The second dock tab is the paperboard stock dashboard; the generic
     // inbound workflow remains available as a direct page for API coverage.
     await page.getByRole('button', { name: '纸板', exact: true }).click();
-    await page.goto(base + '/#/pages/management/index?section=receipt');
+    await page.goto(base + '/#/pages/carton-inbound/index?kind=purchase');
     await waitFor('/api/suppliers');
     await waitFor('/api/delivery-notes');
     await page.getByRole('button', { name: '出库', exact: true }).click();

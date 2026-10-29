@@ -1032,7 +1032,7 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
             ? `当前共享仓库还没有${kind === 'finished-product' ? '商品' : '纸板批次'}记录。`
             : '没有匹配记录，请更换关键词。'}</Text>
           {total === 0 && !query.trim() && <Button className={styles.secondaryButton} onClick={() =>
-            void Taro.navigateTo({ url: kind === 'finished-product' ? '/pages/management/index?section=goods' : '/pages/management/index?section=paperboard-receipt' })
+            void Taro.navigateTo({ url: kind === 'finished-product' ? '/pages/management/index?section=goods' : '/pages/board-inbound/index' })
           }>{kind === 'finished-product' ? '前往商品管理' : '新增纸板批次'}</Button>}
         </View> : <Text className={styles.help}>找到 {total} 条记录。连接打印电脑后可继续选择、预览与打印。</Text>}
       </>}
@@ -1090,7 +1090,7 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
               ? `当前共享仓库还没有${kind === 'finished-product' ? '商品' : '纸板批次'}记录。`
               : '没有匹配记录，请更换关键词。'}</Text>
             {total === 0 && !query.trim() && <Button className={styles.secondaryButton} onClick={() =>
-              void Taro.navigateTo({ url: kind === 'finished-product' ? '/pages/management/index?section=goods' : '/pages/management/index?section=paperboard-receipt' })
+              void Taro.navigateTo({ url: kind === 'finished-product' ? '/pages/management/index?section=goods' : '/pages/board-inbound/index' })
             }>{kind === 'finished-product' ? '前往商品管理' : '新增纸板批次'}</Button>}
           </View>
               : results.map(item => <Button key={idOf(item)}

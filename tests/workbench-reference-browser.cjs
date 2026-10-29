@@ -80,7 +80,7 @@ async function main() {
     }
     await page.setViewportSize({ width: 390, height: 844 });
     await clickWorkbenchAction(page.getByTestId('simple-workbench'), '纸板入库');
-    await expect(page).toHaveURL(/pages\/management\/index\?section=paperboard-receipt/);
+    await expect(page).toHaveURL(/pages\/board-inbound\/index/);
     await page.screenshot({ path: path.join(artifacts, 'reference-inbound.png'), fullPage: true });
     await go(page); await button(page.getByTestId('simple-workbench').filter({ visible: true }).last(), '收付款 / 账单').click();
     await expect(page.getByTestId('finance-center').filter({ visible: true }).last()).toBeVisible();

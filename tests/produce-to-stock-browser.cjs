@@ -55,28 +55,6 @@ async function main() {
     }
     return url.origin === origin || ['data:', 'blob:'].includes(url.protocol) ? route.continue() : route.abort();
   });
-  const input = placeholder => page.locator(`input[placeholder=${JSON.stringify(placeholder)}]:visible`);
-  const choosePicker = async (label, option) => {
-    const picker = page.getByLabel(label).first();
-    if (await picker.evaluate(node => node.tagName === 'SELECT')) {
-      await picker.selectOption({ label: option });
-    } else {
-      await picker.click();
-      const wheel = page.locator('.weui-picker__group:visible').last();
-      await expect(wheel).toBeVisible();
-      await expect.poll(async () => {
-        const bounds = await wheel.boundingBox();
-        return Math.round(bounds.y + bounds.height);
-      }).toBe(page.viewportSize().height);
-      const row = wheel.locator('.weui-picker__item').filter({ hasText: option }).first();
-      const box = await row.boundingBox();
-      assert.ok(box, `Picker option was not rendered: ${option}`);
-      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-      await page.locator('.weui-picker__action:visible').filter({ hasText: '确定' }).click();
-      await expect(wheel).not.toBeVisible();
-    }
-    await expect(picker).toContainText(option);
-  };
   const noOverflow = async width => {
     await page.setViewportSize({ width, height: 900 });
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1 && document.body.scrollWidth <= innerWidth + 1)).toBe(true);
@@ -89,7 +67,7 @@ async function main() {
     assert.equal(db.listTx({ product_id: product.id, type: 'in' }).length, 1, 'production must post finished cartons once before an order exists');
     assert.equal(product.stock, 12);
     assert.equal(db.listOrders().length, 0, 'customer order is created after factory production');
-    const customer = db.addCustomer({ name: '流程测试客户' });
+    const customer = db.addCustomer({ name: '流程测试客户', specs: [{ id: 'flow-carton', goods: product.name, specification: product.specification, material: product.material, unit: product.unit, price: 2.5, category: '纸箱', kind: '成品' }] });
     assert.equal(db.getCustomer(customer.id).debt, 0);
     const boardOnHandBeforeOrder = db.listBoards().find(row => row.id === batch.id).remainingQty;
 
@@ -97,24 +75,21 @@ async function main() {
     await page.goto(origin + '/#/pages/home/index');
     const flow = page.getByTestId('workbench-factory-flow');
     await expect(flow).toHaveCount(0);
-    await page.getByText('全部订单', { exact: true }).click();
+    await page.getByText('＋ 客户开单', { exact: true }).click();
     await expect(page.getByTestId('order-stock-flow')).toBeVisible();
-    await expect(page.getByText(/不重复生产入库/)).toBeVisible();
-    await page.getByText('＋新增订单', { exact: true }).click();
-    await input('订单号').fill('FLOW-ORDER-01');
-    await choosePicker('选择订单客户', customer.name);
-    await input('规格（可选，如 300×200×150mm）').fill(product.specification);
-    await choosePicker('订单单位', '个');
-    await input('数量').fill('5');
-    await input('单价').fill('2.50');
-    await expect(page.getByTestId('order-amount-preview')).toContainText('¥12.50');
+    await page.getByLabel('选择订单客户', { exact: true }).selectOption(String(customer.id));
+    await expect(page.getByLabel('常用货物 / 规格', { exact: true })).toHaveValue('flow-carton');
+    await page.getByLabel('订单数量', { exact: true }).fill('5');
+    await page.getByLabel('订单单价', { exact: true }).fill('2.50');
     await noOverflow(320);
     await page.screenshot({ path: path.join(evidence, 'order-create-320.png'), fullPage: true });
     await noOverflow(390);
-    await page.getByText('保存订单', { exact: true }).click();
-    await expect(page.getByText('FLOW-ORDER-01 · 流程测试客户', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: '保存订单 · 自动检查库存', exact: true }).click();
+    await expect.poll(() => db.listOrders().length).toBe(1);
+    const order = db.listOrders()[0];
+    await page.goto(origin + '/#/pages/customer-orders/index');
+    await expect(page.getByTestId(`order-card-${order.id}`)).toBeVisible();
 
-    const order = db.listOrders().find(row => row.order_no === 'FLOW-ORDER-01');
     assert.ok(order);
     assert.equal(order.status, '待发货', 'new order uses existing finished-goods inventory');
     assert.equal(order.amount, 12.5);
@@ -123,16 +98,15 @@ async function main() {
     assert.equal(db.listTx({ product_id: product.id }).length, 1, 'creating an order must not create a second inventory entry');
     assert.equal(db.listBoards().find(row => row.id === batch.id).remainingQty, boardOnHandBeforeOrder, 'an order must not consume more paperboard');
 
-    const orderCard = page.locator('[class*="item___"]:visible').filter({ has: page.getByText('FLOW-ORDER-01 · 流程测试客户', { exact: true }) });
-    await orderCard.getByText('出库', { exact: true }).click();
+    const orderCard = page.getByTestId(`order-card-${order.id}`);
+    await orderCard.getByRole('button', { name: '确认出库', exact: true }).click();
     await expect(page).toHaveURL(/pages\/management\/index\?section=shipment/);
-    await expect(page.getByLabel('客户 / 订单')).toContainText('FLOW-ORDER-01');
-    await expect(page.getByLabel('出库数量').locator('input')).toHaveValue('5');
-    await expect(page.getByText(/可选待发货订单/)).toBeVisible();
+    await expect(page.getByLabel('客户 / 订单', { exact: true })).toHaveValue(String(order.id));
+    await expect(page.getByLabel('出库数量', { exact: true })).toHaveValue('5');
     await noOverflow(320);
     await page.screenshot({ path: path.join(evidence, 'outbound-ready-320.png'), fullPage: true });
     await noOverflow(390);
-    await page.getByLabel('出库确认').getByText('确认出库', { exact: true }).click();
+    await page.getByTestId('outbound-save').click();
     await expect.poll(() => db.getProduct(product.id).stock).toBe(7);
     await expect.poll(() => db.getCustomer(customer.id).debt).toBe(12.5);
     assert.equal(db.listOrders().find(row => row.id === order.id).status, '已发货');

@@ -1,14 +1,15 @@
+/* eslint-disable react/forbid-elements */
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, Input, Picker, Button, Switch } from '@tarojs/components';
+import { DemoPage, DemoSheet, DemoField } from '@/components/DemoUI';
 import Taro, { usePullDownRefresh } from '@tarojs/taro';
 import { accountApi, Member, session, setSession } from '@/services/session';
 import { formatTime } from '@/utils/format';
-import '@/components/BusinessForms/TeamSettings/style.scss';
-import BusinessHeader from '@/components/BusinessHeader';
+
 
 const roles = ['admin','operator','viewer'];
 const labels = ['管理员','操作员','只读'];
 export default function Team() {
+  const [adding, setAdding] = useState(false);
   const me = session()?.user;
   const [members,setMembers]=useState<Member[]>([]), [events,setEvents]=useState<any[]>([]);
   const [username,setUsername]=useState(''), [password,setPassword]=useState(''), [role,setRole]=useState(1);
@@ -30,36 +31,16 @@ export default function Team() {
   useEffect(()=>{load();},[load]);
   usePullDownRefresh(() => { load().finally(() => Taro.stopPullDownRefresh()); });
   const action=async(fn:()=>Promise<any>)=>{if(busy)return;setBusy(true);setMessage('');try{await fn();await load();setMessage('已保存');}catch(e){setMessage(e.message);}finally{setBusy(false);}};
-  return <View className="team-page">
-    <BusinessHeader title='团队与账号' />
-    <View className="team-heading"><Text>团队与账号</Text><Button size="mini" onClick={()=>Taro.switchTab({url:'/pages/mine/index'})}>完成</Button></View>
-    <Text>{me?.username} · {labels[roles.indexOf(me?.role || '')]}</Text>
-    <Text className="team-message">{message}</Text>
+  return <DemoPage title='团队与账号' action={me?.role === 'admin' ? <button type='button' className='demo-action' onClick={() => setAdding(true)}>＋ 新增</button> : undefined}>
+    <div className='demo-card'><h3>{me?.username}</h3><p>{labels[roles.indexOf(me?.role || '')]}</p></div>
+    {message && <div role='status' className='demo-note'>{message}</div>}
     {me?.role === 'admin' && <>
-      <Text className="team-section">团队成员</Text>
-      {loading ? <Text className="team-message">正在加载…</Text> : loadError ? <Text className="team-message" onClick={load}>{loadError} · 点击重试</Text> : members.length === 0 ? <Text className="team-message">暂无成员</Text> : members.map(u=><View className="team-member" key={u.id}>
-        <Text>{u.username}</Text>
-        <Picker value={roles.indexOf(u.role)} range={labels} disabled={busy} onChange={e=>action(()=>accountApi(`/team/${u.id}`,'PUT',{role:roles[Number(e.detail.value)]}))}><Text>{labels[roles.indexOf(u.role)]}</Text></Picker>
-        <Switch checked={!u.disabled} disabled={busy || u.id === me.id} onChange={e=>action(()=>accountApi(`/team/${u.id}`,'PUT',{disabled:!e.detail.value}))} />
-        <Button size="mini" disabled={busy} onClick={() => { setResetMember(u.id); setResetPassword(''); }}>重置密码</Button>
-      </View>)}
-      {resetMember && <View>
-        <Text>重置成员密码</Text>
-        <Input password disabled={busy} placeholder='新密码，至少12位' value={resetPassword} onInput={e => setResetPassword(e.detail.value)} />
-        <Button disabled={busy} onClick={() => action(async () => { if (resetPassword.length < 12) throw new Error('密码至少12位'); await accountApi(`/team/${resetMember}`, 'PUT', { password: resetPassword }); setResetMember(null); setResetPassword(''); })}>确认重置</Button>
-        <Button disabled={busy} onClick={() => { setResetMember(null); setResetPassword(''); }}>取消</Button>
-      </View>}
-      <Text className="team-section">新增成员</Text>
-      <Input placeholder="登录账号（字母、数字、下划线）" value={username} onInput={e=>setUsername(e.detail.value)} />
-      <Input password placeholder="初始密码（至少12位）" value={password} onInput={e=>setPassword(e.detail.value)} />
-      <Picker range={labels} value={role} onChange={e=>setRole(Number(e.detail.value))}><Text className="team-select">{labels[role]}</Text></Picker>
-      <Button disabled={busy} onClick={()=>action(async()=>{await accountApi('/team','POST',{username,password,role:roles[role]});setUsername('');setPassword('');})}>添加成员</Button>
-      <Text className="team-section">操作记录</Text>
-      {loading ? <Text className="team-message">正在加载…</Text> : loadError ? <Text className="team-message" onClick={load}>{loadError} · 点击重试</Text> : events.length === 0 ? <Text className="team-message">暂无记录</Text> : events.map((e,i)=><View className="team-event" key={i}><Text>{e.actor_name} · {e.operation}</Text><Text>{formatTime(e.time)}</Text></View>)}
-      <View className="team-heading"><Button size="mini" disabled={page===1} onClick={()=>setPage(page-1)}>上一页</Button><Text>{page} / {Math.max(1,Math.ceil(total/50))}</Text><Button size="mini" disabled={page*50>=total} onClick={()=>setPage(page+1)}>下一页</Button></View>
+      <h3>团队成员</h3>
+      {loading ? <p>正在加载…</p> : loadError ? <div className='demo-error' role='alert'>{loadError}<button type='button' className='demo-action' onClick={() => void load()}>重新读取</button></div> : !members.length ? <div className='demo-empty'>暂无成员</div> : members.map(member => <article className='demo-card' key={member.id}><h3>{member.username}</h3><DemoField label='成员权限'><select value={member.role} disabled={busy} onChange={event => void action(() => accountApi(`/team/${member.id}`, 'PUT', { role: event.target.value }))}>{roles.map((value, index) => <option key={value} value={value}>{labels[index]}</option>)}</select></DemoField><div className='demo-row'><label className='demo-check'><input type='checkbox' checked={!member.disabled} disabled={busy || member.id === me.id} onChange={event => void action(() => accountApi(`/team/${member.id}`, 'PUT', { disabled: !event.target.checked }))} />允许使用</label><button type='button' className='demo-action' disabled={busy} onClick={() => { setResetMember(member.id); setResetPassword(''); }}>重置密码</button></div></article>)}
+      <details className='demo-more'><summary>操作记录</summary>{events.map((event, index) => <div className='demo-card' key={index}><h3>{event.actor_name} · {event.operation}</h3><p>{formatTime(event.time)}</p></div>)}{!events.length && <div className='demo-empty'>暂无记录</div>}<div className='demo-row'><button type='button' className='demo-action' disabled={page === 1} onClick={() => setPage(page - 1)}>上一页</button><span>{page} / {Math.max(1, Math.ceil(total / 50))}</span><button type='button' className='demo-action' disabled={page * 50 >= total} onClick={() => setPage(page + 1)}>下一页</button></div></details>
     </>}
-    <Text className="team-section">连接状态</Text>
-    <Text className="team-message">当前为共享匿名模式，无需账号密码，所有设备使用同一份仓库数据。</Text>
-    <Button disabled={busy} onClick={() => setSession(null)}>重新连接仓库</Button>
-  </View>;
+    <button type='button' className='demo-primary demo-secondary' disabled={busy} onClick={() => setSession(null)}>重新连接仓库</button>
+    {adding && <DemoSheet title='新增成员' busy={busy} onClose={() => setAdding(false)}><DemoField label='登录账号'><input aria-label='登录账号' value={username} disabled={busy} onChange={event => setUsername(event.target.value)} /></DemoField><DemoField label='初始密码（至少12位）'><input type='password' aria-label='初始密码' value={password} disabled={busy} onChange={event => setPassword(event.target.value)} /></DemoField><DemoField label='成员权限'><select value={role} onChange={event => setRole(Number(event.target.value))}>{labels.map((label, index) => <option key={label} value={index}>{label}</option>)}</select></DemoField>{message && <div className='demo-error' role='alert'>{message}</div>}<button type='button' className='demo-primary' disabled={busy} onClick={() => void action(async () => { await accountApi('/team', 'POST', { username, password, role: roles[role] }); setUsername(''); setPassword(''); setAdding(false); })}>添加成员</button></DemoSheet>}
+    {resetMember && <DemoSheet title='重置成员密码' busy={busy} onClose={() => setResetMember(null)}><DemoField label='新密码（至少12位）'><input type='password' aria-label='新密码' value={resetPassword} disabled={busy} onChange={event => setResetPassword(event.target.value)} /></DemoField>{message && <div className='demo-error' role='alert'>{message}</div>}<button type='button' className='demo-primary' disabled={busy} onClick={() => void action(async () => { if (resetPassword.length < 12) throw new Error('密码至少12位'); await accountApi(`/team/${resetMember}`, 'PUT', { password: resetPassword }); setResetMember(null); setResetPassword(''); })}>确认重置</button></DemoSheet>}
+  </DemoPage>;
 }

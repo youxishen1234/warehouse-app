@@ -41,6 +41,8 @@ export interface Customer {
 
 // 出入库记录类型
 export interface Transaction {
+  entered_at?: string;
+  location?: string;
   billing_source?: 'production_inbound';
   receivable_amount?: number;
   billed_inbound_allocations?: Array<{ transaction_id: number; quantity: number }>;
@@ -211,11 +213,13 @@ export interface DeliveryLine {
 }
 
 export interface DeliveryNote {
+  entered_at?: string;
+  location?: string;
   billing_mode?: 'on_outbound';
   id: number;
   date: string;
   work_order_no: string;
-  source_type?: 'production';
+  source_type?: 'production' | 'carton_purchase';
   party_type?: 'supplier' | 'customer' | null;
   supplier_id?: number | null;
   supplier_name?: string;

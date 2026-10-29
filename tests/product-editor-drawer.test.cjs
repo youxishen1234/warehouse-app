@@ -12,8 +12,8 @@ test('product edits stay in the products page and do not restore the retired rou
   assert.doesNotMatch(products, /navigateTo\(\{ url: [`'"]\/pages\/product-edit/);
   assert.match(products, /setEditor\(\{ productId: null/);
   assert.match(products, /getProduct\(id, \{ forceNetwork: true \}\)/);
-  assert.match(products, /maxlength=\{50\}/);
-  assert.match(products, /maxlength=\{100\}/);
+  assert.match(products, /maxLength=\{key === 'name' \? 50 : 100\}/);
+  assert.match(products, /field\('specification', /);
   assert.match(products, /safety_stock: parsed\.safety!/);
 });
 

@@ -26,7 +26,7 @@ async function run(engine, label) {
       }
       return route.abort();
     });
-    await page.goto(origin + '/pages/management/index?section=orders');
+    await page.goto(origin + '/pages/customer-orders/index');
     await page.waitForTimeout(3000);
     console.log('body', (await page.locator('body').innerText()).slice(0,500));
     await expect(page.getByText('订单加载失败测试 · 点击重试', { exact: true })).toBeVisible();

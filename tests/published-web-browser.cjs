@@ -63,7 +63,7 @@ async function main() {
   }
   const browser = await chromium.launch(process.env.CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.CHROMIUM_EXECUTABLE_PATH } : {});
   try {
-    const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     const writes = [], errors = [];
     await context.route('**/api/**', route => {
       const request = route.request();
@@ -96,9 +96,21 @@ async function main() {
     await expect(frame.getByLabel('选择对账单位')).toBeVisible();
     await frame.locator('.sg-app-nav [data-tab="4"]').click();
     await expect(frame.getByText('我的工作空间', { exact: true })).toBeVisible();
+    for (const [route, testId] of [
+      ['customer-orders/index?create=1', 'customer-order-sheet'],
+      ['board-inbound/index', 'paperboard-receipt-sheet'],
+      ['carton-inbound/index', 'carton-receipt-sheet'],
+      ['production-inbound/index', 'production-receipt-sheet']
+    ]) {
+      await frame.locator('body').evaluate((_, value) => { location.hash = '/pages/' + value; }, route);
+      const sheet = frame.getByTestId(testId);
+      await expect(sheet).toBeVisible();
+      const geometry = await sheet.evaluate(el => { const r = el.getBoundingClientRect(); return { x: r.x, right: r.right, y: r.y, bottom: r.bottom, viewportWidth: innerWidth, viewportHeight: innerHeight, overflow: el.scrollWidth > el.clientWidth + 1 }; });
+      assert.ok(geometry.x >= -1 && geometry.right <= geometry.viewportWidth + 1 && geometry.y >= 0 && geometry.bottom <= geometry.viewportHeight + 1 && !geometry.overflow, route + ': ' + JSON.stringify(geometry));
+    }
     assert.deepEqual(writes, [], 'Online verification must never change business data');
     assert.deepEqual(errors, []);
-    console.log('PASS: published source revision, public framing headers, homepage, inventory, print modes and Mine UI');
+    console.log('PASS: published source revision, public framing headers, homepage, inventory, print modes Mine UI and four new responsive business routes');
   } finally {
     await browser.close();
   }

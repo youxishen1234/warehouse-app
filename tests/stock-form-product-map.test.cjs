@@ -3,13 +3,13 @@ const fs = require('node:fs');
 const test = require('node:test');
 
 test('multi-line inbound forms index products once for row previews and stock checks', () => {
-  for (const file of ['src/components/BusinessForms/Receipt/index.tsx']) {
+  for (const file of ['src/features/carton-inbound/index.tsx']) {
     const source = fs.readFileSync(file, 'utf8');
     assert.match(source, /const productMap = useMemo\(\(\) => new Map\(products\.map/);
     assert.doesNotMatch(source, /products\.find\(item => item\.id === line\.product_id\)/);
     assert.doesNotMatch(source, /products\.find\(product => product\.id === line\.product_id\)/);
   }
-  assert.match(fs.readFileSync('src/components/BusinessForms/Receipt/index.tsx', 'utf8'), /productMap\.get\(line\.product_id\)/);
+  assert.match(fs.readFileSync('src/features/carton-inbound/index.tsx', 'utf8'), /productMap\.get\(line\.product_id\)/);
   // Outbound now edits one order line. The browser regression verifies that
   // selecting its product and refreshing cannot change the submitted draft.
 });

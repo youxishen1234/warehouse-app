@@ -71,34 +71,11 @@ async function main() {
       return url.origin === origin || ['data:', 'blob:'].includes(url.protocol) ? route.continue() : route.abort();
     });
 
-    const input = placeholder => page.locator(`input[placeholder=${JSON.stringify(placeholder)}]:visible`);
     const go = async hash => {
       await page.goto('about:blank');
       await page.goto(origin + '/#' + hash);
       await expect(page.getByTestId('simple-workbench')).toBeVisible();
       await expect(page.getByText('● 已同步', { exact: true })).toBeVisible();
-    };
-    const choosePicker = async (label, option) => {
-      const picker = page.getByLabel(label).first();
-      if (await picker.evaluate(node => node.tagName === 'SELECT')) {
-        await picker.selectOption({ label: option });
-      } else {
-        await picker.click();
-        const wheel = page.locator('.weui-picker__group:visible').last();
-        await expect(wheel).toBeVisible();
-        await expect.poll(async () => {
-          const bounds = await wheel.boundingBox();
-          return bounds ? Math.round(bounds.y + bounds.height) : 0;
-        }).toBe(page.viewportSize().height);
-        const row = wheel.locator('.weui-picker__item').filter({ hasText: option }).first();
-        await expect(row).toBeVisible();
-        const bounds = await row.boundingBox();
-        assert.ok(bounds, `Picker option was not rendered: ${option}`);
-        await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
-        await page.locator('.weui-picker__action:visible').filter({ hasText: '确定' }).click();
-        await expect(wheel).not.toBeVisible();
-      }
-      await expect(picker).toContainText(option);
     };
     const noOverflow = async width => {
       await page.setViewportSize({ width, height: 900 });
@@ -132,17 +109,17 @@ async function main() {
     await expect(customerCenterAdd).toBeInViewport();
     await customerCenterAdd.click();
     await expect(editor()).toBeVisible();
-    await editor().getByLabel('公司名称').locator('input').fill('取消客户草稿');
-    await editor().getByText('取消', { exact: true }).click();
+    await editor().getByLabel('公司名称').locator('xpath=self::input | .//input').fill('取消客户草稿');
+    await editor().getByRole('button', { name: '关闭', exact: true }).click();
     await expect(editor()).toHaveCount(0);
     assert.equal(db.listCustomers().length, startingCustomerCount, 'canceling customer creation must not write a customer');
 
     await customerCenterAdd.click();
     await expect(editor()).toBeVisible();
-    await editor().getByLabel('公司名称').locator('input').fill('客户入口新增客户');
-    await editor().getByLabel('联系人').locator('input').fill('陈经理');
-    await editor().getByLabel('联系电话').locator('input').fill('13800001111');
-    await editor().getByText('保存客户', { exact: true }).click();
+    await editor().getByLabel('公司名称').locator('xpath=self::input | .//input').fill('客户入口新增客户');
+    await editor().getByLabel('联系人').locator('xpath=self::input | .//input').fill('陈经理');
+    await editor().getByLabel('联系电话').locator('xpath=self::input | .//input').fill('13800001111');
+    await editor().getByText('保存客户资料', { exact: true }).click();
     await expect(editor()).toHaveCount(0);
     const homeCustomer = db.listCustomers().find(customer => customer.name === '客户入口新增客户');
     assert.ok(homeCustomer, 'customer creation from customer management should persist to the shared list');
@@ -154,8 +131,8 @@ async function main() {
 
     await customerCard.click(); await page.getByTestId(`customer-edit-${homeCustomer.id}`).click();
     await expect(editor()).toBeVisible();
-    await editor().getByLabel('联系人').locator('input').fill('陈经理（更新）');
-    await editor().getByText('保存客户', { exact: true }).click();
+    await editor().getByLabel('联系人').locator('xpath=self::input | .//input').fill('陈经理（更新）');
+    await editor().getByText('保存客户资料', { exact: true }).click();
     await expect(editor()).toHaveCount(0);
     const editedCustomer = db.listCustomers().find(customer => customer.id === homeCustomer.id);
     assert.equal(editedCustomer.contact, '陈经理（更新）');
@@ -182,48 +159,22 @@ async function main() {
     await page.getByTestId('workbench-customer-management').click();
     await expect(page.getByTestId('customer-center')).toBeVisible();
     await page.getByTestId(`customer-management-card-${homeCustomer.id}`).click(); await page.getByTestId('customer-center-orders').click();
-    await expect(page.getByTestId('order-stock-flow')).toBeVisible();
-    await expect(page.getByTestId('order-selected-customer')).toContainText(homeCustomer.name);
-    await input('订单号').fill('CUSTOMER-ENTRY-ORDER-01');
-    await input('规格（可选，如 300×200×150mm）').fill('120×80×60mm');
-    await input('材质（可选，如五层AB楞）').fill('五层AB楞');
-    await choosePicker('订单单位', '个');
-    await input('数量').fill('4');
-    await input('单价').fill('3.25');
-    const deliveryDate = await page.evaluate(() => {
-      const date = new Date();
-      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-    });
-    await page.getByText('交货日期：未设置', { exact: true }).click();
-    await expect(page.locator('.weui-picker__group:visible')).toHaveCount(3);
-    await page.locator('.weui-picker__action:visible').filter({ hasText: '确定' }).click();
-    await expect(page.getByText(`交货日期：${deliveryDate}`, { exact: true })).toBeVisible();
-    await input('备注（可选）').fill('先确认样品后送货');
-    await expect(page.getByTestId('order-amount-preview')).toContainText('¥13.00');
-    await choosePicker('选择订单客户', homeCustomer.name);
-    await expect(page.getByTestId('order-selected-customer')).toContainText(homeCustomer.name);
-    await expect(page.getByTestId('order-add-customer')).toHaveCount(0);
-    await expect(editor()).toHaveCount(0);
-    await page.screenshot({ path: path.join(evidence, 'order-draft-before-save-390.png'), fullPage: true });
-
-    await expect(input('订单号')).toHaveValue('CUSTOMER-ENTRY-ORDER-01');
-    await expect(input('规格（可选，如 300×200×150mm）')).toHaveValue('120×80×60mm');
-    await expect(input('材质（可选，如五层AB楞）')).toHaveValue('五层AB楞');
-    await expect(input('备注（可选）')).toHaveValue('先确认样品后送货');
-    await expect(input('数量')).toHaveValue('4');
-    await expect(input('单价')).toHaveValue('3.25');
-    await expect(page.getByText(`交货日期：${deliveryDate}`, { exact: true })).toBeVisible();
-    await expect(page.getByText('单位：个', { exact: true })).toBeVisible();
-    await expect(page.getByTestId('order-amount-preview')).toContainText('¥13.00');
-    assert.equal(db.listCustomers().length, startingCustomerCount + 1, 'creating an order must not add another customer');
-
+    await expect(page.getByTestId('customer-order-sheet')).toBeVisible();
+    await expect(page.getByRole('heading', { name: `给${homeCustomer.name}开单` })).toBeVisible();
+    await page.getByLabel('订单规格', { exact: true }).fill('120×80×60mm');
+    await page.getByLabel('订单材质', { exact: true }).fill('五层AB楞');
+    await page.getByLabel('订单单位', { exact: true }).selectOption('个');
+    await page.getByLabel('订单数量', { exact: true }).fill('4');
+    await page.getByLabel('订单单价', { exact: true }).fill('3.25');
+    const deliveryDate = new Date().toLocaleDateString('en-CA');
+    await page.getByLabel('交货日期', { exact: true }).fill(deliveryDate);
+    assert.equal(db.listCustomers().length, startingCustomerCount + 1);
     await noOverflow(320);
     await page.screenshot({ path: path.join(evidence, 'order-create-320.png'), fullPage: true });
     await noOverflow(390);
-    await page.getByText('保存订单', { exact: true }).click();
-    await expect(page.getByText('CUSTOMER-ENTRY-ORDER-01 · 客户入口新增客户', { exact: true })).toBeVisible();
-
-    const createdOrder = db.listOrders().find(order => order.order_no === 'CUSTOMER-ENTRY-ORDER-01');
+    await page.getByRole('button', { name: '保存订单 · 自动检查库存' }).click();
+    await expect.poll(() => db.listOrders().filter(order => order.customer_id === homeCustomer.id).length).toBe(1);
+    const createdOrder = db.listOrders().find(order => order.customer_id === homeCustomer.id);
     assert.ok(createdOrder, 'order for an existing customer should persist');
     assert.equal(createdOrder.customer_id, homeCustomer.id);
     assert.equal(createdOrder.customer_name, homeCustomer.name);
@@ -234,7 +185,7 @@ async function main() {
     assert.equal(createdOrder.unit_price, 3.25);
     assert.equal(createdOrder.amount, 13);
     assert.equal(createdOrder.delivery_date, deliveryDate);
-    assert.equal(createdOrder.remark, '先确认样品后送货');
+    assert.equal(createdOrder.remark, '');
     assert.equal(db.listCustomers().length, startingCustomerCount + 1, 'order save must not change the customer list');
     await noOverflow(1280);
     await page.screenshot({ path: path.join(evidence, 'orders-1280.png'), fullPage: true });

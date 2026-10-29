@@ -44,7 +44,7 @@ async function main() {
     const page = await context.newPage(); page.setDefaultTimeout(12000);
     page.on('pageerror', error => errors.push(error.message));
     const active = () => page.locator('.taro_page:visible').last();
-    const click = text => active().getByText(text, { exact: true }).last().locator('xpath=ancestor-or-self::*[self::button or self::taro-button-core][1]').click();
+    const click = text => page.getByText(text, { exact: true }).last().locator('xpath=ancestor-or-self::*[self::button or self::taro-button-core][1]').click();
     const go = async route => { await page.goto('about:blank'); await page.goto(origin + '/#' + route); };
     const screenshot = async name => {
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
@@ -57,28 +57,29 @@ async function main() {
       ['/pages/customers/index', '[data-testid="customer-center"]'],
       ['/pages/management/index?section=suppliers', '[data-testid="supplier-center"]'],
       ['/pages/management/index?section=finance', '[data-testid="finance-center"]'],
-      ['/pages/management/index?section=paperboard-receipt', '[data-testid="stock-entry-page"]'],
-      ['/pages/management/index?section=receipt&kind=carton', '[data-testid="stock-entry-page"]'],
-      ['/pages/management/index?section=receipt', '[data-testid="stock-entry-page"]'],
-      ['/pages/management/index?section=shipment', '[data-testid="stock-entry-page"]'],
-      ['/pages/management/index?section=paperboard-batch&id=' + batch.id, '.board-detail-row'],
-      ['/pages/management/index?section=paperboard-movement&id=' + batch.id, '.board-page'],
-      ['/pages/management/index?section=stock-scanner', '.board-page'],
-      ['/pages/management/index?section=orders', '.business-page-header'],
-      ['/pages/management/index?section=transactions', '.business-page-header'],
-      ['/pages/management/index?section=goods', '.business-page-header'],
+      ['/pages/board-inbound/index', '.demo-dialog'],
+      ['/pages/production-inbound/index', '.demo-dialog'],
+      ['/pages/carton-inbound/index', '.demo-dialog'],
+      ['/pages/carton-inbound/index?kind=purchase', '.demo-dialog'],
+      ['/pages/management/index?section=shipment', '.demo-dialog'],
+      ['/pages/management/index?section=paperboard-batch&id=' + batch.id, '.demo-dialog'],
+      ['/pages/management/index?section=paperboard-movement&id=' + batch.id, '.demo-page, .demo-dialog'],
+      ['/pages/management/index?section=stock-scanner', '.demo-page, .demo-dialog'],
+      ['/pages/customer-orders/index', '.demo-page-header, .demo-dialog'],
+      ['/pages/management/index?section=transactions', '.demo-page-header, .demo-dialog'],
+      ['/pages/management/index?section=goods', '.demo-page-header, .demo-dialog'],
       ['/pages/print-center/index', '[data-print-view="home"]']
-      ,['/pages/management/index?section=dimensions', '.board-page']
-      ,['/pages/management/index?section=party-details', '.business-page-header']
-      ,['/pages/management/index?section=team', '.business-page-header']
-      ,['/pages/management/index?section=backup', '.business-page-header']
+      ,['/pages/management/index?section=dimensions', '.demo-page, .demo-dialog']
+      ,['/pages/management/index?section=party-details', '.demo-page-header, .demo-dialog']
+      ,['/pages/management/index?section=team', '.demo-page-header, .demo-dialog']
+      ,['/pages/management/index?section=backup', '.demo-page-header, .demo-dialog']
       ,['/pages/management/index?section=originals', 'main', false]
       ,['/pages/ai-assistant/index', '[data-ai-assistant]', false]
       ,['/pages/mine/index', 'taro-scroll-view-core', false]
       ,['/pages/management/index?section=labels', 'nav[aria-label="打印类型"]', false]
       ,['/pages/management/index?section=label-lookup&v=1&kind=paperboard-batch&id=' + batch.id, '.label-resolver-page']
     ]) {
-      await go(route); await expect(active().locator(marker).first()).toBeVisible();
+      await go(route); await expect(page.locator(marker).filter({ visible: true }).first()).toBeVisible();
       if (modernHeader) await expect(active().locator('[data-ui-version="web-workbench-v2"]').first()).toBeVisible();
       await screenshot('route-' + checked.length);
       if (route.includes('workbench') || route === '/pages/home/index' || route.includes('inventory') || route.includes('print-center')) await screenshot(route.includes('print-center') ? 'print' : route.includes('inventory') ? 'stock' : 'home');
@@ -102,9 +103,9 @@ async function main() {
     await go('/pages/home/index'); await expect(page.getByTestId('workbench-sync-status')).toContainText('已同步');
     await click('备货业务'); await expect(page.getByTestId('workbench-business-flow')).toContainText('先备货');
     await screenshot('stock-workflow'); await page.getByTestId('workbench-business-flow').getByText('＋ 纸箱入库', { exact: true }).click();
-    await expect(active().getByTestId('stock-entry-page')).toBeVisible(); await active().getByLabel('返回', { exact: true }).click(); await expect(page.getByTestId('workbench-business-flow')).toBeVisible();
+    await expect(page.getByTestId('carton-receipt-sheet')).toBeVisible(); await page.getByRole('dialog').getByLabel('关闭', { exact: true }).click(); await expect(page.getByTestId('workbench-business-flow')).toBeVisible();
     await click('销售业务'); await click('客户出库');
-    await expect(active().getByTestId('stock-entry-page')).toBeVisible();
+    await expect(page.getByTestId('shipment-sheet')).toBeVisible();
     await go('/pages/print-center/index'); await active().getByRole('button', { name: '选择出库单', exact: true }).click();
     await expect(page.getByRole('dialog', { name: '选择出库单' })).toBeVisible();
     await page.getByRole('dialog').getByRole('button').filter({ hasText: customer.name }).click();
@@ -123,11 +124,11 @@ async function main() {
     await page.screenshot({ path: path.join(evidence, 'statement-print.png'), fullPage: true });
     await page.pdf({ path: path.join(evidence, 'statement.pdf'), format: 'A4', printBackground: true });
     await page.emulateMedia({ media: 'screen' });
-    await go('/pages/management/index?section=paperboard-receipt');
-    await page.getByLabel('成箱规格尺寸', { exact: true }).locator('input').fill('30×20×15');
-    await page.getByLabel('实收数', { exact: true }).locator('input').fill('12');
-    await page.getByText('确认入库 · 生成批次标签', { exact: true }).click();
-    await expect(active().getByText('待补金额，未生成应付', { exact: true })).toBeVisible();
+    await go('/pages/board-inbound/index');
+    await page.getByLabel('纸箱尺寸：长 × 宽 × 高', { exact: true }).fill('30×20×15');
+    await page.getByLabel('实收数', { exact: true }).fill('12');
+    await page.getByText('确认纸板入库', { exact: true }).click();
+    await expect(page.getByTestId('paperboard-detail-sheet').getByText('未记录 / 待核算', { exact: true })).toBeVisible();
     assert.equal(db.listBoards().find(row => row.boardDimensionsPending).remainingQty, 12);
     assert.deepEqual(errors, []);
     fs.writeFileSync(path.join(evidence, 'routes.json'), JSON.stringify({ checked, errors }, null, 2));

@@ -6,7 +6,7 @@ import type { DimensionCustomer } from '@/services/customer-dimensions';
 import { session } from '@/services/session';
 import QuoteEditor from './QuoteEditor';
 import {
-  buildCustomerManagementRows, customerSpecMissingFields, formatCustomerUnitPrice, MAX_VISIBLE_CUSTOMER_SPECS, specificationSearchText
+  buildCustomerManagementRows, formatCustomerUnitPrice, MAX_VISIBLE_CUSTOMER_SPECS, specificationSearchText
 } from './model';
 import type { CustomerSpecView } from './model';
 import styles from './index.module.scss';
@@ -17,13 +17,13 @@ type Props = {
   inactiveCustomerNames: string[];
   onEditParty: (type: 'customer', id?: number, initialName?: string) => void;
   onViewBills: (id: number) => void;
-  onOpenOrders: (customerId?: number) => void;
+  onOpenOrders: (customerId?: number, specId?: string) => void;
   onSpecsSaved: () => void | Promise<void>;
 };
 
 type Filter = 'all' | 'pinned' | 'debt';
 
-function CustomerSpecs({ customer, specs, expanded, onToggle, editable, onAdd, onEdit }: {
+function CustomerSpecs({ customer, specs, expanded, onToggle, editable, onAdd, onEdit, onOrder }: {
   customer: string;
   specs: CustomerSpecView[];
   expanded: boolean;
@@ -31,30 +31,21 @@ function CustomerSpecs({ customer, specs, expanded, onToggle, editable, onAdd, o
   editable?: boolean;
   onAdd?: () => void;
   onEdit?: (spec: CustomerSpecView) => void;
+  onOrder?: (spec: CustomerSpecView) => void;
 }) {
   const visible = expanded ? specs : specs.slice(0, MAX_VISIBLE_CUSTOMER_SPECS);
   return <View className={styles.specs} data-testid={`customer-specs-${customer}`}>
     <View className={styles.specsHeading}>
-      <Text className={styles.specsTitle}>常用销售资料 · 货物及价格</Text>
+      <Text className={styles.specsTitle}>常用规格</Text>
       <View className={styles.specsHeadingActions}><Text className={styles.specsCount}>{specs.length} 种</Text>
-        {editable && <Button className={styles.specAdd} data-testid={`customer-spec-add-${customer}`} onClick={onAdd}>新增货物</Button>}</View>
+        {editable && <Button className={styles.specAdd} data-testid={`customer-spec-add-${customer}`} onClick={onAdd}>＋ 添加货物</Button>}</View>
     </View>
     {!specs.length && <Text className={styles.specsEmpty}>还没有记录规格</Text>}
     {visible.map(spec => <View className={styles.specRow} key={spec.key} data-testid={`customer-spec-${customer}-${spec.key}`}>
-      <View className={styles.specMain}>
-        <View className={styles.specName}>
-          <Text>{spec.goods || '货物名称未记录'}</Text>
-          <Text className={styles.specKind}>{spec.category}</Text>
-        </View>
-        <Text className={styles.specSize}>{spec.specification || '尺寸未记录'}</Text>
-        <Text className={styles.specMeta}>{spec.material || '材质未记录'} · {spec.unit || '单位未记录'}</Text>
-        <Text className={customerSpecMissingFields(spec).length ? styles.incomplete : styles.accountStatus}>
-          {customerSpecMissingFields(spec).length ? `资料不完整 · 缺少${customerSpecMissingFields(spec).join('、')}` : '资料完整'}
-        </Text>
+      <View className={styles.specMain}><View className={styles.specName}><Text>{spec.goods || '货物名称未记录'}</Text>{editable && <Button className={styles.specEdit} aria-label={`编辑规格 ${spec.goods} ${spec.specification}`} data-testid={`customer-spec-edit-${spec.key}`} onClick={() => onEdit?.(spec)}>编辑</Button>}</View>
+        <Text className={styles.specSize}>{[spec.specification, spec.material].filter(Boolean).join(' · ') || '规格未记录'}</Text>
+        <View className={styles.specRowActions}><Text className={styles.specPrice}>{spec.price == null ? '价格未记录' : `${formatCustomerUnitPrice(spec.price)} / ${spec.unit || '个'}`}</Text><Button className={styles.specAdd} onClick={() => onOrder?.(spec)}>用此货物开单</Button></View>
       </View>
-      <View className={styles.specRowActions}><Text className={styles.specPrice}>{spec.price == null ? '价格未记录' : `${formatCustomerUnitPrice(spec.price)}${spec.unit ? `/${spec.unit}` : ''}`}</Text>
-        {editable && <Button className={styles.specEdit} aria-label={`编辑规格 ${spec.goods} ${spec.specification}`}
-          data-testid={`customer-spec-edit-${spec.key}`} onClick={() => onEdit?.(spec)}>编辑货物</Button>}</View>
     </View>)}
     {specs.length > MAX_VISIBLE_CUSTOMER_SPECS && <Button
       className={styles.specToggle}
@@ -106,7 +97,7 @@ export default function CustomerCenter({
     <View className={styles.detailTabs}><Button aria-pressed={detailTab === 'goods'} onClick={() => setDetailTab('goods')}>常用货物</Button><Button onClick={() => selected.account ? onViewBills(selected.account.id) : onEditParty('customer', undefined, selected.name)}>往来账单</Button><Button aria-pressed={detailTab === 'info'} onClick={() => setDetailTab('info')}>客户资料</Button></View>
     {detailTab === 'goods' ? <CustomerSpecs customer={selected.account ? String(selected.account.id) : selected.key} specs={selected.specs} expanded={expandedSpecs} onToggle={() => setExpandedSpecs(value => !value)}
       editable={canEditSpecs && Boolean(selected.account)} onAdd={() => selected.account && setEditingSpec({ customer: selected.account })}
-      onEdit={spec => selected.account && setEditingSpec({ customer: selected.account, seed: spec })} /> : <View className={styles.detailInfo}>
+      onEdit={spec => selected.account && setEditingSpec({ customer: selected.account, seed: spec })} onOrder={spec => onOpenOrders(selected.account?.id, spec.quoteId || spec.key)} /> : <View className={styles.detailInfo}>
       {([['客户名称', selected.name], ['联系人', selected.account?.contact], ['联系电话', selected.account?.phone], ['地址', selected.account?.address], ['备注', selected.account?.remark]]).map(([label, value]) => <View key={label}><Text>{label}</Text><Text>{value || '—'}</Text></View>)}
     </View>}
     <View className={styles.detailActions}><Button className={styles.secondaryAction} disabled={!selected.account} onClick={() => selected.account && onViewBills(selected.account.id)}>登记收款</Button><Button className={styles.primaryAction} data-testid='customer-center-orders' onClick={() => onOpenOrders(selected.account?.id)}>＋ 给客户开单</Button></View>

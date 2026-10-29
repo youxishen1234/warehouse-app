@@ -59,7 +59,7 @@ async function main() {
     await expect(boardPage.getByText('当前共享仓库还没有纸板批次记录。', { exact: true })).toBeVisible();
     await expect(boardLink).toBeVisible();
     await boardLink.click();
-    await boardPage.waitForURL(/pages\/management\/index\?section=paperboard-receipt/);
+    await boardPage.waitForURL(/pages\/board-inbound\/index/);
     assert.deepEqual(errors, [], 'no runtime errors');
   } finally {
     await browser.close();

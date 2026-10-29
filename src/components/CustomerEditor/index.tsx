@@ -1,5 +1,6 @@
+/* eslint-disable react/forbid-elements */
 import { useEffect, useRef, useState } from 'react';
-import { Button, Input, Text, Textarea, View } from '@tarojs/components';
+import { DemoSheet, DemoField, DemoDetail } from '@/components/DemoUI';
 import Taro from '@tarojs/taro';
 import { addCustomer, addSupplier, getCartonInboundCustomers, getCustomer, getCustomers, getSupplier, getSuppliers, updateCustomer, updateCustomerSpecs, updateSupplier } from '@/services/api';
 import type { Customer, CustomerForm, CustomerSpec } from '@/types';
@@ -9,7 +10,7 @@ import { formatMoney } from '@/utils/format';
 import { formatDimensionInput } from '@/utils/dimension-input';
 import { getCustomerDimensions } from '@/services/customer-dimensions';
 import { canonicalSpecification } from '../../../backend/production-pricing';
-import styles from './index.module.scss';
+
 
 const editorSessionIdentity = () => {
   const current = session();
@@ -28,8 +29,6 @@ export default function CustomerEditor({ id, supplier = false, initialName = '',
   const [recoverableError, setRecoverableError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [retry, setRetry] = useState(0);
-  const [basicOpen, setBasicOpen] = useState(true);
-  const [remarkOpen, setRemarkOpen] = useState(false);
   const [specsOpen, setSpecsOpen] = useState(true);
   const [identity, setIdentity] = useState(editorSessionIdentity);
   const [linkedName, setLinkedName] = useState(lockName);
@@ -292,63 +291,41 @@ export default function CustomerEditor({ id, supplier = false, initialName = '',
     setError('');
     setRecoverableError(false);
   };
-  const field = (key: keyof typeof profile, caption: string, limit: number) => <View className={styles.field}><Text>{caption}{key === 'name' ? ' *' : '（选填）'}</Text><Input aria-label={caption} value={profile[key]} maxlength={limit} disabled={saving || !writable || (key === 'name' && (lockName || linkedName)) || undefined} onInput={event => setProfile(value => ({ ...value, [key]: event.detail.value }))} /></View>;
-  const specField = (row: SpecDraft, index: number, key: SpecField, caption: string, limit: number) => <View className={styles.specField}>
-    <Text>{caption}</Text>
-    <Input aria-label={`规格 ${index + 1} ${caption}`} type={key === 'price' ? 'digit' : undefined} value={row[key]} maxlength={limit} placeholder={key === 'specification' ? '例如 30×20×15 cm' : undefined} disabled={saving || !writable || row.source === 'dimension' || undefined} onInput={event => {
-      const value = key === 'price'
-        ? sanitizeNonNegativeMoneyInput(event.detail.value)
-        : key === 'specification'
-          ? formatDimensionInput(event.detail.value, row.specification, { sizeUnit: 'cm', kind: row.category === '纸板' ? '纸板' : '成品' })
-          : event.detail.value;
+  const field = (key: keyof typeof profile, caption: string, limit: number) => <DemoField label={caption}><input aria-label={key === 'name' ? supplier ? '供应商名称' : '公司名称' : key === 'phone' ? '联系电话' : caption} type={key === 'phone' ? 'tel' : 'text'} value={profile[key]} maxLength={limit} disabled={saving || !writable || (key === 'name' && (lockName || linkedName))} onChange={event => setProfile(value => ({ ...value, [key]: event.target.value }))} /></DemoField>;
+  const specField = (row: SpecDraft, index: number, key: SpecField, caption: string, limit: number) => <DemoField label={caption}>
+    <input aria-label={`规格 ${index + 1} ${caption}`} type={key === 'price' ? 'number' : 'text'} value={row[key]} maxLength={limit} disabled={saving || !writable || row.source === 'dimension'} onChange={event => {
+      const value = key === 'price' ? sanitizeNonNegativeMoneyInput(event.target.value) : key === 'specification'
+        ? formatDimensionInput(event.target.value, row.specification, { sizeUnit: 'cm', kind: row.category === '纸板' ? '纸板' : '成品' }) : event.target.value;
       updateSpec(index, key, value);
     }} />
-  </View>;
-  return <View className={styles.mask} onClick={() => { if (!saving) onClose(); }}><View role='dialog' aria-modal='true' aria-label={(id ? '编辑' : '新增') + label} data-testid='customer-editor' className={styles.drawer} onClick={event => event.stopPropagation()}>
-    <View className={styles.heading}><Text>{id ? '编辑' : '新增'}{label}资料</Text><Button aria-label='关闭资料抽屉' disabled={saving} onClick={onClose}>×</Button></View>
-    {loading && <Text className={styles.hint}>正在读取{label}资料…</Text>}
-    {loadError && <View className={styles.error} role='alert'><Text>{loadError}</Text><Button onClick={() => { setError(''); setRecoverableError(false); setRetry(value => value + 1); }}>重新读取</Button></View>}
-    {!loading && !loadError && <View>
-      <View className={styles.section}>
-        <View className={styles.sectionHeading}><Text>基本资料</Text><Button aria-label={basicOpen ? '收起基本资料' : '展开基本资料'} disabled={saving} onClick={() => setBasicOpen(open => !open)}>{basicOpen ? '收起' : '展开'}</Button></View>
-        {basicOpen ? <>
-          {field('name', supplier ? '供应商名称' : '公司名称', 50)}
-          {(lockName || linkedName) && <Text className={styles.hint}>此名称关联现有规格，资料编辑保留关联名称。</Text>}
-          {!id && lockName && initialName.trim().length > 50 && <View className={styles.error} role='alert'>现有规格名称超过50字，原资料不会被截断；请先核对名称后再建立客户账户。</View>}
-          {field('contact', '联系人', 50)}{field('phone', '联系电话', 20)}{field('address', '地址', 200)}
-        </> : <Text className={styles.sectionSummary}>{profile.name || `未填写${supplier ? '供应商' : '公司'}名称`}{profile.contact ? ` · ${profile.contact}` : ''}{profile.phone ? ` · ${profile.phone}` : ''}</Text>}
-      </View>
-      <View className={styles.section}>
-        <View className={styles.sectionHeading}><Text>备注</Text><Button aria-label={remarkOpen ? '收起备注' : '展开备注'} disabled={saving} onClick={() => setRemarkOpen(open => !open)}>{remarkOpen ? '收起' : '展开'}</Button></View>
-        {remarkOpen && <View className={styles.field}><Textarea aria-label='备注' value={profile.remark} maxlength={500} disabled={saving || !writable || undefined} onInput={event => setProfile(value => ({ ...value, remark: event.detail.value }))} /></View>}
-        {!remarkOpen && profile.remark.trim() && <Text className={styles.sectionSummary}>{profile.remark}</Text>}
-      </View>
-      <View className={styles.specSection}>
-        <View className={styles.specHeading}><Text>{supplier ? '常用采购资料' : '常用销售资料'}{specRows.length ? ` · ${specRows.length} 条` : ''}</Text><View className={styles.specActions}>{!!specRows.length && <Button aria-label={specsOpen ? '收起客户规格' : '展开客户规格'} disabled={saving} onClick={() => setSpecsOpen(open => !open)}>{specsOpen ? '收起' : '展开'}</Button>}<Button aria-label='添加客户规格' disabled={saving || !writable || specRows.length >= MAX_CUSTOMER_SPECS} onClick={addSpec}>添加货物</Button></View></View>
-        <Text className={styles.hint}>五项字段均选填，至少填写一项。缺少价格时保持空白，可保存后继续编辑。</Text>
-        {!specsOpen && <Text className={styles.specSummary}>已填写 {specRows.length} 条规格，点“展开”查看或修改</Text>}
-        {specsOpen && specRows.map((row, index) => <View className={styles.specRow} data-testid={`customer-spec-editor-${index + 1}`} key={row.id}>
-          <View className={styles.specRowHeading}><Text>规格 {index + 1}</Text><Button aria-label={`删除客户规格 ${index + 1}`} disabled={saving || !writable} onClick={() => removeSpec(index)}>删除</Button></View>
-          <View className={styles.specFields}>
-            {specField(row, index, 'goods', '货物名称', 100)}
-            {specField(row, index, 'specification', '规格尺寸', 100)}
-            {specField(row, index, 'material', '材质', 100)}
-            {specField(row, index, 'unit', '单位', 20)}
-            {specField(row, index, 'price', '单价', 30)}
-            <View className={styles.specField}><Text>类别</Text><View className={styles.categoryChoices}>{(['纸箱', '纸板', '其他'] as const).map(category => <Button key={category}
-              aria-pressed={row.category === category} disabled={saving || !writable || row.source === 'dimension'}
-              onClick={() => updateSpec(index, 'category', category)}>{category}</Button>)}</View></View>
-          </View>
-          {row.source === 'dimension' && <Text className={styles.hint}>来自旧尺寸库，可在纸箱入库中直接选用；新增同规格客户规格可覆盖报价。</Text>}
-        </View>)}
-      </View>
-      {id ? <Text className={styles.hint}>{supplier ? '当前应付' : '当前应收'}：{formatMoney(Number(balance))}，请通过结算登记变动。</Text> : <View className={styles.field}><Text>{supplier ? '期初应付（元）' : '期初欠款（元）'}</Text><Input aria-label={supplier ? '期初应付' : '期初欠款'} type='digit' value={balance} disabled={saving || !writable || undefined} onInput={event => setBalance(sanitizeNonNegativeMoneyInput(event.detail.value))} /></View>}
-    </View>}
-    {!writable && <Text className={styles.hint}>当前账号仅可查看资料</Text>}
-    {error && <View className={styles.error} role='alert'><Text>{error}</Text>{recoverableError && <Button disabled={saving} onClick={() => { setError(''); setRecoverableError(false); setRetry(value => value + 1); }}>重新读取</Button>}</View>}
-    <View className={styles.actions}><Button disabled={saving} onClick={onClose}>取消</Button><Button className={styles.primary} disabled={loading || !!loadError || saving || !writable} onClick={() => void save()}>{saving ? '保存中…' : '保存' + label}</Button></View>
-  </View></View>;
+  </DemoField>;
+  const retryLoad = () => { setError(''); setRecoverableError(false); setRetry(value => value + 1); };
+  return <DemoSheet title={id ? `编辑${label}资料` : `新增${label}`} onClose={onClose} busy={saving} testId='customer-editor'>
+    <p>{label}资料保存后，开单、送货和{supplier ? '付款' : '收款'}时直接复用。</p>
+    {loading && <p role='status'>正在读取{label}资料…</p>}
+    {loadError && <div className='demo-error' role='alert'>{loadError}<button type='button' className='demo-action' onClick={retryLoad}>重新读取</button></div>}
+    {!loading && !loadError && <>
+      {field('name', `${label}名称（必填）`, 50)}
+      {!id && lockName && initialName.trim().length > 50 && <div className='demo-error' role='alert'>现有规格名称超过50字，请核对名称后再建立账户。</div>}
+      {field('contact', '联系人', 50)}{field('phone', '手机号码', 20)}{field('address', '送货地址', 200)}
+      <DemoField label='业务备注'><textarea aria-label='备注' value={profile.remark} maxLength={500} disabled={saving || !writable} onChange={event => setProfile(value => ({ ...value, remark: event.target.value }))} /></DemoField>
+      <details className='demo-more'><summary>常用货物{specRows.length ? ` · ${specRows.length} 种` : ''}</summary>
+        <div className='demo-row'><button type='button' className='demo-action' aria-label={specsOpen ? '收起客户规格' : '展开客户规格'} onClick={() => setSpecsOpen(open => !open)}>{specsOpen ? '收起' : '展开'}</button><button type='button' className='demo-action' aria-label='添加客户规格' disabled={saving || !writable || specRows.length >= MAX_CUSTOMER_SPECS} onClick={addSpec}>添加货物</button></div>
+        {specsOpen && specRows.map((row, index) => <article className='demo-card' data-testid={`customer-spec-editor-${index + 1}`} key={row.id}>
+          <DemoDetail label={`规格 ${index + 1}`}><button type='button' className='demo-action' aria-label={`删除客户规格 ${index + 1}`} disabled={saving || !writable} onClick={() => removeSpec(index)}>删除</button></DemoDetail>
+          {specField(row, index, 'goods', '货物名称', 100)}{specField(row, index, 'specification', '规格尺寸', 100)}{specField(row, index, 'material', '材质', 100)}
+          <div className='demo-two'>{specField(row, index, 'unit', '单位', 20)}{specField(row, index, 'price', '单价', 30)}</div>
+          <DemoField label='类别'><select aria-label={`规格 ${index + 1} 类别`} value={row.category} disabled={saving || !writable || row.source === 'dimension'} onChange={event => updateSpec(index, 'category', event.target.value as SpecDraft['category'])}>{['纸箱', '纸板', '其他'].map(category => <option key={category}>{category}</option>)}</select></DemoField>
+        </article>)}
+      </details>
+      <details className='demo-more'><summary>{supplier ? '应付账款' : '应收账款'}</summary>{id ? <DemoDetail label={supplier ? '当前应付' : '当前应收'}>{formatMoney(Number(balance))}</DemoDetail> : <DemoField label={supplier ? '期初应付（元）' : '期初欠款（元）'}><input aria-label={supplier ? '期初应付' : '期初欠款'} type='number' value={balance} disabled={saving || !writable} onChange={event => setBalance(sanitizeNonNegativeMoneyInput(event.target.value))} /></DemoField>}</details>
+    </>}
+    {!writable && <p>当前账号仅可查看资料</p>}
+    {error && <div className='demo-error' role='alert'>{error}{recoverableError && <button type='button' className='demo-action' disabled={saving} onClick={retryLoad}>重新读取</button>}</div>}
+    <button type='button' className='demo-primary' disabled={loading || !!loadError || saving || !writable} onClick={() => void save()}>{saving ? '保存中…' : `保存${label}资料`}</button>
+  </DemoSheet>;
 }
+
 type SpecField = 'goods' | 'specification' | 'material' | 'unit' | 'price';
 type SpecDraft = { id: string; goods: string; specification: string; material: string; unit: string; price: string; category: '纸箱' | '纸板' | '其他'; source: 'account' | 'dimension'; record?: CustomerSpec };
 class EditorRecoveryError extends Error {}

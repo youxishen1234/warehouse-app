@@ -26,7 +26,7 @@ const {
   preserveDimensionGrouping,
   shouldPreserveDimensionGrouping,
   specificationFromDimensions,
-} = loadTypeScript('src/components/BusinessForms/PaperboardReceipt/specification-input.ts');
+} = loadTypeScript('src/features/board-inbound/specification-input.ts');
 const { formatSpecificationInput } = loadTypeScript('src/pages/print-center/specification-input.ts');
 
 test('board input inserts two-digit separators for two and three dimensions', () => {

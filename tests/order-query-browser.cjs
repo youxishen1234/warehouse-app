@@ -36,7 +36,7 @@ async function main() {
     page = await context.newPage();
     page.setDefaultTimeout(15000);
     page.on('pageerror', error => pageErrors.push(error.message));
-    await page.goto(base + '/pages/management/index?section=orders');
+    await page.goto(base + '/pages/customer-orders/index');
     const visible = text => page.getByText(text, { exact: true }).filter({ visible: true });
     const input = text => page.locator(`input[placeholder="${text}"]:visible`);
     for (const [index, status] of statuses.entries()) {

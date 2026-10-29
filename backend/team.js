@@ -249,7 +249,7 @@ function install(db, options = {}) {
       : customerNote ? '运费（单独记录，不计入客户应收）' : '运费（单独记录，不计入货款应付）';
     const amountLabel = productionNote ? '入库金额' : '货款金额';
     const totalLabel = productionNote ? '入库金额合计' : '货款合计';
-    const rows = [['状态', note.voided_at ? '已作废' : '已入库'], ['日期', note.date],
+    const rows = [['状态', note.voided_at ? '已作废' : '已入库'], ['日期', note.date], ...(note.entered_at ? [['入库日期时间', note.entered_at.replace('T', ' ')]] : []), ...(note.location ? [['库位', note.location]] : []), ...(note.source_type === 'carton_purchase' && note.customer_id != null ? [['关联客户', note.customer_name || '']] : []),
       [productionNote ? '生产单号' : '工单编号/采购单号', note.work_order_no],
       [productionNote ? '入库来源' : partyLabel, productionNote ? '自产成品入库' : partyName || ''],
       ...(productionNote && note.customer_id != null

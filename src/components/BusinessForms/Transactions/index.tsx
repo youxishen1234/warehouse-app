@@ -1,6 +1,7 @@
+/* eslint-disable react/forbid-elements */
 import { useSharedRefresh } from '@/services/shared-refresh';
 import React, { useState, useCallback, useMemo, useRef } from 'react';
-import { View, Text, ScrollView, Picker, Switch, Input } from '@tarojs/components';
+import { DemoPage, DemoSheet, DemoField, DemoDetail } from '@/components/DemoUI';
 import Taro, { useRouter } from '@tarojs/taro';
 import { deleteTransaction, getCustomers, getSuppliers, getTransactions, updateTransaction } from '@/services/api';
 import { loadProducts } from '@/services/product-store';
@@ -8,9 +9,7 @@ import { downloadCsv } from '@/services/download';
 import { getCopy } from '@/services/copy';
 import { formatMoney, formatShortTime } from '@/utils/format';
 import type { Transaction, Product, Customer, Supplier } from '@/types';
-import styles from '@/components/BusinessForms/Transactions/index.module.scss';
 import { useRemoteData } from '@/hooks/useRemoteData';
-import BusinessHeader from '@/components/BusinessHeader';
 
 type RecordListRowProps = {
   transaction: Transaction;
@@ -23,51 +22,13 @@ type RecordListRowProps = {
 // controls and product lookups from re-rendering every unchanged record.
 const RecordListRow = React.memo(function RecordListRow({ transaction: t, productLabel, onEdit, onDelete }: RecordListRowProps) {
   const editable = !t.voided_at && (t.type === 'in' || t.type === 'out') && !t.delivery_note_id && !t.production_id && !t.order_id;
-  return (
-    <View className={styles.listItem}>
-      <View className={styles.itemTop}>
-        <View className={styles.titleWrap}>
-          <Text className={styles.itemName}>{productLabel}</Text>
-          {!!t.voided_at && <Text className={styles.tagOut}>已作废 · 不计库存及金额</Text>}
-          {(t.customer_name || t.supplier_name) && (
-            <Text className={styles.customerName}>
-              {t.customer_name || t.supplier_name}
-              {(t.customer_name ? t.customer_current_name && t.customer_current_name !== t.customer_name : t.supplier_current_name && t.supplier_current_name !== t.supplier_name)
-                ? `（${getCopy('currentPartyName')}：${t.customer_name ? t.customer_current_name : t.supplier_current_name}）` : ''}
-            </Text>
-          )}
-        </View>
-        {t.type === 'in'
-          ? <Text className={styles.tagIn}>入库</Text>
-          : t.type === 'adjustment' ? <Text className={styles.tagIn}>盘点</Text> : <Text className={styles.tagOut}>出库</Text>}
-      </View>
-
-      <View className={styles.metaBlock}>
-        <Text className={styles.itemTime}>{formatShortTime(t.created_at)}</Text>
-        <Text className={styles.itemRemark}>
-          {t.operator || t.remark
-            ? `${t.operator ? `操作人：${t.operator}` : ''}${t.operator && t.remark ? ' · ' : ''}${t.remark ? `备注：${t.remark}` : ''}`
-            : '暂无备注'}
-        </Text>
-        <Text className={styles.itemRemark}>规格：{t.specification || '无'} · 材质：{t.material || '无'} · {t.unit || ''} · 单价 {formatMoney(t.unit_price || 0)} · 金额 {formatMoney(t.amount || 0)}</Text>
-      </View>
-
-      <View className={styles.itemBottom}>
-        <Text className={styles.itemQtyLabel}>数量</Text>
-        <View className={styles.itemBottomRight}>
-          <Text className={styles.itemQty} style={{ color: t.type === 'out' ? '#dc2626' : '#16a34a' }}>
-            {t.type === 'adjustment' ? `${Number(t.adjustment) >= 0 ? '+' : ''}${t.adjustment ?? t.quantity}` : `${t.type === 'out' ? '-' : '+'}${t.quantity}`}{t.unit}
-          </Text>
-          {editable && (
-            <View className={styles.rowActions}>
-              <Text className={styles.rowEdit} onClick={() => onEdit(t)}>编辑</Text>
-              <Text className={styles.rowDelete} onClick={() => onDelete(t)}>删除</Text>
-            </View>
-          )}
-        </View>
-      </View>
-    </View>
-  );
+  return <article className='demo-card'><div className='demo-row'><h3>{productLabel}</h3><span className='demo-badge'>{t.voided_at ? '已作废' : t.type === 'in' ? '入库' : t.type === 'out' ? '出库' : '盘点'}</span></div>
+    <p>{t.customer_name || t.supplier_name}{(t.customer_current_name || t.supplier_current_name) && ` · ${getCopy('currentPartyName')}：${t.customer_current_name || t.supplier_current_name}`}</p>
+    <div className='demo-goods'><span>{[t.specification, t.material].filter(Boolean).join(' · ')}</span><strong>{t.type === 'out' ? '−' : '+'}{t.type === 'adjustment' ? t.adjustment ?? t.quantity : t.quantity} {t.unit}</strong></div>
+    <DemoDetail label='单价 / 金额'>{formatMoney(t.unit_price || 0)} / {formatMoney(t.amount || 0)}</DemoDetail>
+    <div className='demo-card-foot'><span>{formatShortTime(t.created_at)}</span>{editable && <div className='demo-row'><button type='button' className='demo-action' onClick={() => onEdit(t)}>编辑</button><button type='button' className='demo-action' onClick={() => onDelete(t)}>删除</button></div>}</div>
+    {(t.operator || t.remark) && <p>{[t.operator, t.remark].filter(Boolean).join(' · ')}</p>}
+  </article>;
 });
 
 const RecordsPage: React.FC = () => {
@@ -217,98 +178,20 @@ const RecordsPage: React.FC = () => {
     } catch (error) { Taro.showToast({ title: error?.message || '导出失败', icon: 'none' }); }
   };
 
-  return (
-    <View className={styles.page}>
-    <ScrollView scrollY className={styles.container} onRefresherRefresh={load} refresherEnabled refresherTriggered={false}>
-      <BusinessHeader title='出入库单据' />
-      <View className={styles.filterBox}>
-        <View className={styles.exportBtn} onClick={exportCsv}>导出 CSV</View>
-        <Picker mode="selector" range={types} value={typeIndex} onChange={e => {
-          const idx = Number(e.detail.value);
-          setTypeIndex(idx);
-          setType(idx === 0 ? '' : idx === 1 ? 'in' : 'out');
-        }}>
-          <View className={styles.filterSelect}>{types[typeIndex]}</View>
-        </Picker>
-        <Picker mode="date" value={fromDate} onChange={e=>setFromDate(e.detail.value)}><View className={styles.datePicker}>{fromDate || '开始日期'}</View></Picker>
-        <Picker mode="date" value={toDate} onChange={e=>setToDate(e.detail.value)}><View className={styles.datePicker}>{toDate || '结束日期'}</View></Picker>
-        <View><Text>显示作废历史</Text><Switch checked={includeVoided} onChange={e => setIncludeVoided(e.detail.value)} /></View>
-      </View>
-
-      {(filterCustomerId || filterSupplierId) && (
-        <View className={styles.customerFilterBar}>
-          <Text className={styles.customerFilterText}>{filterSupplierId ? '当前供应商' : '当前客户'}：{filterCustomerName || `#${filterSupplierId || filterCustomerId}`}</Text>
-          <Text
-            className={styles.customerFilterClear}
-            onClick={() => Taro.redirectTo({ url: '/pages/management/index?section=transactions' })}
-          >
-            清除筛选 ✕
-          </Text>
-        </View>
-      )}
-
-      {loading ? (
-        <View className={styles.empty}>{getCopy('recordsLoading')}</View>
-      ) : loadError ? (
-        <View className={styles.empty} onClick={load}>{loadError}</View>
-      ) : list.length === 0 ? (
-        <View className={styles.empty}>暂无记录</View>
-      ) : (
-        list.map(transaction => <RecordListRow
-          key={transaction.id}
-          transaction={transaction}
-          productLabel={transaction.product_name || productNames.get(transaction.product_id) || '(?????)'}
-          onEdit={openEditor}
-          onDelete={removeRecord}
-        />)
-      )}
-    </ScrollView>
-    {editing && (
-      <View className={styles.sheetMask} onClick={() => { if (!editBusy) setEditing(null); }}>
-        <View className={styles.sheet} role='dialog' aria-modal='true' aria-label='编辑出入库记录' onClick={e => e.stopPropagation()}>
-          <Text className={styles.sheetTitle}>编辑{editing.type === 'in' ? '入库' : '出库'}记录</Text>
-          <View className={styles.fieldRow}>
-            <Text className={styles.fieldLabel}>商品</Text>
-            {products.length > 0 ? (
-              <Picker mode='selector' range={products.map(product => product.name)} value={draft.productIndex}
-                onChange={e => setDraft(previous => ({ ...previous, productIndex: Number(e.detail.value) }))}>
-                <View className={styles.sheetPicker}>{products[draft.productIndex]?.name || '请选择商品'}</View>
-              </Picker>
-            ) : <Text className={styles.staticValue}>{editing.product_name || '原商品'}</Text>}
-          </View>
-          <View className={styles.fieldRow}>
-            <Text className={styles.fieldLabel}>数量</Text>
-            <Input className={styles.sheetInput} type='digit' value={draft.quantity}
-              onInput={e => setDraft(previous => ({ ...previous, quantity: e.detail.value }))} placeholder='必填' />
-          </View>
-          <View className={styles.fieldRow}>
-            <Text className={styles.fieldLabel}>单价</Text>
-            <Input className={styles.sheetInput} type='digit' value={draft.unitPrice}
-              onInput={e => setDraft(previous => ({ ...previous, unitPrice: e.detail.value }))} placeholder='0' />
-          </View>
-          <View className={styles.fieldRow}>
-            <Text className={styles.fieldLabel}>{editing.type === 'in' ? '供应商' : '客户'}</Text>
-            <Picker mode='selector' range={['不关联', ...parties.map(party => party.name)]} value={draft.partyIndex}
-              onChange={e => setDraft(previous => ({ ...previous, partyIndex: Number(e.detail.value) }))}>
-              <View className={styles.sheetPicker}>{draft.partyIndex === 0 ? '不关联' : parties[draft.partyIndex - 1]?.name || '请选择'}</View>
-            </Picker>
-          </View>
-          <View className={styles.fieldRow}>
-            <Text className={styles.fieldLabel}>备注</Text>
-            <Input className={styles.sheetInput} value={draft.remark}
-              onInput={e => setDraft(previous => ({ ...previous, remark: e.detail.value }))} placeholder='选填' />
-          </View>
-          <View className={styles.sheetActions}>
-            <View className={styles.cancelBtn} onClick={() => { if (!editBusy) setEditing(null); }}>取消</View>
-            <View className={`${styles.saveBtn} ${editBusy ? styles.saveBtnBusy : ''}`} onClick={saveEdit}>
-              {editBusy ? '保存中…' : '保存修改'}
-            </View>
-          </View>
-        </View>
-      </View>
-    )}
-    </View>
-  );
+  return <DemoPage title='出入库单据' action={<button type='button' className='demo-action' onClick={() => void exportCsv()}>导出 CSV</button>}>
+    <div className='demo-pills'>{types.map((label, index) => <button type='button' key={label} aria-pressed={typeIndex === index} onClick={() => { setTypeIndex(index); setType(index === 0 ? '' : index === 1 ? 'in' : 'out'); }}>{label}</button>)}</div>
+    <div className='demo-two'><DemoField label='开始日期'><input type='date' aria-label='开始日期' value={fromDate} onChange={event => setFromDate(event.target.value)} /></DemoField><DemoField label='结束日期'><input type='date' aria-label='结束日期' value={toDate} onChange={event => setToDate(event.target.value)} /></DemoField></div>
+    <label className='demo-check'><input type='checkbox' checked={includeVoided} onChange={event => setIncludeVoided(event.target.checked)} />显示作废历史</label>
+    {(filterCustomerId || filterSupplierId) && <div className='demo-note'>{filterSupplierId ? '当前供应商' : '当前客户'}：{filterCustomerName || `#${filterSupplierId || filterCustomerId}`}<button type='button' className='demo-action' onClick={() => void Taro.redirectTo({ url: '/pages/management/index?section=transactions' })}>清除筛选</button></div>}
+    {loading ? <div className='demo-empty'>{getCopy('recordsLoading')}</div> : loadError ? <div className='demo-error' role='alert'>{loadError}<button type='button' className='demo-action' onClick={() => void load()}>重新读取</button></div> : !list.length ? <div className='demo-empty'>暂无记录</div> : list.map(transaction => <RecordListRow key={transaction.id} transaction={transaction} productLabel={transaction.product_name || productNames.get(transaction.product_id) || '货物未记录'} onEdit={openEditor} onDelete={removeRecord} />)}
+    {editing && <DemoSheet title={`编辑${editing.type === 'in' ? '入库' : '出库'}记录`} busy={editBusy} onClose={() => setEditing(null)}>
+      <DemoField label='商品'><select aria-label='商品' value={draft.productIndex} disabled={editBusy} onChange={event => setDraft(previous => ({ ...previous, productIndex: Number(event.target.value) }))}>{products.map((product, index) => <option value={index} key={product.id}>{product.name}</option>)}</select></DemoField>
+      <div className='demo-two'><DemoField label='数量'><input type='number' aria-label='数量' value={draft.quantity} disabled={editBusy} onChange={event => setDraft(previous => ({ ...previous, quantity: event.target.value }))} /></DemoField><DemoField label='单价'><input type='number' aria-label='单价' value={draft.unitPrice} disabled={editBusy} onChange={event => setDraft(previous => ({ ...previous, unitPrice: event.target.value }))} /></DemoField></div>
+      <DemoField label={editing.type === 'in' ? '供应商' : '客户'}><select aria-label='关联对象' value={draft.partyIndex} disabled={editBusy} onChange={event => setDraft(previous => ({ ...previous, partyIndex: Number(event.target.value) }))}><option value={0}>不关联</option>{parties.map((party, index) => <option value={index + 1} key={party.id}>{party.name}</option>)}</select></DemoField>
+      <DemoField label='备注'><input aria-label='备注' value={draft.remark} disabled={editBusy} onChange={event => setDraft(previous => ({ ...previous, remark: event.target.value }))} /></DemoField>
+      <button type='button' className='demo-primary' disabled={editBusy} onClick={() => void saveEdit()}>{editBusy ? '保存中…' : '保存修改'}</button>
+    </DemoSheet>}
+  </DemoPage>;
 };
 
 export default RecordsPage;

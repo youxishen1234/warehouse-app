@@ -7,7 +7,7 @@ const {
   validatedCustomerSpecification,
   customerSpecificationText,
   customerSpecificationDimensions
-} = require('../src/components/BusinessForms/Receipt/customer-pricing');
+} = require('../src/features/carton-inbound/customer-pricing');
 
 const customer = {
   id: 7,

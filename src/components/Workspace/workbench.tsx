@@ -1,5 +1,6 @@
+/* eslint-disable react/forbid-elements */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, Button, Input, Picker } from '@tarojs/components';
+import { View, Text, Button, Input } from '@tarojs/components';
 import Taro, { useDidShow, useRouter } from '@tarojs/taro';
 import Icon, { IconName } from '@/components/Icon';
 import CustomerEditor from '@/components/CustomerEditor';
@@ -22,6 +23,7 @@ import styles from '@/components/Workspace/workbench.module.scss';
 import { dailyRecords, DailyRecord } from '@/components/Workspace/daily-records';
 import { openBusinessPage } from '@/services/business-navigation';
 import StockList from '@/components/Workspace/stock-list';
+import { DemoSheet, DemoField, DemoDetail, closeBusinessSheet } from '@/components/DemoUI';
 
 type Panel = 'home' | 'inbound' | 'stock' | 'records' | 'photos' | 'production' | 'finance' | 'customers' | 'suppliers';
 type WorkbenchProps = {
@@ -38,7 +40,7 @@ const routeFinanceView = (params: Record<string, string | undefined>): FinanceVi
 const normalizedRoutePath = (route: string) => route.replace(/^\/+/, '').split('?')[0];
 const initialPanel = (section?: string, detail?: string, route = ''): Panel => {
   const routePath = normalizedRoutePath(route);
-  if (section === 'production' || section === 'inbound' || section === 'photos') return section;
+  if (section === 'inbound' || section === 'photos') return section;
   return section === 'customers' ? 'customers'
     : section === 'suppliers' ? 'suppliers'
       : section === 'finance' ? 'finance'
@@ -65,7 +67,7 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
   const hasSnapshot = data !== empty;
   const [batchId, setBatchId] = useState(params.batch_id || '');
   const [productId, setProductId] = useState<number | null>(null);
-  const [name, setName] = useState('');
+  const [name] = useState('');
   const [consumed, setConsumed] = useState('');
   const [quantity, setQuantity] = useState('');
   const [remark, setRemark] = useState('');
@@ -136,9 +138,9 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
     if (!/^\d+$/.test(consumed) || !/^\d+$/.test(quantity) || Number(consumed) <= 0 || Number(quantity) <= 0) { setError('填写本次实际领用张数和合格纸箱数'); return; }
     locked.current = true; setBusy(true); setError('');
     try {
-      const record = await completeProduction({ batch_id: batch.id, ...(productId ? { product_id: productId } : { product_name: name }), consumed_quantity: Number(consumed), quantity: Number(quantity), remark });
+      const record = await completeProduction({ batch_id: batch.id, ...(productId ? { product_id: productId } : { product_name: name || `${batch.layers}层${batch.fluteType}楞纸箱` }), consumed_quantity: Number(consumed), quantity: Number(quantity), remark });
       invalidateProducts(); setConsumed(''); setQuantity(''); setRemark(''); await reload();
-      void Taro.showModal({ title: '完工已保存', content: '纸板减少 ' + record.consumed_quantity + ' 张，纸箱增加 ' + record.quantity + ' ' + record.unit + '。规格和存根已一起保存。', showCancel: false });
+      setPanel('home'); void Taro.showToast({ title: `已领用 ${record.consumed_quantity} 张，入库 ${record.quantity} ${record.unit}`, icon: 'success' });
     } catch (e) { setError(e instanceof Error ? e.message : '保存失败，请重试'); }
     finally { locked.current = false; setBusy(false); }
   };
@@ -158,7 +160,8 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
     } catch (e) { setError(e instanceof Error ? e.message : '盘点保存失败，请重试'); }
     finally { locked.current = false; setBusy(false); }
   };
-  const title = { home: '业务总台', inbound: '选择入库方式', stock: '库存管理', records: '业务记录', photos: '票据原件', production: '生产入库', finance: '收付款', customers: '客户管理', suppliers: '供货商管理' }[panel];
+  const displayPanel = panel === 'production' || panel === 'inbound' ? 'home' : panel;
+  const title = { home: '业务总台', inbound: '选择入库方式', stock: '库存管理', records: '业务记录', photos: '票据原件', production: '生产入库', finance: '收付款', customers: '客户管理', suppliers: '供货商管理' }[displayPanel];
   const appName = getCopy('appName');
   const brandCharacter = Array.from(appName.trim())[0] || '曙';
   const today = useMemo(() => dailyRecords(data).slice(0, 3), [data]);
@@ -187,24 +190,24 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
     else if ('ledger' in row.target) openFinance('ledger', row.target.ledger)
     else changePanel('records');
   };
-  const chooseBatch = (id: string) => { setBatchId(id); setProductId(null); setName(''); setError(''); };
+  const chooseBatch = (id: string) => { setBatchId(id); setError(''); };
   const salesSteps = [
-    { title: '客户下单', fn: () => open('/pages/management/index?section=orders&create=1') },
+    { title: '客户下单', fn: () => open('/pages/customer-orders/index?create=1') },
     { title: '检查库存', fn: () => changePanel('stock') },
     { title: '客户出库', fn: () => open('/pages/management/index?section=shipment') },
     { title: '对账收款', fn: () => openFinance('customer') }
   ];
   const stockSteps = [
     { title: '采购纸板', fn: () => open('/pages/management/index?section=suppliers') },
-    { title: '纸板入库', fn: () => open('/pages/management/index?section=paperboard-receipt') },
-    { title: '领纸板生产', fn: () => changePanel('production') },
-    { title: '成品入库', fn: () => changePanel('production') }
+    { title: '纸板入库', fn: () => open('/pages/board-inbound/index') },
+    { title: '领纸板生产', fn: () => open('/pages/production-inbound/index') },
+    { title: '成品入库', fn: () => open('/pages/production-inbound/index') }
   ];
   const nextOrders = data.orders.filter(order => !['已完成', '已取消', '已发货'].includes(order.status)).slice(0, 3);
   return <View className={styles.page} data-ui-version='web-workbench-v2' data-layout='demo-layout-v1' data-panel={panel} data-testid='simple-workbench' data-tab-route={embedded ? undefined : panel === 'stock' ? '/pages/inventory/index' : '/pages/home/index'}><View className={styles.surface}>
     <View className={styles.masthead}>
       <View className={styles.header}><View className={styles.heading}>
-        {panel === 'home' ? <View className={styles.brand} aria-label={`${appName}标识`} data-testid='workbench-brand'><Text className={styles.brandCharacter}>{brandCharacter}</Text></View> : <Button aria-label='返回总台' className={styles.back} onClick={panel === 'customers' || panel === 'suppliers' ? leaveCustomerCenter : () => changePanel('home')}>‹</Button>}
+        {displayPanel === 'home' ? <View className={styles.brand} aria-label={`${appName}标识`} data-testid='workbench-brand'><Text className={styles.brandCharacter}>{brandCharacter}</Text></View> : <Button aria-label='返回总台' className={styles.back} onClick={panel === 'customers' || panel === 'suppliers' ? leaveCustomerCenter : () => changePanel('home')}>‹</Button>}
         <View className={styles.headingText}><Text className={styles.brandName}>{appName}</Text><Text className={styles.title}>{title}</Text></View>
       </View><Button className={styles.refresh} aria-label='刷新服务器数据' disabled={remote.loading} onClick={refresh}>↻</Button></View>
       <View className={styles.status}><Text>{now.getMonth() + 1}月{now.getDate()}日 · 周{'日一二三四五六'[now.getDay()]}</Text><Text data-testid='workbench-sync-status' className={remote.loadError ? styles.syncError : styles.synced}>{remote.loading ? hasSnapshot ? '同步中 · 当前数据仍可查看' : '同步中' : remote.loadError ? '同步未完成 · 当前显示上次成功数据' : lastSyncedAt ? '● 已同步' : ''}</Text></View>
@@ -219,7 +222,7 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
     {/* Retain the last successful snapshot during refreshes and failures.
         This also keeps finance details and unsaved photo drafts mounted. */}
     {(hasSnapshot || panel === 'home' || panel === 'finance' || panel === 'customers' || panel === 'suppliers') && <View>
-      {panel === 'home' && <View className={styles.home}>
+      {displayPanel === 'home' && <View className={styles.home}>
         <View data-testid='workbench-tasks'>
           {taskState.error && partialError(taskState.error, () => void reload())}
           {tasks.length > 0 && <View className={styles.attention}><Text>!</Text><strong>{tasks.length} 项业务待处理</strong><Button onClick={() => openTask(tasks[0])}>去处理 ›</Button></View>}
@@ -231,13 +234,13 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
           <View className={styles.flowHeading}><View><Text className={styles.eyebrow}>{business === 'sales' ? 'SALES WORKFLOW' : 'STOCK WORKFLOW'}</Text><Text className={styles.sectionTitle}>{business === 'sales' ? '从客户开单开始' : '先备货，随时接单'}</Text></View><Text className={styles.sectionHint}>{business === 'sales' ? '资料只填一次' : '无需客户订单'}</Text></View>
           <View className={styles.flowSteps}>{(business === 'sales' ? salesSteps : stockSteps).map((step, index) => <Button key={step.title} className={styles.flowStep} onClick={step.fn}><Text className={styles.flowNumber}>{index + 1}</Text><Text>{step.title}</Text></Button>)}</View>
           <View className={styles.flowNote}>{business === 'sales' ? '库存够直接发货 · 缺货安排生产，完工后继续原单' : '生产入库一次办理：扣纸板 ＋ 增成品'}</View>
-          <View className={styles.flowActions}>{business === 'sales' ? action('＋ 客户开单', salesSteps[0].fn, true) : <>{action('＋ 纸板入库', stockSteps[1].fn)}{action('＋ 生产入库', stockSteps[2].fn, true)}{action('＋ 纸箱入库', () => open('/pages/management/index?section=receipt&kind=carton'))}</>}</View>
+          <View className={styles.flowActions}>{business === 'sales' ? action('＋ 客户开单', salesSteps[0].fn, true) : <>{action('＋ 纸板入库', stockSteps[1].fn)}{action('＋ 生产入库', stockSteps[2].fn, true)}{action('＋ 纸箱入库', () => open('/pages/carton-inbound/index'))}</>}</View>
         </View>
-        <View className={styles.recentHeading}><Text className={styles.sectionTitle}>{business === 'sales' ? '接下来要做' : '备货提醒'}</Text><Button className={styles.textAction} onClick={() => business === 'sales' ? open('/pages/management/index?section=orders') : openStockWarnings()}>{business === 'sales' ? '全部订单' : '库存预警'}<Icon name='chevron' color='#2469ee' style={{ width: 14, height: 14 }} /></Button></View>
+        <View className={styles.recentHeading}><Text className={styles.sectionTitle}>{business === 'sales' ? '接下来要做' : '备货提醒'}</Text><Button className={styles.textAction} onClick={() => business === 'sales' ? open('/pages/customer-orders/index') : openStockWarnings()}>{business === 'sales' ? '全部订单' : '库存预警'}<Icon name='chevron' color='#2469ee' style={{ width: 14, height: 14 }} /></Button></View>
         {business === 'sales' ? <View data-testid='workbench-next-orders'>{nextOrders.map(order => <View className={styles.nextOrder} key={order.id}>
           <View className={styles.orderHeading}><View className={styles.avatar}>{Array.from(order.customer_name || '客')[0]}</View><View className={styles.orderIdentity}><strong>{order.customer_name}</strong><Text>{order.order_no}</Text></View><Text className={styles.orderBadge}>{order.status}</Text></View>
           <View className={styles.orderGoods}><Text>{order.specification}</Text><Text>{order.quantity} {order.unit}</Text></View>
-          <View className={styles.orderNext}><Text>{order.delivery_date || '未设交期'} · {formatMoney(order.amount)}</Text>{action(order.status === '待发货' ? '核对出库' : '查看订单', () => { if (order.status === '待发货') { Taro.setStorageSync('sg_outbound_order', order.id); open('/pages/management/index?section=shipment'); } else open('/pages/management/index?section=orders'); })}</View>
+          <View className={styles.orderNext}><Text>{order.delivery_date || '未设交期'} · {formatMoney(order.amount)}</Text>{action(order.status === '待发货' ? '核对出库' : '查看订单', () => { if (order.status === '待发货') { Taro.setStorageSync('sg_outbound_order', order.id); open('/pages/management/index?section=shipment'); } else open('/pages/customer-orders/index'); })}</View>
         </View>)}{!nextOrders.length && !remote.sources.orders.loading && <View className={styles.sectionHint}>暂无待处理订单</View>}</View> : <View>{data.products.filter(isStockWarning).slice(0, 3).map(product => <View className={styles.nextOrder} key={product.id}><View className={styles.orderHeading}><strong>{product.name}</strong><Text className={styles.orderBadge}>待补货</Text></View><Text className={styles.orderSpec}>{product.specification} · 现存 {product.stock} {product.unit}</Text><View className={styles.orderNext}><Text>安全库存 {product.safety_stock} {product.unit}</Text>{action('安排生产', () => { setProductId(product.id); changePanel('production'); })}</View></View>)}{!data.products.some(isStockWarning) && <View className={styles.sectionHint}>当前暂无库存预警</View>}</View>}
         <View className={styles.homeHeading}><Text className={styles.sectionTitle}>经营一眼看清</Text><Text className={styles.sectionHint}>与业务同步更新</Text></View>
         <View className={styles.summary} data-testid='workbench-summary'>
@@ -271,7 +274,7 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
         inactiveCustomerNames={data.customerDimensions.inactiveCustomerNames || []}
         onEditParty={(type, id, initialName) => setEditor({ id, supplier: type !== 'customer', initialName, lockName: Boolean(initialName) })}
         onViewBills={openCustomerBills}
-        onOpenOrders={id => open('/pages/management/index?section=orders&create=1' + (id ? '&customer_id=' + id : ''))}
+        onOpenOrders={(id, specId) => open('/pages/customer-orders/index?create=1' + (id ? '&customer_id=' + id : '') + (specId ? '&spec_id=' + encodeURIComponent(specId) : ''))}
         onSpecsSaved={() => reload()}
       />}
       {panel === 'customers' && !hasSnapshot && !remote.loading && <View className={styles.empty}>客户资料暂不可用</View>}
@@ -281,20 +284,30 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
         onViewBills={id => { setFinancePartyId(id); setFinanceEntryId(undefined); setFinanceView('supplier'); changePanel('finance'); }}
         onSpecsSaved={() => reload()}
       />}
-      {panel === 'inbound' && <View><Text className={styles.sectionTitle}>这次入库的是什么？</Text><View className={styles.choices}>{[
-        { title: '纸板入库', note: '采购原料到货 · 增纸板库存，记供货商应付', path: '/pages/management/index?section=paperboard-receipt' },
-        { title: '纸箱入库', note: '补录自产成品 · 已登记生产完工的同批货不再录', path: '/pages/management/index?section=receipt&kind=carton' }
-      ].map(item => <Button key={item.title} className={styles.choice} onClick={() => open(item.path)}><Icon name='package-plus' color='#1677ff' strokeWidth={1.5} style={{ width: 24, height: 24 }} /><View><strong>{item.title}</strong><Text>{item.note}</Text></View><Icon name='chevron' color='#94a3b8' style={{ width: 16, height: 16 }} /></Button>)}</View><Text className={styles.note}>正常生产请点“生产纸箱并入库”：同时扣纸板、增纸箱，不需要先有客户订单；同批纸箱只入库一次。</Text><View className={styles.tools}>{action('生产纸箱并入库', () => changePanel('production'), true)}{action('查看已有库存', () => changePanel('stock'))}{action('供货商 / 付款', () => openFinance('supplier'))}</View></View>}
+      {panel === 'inbound' && <DemoSheet title='选择入库方式' onClose={() => changePanel('stock')}>
+        <p>已有规格直接复用，也可以自定义新纸板规格。</p>
+        <button type='button' className='demo-primary' onClick={() => open('/pages/board-inbound/index')}>＋ 自定义纸板入库</button>
+        <button type='button' className='demo-primary demo-secondary' onClick={() => open('/pages/carton-inbound/index?kind=purchase')}>选择已有货物入库</button>
+        <button type='button' className='demo-primary' onClick={() => open('/pages/carton-inbound/index')}>＋ 纸箱入库</button>
+      </DemoSheet>}
       {panel === 'stock' && <View>
         {stockWarningsOnly && <View className={styles.filterNotice}><Text>库存预警 · 全部商品</Text><Button className={styles.textAction} onClick={() => setStockWarningsOnly(false)}>清除筛选</Button></View>}
         <View className={styles.stockSummary}><View><Text>纸板原料</Text><strong>{hasSnapshot ? data.boards.reduce((sum, b) => sum + b.remainingQty, 0).toLocaleString() : '—'}<small>张</small></strong><Text>{hasSnapshot ? `${data.boards.length} 个批次` : ''}</Text></View><View><Text>纸箱成品</Text><strong>{hasSnapshot ? cartonProducts.reduce((sum, p) => sum + p.stock, 0).toLocaleString() : '—'}<small>个</small></strong><Text>{hasSnapshot ? `${cartonProducts.length} 种规格` : ''}</Text></View></View>
         <View className={styles.stockHeading}><Text className={styles.sectionHint}>原料与成品</Text>{action('入库', () => changePanel('inbound'))}</View>
         <Input className={styles.input} placeholder='搜索尺寸、货名、客户或供货商' aria-label='搜索库存' value={query} onInput={e => setQuery(e.detail.value)} />
         <View className={styles.segment}>{(['all', 'board', 'carton'] as const).map(k => <Button key={k} aria-pressed={kind === k && !stockWarningsOnly} className={kind === k && !stockWarningsOnly ? styles.selected : styles.button} onClick={() => { setKind(k); setStockWarningsOnly(false); }}>{k === 'all' ? '全部库存' : k === 'board' ? '纸板' : '纸箱'}</Button>)}<Button aria-pressed={stockWarningsOnly} className={stockWarningsOnly ? styles.selected : styles.button} onClick={openStockWarnings}>库存预警</Button></View>
-        <StockList kind={kind} boards={visibleBoards} cartons={visibleCartons} transactions={data.transactions} onProduce={id => { chooseBatch(id); changePanel('production'); }} onStocktake={openStocktake} onInbound={product => { Taro.setStorageSync('sg_transit', { product_id: product.id }); open('/pages/management/index?section=receipt&kind=carton'); }} />
+        <StockList kind={kind} boards={visibleBoards} cartons={visibleCartons} transactions={data.transactions} onProduce={id => { chooseBatch(id); changePanel('production'); }} onStocktake={openStocktake} onInbound={product => { Taro.setStorageSync('sg_transit', { product_id: product.id }); open('/pages/carton-inbound/index'); }} />
         {!visibleStockCount && <View className={styles.empty} data-testid='workbench-stock-empty'><Text>{stockCount ? '没有找到匹配库存' : `还没有${kind === 'board' ? '纸板' : '纸箱'}库存记录`}</Text>{stockCount > 0 && action('清空搜索', () => setQuery(''))}</View>}
       </View>}
-      {panel === 'production' && <View className={styles.form}><Text className={styles.note} data-testid='production-stock-guide'>先采购纸板并入库，再在这里登记生产：扣减实际领用纸板，同时增加完工纸箱库存。无需客户或订单，后续客户下单再出库；同批纸箱不必再登记入库。</Text><Text className={styles.label}>领用哪批纸板</Text><Picker range={['请选择纸板批次', ...data.boards.map(b => boardSpec(b) + ' cm · ' + b.supplier + ' · 余 ' + b.remainingQty + ' 张')]} value={data.boards.findIndex(b => b.id === batchId) + 1} onChange={e => chooseBatch(data.boards[Number(e.detail.value) - 1]?.id || '')}><View className={styles.input}>{batch ? boardSpec(batch) + ' cm · ' + batch.supplier : '选择纸板批次 ›'}</View></Picker>{batch && <View className={styles.spec} data-testid='production-spec'><strong>纸板 {boardSpec(batch)} cm</strong><Text>成箱 {cartonSpec(batch)} cm · {batch.layers}层 {batch.fluteType}楞</Text><Text>当前可领用 {batch.remainingQty} 张</Text></View>}<Text className={styles.label}>入库纸箱商品</Text><Picker range={['新建纸箱（规格自动带入）', ...data.products.filter(cartonProduct).map(p => p.name + ' · ' + p.specification)]} value={data.products.filter(cartonProduct).findIndex(p => p.id === productId) + 1} onChange={e => setProductId(data.products.filter(cartonProduct)[Number(e.detail.value) - 1]?.id || null)}><View className={styles.input}>{data.products.find(p => p.id === productId)?.name || '新建纸箱（规格自动带入）'} ›</View></Picker>{!productId && <Input aria-label='纸箱名称' className={styles.input} placeholder='纸箱名称' value={name} onInput={e => setName(e.detail.value)} />}<View className={styles.twoFields}><View><Text className={styles.label}>领用纸板（张）</Text><Input aria-label='领用纸板数' className={styles.input} type='number' value={consumed} onInput={e => setConsumed(e.detail.value)} /></View><View><Text className={styles.label}>合格纸箱（个 / 只 / 件）</Text><Input aria-label='合格纸箱数' className={styles.input} type='number' value={quantity} onInput={e => setQuantity(e.detail.value)} /></View></View><Input aria-label='生产备注' className={styles.input} placeholder='备注（选填）' value={remark} onInput={e => setRemark(e.detail.value)} /><Text className={styles.note}>按实际用量填写，不默认一张纸板等于一个纸箱。</Text>{error && <View role='alert' className={styles.error}>{error}</View>}{action(busy ? '保存中…' : '确认完工 · 扣纸板并入纸箱', () => void submitProduction(), true)}</View>}
+      {panel === 'production' && <DemoSheet title='生产入库' busy={busy} onClose={() => initial === 'production' ? closeBusinessSheet() : changePanel('home')} testId='production-receipt-sheet'>
+        <p data-testid='production-stock-guide'>选择常用规格直接备货，无需客户订单。实际用料和成品数量请核对。</p>
+        <DemoField label='成品规格'><select aria-label='入库纸箱商品' disabled={busy} value={productId || ''} onChange={event => setProductId(Number(event.target.value) || null)}><option value=''>{batch ? `纸箱 · ${cartonSpec(batch)} cm` : '选择成品规格'}</option>{data.products.filter(cartonProduct).map(product => <option key={product.id} value={product.id}>{product.name} · {product.specification}</option>)}</select></DemoField>
+        <DemoField label='领用纸板批次'><select aria-label='领用哪批纸板' disabled={busy} value={batchId} onChange={event => chooseBatch(event.target.value)}><option value=''>选择纸板批次</option>{data.boards.filter(board => board.remainingQty > 0).map(board => <option key={board.id} value={board.id}>{board.supplier || '未关联供货商'} · {boardSpec(board)} cm · 余 {board.remainingQty} 张</option>)}</select></DemoField>
+        <div className='demo-two'><DemoField label='实际领用（张）'><input type='number' min='1' step='1' aria-label='领用纸板数' value={consumed} disabled={busy} placeholder='填写实领张数' onChange={event => setConsumed(event.target.value)} /></DemoField><DemoField label='合格成品（个）'><input type='number' min='1' step='1' aria-label='合格纸箱数' value={quantity} disabled={busy} placeholder='填写合格数量' onChange={event => setQuantity(event.target.value)} /></DemoField></div>
+
+        {error && <div role='alert' className='demo-error'>{error}</div>}
+        <button type='button' className='demo-primary' disabled={busy} onClick={() => void submitProduction()}>{busy ? '正在保存…' : '确认完工 · 扣纸板并入成品'}</button>
+      </DemoSheet>}
       {panel === 'finance' && <FinanceCenter
         initialView={financeView}
         partyType={params.party_type === 'customer' || params.party_type === 'supplier' ? params.party_type : undefined}
@@ -322,16 +335,23 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
       {panel === 'photos' && <View><Text className={styles.note}>原件照片按业务账单保存；选择一笔账单，可上传送货单、签收单或付款凭证。</Text>{activeLedger.map(l => <Button className={styles.photoRow} key={l.id} onClick={() => openFinance('ledger', l.id)}><strong>{l.party_name || l.remark}</strong><Text>{formatTime(l.created_at)} · {formatMoney(l.amount)}</Text><Text>{l.attachments?.length ? l.attachments.length + ' 张原件照片' : '上传原件照片 ›'}</Text></Button>)}{!activeLedger.length && <Text className={styles.empty}>入库或出库保存后，账单会出现在这里。</Text>}</View>}
     </View>}
     </View>
-    {moreOpen && <View className={styles.overlay}><View className={styles.dialog} role='dialog' aria-modal='true' aria-label='更多业务'><View className={styles.dialogHeading}><strong>更多</strong><Button aria-label='关闭更多业务' onClick={() => setMoreOpen(false)}>×</Button></View><View className={styles.moreMenu}>{[
+    {moreOpen && <DemoSheet title='更多' onClose={() => setMoreOpen(false)}><div className='demo-menu'>{[
       { title: '业务记录', fn: () => changePanel('records') },
-      { title: '客户订单', fn: () => open('/pages/management/index?section=orders') },
+      { title: '客户订单', fn: () => open('/pages/customer-orders/index') },
       { title: '客户出库', fn: () => open('/pages/management/index?section=shipment') },
       { title: '扫码查库存', fn: () => open('/pages/management/index?section=stock-scanner') },
       { title: '商品资料', fn: () => open('/pages/management/index?section=goods') },
       { title: '纸箱计算器', fn: () => open('/pages/management/index?section=dimensions') },
       { title: '票据原件', fn: () => changePanel('photos') }
-    ].map(item => <Button key={item.title} onClick={() => { setMoreOpen(false); item.fn(); }}>{item.title}<Icon name='chevron' color='#b2bfd0' style={{ width: 15, height: 15 }} /></Button>)}</View></View></View>}
-    {stocktake && <View className={styles.overlay}><View className={styles.dialog} role='dialog' aria-label='库存盘点'><strong>{stocktake.product.name}</strong><View className={styles.stocktakeSummary}><Text>{stocktake.product.specification || '规格未填写'}</Text><Text>当前 {stocktake.product.stock} {stocktake.product.unit}</Text></View><Text className={styles.label}>新库存</Text><Input aria-label='实盘库存' className={styles.input} type='digit' placeholder='填写实际盘点数量' value={stocktakeValue} onInput={e => setStocktakeValue(e.detail.value)} /><Text className={styles.label}>盘点日期</Text><Picker mode='date' end={currentDate()} value={stocktakeDate} onChange={e => setStocktakeDate(e.detail.value)}><View aria-label='盘点日期' className={styles.input}>{stocktakeDate || '请选择日期'}</View></Picker><Input aria-label='盘点备注' className={styles.input} placeholder='备注（选填，如盘亏原因）' value={stocktakeRemark} onInput={e => setStocktakeRemark(e.detail.value)} />{stocktakeValue.trim() && /^\d+(?:\.\d{1,6})?$/.test(stocktakeValue.trim()) && <Text className={styles.note}>调整后库存 {stocktakeValue.trim()} {stocktake.product.unit}，盘点流水会同步保存。</Text>}{error && <View role='alert' className={styles.error}>{error}</View>}<View className={styles.tools}>{action('取消', () => { setStocktake(null); setError(''); })}{action(busy ? '保存中…' : '确认盘点', () => void submitStocktake(), true)}</View></View></View>}
+    ].map(item => <button type='button' key={item.title} onClick={() => { setMoreOpen(false); item.fn(); }}>{item.title}<span>›</span></button>)}</div></DemoSheet>}
+    {stocktake && <DemoSheet title='库存盘点' busy={busy} onClose={() => { setStocktake(null); setError(''); }}>
+      <p>{stocktake.product.name} · {stocktake.product.specification}</p><DemoDetail label='当前库存'>{stocktake.product.stock} {stocktake.product.unit}</DemoDetail>
+      <DemoField label='新库存'><input type='number' step='any' min='0' aria-label='实盘库存' value={stocktakeValue} disabled={busy} onChange={event => setStocktakeValue(event.target.value)} /></DemoField>
+      <DemoField label='盘点日期'><input type='date' aria-label='盘点日期' max={currentDate()} value={stocktakeDate} disabled={busy} onChange={event => setStocktakeDate(event.target.value)} /></DemoField>
+      <DemoField label='备注'><input type='text' aria-label='盘点备注' value={stocktakeRemark} disabled={busy} onChange={event => setStocktakeRemark(event.target.value)} /></DemoField>
+      {error && <div role='alert' className='demo-error'>{error}</div>}
+      <button type='button' className='demo-primary' disabled={busy} onClick={() => void submitStocktake()}>{busy ? '保存中…' : '确认盘点'}</button>
+    </DemoSheet>}
     {editor && <CustomerEditor id={editor.id} supplier={editor.supplier} initialName={editor.initialName} lockName={editor.lockName} onClose={() => setEditor(null)} onSaved={async () => { setEditor(null); await reload(); }} />}
   </View></View>;
 }

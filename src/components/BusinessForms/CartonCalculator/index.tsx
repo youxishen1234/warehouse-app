@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
-import { Input, ScrollView, Text, View } from '@tarojs/components';
-import styles from '@/components/BusinessForms/CartonCalculator/index.module.scss';
+/* eslint-disable react/forbid-elements */
+import { useMemo, useState } from 'react';
+import { DemoPage, DemoField, DemoDetail } from '@/components/DemoUI';
 import { sanitizeDimensionInput } from '@/components/BusinessForms/CartonCalculator/math';
 import { calculateTargetDimension, formatDimension, parseDimension, type DimensionMode } from '@/components/BusinessForms/CartonCalculator/math';
 
@@ -35,55 +35,10 @@ export default function CartonCalculator() {
     setMode(next);
   };
 
-  return <ScrollView scrollY className={styles.page}>
-    <View className={styles.heading}>
-      <Text>纸箱尺寸换算</Text>
-      <Text>按瓦楞厚度换算内尺寸与外尺寸</Text>
-    </View>
-
-    <View className={styles.card}>
-      <Text className={styles.label}>已知尺寸类型</Text>
-      <View className={styles.segmented}>
-        <View className={`${styles.segment} ${mode === 'inner' ? styles.active : ''}`} onClick={() => changeMode('inner')}>内尺寸</View>
-        <View className={`${styles.segment} ${mode === 'outer' ? styles.active : ''}`} onClick={() => changeMode('outer')}>外尺寸</View>
-      </View>
-
-      <View className={styles.fields}>
-        {(Object.keys(labels) as DimensionKey[]).map((key, index) => <React.Fragment key={key}>
-          <View className={styles.field}>
-            <Text>{labels[key]}</Text>
-            <Input type="digit" value={dimensions[key]} placeholder="0" onInput={event => setDimensions(current => ({ ...current, [key]: sanitizeDimensionInput(event.detail.value) }))} />
-          </View>
-          {index < 2 && <Text className={styles.separator}>×</Text>}
-        </React.Fragment>)}
-      </View>
-    </View>
-
-    <View className={styles.card}>
-      <Text className={styles.label}>瓦楞厚度</Text>
-      <View className={styles.thicknessRow}>
-        {thicknessOptions.map(item => <View key={item} className={`${styles.chip} ${thickness === String(item) ? styles.chipActive : ''}`} onClick={() => setThickness(String(item))}>{item} mm</View>)}
-      </View>
-      <View className={styles.customThickness}>
-        <Text>自定义厚度</Text>
-        <Input type="digit" value={thickness} onInput={event => setThickness(sanitizeDimensionInput(event.detail.value))} />
-        <Text>mm</Text>
-      </View>
-    </View>
-
-    <View className={styles.resultCard}>
-      <View className={styles.resultHeader}>
-        <Text>{targetMode === 'inner' ? '内尺寸结果' : '外尺寸结果'}</Text>
-        <Text>{mode === 'inner' ? '内尺寸 + 双面厚度' : '外尺寸 - 双面厚度'}</Text>
-      </View>
-      {!complete && <Text className={styles.placeholder}>填写长、宽、高和瓦楞厚度后显示结果</Text>}
-      {complete && invalidOuter && <Text className={styles.error}>外尺寸必须大于两倍瓦楞厚度</Text>}
-      {target && !invalidOuter && <View className={styles.resultGrid}>
-        {(Object.keys(labels) as DimensionKey[]).map(key => <View key={key}>
-          <Text>{targetMode === 'inner' ? `内${labels[key]}` : `外${labels[key]}`}</Text>
-          <Text>{formatDimension(target[key])}<Text> mm</Text></Text>
-        </View>)}
-      </View>}
-    </View>
-  </ScrollView>;
+  return <DemoPage title='纸箱尺寸换算'>
+    <div className='demo-pills'>{(['inner', 'outer'] as const).map(value => <button type='button' key={value} aria-pressed={mode === value} onClick={() => changeMode(value)}>{value === 'inner' ? '内尺寸' : '外尺寸'}</button>)}</div>
+    <article className='demo-card'><h3>纸箱尺寸（mm）</h3>{(Object.keys(labels) as DimensionKey[]).map(key => <DemoField key={key} label={labels[key]}><input type='number' aria-label={labels[key]} value={dimensions[key]} onChange={event => setDimensions(current => ({ ...current, [key]: sanitizeDimensionInput(event.target.value) }))} /></DemoField>)}</article>
+    <article className='demo-card'><h3>瓦楞厚度</h3><div className='demo-pills'>{thicknessOptions.map(value => <button type='button' key={value} aria-pressed={thickness === String(value)} onClick={() => setThickness(String(value))}>{value} mm</button>)}</div><DemoField label='自定义厚度（mm）'><input type='number' aria-label='自定义厚度' value={thickness} onChange={event => setThickness(sanitizeDimensionInput(event.target.value))} /></DemoField></article>
+    <article className='demo-card'><h3>{targetMode === 'inner' ? '内尺寸结果' : '外尺寸结果'}</h3>{!complete && <p>填写长、宽、高和瓦楞厚度后显示结果</p>}{complete && invalidOuter && <div className='demo-error'>外尺寸必须大于两倍瓦楞厚度</div>}{target && !invalidOuter && (Object.keys(labels) as DimensionKey[]).map(key => <DemoDetail key={key} label={labels[key]}>{formatDimension(target[key])} mm</DemoDetail>)}</article>
+  </DemoPage>;
 }

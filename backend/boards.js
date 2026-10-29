@@ -1,5 +1,6 @@
 // Paperboard batches share the main database transaction, backup and revision.
 const crypto = require('node:crypto');
+const { entryTime } = require('./receipt-metadata');
 const { roundDecimal, localDate } = require('./stock-math');
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 const text = (value, label, required = false, max = 120) => {
@@ -68,6 +69,9 @@ function receive(data, raw) {
   if (date > localDate()) fail('送货日期不能晚于今天');
   const batch = { ...spec, id: `BOARD-${date.replace(/-/g, '')}-${crypto.randomBytes(6).toString('hex').toUpperCase()}`, specKey: specKey(spec), supplier, customerName: batchLabelText(raw.customerName, '客户'), material: batchLabelText(raw.material, '材质 / 配纸'), printPlate: batchLabelText(raw.printPlate, '印刷版名'), printColor: batchLabelText(raw.printColor, '印刷颜色'), orderedQty, receivedQty, remainingQty: receivedQty, giftQty: Math.max(0, receivedQty - orderedQty), shortageQty: Math.max(0, orderedQty - receivedQty), billedArea, unitPrice, amount, freight: round(number(raw.freight ?? 0, '运费')), date, deliveryNo: text(raw.deliveryNo, '送货单号'), location: text(raw.location, '库位'), remark: text(raw.remark, '备注', false, 500), warningQty: number(raw.warningQty ?? 0, '预警数量', false, true), createdAt: Date.now() };
   if (amountMode !== 'area') batch.amountMode = amountMode;
+  if (raw.name !== undefined) batch.name = batchLabelText(raw.name, '纸板名称', 100);
+  const enteredAt = entryTime(raw.enteredAt, date);
+  if (enteredAt !== undefined) batch.enteredAt = enteredAt;
   data.board_batches ||= []; data.board_movements ||= [];
   data.board_batches.push(batch);
   data.board_movements.push({ id: crypto.randomUUID(), batchId: batch.id, type: 'in', quantity: receivedQty, balance: receivedQty, date, remark: batch.remark, createdAt: batch.createdAt });
@@ -101,6 +105,8 @@ function validate(data) {
   for (const b of data.board_batches) {
     if (!/^BOARD-[0-9]{8}-[A-F0-9]{12}$/.test(b.id) || ids.has(b.id)) fail('纸板批次编号无效或重复');
     ids.add(b.id); validateSpec(b);
+    if (b.name !== undefined) batchLabelText(b.name, '纸板名称', 100);
+    entryTime(b.enteredAt, b.date);
     if (b.specKey !== specKey(b)) fail('纸板规格索引不一致');
     text(b.supplier, '板厂'); number(b.remainingQty, '批次库存', false, true); number(b.receivedQty, '实收数', true, true); number(b.orderedQty, '订购数', true, true);
     for (const [field, label] of [['customerName', '客户'], ['material', '材质 / 配纸'], ['printPlate', '印刷版名'], ['printColor', '印刷颜色']]) {
@@ -134,11 +140,11 @@ function update(data, id, raw) {
   if (moved && batch.amountMode !== 'pending') fail('已有领料或盘点记录，不能编辑入库单，请使用盘点功能调整库存');
   const draft = {};
   const next = receive(draft, raw);
-  for (const field of ['customerName', 'material', 'printPlate', 'printColor']) {
+  for (const field of ['name', 'enteredAt', 'customerName', 'material', 'printPlate', 'printColor']) {
     if (!Object.prototype.hasOwnProperty.call(raw, field) && batch[field] !== undefined) next[field] = batch[field];
   }
   if (moved) {
-    const fixedFields = ['specKey', 'boardDimensionsPending', 'supplier', 'customerName', 'material', 'printPlate', 'printColor', 'orderedQty', 'receivedQty', 'date', 'deliveryNo', 'location', 'warningQty'];
+    const fixedFields = ['name', 'enteredAt', 'specKey', 'boardDimensionsPending', 'supplier', 'customerName', 'material', 'printPlate', 'printColor', 'orderedQty', 'receivedQty', 'date', 'deliveryNo', 'location', 'warningQty'];
     if (fixedFields.some(field => next[field] !== batch[field]) || (raw.supplier_id != null && Number(raw.supplier_id) !== Number(batch.supplier_id))) fail('已有领料或盘点记录，只能补录待补金额，不能更改数量、规格或往来单位');
     next.remainingQty = batch.remainingQty;
   }

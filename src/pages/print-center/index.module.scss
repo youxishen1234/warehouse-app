@@ -197,3 +197,29 @@
 .statementKinds { display: flex; gap: 8PX; margin: 12PX 0; }.page .statementKinds :global(button) { flex: 1; min-height: 36PX; padding: 7PX; border: 1PX solid #e5ecf5; background: #fff; color: #8290a4; font-size: 11PX; }.page .statementKinds :global(button)[aria-pressed='true'] { border-color: #cfe0ff; background: #edf3ff; color: #2469ee; }
 .statementDates { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10PX; margin-top: 13PX; }.page .statementDates :global(label) { display: block; min-width: 0; margin: 0; color: #8290a4; font-size: 10PX; }.page .statementDates :global(input) { display: block; width: 100%; min-width: 0; height: 40PX; padding: 7PX; margin-top: 5PX; border: 1PX solid #e2e9f2; border-radius: 9PX; background: #f9fbfe; color: #162741; font: inherit; font-size: 11PX; }
 .statementPaper { padding: 20PX 16PX; color: #162741; font-size: 11PX; }.statementPaper h2 { text-align: center; font-size: 17PX; }.statementPaper p { margin: 12PX 0; color: #8290a4; }.statementPaper table { width: 100%; border-collapse: collapse; font-size: 10PX; }.statementPaper th, .statementPaper td { padding: 9PX 4PX; border-bottom: 1PX solid #e9eef5; text-align: left; }.statementPaper th:last-child, .statementPaper td:last-child { text-align: right; }
+
+// Business editing uses the same responsive surfaces as the other phone forms.
+.page .demoHeader { padding-top: 20PX; padding-left: 18PX; padding-right: 18PX; }
+.page:not([data-print-view='home']) .toolbar { gap: 10PX; align-items: center; }
+.page:not([data-print-view='home']) .card { padding: 16PX; border: 1PX solid #e5ecf5; border-radius: 14PX; background: #fff; }
+.page:not([data-print-view='home']) h1 { font-size: 22PX; }
+.page .primary, .backdrop .primary, .page .primaryAction { background: #2469ee; color: #fff; }
+.page .secondary, .page .addButton, .page .newButton { background: #edf3ff; border-color: #dce7fa; color: #2469ee; }
+.page .textButton, .backdrop .textButton, .page .recentHeading :global(button) { color: #2469ee; }
+.page .total strong { color: #2469ee; font-size: 24PX; }
+.page .settings { border-color: #e5ecf5; border-radius: 14PX; }
+.page .actions { border: 0; background: transparent; }
+.page .grid { gap: 0 12PX; }
+.page .field { font-size: 13PX; color: #718198; }
+.page .field :global(input), .page .field select { max-width: 100%; min-width: 0; border-radius: 10PX; }
+.page .sectionHeading { flex-wrap: wrap; }
+.page .tabs :global(button)[aria-pressed='true'] { color: #2469ee; }
+.backdrop .dialog { max-width: 430PX; max-height: calc(100dvh - env(safe-area-inset-top, 0PX) - env(safe-area-inset-bottom, 0PX) - 24PX); border-radius: 16PX; }
+@media (max-width: 350PX) {
+  .page:not([data-print-view='home']) { padding-left: 12PX; padding-right: 12PX; }
+  .page:not([data-print-view='home']) .card { padding: 12PX; }
+  .page .grid { column-gap: 10PX; }
+  .page .actions { flex-wrap: wrap; }
+  .page .actions :global(button) { flex: 1 1 120PX; }
+  .page .documentStatus { flex-wrap: wrap; }
+}
