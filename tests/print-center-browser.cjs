@@ -29,6 +29,7 @@ async function main() {
   const artifacts = path.resolve(process.env.PRINT_ARTIFACTS || 'release/print-center-01a1211e/check', engine);
   fs.mkdirSync(artifacts, { recursive: true });
   const errors = [];
+  const actionLayouts = [];
   let page;
   try {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, locale: 'zh-CN' });
@@ -60,14 +61,51 @@ async function main() {
     const actionLayout = () => page.locator('main').first().evaluate(element => {
       const bar = element.querySelector('footer'), rect = bar.getBoundingClientRect();
       const form = element.querySelector('fieldset'), formRect = form && form.getBoundingClientRect();
-      return { position: getComputedStyle(bar).position, top: rect.top, bottom: rect.bottom, scrollTop: element.scrollTop, formBottom: formRect && formRect.bottom, viewportBottom: element.getBoundingClientRect().bottom, paddingBottom: parseFloat(getComputedStyle(element).paddingBottom), scrollPaddingBottom: parseFloat(getComputedStyle(element).scrollPaddingBottom) };
+      const viewport = element.getBoundingClientRect(), navigation = document.querySelector('.sg-app-nav');
+      const nav = navigation && navigation.getBoundingClientRect();
+      const actions = Array.from(bar.querySelectorAll('button')).map(button => {
+        const action = button.getBoundingClientRect(), hit = document.elementFromPoint(action.left + action.width / 2, action.top + action.height / 2);
+        return { text: button.textContent.trim(), left: action.left, right: action.right, top: action.top, bottom: action.bottom, hit: hit === button || button.contains(hit) };
+      });
+      return {
+        position: getComputedStyle(bar).position, top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right,
+        viewportWidth: innerWidth, viewportLeft: viewport.left, viewportRight: viewport.right, viewportTop: viewport.top, viewportBottom: viewport.bottom,
+        scrollTop: element.scrollTop, scrollHeight: element.scrollHeight, clientHeight: element.clientHeight, formBottom: formRect && formRect.bottom,
+        paddingBottom: parseFloat(getComputedStyle(element).paddingBottom), scrollPaddingBottom: parseFloat(getComputedStyle(element).scrollPaddingBottom),
+        nav: nav && { left: nav.left, right: nav.right, top: nav.top, bottom: nav.bottom, width: nav.width, direction: getComputedStyle(navigation).flexDirection },
+        actions
+      };
     });
     const actionsFollowForm = async () => {
       const layout = await actionLayout();
       assert.equal(layout.position, 'static', 'actions remain in document flow rather than covering input fields');
       assert.ok(layout.top >= layout.formBottom, 'actions follow all form fields: ' + JSON.stringify(layout));
-      assert.ok(layout.paddingBottom >= 102, 'page reserves dock space after the actions');
-      assert.ok(layout.scrollPaddingBottom >= layout.paddingBottom, 'focused fields scroll into the unobstructed viewport above the dock');
+      if (layout.viewportWidth < 1024) {
+        assert.ok(layout.paddingBottom >= 102, 'phone and tablet pages reserve dock space after the actions');
+        assert.ok(layout.scrollPaddingBottom >= layout.paddingBottom, 'focused fields scroll into the unobstructed viewport above the dock');
+        actionLayouts.push({ stage: 'bottom-dock', ...layout });
+      } else {
+        assert.ok(layout.nav && layout.nav.direction === 'column' && layout.nav.width > 0, 'desktop navigation is a visible sidebar');
+        assert.ok(layout.viewportLeft >= layout.nav.right - 1 && layout.left >= layout.nav.right - 1, 'the editor and action footer clear the desktop sidebar');
+        assert.ok(layout.viewportRight <= layout.viewportWidth + 1 && layout.right <= layout.viewportRight + 1, 'desktop actions remain within the available content width');
+        assert.ok(layout.paddingBottom >= 24 && layout.scrollPaddingBottom >= 24, 'desktop retains space for the last action and focused field');
+        const previousScrollTop = layout.scrollTop;
+        try {
+          await main.evaluate(element => { element.scrollTop = element.scrollHeight; });
+          const reachable = await actionLayout();
+          assert.ok(reachable.scrollTop >= reachable.scrollHeight - reachable.clientHeight - 1, 'the desktop editor can scroll to its end');
+          assert.ok(reachable.top >= reachable.viewportTop && reachable.bottom <= reachable.viewportBottom - reachable.paddingBottom + 1, 'the entire desktop footer is reachable with space below');
+          assert.ok(reachable.actions.length > 0 && reachable.actions.every(action =>
+            action.left >= reachable.nav.right - 1 && action.right <= reachable.viewportRight + 1
+            && action.top >= reachable.viewportTop && action.bottom <= reachable.viewportBottom - reachable.paddingBottom + 1
+            && action.hit
+          ), 'every desktop action is fully visible and unobstructed after scrolling');
+          actionLayouts.push({ stage: 'desktop-sidebar-at-end', ...reachable });
+          await page.screenshot({ path: path.join(artifacts, `desktop-actions-${layout.viewportWidth}.png`) });
+        } finally {
+          await main.evaluate((element, previous) => { element.scrollTop = previous; }, previousScrollTop);
+        }
+      }
     };
     await page.goto(origin + '/#/pages/print-center/index');
     await page.locator('.team-boot').waitFor({ state: 'hidden' });
@@ -241,14 +279,14 @@ async function main() {
     await expect(page.locator('[data-dot-matrix-print-root]')).toHaveCount(0);
     await button('返回单据').click();
     await button('＋ 新建').click();
-    for (const width of [320, 375, 430, 1280]) { await page.setViewportSize({ width, height: 900 }); await noOverflow(); await actionsFollowForm(); }
+    for (const width of [320, 375, 430, 768, 1024, 1280]) { await page.setViewportSize({ width, height: 900 }); await noOverflow(); await actionsFollowForm(); }
     await page.setViewportSize({ width: 320, height: 480 });
     await page.getByLabel('第1项备注').focus();
     await page.getByLabel('第1项备注').scrollIntoViewIfNeeded();
     await actionsFollowForm();
     const focusedField = await page.getByLabel('第1项备注').evaluate(input => { const rect=input.getBoundingClientRect();return document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2)===input; });
     assert.ok(focusedField, 'focused lower input stays unobstructed in a keyboard-height viewport');
-    await page.screenshot({ path: path.join(artifacts, 'desktop-editor.png'), fullPage: true });
+    await page.screenshot({ path: path.join(artifacts, 'mobile-short-editor.png'), fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
     saved = db.listPrintNotes()[0];
     const multiProducts = Array.from({ length: 12 }, (_, index) => db.addProduct({
@@ -330,6 +368,7 @@ async function main() {
     await page.getByRole('button', { name: '全部单据', exact: true }).click();
     await expect(page.getByText('SH-20261028-00033', { exact: false }).first()).toBeVisible();
     assert.deepEqual(errors, []);
+    fs.writeFileSync(path.join(artifacts, 'action-layouts.json'), JSON.stringify(actionLayouts, null, 2));
     console.log(JSON.stringify({ engine, savedEditReload: 'passed', customersAndStaleSearch: 'passed', saveFailure: 'passed', conflict: 'passed', mobileWidths: [320, 375, 390, 430], twoDigitSpecification: 'passed', previewZoom: 'passed', paperSelector: 'removed', multipage: 12, screenshots: artifacts }));
   } catch (error) {
     if (page) { await page.screenshot({ path: path.join(artifacts, 'failure.png'), fullPage: true }); console.error((await page.locator('body').innerText()).slice(0, 2200)); }
