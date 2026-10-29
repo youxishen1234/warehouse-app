@@ -1,6 +1,14 @@
 /* global desktopPrint */
 const byId = id => document.getElementById(id);
 let sequence = 0, busy = false, previewSequence = 0;
+let printers = [];
+const printerPreference = 'warehouse_desktop_printer_v1';
+function preferredPrinter() { try { return localStorage.getItem(printerPreference) || ''; } catch { return ''; } }
+function rememberPrinter(name) { try { localStorage.setItem(printerPreference, name); } catch { /* printing still works without browser storage */ } }
+function updatePrintAvailability() {
+  const selected = printers.find(printer => printer.name === byId('printer').value);
+  byId('print').disabled = busy || !selected || selected.unavailable;
+}
 function status(message, error = false) { byId('status').textContent = message; byId('status').classList.toggle('error', error); }
 function addLine(seed = {}) {
   const row = document.createElement('div'); row.className = 'line'; row.dataset.id = String(++sequence);
@@ -39,24 +47,27 @@ async function preview() {
 }
 async function refreshPrinters() {
   try {
-    const selected = byId('printer').value; const printers = await desktopPrint.printers(); byId('printer').replaceChildren();
-    for (const printer of printers) { const option = document.createElement('option'); option.value = printer.name; option.textContent = printer.name; byId('printer').appendChild(option); }
-    const preferred = printers.find(p => p.name === selected) || printers.find(p => /EPSON.*630/i.test(p.name)) || printers.find(p => p.isDefault) || printers[0];
-    if (preferred) byId('printer').value = preferred.name;
-    byId('print').disabled = !printers.length || busy; status(printers.length ? '已读取本机打印机。请确认纸张为 241 × 93 mm。' : '没有找到本机打印机');
+    const selected = preferredPrinter() || byId('printer').value;
+    printers = (await desktopPrint.printers()).filter(printer => !printer.virtual);
+    byId('printer').replaceChildren();
+    for (const printer of printers) { const option = document.createElement('option'); option.value = printer.name; option.textContent = printer.name + (printer.unavailable ? '（不可用）' : ''); byId('printer').appendChild(option); }
+    const preferred = printers.find(p => p.name === selected) || printers.find(p => /EPSON.*630/i.test(p.name) && !p.unavailable) || printers.find(p => p.isDefault && !p.unavailable) || printers.find(p => !p.unavailable) || printers[0];
+    if (preferred) { byId('printer').value = preferred.name; rememberPrinter(preferred.name); }
+    updatePrintAvailability();
+    status(!preferred ? '没有找到实体打印机。' : preferred.unavailable ? '所选打印机不可用，请检查连接和纸张后刷新。' : '已选择 ' + preferred.name + '。点击“发送打印”后直接打印，纸张为 241 × 93 mm。', Boolean(preferred?.unavailable));
   } catch (e) { status(e.message, true); }
 }
 async function output(kind) {
   if (busy) return; busy = true; byId('print').disabled = true; byId('pdf').disabled = true;
   try {
-    const data = payload(); status(kind === 'print' ? '正在校验单据，随后确认打印…' : '正在准备 PDF…');
+    const data = payload(); status(kind === 'print' ? '正在发送到 ' + data.printerName + '…' : '正在准备 PDF…');
     const result = await desktopPrint[kind](data);
     status(result.kind === 'cancelled' ? '已取消，未发送打印。' : result.kind === 'queued' ? '已交给 ' + result.printerName + ' 的系统队列，共 ' + result.pages + ' 页。请检查实际出纸；不要重复点击。' : 'PDF 已保存：' + result.filePath);
-  } catch (e) { status(e.message + (kind === 'print' ? '\n若已经确认过发送，请先检查队列和实际出纸再决定是否重试。' : ''), true); }
-  finally { busy = false; byId('print').disabled = !byId('printer').options.length; byId('pdf').disabled = false; }
+  } catch (e) { status(e.message + (kind === 'print' ? '\n若打印已经开始，请先检查队列和实际出纸再决定是否重试。' : ''), true); }
+  finally { busy = false; updatePrintAvailability(); byId('pdf').disabled = false; }
 }
-function sample() { byId('party').value = '味中皇'; byId('date').value = '2026-10-27'; byId('items').replaceChildren(); addLine({ name: '6桶', qty: '45', price: '2.30' }); addLine({ name: '6坛臭', qty: '400', price: '1.25' }); preview(); }
-byId('sample').addEventListener('click', sample); byId('add').addEventListener('click', () => addLine()); byId('preview').addEventListener('click', preview);
+byId('add').addEventListener('click', () => addLine()); byId('preview').addEventListener('click', preview);
+byId('printer').addEventListener('change', () => { rememberPrinter(byId('printer').value); updatePrintAvailability(); });
 byId('refresh').addEventListener('click', refreshPrinters); byId('print').addEventListener('click', () => output('print')); byId('pdf').addEventListener('click', () => output('pdf'));
 byId('frame').addEventListener('load', fitFrame); new ResizeObserver(fitFrame).observe(byId('stage'));
 const now = new Date(); byId('date').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;

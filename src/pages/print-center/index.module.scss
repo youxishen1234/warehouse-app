@@ -223,3 +223,41 @@
   .page .actions :global(button) { flex: 1 1 120PX; }
   .page .documentStatus { flex-wrap: wrap; }
 }
+
+@media (max-width: 767PX) {
+  .page[data-print-view='home'] .shell { padding-bottom: 0; }
+  .page:not([data-print-view='home']) { padding-top: 14PX; }
+  .page .demoHeader { padding-top: 16PX; padding-bottom: 14PX; margin-bottom: 12PX; }
+  .page .demoHeader .back { width: 44PX; min-height: 44PX; }
+  .page .toolbar { margin-bottom: 12PX; }
+  .page .card, .page:not([data-print-view='home']) .card { padding: 12PX; margin-bottom: 10PX; }
+  .page .sectionHeading { gap: 8PX; margin-bottom: 8PX; }
+  .page .field { margin-bottom: 8PX; }
+  .page .field input[aria-label], .page .field select, .page .dateControl { margin-top: 4PX; }
+  .page .dateControl input[type='date'] { margin-top: 0; }
+  .page .grid { gap: 0 10PX; }
+  .page .item { padding: 10PX 0 4PX; }
+  .page .item:first-child { padding-top: 0; }
+  .page .itemHeading { margin-bottom: 6PX; }
+  .page .specMode { margin-bottom: 8PX; }
+  .page .addButton { margin: 10PX 0; }
+  .page .total { margin-top: 10PX; padding-top: 12PX; }
+  .page .settings summary { min-height: 44PX; padding: 12PX 14PX; }
+  .page .settingsBody { padding: 2PX 14PX 4PX; }
+  .page .actions { margin-top: 12PX; padding-top: 10PX; gap: 10PX; }
+  .page .demoConnection { padding: 10PX; margin-bottom: 12PX; }
+  .page nav[aria-label='打印类型'], .page .workspace .tabs { margin-bottom: 12PX; }
+  .page nav[aria-label='打印类型'] :global(button)[type='button'],
+  .page .workspace .tabs :global(button)[type='button'] { min-height: 46PX; padding: 10PX 6PX; }
+  .page .demoSource { padding: 14PX; margin-bottom: 12PX; }
+  .page .demoPrintSettings { gap: 8PX; margin-top: 8PX; }
+  .page .demoPrintSettings :global(label) { min-height: 44PX; }
+  .page .demoPaperTools { margin-bottom: 6PX; }
+  .page .demoPaperTools :global(button) { min-height: 44PX; }
+  .page .demoPrintActions { gap: 8PX; margin-top: 12PX; }
+  .page .demoUtilities { padding-top: 10PX; }
+  .page .demoUtilities :global(button) { min-height: 44PX; }
+  .page .recentHeading { margin-top: 14PX; margin-bottom: 10PX; }
+  .page .statementDates { gap: 8PX; margin-top: 10PX; }
+  .page .statementDates :global(input) { height: 46PX; margin-top: 4PX; font-size: 16PX; }
+}

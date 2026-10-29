@@ -89,3 +89,55 @@
 .page .photoRow { display: flex; flex-direction: column; gap: 6PX; width: 100%; padding: 15PX; margin-bottom: 10PX; background: #fff; border-radius: 15PX; text-align: left; font-size: 12PX; }.photoRow taro-text-core { color: #8290a4; font-size: 11PX; }
 @media (min-width: 501PX) { .dialog { margin-bottom: 28PX; border-radius: 24PX; } }
 @media (max-width: 360PX) { .masthead { padding-left: 18PX; padding-right: 18PX; }.content { padding-left: 14PX; padding-right: 14PX; }.flowHeading { gap: 6PX; }.flowHeading > :last-child { font-size: 9PX; }.sectionTitle { font-size: 15PX; }.flowActions { gap: 7PX; }.page .flowActions > :is(button, taro-button-core) { font-size: 12PX; } }
+
+@media (min-width: 768PX) {
+  .surface { max-width: 1240PX; margin: 0 auto; }
+  .masthead { padding-left: 28PX; padding-right: 28PX; }
+  .content { padding-left: 28PX; padding-right: 28PX; }
+  .flowActions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .flowActions > :only-child { grid-column: 1 / -1; }
+  .flowActions > :nth-child(3) { grid-column: auto; }
+}
+
+@media (min-width: 1024PX) {
+  .masthead { padding: 28PX 32PX 22PX; border-bottom: 1PX solid #e9eef5; }
+  .status { margin-top: 14PX; }
+  .content { padding: 24PX 32PX 40PX; }
+  .home { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); column-gap: 24PX; align-items: start; }
+  .home > * { min-width: 0; }
+  .home > :global([data-testid='workbench-tasks']) { grid-column: 1 / -1; grid-row: 1; }
+  .businessTabs { grid-column: 1; grid-row: 2; }
+  .businessFlow { grid-column: 1; grid-row: 3; margin-bottom: 0; padding: 24PX; }
+  .homeHeading { grid-column: 2; grid-row: 2; min-height: 48PX; margin: 0 0 16PX; }
+  .summary { grid-column: 2; grid-row: 3; align-self: stretch; grid-template-rows: 1fr 1fr; margin-bottom: 0; }
+  .page .summaryItem { justify-content: center; padding-top: 20PX; padding-bottom: 20PX; }
+  .summaryItem strong { font-size: 24PX; }
+  .shortcuts { grid-column: 1 / -1; grid-row: 4; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16PX; padding: 0; margin-top: 24PX; }
+  .page .shortcut { display: flex; align-items: center; gap: 12PX; padding: 18PX; border: 1PX solid #e8eef7; border-radius: 14PX; background: #fff; text-align: left; font-size: 13PX; }
+  .shortcut > :first-child { width: 42PX; height: 42PX; margin: 0; background: #f4f7fc; }
+  .home > .recentHeading { grid-column: 1; grid-row: 5; margin: 24PX 0 12PX; }
+  .home > .recentHeading:has(+ :global([data-testid='workbench-today'])) { grid-column: 2; }
+  .home > .recentHeading + taro-view-core { grid-column: 1; grid-row: 6; }
+  .home > .recentHeading + :global([data-testid='workbench-today']),
+  .home > :global([data-testid='workbench-today']) { grid-column: 2; grid-row: 6; }
+  .home > .sectionError, .home > .sectionHint { grid-column: 1 / -1; margin-top: 16PX; }
+  .emptyToday { padding: 32PX 20PX; border: 1PX solid #edf1f6; border-radius: 15PX; background: #fff; }
+  .managementNav { gap: 8PX; padding: 14PX 32PX; }
+  .page .managementNav > :is(button, taro-button-core) { flex: 0 1 150PX; padding: 10PX 16PX; }
+  .stockSummary { gap: 20PX; margin-bottom: 24PX; }
+  .stockSummary > div, .stockSummary > taro-view-core { padding: 24PX; }
+  .stockHeading { margin-top: 6PX; }
+  .page .stockCard { height: 100%; margin: 0; padding: 20PX; }
+  .page :global([data-testid='workbench-stock-list']) { display: grid; grid-template-columns: repeat(auto-fill, minmax(280PX, 1fr)); align-items: stretch; gap: 16PX; }
+  .tools { gap: 12PX; }
+  .form { max-width: 860PX; padding: 24PX; }
+  .overlay { align-items: center; padding: 24PX; }
+  .dialog { max-width: 720PX; max-height: calc(100dvh - 48PX); padding: 28PX 30PX; margin: 0; border-radius: 20PX; }
+}
+
+@media (max-width: 767PX) {
+  .input { height: 46PX; min-height: 46PX; margin-top: 6PX; margin-bottom: 10PX; font-size: 16PX; line-height: 46PX; }
+  .label { margin-top: 11PX; margin-bottom: 4PX; }
+  .form { padding: 14PX; }
+  .note { line-height: 1.6; }
+}

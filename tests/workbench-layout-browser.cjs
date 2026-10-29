@@ -86,8 +86,14 @@ async function main() {
       await page.setViewportSize({ width, height: width === 320 ? 700 : 900 });
       const root = page.getByTestId('simple-workbench');
       const geometry = await root.boundingBox();
-      assert.ok(geometry.width > 0 && geometry.width <= Math.min(430, width) + 1);
-      assert.ok(Math.abs(geometry.x - (width - geometry.width) / 2) <= 1);
+      if (width >= 1024) {
+        const navigation = await page.locator('.sg-app-nav').boundingBox();
+        assert.ok(navigation && navigation.height > 800 && navigation.width >= 170 && navigation.width <= 240);
+        assert.ok(geometry.width > 700 && geometry.x >= navigation.x + navigation.width - 1 && geometry.x + geometry.width <= width + 1, 'desktop content fills the area beside its sidebar');
+      } else {
+        assert.ok(geometry.width > 0 && geometry.width <= Math.min(430, width) + 1);
+        assert.ok(Math.abs(geometry.x - (width - geometry.width) / 2) <= 1);
+      }
       assert.ok(await root.evaluate(el => el.scrollWidth <= el.clientWidth + 1), 'no horizontal overflow');
       const cards = root.getByTestId('workbench-actions').locator('taro-button-core');
       assert.equal(await cards.count(), 4);
@@ -117,7 +123,7 @@ async function main() {
     assert.ok(box.y >= 0 && box.y + box.height <= 321, 'stocktake sheet fits short screens');
     assert.ok(await dialog.evaluate(el => el.scrollHeight > el.clientHeight), 'all sheet fields remain scrollable');
     assert.deepEqual(errors, []);
-    console.log('PASS business-center layout: compact two-by-two actions at 320/390/430/736/1280px; guidance, long activity title, finance entry and short-screen dialog verified.');
+    console.log('PASS business-center layout: responsive phone and desktop actions at 320/390/430/736/1280px; long activity title, finance entry and short-screen dialog verified.');
   } finally {
     await Promise.all(contexts.map(context => context.close()));
     await browser.close();

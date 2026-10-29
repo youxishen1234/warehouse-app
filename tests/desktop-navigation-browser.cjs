@@ -1,40 +1,30 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
-const { chromium } = require('@playwright/test');
+const { chromium, expect } = require('@playwright/test');
+const { serveWeb, isolateBusinessAPI, mouseDrag } = require('./tab-navigation-browser-support.cjs');
 
 async function main() {
-  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'warehouse-nav-'));
-  process.env.WAREHOUSE_DATA_FILE = path.join(temp, 'data.json');
-  process.env.WAREHOUSE_BACKUP_DIR = path.join(temp, 'backups');
-  process.env.WAREHOUSE_WEB_ROOT = path.resolve(process.env.NAV_WEB_DIR || 'dist');
-  fs.writeFileSync(process.env.WAREHOUSE_DATA_FILE, JSON.stringify({ products: [], customers: [], suppliers: [], transactions: [], ledger: [] }));
-  const server = require('../backend/server').listen(0, '127.0.0.1');
-  await new Promise(resolve => server.once('listening', resolve));
-  const origin = `http://127.0.0.1:${server.address().port}`;
+  const server = await serveWeb(process.env.NAV_WEB_DIR || process.env.TARO_OUTPUT_DIR || 'dist');
+  const { origin } = server;
+  const evidence = path.resolve(process.env.DESKTOP_NAV_EVIDENCE_DIR || 'release/desktop-navigation');
+  fs.mkdirSync(evidence, { recursive: true });
   const browser = await chromium.launch(process.env.CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.CHROMIUM_EXECUTABLE_PATH } : {});
-  const page = await browser.newPage({ viewport: { width: 1366, height: 900 } });
+  const context = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+  const writes = await isolateBusinessAPI(context, origin, { customers: 20 });
+  const page = await context.newPage();
   page.setDefaultTimeout(12000);
-  const errors = [];
-  const pendingRoutes = new Set();
+  const errors = [], sizes = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.route('**/*', async route => {
-    const url = new URL(route.request().url());
-    if (url.origin === origin || ['data:', 'blob:'].includes(url.protocol)) return route.continue();
-    if (!url.pathname.startsWith('/api/')) return route.abort();
-    const pending = (async () => {
-      const response = await route.fetch({ url: origin + url.pathname + url.search });
-      await route.fulfill({ response });
-    })();
-    pendingRoutes.add(pending);
-    try { await pending; } finally { pendingRoutes.delete(pending); }
-  });
   const tab = index => page.locator(`.sg-app-nav button[data-tab="${index}"]`);
-  const current = route => page.waitForFunction(route => {
-    const pages = [...document.querySelectorAll('.taro_page')].filter(el => getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().height > 0);
-    return location.hash.split('?')[0] === '#' + route && pages.some(el => el.id.split('?')[0] === route);
-  }, '/pages/' + route + '/index');
+  const active = () => page.locator('.taro_page:visible').last();
+  const current = async route => {
+    await page.waitForFunction(route => {
+      const pages = [...document.querySelectorAll('.taro_page')].filter(el => getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().height > 0);
+      return location.hash.split('?')[0] === '#' + route && pages.some(el => el.id.split('?')[0] === route);
+    }, '/pages/' + route + '/index');
+    if (['home', 'ai-assistant', 'inventory', 'print-center', 'mine'].includes(route)) await expect(tab(['home', 'ai-assistant', 'inventory', 'print-center', 'mine'].indexOf(route))).toHaveAttribute('aria-current', 'page');
+  };
   try {
     await page.goto(origin);
     for (const [index, route] of [[4, 'mine'], [0, 'home'], [2, 'inventory'], [0, 'home'], [1, 'ai-assistant'], [0, 'home'], [3, 'print-center'], [0, 'home']]) {
@@ -42,15 +32,35 @@ async function main() {
       await current(route);
     }
 
-    for (const width of [320, 390, 736, 1366]) {
+    for (const width of [320, 390, 736, 820, 1024, 1280, 1366, 1920]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(origin + '/#/pages/home/index');
-      await page.getByTestId('simple-workbench').filter({ visible: true }).last().waitFor();
-      const bounds = await page.getByTestId('simple-workbench').filter({ visible: true }).last().boundingBox();
-      assert.ok(bounds.width > 0 && bounds.width <= Math.min(width, 430) + 1, 'centered demo shell has a usable width');
-      assert.ok(Math.abs(bounds.x - (width - bounds.width) / 2) <= 1, 'demo shell is centered');
+      const workbench = page.getByTestId('simple-workbench').filter({ visible: true }).last();
+      await workbench.waitFor();
+      const bounds = await workbench.boundingBox();
       const dock = await page.locator('.sg-app-nav').boundingBox();
-      assert.ok(dock.y + dock.height <= 901 && dock.width <= 431, 'five-item navigation remains in the viewport');
+      assert.ok(bounds && dock);
+      assert.ok(bounds.x >= -1 && bounds.x + bounds.width <= width + 1, 'page remains in the viewport: ' + JSON.stringify({ width, bounds, dock }));
+      assert.ok(dock.x >= -1 && dock.x + dock.width <= width + 1 && dock.y >= -1 && dock.y + dock.height <= 901, 'navigation remains in the viewport');
+      if (width >= 1024) {
+        assert.ok(bounds.width > 700 && bounds.x >= dock.x + dock.width - 1, 'desktop uses the wide area beside its navigation');
+        assert.ok(dock.width >= 170 && dock.width <= 240 && dock.height >= 800, 'desktop navigation is a full-height sidebar');
+        const first = await tab(0).boundingBox(), last = await tab(4).boundingBox();
+        assert.ok(last.y > first.y && Math.abs(last.x - first.x) < 2, 'desktop navigation items are stacked');
+      } else {
+        const expected = width >= 768 || width <= 500 ? width : 430;
+        assert.ok(Math.abs(bounds.width - expected) <= 1 && Math.abs(bounds.x - (width - bounds.width) / 2) <= 1, 'phone and tablet use their available content width');
+        assert.ok(dock.y >= 800 && dock.width <= Math.min(width, 768) + 1, 'small screens retain bottom navigation');
+      }
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false, 'layout does not overflow horizontally');
+      await tab(2).click(); await current('inventory');
+      const inventoryInput = page.locator('input[placeholder="搜索尺寸、货名、客户或供货商"]').filter({ visible: true }).last();
+      await inventoryInput.waitFor();
+      const inputBounds = await inventoryInput.boundingBox();
+      assert.ok(inputBounds && inputBounds.x >= -1 && inputBounds.x + inputBounds.width <= width + 1, 'inventory search remains in the viewport: ' + JSON.stringify({ width, inputBounds }));
+      await tab(0).click(); await current('home');
+      sizes.push({ width, page: bounds, navigation: dock, inventoryInput: inputBounds });
+      await page.screenshot({ path: path.join(evidence, width + '-home.png') });
       await page.getByTestId('workbench-actions').filter({ visible: true }).last().getByTestId('workbench-customer-management').click();
       await current('customers');
       await page.getByTestId('customer-center').waitFor();
@@ -66,21 +76,61 @@ async function main() {
       assert.equal(await page.locator('taro-tabbar').isVisible(), true);
       await tab(0).click(); await current('home');
     }
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.goto(origin + '/#/pages/home/index');
+    await page.getByTestId('workbench-business-flow').waitFor();
+    await mouseDrag(page, page.getByTestId('workbench-business-flow').getByText('＋ 客户开单', { exact: true }), -130);
+    await current('ai-assistant');
+    assert.equal(await page.getByRole('dialog').count(), 0, 'dragging a business button must not activate its click action');
+    await page.mouse.move(750, 300);
+    await page.mouse.wheel(100, 0);
+    await page.mouse.wheel(100, 0);
+    await current('inventory');
+    await page.waitForTimeout(220);
+    assert.match(page.url(), /pages\/inventory\/index/, 'one trackpad burst switches one page');
+    await page.mouse.wheel(-100, 0);
+    await current('ai-assistant');
+    await page.waitForTimeout(220);
+    await page.keyboard.down('Shift');
+    await page.mouse.wheel(0, 100);
+    await page.keyboard.up('Shift');
+    await current('inventory');
+    const input = page.locator('input[placeholder="搜索尺寸、货名、客户或供货商"]');
+    await input.fill('保留文字选择');
+    await mouseDrag(page, input, -100);
+    assert.match(page.url(), /pages\/inventory\/index/, 'text selection must not switch pages');
+    assert.equal(await input.inputValue(), '保留文字选择');
+    await page.goto(origin + '/#/pages/customers/index');
+    await page.getByTestId('customer-management-card-20').waitFor({ state: 'attached' });
+    await page.mouse.move(750, 500);
+    await page.mouse.wheel(0, 350);
+    await expect.poll(() => active().evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+    assert.match(page.url(), /pages\/customers\/index/, 'vertical wheel scrolls a secondary page');
+    await page.goto(origin + '/#/pages/home/index');
+    await page.getByTestId('workbench-business-flow').waitFor();
+    await active().evaluate(el => {
+      const scroller = document.createElement('div');
+      scroller.dataset.testid = 'gesture-native-scroll';
+      scroller.style.cssText = 'width:300px;max-width:calc(100% - 40px);height:70px;overflow-x:auto;margin:20px;';
+      scroller.innerHTML = '<div style="width:1200px;height:60px;background:#edf3ff">滚动区域</div>';
+      el.prepend(scroller);
+    });
+    const horizontal = page.getByTestId('gesture-native-scroll');
+    await horizontal.hover();
+    await page.mouse.wheel(180, 0);
+    await expect.poll(() => horizontal.evaluate(el => el.scrollLeft)).toBeGreaterThan(0);
+    assert.match(page.url(), /pages\/home\/index/, 'a horizontally scrollable control keeps its own gesture');
+    await horizontal.evaluate(el => el.remove());
     await tab(0).focus();
     await page.keyboard.press('End'); await current('mine');
     await page.keyboard.press('Home'); await current('home');
+    assert.deepEqual(writes, [], 'navigation must not write business data');
     assert.deepEqual(errors, []);
+    fs.writeFileSync(path.join(evidence, 'results.json'), JSON.stringify({ sizes, mouseDrag: 'pass', horizontalWheel: 'pass', verticalWheel: 'pass', inputSelection: 'pass', nativeHorizontalScroll: 'pass', errors, writes }, null, 2));
   } finally {
-    try {
-      // Finish proxy fetches before disposing the context used by route.fetch.
-      while (pendingRoutes.size) await Promise.all([...pendingRoutes]);
-      await page.unrouteAll({ behavior: 'wait' });
-    } finally {
-      await browser.close();
-      await new Promise(resolve => server.close(resolve));
-      fs.rmSync(temp, { recursive: true, force: true });
-    }
+    await browser.close();
+    await server.close();
   }
-  console.log('Desktop tab and business navigation, responsive resize and mobile drag passed.');
+  console.log('Desktop sidebar, wide layout, mouse drag, trackpad navigation and protected native scrolling passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

@@ -1,0 +1,15 @@
+.quick-spec-picker { margin: 10PX 0; color: #183052; }
+.quick-spec-label { display: block; margin-bottom: 4PX; color: #8290a4; font-size: 12PX; }
+.quick-spec-trigger { display: flex; align-items: center; justify-content: space-between; gap: 12PX; width: 100%; min-height: 46PX; padding: 9PX 12PX; border: 1PX solid #dce6f6; border-radius: 11PX; background: #f7faff; color: #183052; font: inherit; font-size: 15PX; text-align: left; cursor: pointer; }
+.quick-spec-trigger > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.quick-spec-panel { padding: 10PX; margin-top: 6PX; border: 1PX solid #e2eaf7; border-radius: 12PX; background: #fff; }
+.quick-spec-panel input { width: 100%; height: 44PX; margin-bottom: 7PX; padding: 8PX 10PX; border: 1PX solid #dce6f6; border-radius: 9PX; background: #f8faff; font: inherit; font-size: 16PX; box-sizing: border-box; }
+.quick-spec-options { display: grid; gap: 6PX; max-height: min(42dvh, 320PX); overflow-y: auto; overscroll-behavior: contain; }
+.quick-spec-options button { display: flex; flex-direction: column; gap: 3PX; width: 100%; min-height: 54PX; padding: 9PX 10PX; border: 1PX solid #e8edf5; border-radius: 9PX; background: #f8faff; color: #183052; font: inherit; text-align: left; cursor: pointer; }
+.quick-spec-options strong { font-size: 14PX; overflow-wrap: anywhere; }
+.quick-spec-options small { color: #7c8ca2; font-size: 12PX; overflow-wrap: anywhere; }
+.quick-spec-more, .quick-spec-new { min-height: 44PX; padding: 8PX 2PX; border: 0; background: transparent; color: #2469ee; font: inherit; font-size: 13PX; cursor: pointer; }
+.quick-spec-more { display: block; width: 100%; text-align: left; }
+.quick-spec-new { margin-top: 2PX; }
+.quick-spec-panel > p { margin: 9PX 0; font-size: 13PX; color: #8290a4; }
+@media (min-width: 1024PX) { .quick-spec-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }.quick-spec-trigger { min-height: 48PX; } }

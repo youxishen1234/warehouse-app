@@ -1,4 +1,4 @@
-const { openGoods, chooseReceipt } = require('./receipt-ui-actions.cjs');
+const { openGoods, chooseReceipt, chooseQuickReceipt } = require('./receipt-ui-actions.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -151,7 +151,9 @@ async function main() {
     await expect(input('货物 1 本次完工数量')).toBeVisible();
     await choose('选择客户', customer.name);
     await expect(page.getByLabel('常用货物', { exact: true })).toBeVisible();
-    await choose('货物 1 客户常用规格', /客户自产纸箱/);
+    await chooseQuickReceipt(page, spec.goods, { kind: 'common' });
+    await expect(page.getByTestId('inbound-selected-summary-1')).toContainText(spec.goods);
+    await openGoods(page);
     await expect(input('货物 1 货物名称')).toHaveValue(spec.goods);
     assert.equal(requests.filter(row => row.method === 'POST' && row.path === '/products').length, 0, '选择客户规格不得创建库存商品');
   };

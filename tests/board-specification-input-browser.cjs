@@ -48,6 +48,27 @@ async function main() {
   });
 
   const historicalSupplier = db.addSupplier({ name: '历史模板板厂' });
+  const commonCustomer = db.addCustomer({
+    name: '常用纸板客户',
+    specs: [{
+      id: 'customer-board-common',
+      goods: '客户常用纸板',
+      specification: '150×100 cm',
+      material: '客户牛卡',
+      unit: '张',
+      price: 2.2,
+      unitPrice: 2.2,
+      category: '纸板',
+      kind: '纸板',
+      boardLength: 150,
+      boardWidth: 100,
+      cartonLength: 42,
+      cartonWidth: 32,
+      cartonHeight: 22,
+      fluteType: 'BC',
+      layers: 5
+    }]
+  });
   const historyDate = '2026-10-01';
   const sharedHistory = {
     supplier: historicalSupplier.name, supplier_id: historicalSupplier.id,
@@ -111,20 +132,26 @@ async function main() {
 
     const fieldInput = label => page.getByLabel(label, { exact: true });
     const openDetails = async label => {
-      const details = page.locator('.demo-dialog details').filter({ has: page.getByText(label, { exact: true }) });
-      if (!await details.evaluate(el => el.open)) await details.locator('summary').click();
+      const summary = page.locator('.demo-dialog summary').filter({ hasText: label });
+      if (!await summary.evaluate(el => el.parentElement.open)) await summary.click();
     };
-    const openBoardEntry = async (query = '') => {
+    const openBoardEntry = async (query = '', openSpecificationDetails = true) => {
       await page.goto('about:blank');
       await page.goto(`${origin}/#/pages/board-inbound/index${query}`);
       await expect(page.getByTestId('paperboard-receipt-sheet')).toBeVisible();
-      await openDetails('采购纸板尺寸 · 查看 / 调整');
+      if (openSpecificationDetails) {
+        await openDetails('新增 / 修改规格');
+        await openDetails('采购纸板尺寸 · 查看 / 调整');
+      }
     };
     const length = fieldInput('实际纸板长'), width = fieldInput('实际纸板宽');
     const carton = fieldInput('纸箱尺寸：长 × 宽 × 高');
-    await openBoardEntry();
-    await openDetails('选择已有规格');
-    await page.getByRole('button', { name: /160 × 110 cm.*历史模板板厂/ }).click();
+    await openBoardEntry('', false);
+    await page.getByRole('button', { name: '点击选择常用规格', exact: true }).click();
+    await page.getByRole('button', { name: /纸板 · 40\s*×\s*30\s*×\s*20 cm.*历史入库 · 历史模板板厂/ }).click();
+    await expect(page.getByLabel('供货商', { exact: true })).toHaveValue(String(historicalSupplier.id));
+    await openDetails('新增 / 修改规格');
+    await openDetails('采购纸板尺寸 · 查看 / 调整');
     await expect(length).toHaveValue('160'); await expect(width).toHaveValue('110');
     await expect(carton).toHaveValue('40×30×20');
     assert.equal(db.listBoards().find(batch => batch.id === historyBoard.id).boardLength, 160);
@@ -142,6 +169,8 @@ async function main() {
     const receiptSupplier = db.addSupplier({ name: '规格验收板厂' });
     await openBoardEntry();
     await fieldInput('供货商').selectOption(String(receiptSupplier.id));
+    await openDetails('新增 / 修改规格');
+    await openDetails('采购纸板尺寸 · 查看 / 调整');
     await length.fill('30'); await width.fill('20');
     await carton.fill(''); await carton.pressSequentially('302015');
     await expect(carton).toHaveValue('30×20×15');
@@ -187,14 +216,48 @@ async function main() {
     await page.getByText('批次操作', { exact: true }).click();
     await page.getByRole('button', { name: '编辑批次' }).click();
     await expect(page).toHaveURL(/pages\/board-inbound\/index\?id=/);
+    await openDetails('新增 / 修改规格');
     await openDetails('采购纸板尺寸 · 查看 / 调整');
     await expect(length).toHaveValue('30'); await expect(width).toHaveValue('20');
     await page.reload(); await expect(fieldInput('供货商')).toHaveValue(String(receiptSupplier.id));
+    await openDetails('新增 / 修改规格');
     await openDetails('采购纸板尺寸 · 查看 / 调整'); await openDetails('更多信息');
     await expect(length).toHaveValue('30'); await expect(width).toHaveValue('20');
     await expect(carton).toHaveValue('30×20×15'); await expect(fieldInput('客户')).toHaveValue('青禾纸品');
     await expect(fieldInput('计费平米')).toHaveValue('50'); await expect(fieldInput('每平米单价')).toHaveValue('2.4');
     await expect(fieldInput('入库日期时间')).toHaveValue(dateTime);
+    // A history template carries its supplier and dimensions; only quantity is
+    // entered before saving a new batch.
+    await openBoardEntry('', false);
+    await page.getByRole('button', { name: '点击选择常用规格', exact: true }).click();
+    await page.getByRole('button', { name: /纸板 · 40\s*×\s*30\s*×\s*20 cm.*历史入库 · 历史模板板厂/ }).click();
+    await expect(page.getByLabel('供货商', { exact: true })).toHaveValue(String(historicalSupplier.id));
+    await page.getByLabel('实收数', { exact: true }).fill('2');
+    await page.getByRole('button', { name: '确认纸板入库', exact: true }).click();
+    await expect(page.getByTestId('paperboard-detail-sheet')).toBeVisible();
+    const savedFromHistory = db.listBoards()[0];
+    assert.equal(savedFromHistory.receivedQty, 2);
+    assert.equal(savedFromHistory.supplier_id, historicalSupplier.id);
+    assert.deepEqual([savedFromHistory.boardLength, savedFromHistory.boardWidth, savedFromHistory.cartonLength, savedFromHistory.cartonWidth, savedFromHistory.cartonHeight], [160, 110, 40, 30, 20]);
+
+    // A customer common specification also carries both board and carton
+    // dimensions from the customer profile; selecting a supplier and quantity
+    // is sufficient to create a payable purchase receipt.
+    await openBoardEntry('', false);
+    await page.getByLabel('供货商', { exact: true }).selectOption(String(receiptSupplier.id));
+    await page.getByRole('button', { name: '点击选择常用规格', exact: true }).click();
+    await page.getByRole('button', { name: /客户常用纸板 · 42\s*×\s*32\s*×\s*22 cm/ }).click();
+    await expect(page.getByLabel('实际纸板长', { exact: true })).toHaveValue('150');
+    await expect(page.getByLabel('纸箱尺寸：长 × 宽 × 高', { exact: true })).toHaveValue('42×32×22');
+    await page.getByLabel('实收数', { exact: true }).fill('3');
+    await page.getByRole('button', { name: '确认纸板入库', exact: true }).click();
+    await expect(page.getByTestId('paperboard-detail-sheet')).toBeVisible();
+    const savedFromCustomer = db.listBoards()[0];
+    assert.equal(savedFromCustomer.receivedQty, 3);
+    assert.equal(savedFromCustomer.supplier_id, receiptSupplier.id);
+    assert.deepEqual([savedFromCustomer.boardLength, savedFromCustomer.boardWidth, savedFromCustomer.cartonLength, savedFromCustomer.cartonWidth, savedFromCustomer.cartonHeight], [150, 100, 42, 32, 22]);
+    assert.equal(savedFromCustomer.unitPrice, 2.2);
+    assert.equal(db.getSupplier(receiptSupplier.id).payable, 129.9);
     assert.deepEqual(pageErrors, []); assert.deepEqual(externalBlocked, []);
     console.log('PASS new board entry: separate dimensions, decimal history, invalid input, native keyboard formatting, metadata/edit reload, supplier accounting, 320/390px.');
   } finally {

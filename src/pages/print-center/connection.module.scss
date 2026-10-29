@@ -1,0 +1,3 @@
+.header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8PX; }
+.header :global(button) { min-height: 44PX; padding: 8PX 10PX; font-size: 12PX; }
+.description { margin: 8PX 0 0; font-size: 12PX; line-height: 1.5; overflow-wrap: anywhere; }

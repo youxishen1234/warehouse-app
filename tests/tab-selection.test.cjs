@@ -17,6 +17,10 @@ async function harness(options = {}) {
       this.removals = 0;
       this.dataset = {};
       this.attributes = new Set();
+      this.parentElement = null;
+      this.clientWidth = 390;
+      this.scrollWidth = 390;
+      this.clientHeight = 844;
       const tokens = new Set(classes);
       const changed = () => {
         if (observed && inBody && observerOptions.attributes && observerOptions.attributeFilter.includes('class')) {
@@ -38,6 +42,14 @@ async function harness(options = {}) {
       this.style = { setProperty() {}, removeProperty() {} };
     }
     getBoundingClientRect() { return { width: 390, height: 100 }; }
+    closest(selector) {
+      for (let element = this; element; element = element.parentElement) {
+        if (element.protected && selector.includes('input')) return element;
+        if (element.noSwipe && selector.includes('[data-no-tab-swipe]')) return element;
+        if (element.navigation && selector.includes('.sg-app-nav')) return element;
+      }
+      return null;
+    }
     querySelector(selector) {
       return selector === '[data-tab-route]' && this.tabRoute ? { dataset: { tabRoute: this.tabRoute } } : null;
     }
@@ -72,10 +84,10 @@ async function harness(options = {}) {
   };
   const exports = {};
   const context = vm.createContext({
-    window, document, HTMLElement, navigator: { userAgent: 'test' }, innerWidth: 390, exports,
+    window, document, HTMLElement, Element: HTMLElement, navigator: { userAgent: 'test' }, innerWidth: 390, innerHeight: 844, exports,
     require: () => ({ createGlassTabBar: host => ({ host, update() { syncCount++; return this; }, preview() { return this; }, destroy() {} }) }),
     console: { error() {} }, setTimeout, clearTimeout,
-    getComputedStyle: element => ({ display: element.classList.contains('taro_page_shade') ? 'none' : 'block' }),
+    getComputedStyle: element => ({ display: element.classList.contains('taro_page_shade') ? 'none' : 'block', touchAction: element.touchAction || 'auto', overflowX: element.overflowX || 'visible' }),
     requestAnimationFrame: callback => { frames.set(++frameId, callback); return frameId; },
     cancelAnimationFrame: id => frames.delete(id),
     MutationObserver: class {
@@ -129,16 +141,33 @@ async function harness(options = {}) {
     const touches = touchOptions.touches ?? (type === 'touchend' ? [] : [point]);
     const changedTouches = touchOptions.changedTouches ?? (type === 'touchend' ? [point] : [point]);
     Object.defineProperties(event, {
-      touches: { value: touches }, changedTouches: { value: changedTouches }
+      touches: { value: touches }, changedTouches: { value: changedTouches },
+      target: { value: touchOptions.target || Object.values(pages).find(page => page.id === route) || pages.home }
     });
     window.dispatchEvent(event);
     await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  async function pointer(type, x, y, pointerOptions = {}) {
+    const event = new Event(type, { bubbles: true, cancelable: true });
+    const values = { pointerType: 'mouse', isPrimary: true, pointerId: 1, button: 0, buttons: type === 'pointerup' ? 0 : 1, clientX: x, clientY: y, ...pointerOptions, target: pointerOptions.target || pages.home };
+    Object.defineProperties(event, Object.fromEntries(Object.entries(values).map(([key, value]) => [key, { value }])));
+    window.dispatchEvent(event);
+    await new Promise(resolve => setTimeout(resolve, 5));
+    return event;
+  }
+  async function wheel(dx, dy = 0, wheelOptions = {}) {
+    const event = new Event('wheel', { bubbles: true, cancelable: true });
+    const values = { deltaX: dx, deltaY: dy, deltaMode: 0, ctrlKey: false, metaKey: false, shiftKey: false, ...wheelOptions, target: wheelOptions.target || pages.home };
+    Object.defineProperties(event, Object.fromEntries(Object.entries(values).map(([key, value]) => [key, { value }])));
+    window.dispatchEvent(event);
+    await new Promise(resolve => setTimeout(resolve, 5));
+    return event;
   }
   const notify = (mutations = [{ type: 'childList', target: body }]) => mutation(mutations);
   await flush();
   messages.length = 0;
   return {
-    messages, calls, requests, backCalls, dispose, select, flush, pages, dock, setRoute, touch,
+    messages, calls, requests, backCalls, dispose, select, flush, pages, dock, setRoute, touch, pointer, wheel,
     observerOptions: () => observerOptions,
     syncCount: () => syncCount,
     pending: () => records.length + frames.size,
@@ -329,4 +358,110 @@ test('ending a page swipe with another finger still down cancels the selection',
     await h.flush();
     assert.equal(h.messages.at(-1).route, '/pages/home/index');
   } finally { h.dispose(); }
+});
+
+test('real touch companion pointer events do not double-switch a phone gesture', async () => {
+  const h = await harness({ reduced: true });
+  try {
+    await h.pointer('pointerdown', 200, 160, { pointerType: 'touch' });
+    await h.touch('touchstart', 200, 160);
+    await h.pointer('pointermove', 80, 160, { pointerType: 'touch' });
+    await h.touch('touchmove', 80, 160);
+    await h.pointer('pointerup', 80, 160, { pointerType: 'touch' });
+    await h.touch('touchend', 80, 160);
+    await h.flush();
+    assert.deepEqual(h.calls, ['/pages/ai-assistant/index']);
+    h.requests[0].resolve(); await h.flush();
+    assert.equal(h.messages.at(-1).route, '/pages/ai-assistant/index');
+  } finally { h.dispose(); }
+});
+
+test('mouse and pen horizontal drags navigate while vertical or secondary-button drags stay local', async () => {
+  for (const pointerType of ['mouse', 'pen']) {
+    const h = await harness({ reduced: true });
+    try {
+      await h.pointer('pointerdown', 200, 160, { pointerType, button: 2, buttons: 2 });
+      await h.pointer('pointermove', 80, 160, { pointerType, button: 2, buttons: 2 });
+      await h.pointer('pointerup', 80, 160, { pointerType, button: 2 });
+      await h.pointer('pointerdown', 200, 160, { pointerType });
+      await h.pointer('pointermove', 195, 280, { pointerType });
+      await h.pointer('pointerup', 195, 280, { pointerType });
+      assert.deepEqual(h.calls, []);
+      await h.pointer('pointerdown', 200, 160, { pointerType });
+      await h.pointer('pointermove', 80, 160, { pointerType });
+      await h.pointer('pointerup', 80, 160, { pointerType });
+      await h.flush();
+      assert.deepEqual(h.calls, ['/pages/ai-assistant/index']);
+      h.requests[0].resolve(); await h.flush();
+    } finally { h.dispose(); }
+  }
+});
+
+test('horizontal wheel accumulates and allows only one switch until a burst ends', async () => {
+  const h = await harness();
+  try {
+    assert.equal((await h.wheel(40)).defaultPrevented, true);
+    assert.deepEqual(h.calls, []);
+    await h.wheel(30);
+    assert.deepEqual(h.calls, ['/pages/ai-assistant/index']);
+    await h.wheel(100);
+    h.requests[0].resolve(); await h.flush();
+    await h.wheel(100);
+    assert.deepEqual(h.calls, ['/pages/ai-assistant/index'], 'the momentum tail cannot jump over another tab');
+    await new Promise(resolve => setTimeout(resolve, 200));
+    await h.wheel(-70);
+    assert.deepEqual(h.calls, ['/pages/ai-assistant/index', '/pages/home/index']);
+    h.requests[1].resolve(); await h.flush();
+  } finally { h.dispose(); }
+});
+
+test('vertical wheel and browser zoom remain native while Shift-wheel selects a tab', async () => {
+  const h = await harness();
+  try {
+    assert.equal((await h.wheel(0, 120)).defaultPrevented, false);
+    assert.equal((await h.wheel(120, 0, { ctrlKey: true })).defaultPrevented, false);
+    assert.equal((await h.wheel(120, 0, { metaKey: true })).defaultPrevented, false);
+    assert.deepEqual(h.calls, []);
+    assert.equal((await h.wheel(0, 80, { shiftKey: true })).defaultPrevented, true);
+    assert.deepEqual(h.calls, ['/pages/ai-assistant/index']);
+    h.requests[0].resolve(); await h.flush();
+  } finally { h.dispose(); }
+});
+
+test('editable, voice, opted-out and overflowing horizontal controls keep all gesture owners', async () => {
+  for (const properties of [
+    { protected: true }, { noSwipe: true }, { touchAction: 'none' },
+    { overflowX: 'auto', clientWidth: 200, scrollWidth: 800 }
+  ]) {
+    const h = await harness({ reduced: true });
+    try {
+      const container = Object.assign(h.element('protected-control'), properties);
+      const target = h.element('control-child');
+      target.parentElement = container;
+      await h.touch('touchstart', 200, 160, { target });
+      await h.touch('touchmove', 80, 160, { target });
+      await h.touch('touchend', 80, 160, { target });
+      await h.pointer('pointerdown', 200, 160, { target });
+      await h.pointer('pointermove', 80, 160, { target });
+      await h.pointer('pointerup', 80, 160, { target });
+      assert.equal((await h.wheel(100, 0, { target })).defaultPrevented, false);
+      await h.flush();
+      assert.deepEqual(h.calls, [], JSON.stringify(properties));
+    } finally { h.dispose(); }
+  }
+});
+
+test('disposing navigation removes mouse, wheel and touch gesture owners', async () => {
+  const h = await harness({ reduced: true });
+  h.dispose();
+  await h.touch('touchstart', 200, 160);
+  await h.touch('touchmove', 80, 160);
+  await h.touch('touchend', 80, 160);
+  await h.pointer('pointerdown', 200, 160);
+  await h.pointer('pointermove', 80, 160);
+  await h.pointer('pointerup', 80, 160);
+  assert.equal((await h.wheel(100)).defaultPrevented, false);
+  await h.flush();
+  assert.deepEqual(h.calls, []);
+  assert.equal(h.pending(), 0);
 });

@@ -8,6 +8,7 @@ import { useSharedRefresh } from '@/services/shared-refresh';
 import { localDate, numberValue, roundDecimal, sanitizeDecimalInput } from '@/utils/stock-math';
 import { formatMoney } from '@/utils/format';
 import { DemoSheet, DemoField, DemoDetail } from '@/components/DemoUI';
+import QuickSpecPicker from '@/components/QuickSpecPicker';
 import type { PartyGood } from '@/components/PartySearchPanel';
 import { formatSpecificationInput } from '@/pages/print-center/specification-input';
 import type { Customer, Product, Supplier } from '@/types';
@@ -54,14 +55,14 @@ export default function InboundPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [costTotals, setCostTotals] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false), [ready, setReady] = useState(false), [loadError, setLoadError] = useState(''), [historyError, setHistoryError] = useState('');
-  const [preview, setPreview] = useState<DeliveryNote | null>(null), [selectingKey, setSelectingKey] = useState('');
+  const [preview, setPreview] = useState<DeliveryNote | null>(null);
+  const [specDetails, setSpecDetails] = useState<Record<string, boolean>>({});
   const busy = useRef(false), sequence = useRef(0), loadedAt = useRef(0);
   const productMap = useMemo(() => new Map(products.map(product => [product.id, product])), [products]);
   const billingCustomer = customers.find(item => item.id === billingCustomerId && !item.deleted_at);
   const party = parties.find(item => item.id === partyId && !item.deleted_at);
   const selectedParty = cartonOnly ? billingCustomer : party;
   const goods = (selectedParty?.specs || []).filter(item => !cartonOnly || ((item.category || (item.kind === '纸板' ? '纸板' : '纸箱')) === '纸箱'));
-  const activeKey = lines.some(line => line.key === selectingKey) ? selectingKey : lines[lines.length - 1]?.key;
   const totalAmount = draftTotal(lines);
   const load = useCallback(async (force = false) => {
     if (!force && Date.now() - loadedAt.current < 250) return;
@@ -102,11 +103,13 @@ export default function InboundPage() {
     const options = (nextParty?.specs || []).filter(item => !cartonOnly || ((item.category || (item.kind === '纸板' ? '纸板' : '纸箱')) === '纸箱'));
     setCostTotals({});
     setLines([options.length === 1 && completeGood(options[0]) ? applyGood(next, options[0], products, cartonOnly) : next]);
-    setSelectingKey(next.key);
+    setSpecDetails({});
   };
-  const chooseGood = (item: PartyGood) => {
-    const line = lines.find(row => row.key === activeKey);
-    if (line && !busy.current) { setCostTotals(current => { const next = { ...current }; delete next[line.key]; return next; }); updateLine(line.key, applyGood(line, item, products, cartonOnly)); }
+  const chooseGood = (line: EditableLine, item: PartyGood) => {
+    if (busy.current) return;
+    setCostTotals(current => { const next = { ...current }; delete next[line.key]; return next; });
+    updateLine(line.key, applyGood(line, item, products, cartonOnly));
+    setSpecDetails(current => ({ ...current, [line.key]: !item.material || !item.unit || !item.specification }));
   };
   const chooseProduct = (line: EditableLine, product: Product) => {
     if ((line.customer_spec_id || line.supplier_spec_id) && matchingProducts(line, [product], cartonOnly).length !== 1
@@ -161,9 +164,12 @@ export default function InboundPage() {
         ...(cartonOnly ? { source_type: party ? 'carton_purchase' as const : 'production' as const, party_type: party ? 'supplier' as const : billingCustomer ? 'customer' as const : null, customer_id: billingCustomer?.id ?? null, customer_name: billingCustomer?.name || '', supplier_id: party?.id ?? null, supplier_name: party?.name || '', driver_phone: '', vehicle_no: '', freight: 0 }
           : { party_type: party ? 'supplier' as const : null, customer_id: null, customer_name: '', supplier_id: party?.id ?? null, supplier_name: party?.name || '', driver_phone: driverPhone.trim(), vehicle_no: vehicleNo.trim(), freight: numberValue(freight, '运费') }),
         remark: remark.trim(), lines: payload, operator: operator.trim() });
-      invalidateProducts(); setPreview(note); setCostTotals({}); setLines([newLine()]); setRemark(''); setWorkOrder('');
+      invalidateProducts(); setPreview(note); setCostTotals({}); setLines([newLine()]); setSpecDetails({}); setRemark(''); setWorkOrder('');
       void Taro.showToast({ title: '入库单保存成功', icon: 'success' }); await load(true);
-    } catch (error) { void Taro.showToast({ title: message(error), icon: 'none' }); }
+    } catch (error) {
+      setSpecDetails(current => ({ ...current, ...Object.fromEntries(lines.filter(line => !line.goods.trim() || !line.specification.trim() || !line.material.trim() || !line.unit.trim() || (!line.unit_price.trim() && !cartonOnly)).map(line => [line.key, true])) }));
+      void Taro.showToast({ title: message(error), icon: 'none' });
+    }
     finally { busy.current = false; setSaving(false); }
   };
   const voidNote = async (note: DeliveryNote) => {
@@ -183,41 +189,66 @@ export default function InboundPage() {
     const total = costTotals[line.key];
     updateLine(line.key, { delivered_qty: value, ...(total?.trim() && Number(value) > 0 ? { unit_price: String(roundDecimal(Number(total) / Number(value), 6)) } : {}) });
   };
+  const createSpecification = (line: EditableLine) => {
+    if (busy.current) return;
+    setCostTotals(current => { const next = { ...current }; delete next[line.key]; return next; });
+    updateLine(line.key, { ...newLine(), key: line.key, quantity: line.quantity, quantityEdited: line.quantityEdited, delivered_qty: line.delivered_qty });
+    setSpecDetails(current => ({ ...current, [line.key]: true }));
+  };
+  const chooseQuickSpec = (line: EditableLine, id: string) => {
+    if (busy.current) return;
+    const good = goods.find(item => 'common:' + item.id === id);
+    if (good) { chooseGood(line, good); return; }
+    const product = products.find(item => 'product:' + item.id === id && !item.deleted_at);
+    if (!product) return;
+    setCostTotals(current => { const next = { ...current }; delete next[line.key]; return next; });
+    updateLine(line.key, applyProduct({ ...line, goods: '', specification: '', material: '', unit: '', customer_spec_id: null, supplier_spec_id: null }, product));
+    setSpecDetails(current => ({ ...current, [line.key]: !product.specification || !product.material || !product.unit }));
+  };
   return <DemoSheet title={cartonOnly ? '纸箱入库' : '库存入库'} busy={saving} testId='carton-receipt-sheet'>
-    <p>{cartonOnly ? '客户与供货来源随本次批次保存。入库金额记成本，不增加客户应收。' : '选已有规格直接带出资料，核对本次实际入库数量。'}</p>
+    <p>选择常用货物或已有库存规格，带出货物资料，填写本次实际入库数量。</p>
     {loadError && <div role='alert' className='demo-error'>{loadError}<button type='button' className='demo-action' disabled={saving} onClick={() => void load(true)}>重新读取</button></div>}
     <DemoField label={cartonOnly ? '关联客户' : '供货商'}><select aria-label={cartonOnly ? '关联客户' : '供货商'} disabled={saving || !ready} value={(cartonOnly ? billingCustomerId : partyId) || ''} onChange={event => void changeParty(Number(event.target.value) || null)}><option value=''>{cartonOnly ? '公共备货' : '不关联供货商'}</option>{(cartonOnly ? customers : parties).filter(item => !item.deleted_at).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></DemoField>
-    <DemoField label={cartonOnly ? '客户常用货物' : '供货商常购货物'}><select aria-label='常用货物' disabled={saving || !ready || !selectedParty} value={lines.find(line => line.key === activeKey)?.customer_spec_id || lines.find(line => line.key === activeKey)?.supplier_spec_id || ''} onChange={event => { const chosen = goods.find(item => String(item.id) === event.target.value); if (chosen) chooseGood(chosen); }}><option value=''>{selectedParty ? goods.length ? '选择常用货物' : '暂无常用货物' : '选择客户后带出'}</option>{goods.map(item => <option key={item.id} value={item.id}>{item.goods} · {item.specification}</option>)}</select></DemoField>
     {lines.map((line, index) => {
       const product = line.product_id == null ? undefined : productMap.get(line.product_id);
       const amount = lineAmount(line);
       const editable = (key: 'goods' | 'material' | 'unit', label: string) => <DemoField label={label}><input type='text' aria-label={`货物 ${index + 1} ${label}`} disabled={saving} value={line[key]} onChange={event => updateLine(line.key, { [key]: event.target.value, product_id: null, create_product: false })} /></DemoField>;
       return <div key={line.key} data-testid={`inbound-line-${index + 1}`}>
         {lines.length > 1 && <DemoDetail label={`货物 ${index + 1}`}><button type='button' className='demo-action' disabled={saving} aria-label={`移除货物 ${index + 1}`} onClick={() => setLines(rows => rows.filter(item => item.key !== line.key))}>移除</button></DemoDetail>}
-        {editable('goods', cartonOnly ? '纸箱名称（必填）' : '货物名称')}
-        <DemoField label='长 × 宽 × 高 / 规格（必填）'><input type='text' aria-label={`货物 ${index + 1} 规格尺寸`} disabled={saving} value={line.specification} onChange={event => updateLine(line.key, { specification: cartonOnly ? formatSpecificationInput(event.target.value, line.specification) : event.target.value, product_id: null, create_product: false })} /></DemoField>
-        {cartonOnly && index === 0 && <DemoField label='供货来源'><select aria-label='供货来源' disabled={saving || !ready} value={partyId || ''} onChange={event => setPartyId(Number(event.target.value) || null)}><option value=''>自产 / 不关联供货商</option>{parties.filter(item => !item.deleted_at).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></DemoField>}
-        <DemoField label='实际入库数量（个）'><input type='number' step='any' min='0' aria-label={`货物 ${index + 1} 本次完工数量`} disabled={saving} value={line.delivered_qty} onChange={event => setReceived(line, sanitizeDecimalInput(event.target.value, 6))} /></DemoField>
+        <QuickSpecPicker label={`选择${cartonOnly ? '纸箱' : '入库'}规格${lines.length > 1 ? ` ${index + 1}` : ''}`}
+          selected={line.goods || line.specification ? [line.goods, line.specification].filter(Boolean).join(' · ') : undefined}
+          disabled={saving || !ready}
+          options={[
+            ...goods.map(item => ({ id: 'common:' + item.id, title: `${item.goods} · ${item.specification}`, detail: `${cartonOnly ? '客户常用' : '供货商常购'} · ${selectedParty?.name || ''} · ${item.material || '材质待补充'} · ${item.unit || '单位待补充'}` })),
+            ...products.filter(item => !item.deleted_at && !lines.some(other => other.key !== line.key && other.product_id === item.id)).map(item => ({ id: 'product:' + item.id, title: `${item.name} · ${item.specification || '尺寸待补充'}`, detail: `已有库存 · ${item.material || '材质待补充'} · ${item.stock} ${item.unit || ''}`, search: item.customer_name }))
+          ]}
+          onSelect={id => chooseQuickSpec(line, id)} onCreate={() => createSpecification(line)} />
+        {!!line.goods && <div className='demo-note' data-testid={`inbound-selected-summary-${index + 1}`}><strong>{line.goods}</strong><div>{line.specification || '尺寸待补充'} · {line.material || '材质待补充'} · {line.unit || '单位待补充'}{line.unit_price.trim() ? ` · ¥${line.unit_price}/${line.unit || '单位'}` : ' · 成本单价未记录'}</div>{product && <div>现有库存 {product.stock} {line.unit}</div>}</div>}
+        {!product && !!line.goods && !!line.specification && !!line.material && !!line.unit && <button type='button' className='demo-primary demo-secondary' disabled={saving || line.create_product} onClick={() => void confirmCreate(line)}>{line.create_product ? '已确认：入库时创建并关联商品' : '创建并关联商品'}</button>}
+        <DemoField label={`实际入库数量（${line.unit || '个'}）`}><input type='number' step='any' min='0' aria-label={`货物 ${index + 1} 本次完工数量`} disabled={saving} value={line.delivered_qty} onChange={event => setReceived(line, sanitizeDecimalInput(event.target.value, 6))} /></DemoField>
         <DemoField label='入库成本总金额（元，选填）'><input type='number' min='0' step='0.01' aria-label={`货物 ${index + 1} 入库成本总金额`} disabled={saving} value={costTotals[line.key] ?? (Number.isFinite(amount) && amount != null ? String(amount) : '')} onChange={event => setCostTotal(line, sanitizeDecimalInput(event.target.value, 2))} /></DemoField>
-        <details className='demo-more' open={!line.material || !line.unit}><summary>货物资料 · 查看 / 调整</summary>
+        <details className='demo-more' open={Boolean(specDetails[line.key])} onToggle={event => { const open = event.currentTarget.open; setSpecDetails(current => ({ ...current, [line.key]: open })); }}><summary>新增 / 修改货物</summary>
+          <DemoField label={cartonOnly ? '客户常用货物' : '供货商常购货物'}><select aria-label={index ? `货物 ${index + 1} 常用货物` : '常用货物'} disabled={saving || !ready || !selectedParty} value={line.customer_spec_id || line.supplier_spec_id || ''} onChange={event => { const chosen = goods.find(item => String(item.id) === event.target.value); if (chosen) chooseGood(line, chosen); }}><option value=''>{selectedParty ? goods.length ? '选择常用货物' : '暂无常用货物' : `先选择${cartonOnly ? '客户' : '供货商'}`}</option>{goods.map(item => <option key={item.id} value={item.id}>{item.goods} · {item.specification}</option>)}</select></DemoField>
           <DemoField label='选择已有货物'><select aria-label={`货物 ${index + 1} 选择已有商品`} value={line.product_id || ''} disabled={saving || !ready} onChange={event => { const chosen = products.find(item => item.id === Number(event.target.value)); if (chosen) chooseProduct(line, chosen); }}><option value=''>选择已有货物</option>{products.filter(item => !item.deleted_at && !lines.some(other => other.key !== line.key && other.product_id === item.id)).map(item => <option key={item.id} value={item.id}>{item.name} · {item.specification}</option>)}</select></DemoField>
+          {editable('goods', cartonOnly ? '纸箱名称（必填）' : '货物名称')}
+          <DemoField label='长 × 宽 × 高 / 规格（必填）'><input type='text' aria-label={`货物 ${index + 1} 规格尺寸`} disabled={saving} value={line.specification} onChange={event => updateLine(line.key, { specification: cartonOnly ? formatSpecificationInput(event.target.value, line.specification) : event.target.value, product_id: null, create_product: false })} /></DemoField>
           <div className='demo-two'>{editable('material', '材质')}{editable('unit', '单位')}</div>
           <DemoField label='入库单价（元）'><input type='number' min='0' step='any' aria-label={`货物 ${index + 1} 入库单价`} disabled={saving} value={line.unit_price} onChange={event => { setCostTotals(current => { const next = { ...current }; delete next[line.key]; return next; }); updateLine(line.key, { unit_price: sanitizeDecimalInput(event.target.value, 6) }); }} /></DemoField>
-          {!product && !!line.goods && <button type='button' className='demo-primary demo-secondary' disabled={saving || line.create_product} onClick={() => void confirmCreate(line)}>{line.create_product ? '已确认：入库时创建并关联商品' : '创建并关联商品'}</button>}
           <DemoDetail label='入库金额（自动）'><span data-testid={`inbound-line-amount-${index + 1}`}>{amountText(amount)}</span></DemoDetail>
           {product && <p>库存 {product.stock}{line.unit} → {roundDecimal(product.stock + Math.max(0, Number(line.delivered_qty) || 0), 6)}{line.unit}</p>}
         </details>
       </div>;
     })}
-    <DemoField label='入库日期时间'><input type='datetime-local' aria-label='入库日期时间' disabled={saving} value={`${date}T${entryTime}`} max={`${localDate()}T23:59`} onChange={event => { setDate(event.target.value.slice(0, 10)); setEntryTime(event.target.value.slice(11, 16)); }} /></DemoField>
-    <DemoField label='库位'><input type='text' aria-label='库位' value={location} maxLength={120} disabled={saving} onChange={event => setLocation(event.target.value)} /></DemoField>
-    <div className='demo-note'>此入口直接登记成品，不扣纸板。成本金额不作为客户销售价；需要登记领料时使用“生产入库”。</div>
+    <button type='button' className='demo-action' disabled={saving} onClick={() => setLines(current => [...current, newLine()])}>＋ 再添加一项</button>
     <details className='demo-more'><summary>更多信息</summary>
+      {cartonOnly && <DemoField label='供货来源'><select aria-label='供货来源' disabled={saving || !ready} value={partyId || ''} onChange={event => setPartyId(Number(event.target.value) || null)}><option value=''>自产 / 不关联供货商</option>{parties.filter(item => !item.deleted_at).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></DemoField>}
+      <DemoField label='入库日期时间'><input type='datetime-local' aria-label='入库日期时间' disabled={saving} value={`${date}T${entryTime}`} max={`${localDate()}T23:59`} onChange={event => { setDate(event.target.value.slice(0, 10)); setEntryTime(event.target.value.slice(11, 16)); }} /></DemoField>
+      <DemoField label='库位'><input type='text' aria-label='库位' value={location} maxLength={120} disabled={saving} onChange={event => setLocation(event.target.value)} /></DemoField>
+      <div className='demo-note'>直接登记成品，不扣纸板；需要登记领料时使用“生产入库”。入库金额记成本，不增加客户应收。</div>
       <DemoField label='工单编号或采购单号'><input type='text' aria-label='工单编号或采购单号' value={workOrder} disabled={saving} onChange={event => setWorkOrder(event.target.value)} /></DemoField>
       {lines.map((line, index) => <DemoField key={line.key} label={`货物 ${index + 1} 计划数量`}><input type='number' step='any' aria-label={`货物 ${index + 1} 计划数量`} disabled={saving} value={line.quantity} onChange={event => updateLine(line.key, { quantity: sanitizeDecimalInput(event.target.value, 6), quantityEdited: true })} /></DemoField>)}
       {!cartonOnly && <><DemoField label='司机电话'><input type='tel' value={driverPhone} onChange={event => setDriverPhone(event.target.value)} /></DemoField><DemoField label='车号'><input type='text' value={vehicleNo} onChange={event => setVehicleNo(event.target.value)} /></DemoField><DemoField label='运费（元）'><input type='number' value={freight} onChange={event => setFreight(sanitizeDecimalInput(event.target.value, 2))} /></DemoField></>}
       <DemoField label='操作人'><input type='text' value={operator} onChange={event => setOperator(event.target.value)} /></DemoField><DemoField label='备注'><input type='text' aria-label='入库备注' maxLength={500} value={remark} disabled={saving} onChange={event => setRemark(event.target.value)} /></DemoField>
-      <button type='button' className='demo-primary demo-secondary' disabled={saving} onClick={() => { const line = newLine(); setLines(current => [...current, line]); setSelectingKey(line.key); }}>＋ 再添加一项</button>
     </details>
     <button type='button' className='demo-primary' disabled={saving || !ready} onClick={() => void save()}>{saving ? '正在保存…' : cartonOnly ? '确认纸箱入库' : '确认入库'}</button>
     {preview && <div className='demo-card' data-testid='inbound-receipt'><h3>入库单 #{preview.id}{preview.voided_at ? ' · 已作废' : ''}</h3><p>{preview.entered_at?.replace('T', ' ') || preview.date} · {preview.customer_name || preview.supplier_name || '公共备货'}</p>{preview.lines.map((line, index) => <DemoDetail key={index} label={line.product_name || line.specification}>{line.delivered_qty} {line.unit} · {formatMoney(line.amount || 0)}</DemoDetail>)}<DemoDetail label='库位'>{preview.location || '未设库位'}</DemoDetail><DemoDetail label='供货来源'>{preview.supplier_name || '自产 / 不关联供货商'}</DemoDetail><DemoDetail label='货款合计'>{formatMoney(preview.total_amount)}</DemoDetail><button type='button' className='demo-action' onClick={() => void downloadCsv(deliveryNoteCsvUrl(preview.id), `delivery-note-${preview.id}.csv`).catch(error => Taro.showToast({ title: message(error), icon: 'none' }))}>导出 CSV</button>{!preview.voided_at && <button type='button' className='demo-action' disabled={saving} onClick={() => void voidNote(preview)}>作废整张入库单</button>}</div>}

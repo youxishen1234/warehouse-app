@@ -1,4 +1,4 @@
-const { openGoods } = require('./receipt-ui-actions.cjs');
+const { openGoods, chooseQuickReceipt } = require('./receipt-ui-actions.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -148,11 +148,9 @@ async function main() {
       await openGoods(page); await expect(input('货物 1 入库单价')).toBeVisible();
     };
     const openProductPickerAndSelect = async name => {
-      await openGoods(page);
-      const selector = page.locator('.demo-dialog select[aria-label$="选择已有商品"]').last();
-      const product = db.listProducts().find(row => row.name === name);
-      await selector.selectOption(String(product.id));
-      await openGoods(page);
+      const index = await page.getByTestId(/^inbound-line-\d+$/).count();
+      await chooseQuickReceipt(page, name, { index, kind: 'product' });
+      await openGoods(page, index);
     };
     const showMore = async () => {
       const details = page.locator('.demo-dialog details').filter({ has: page.getByText('更多信息', { exact: true }) });
@@ -193,10 +191,10 @@ async function main() {
 
     await openProductionEntry();
     await expect(page.getByLabel('关联客户', { exact: true })).toBeVisible();
-    await expect(page.getByLabel('供货来源', { exact: true })).toBeVisible();
     assert.ok(countCartonInboundCustomerRequests() > 0);
     assert.ok(apiRequests.some(item => item.method === 'GET' && item.path.startsWith('/suppliers')));
     await showMore();
+    await expect(page.getByLabel('供货来源', { exact: true })).toBeVisible();
     await expect(input('工单编号或采购单号')).toBeVisible();
     await expect(input('货物 1 计划数量')).toBeVisible();
     await expect(input('入库备注')).toBeVisible();
@@ -207,6 +205,7 @@ async function main() {
     await firstSpec.pressSequentially('302015');
     await expect(firstSpec).toHaveValue('30×20×15');
     await openProductPickerAndSelect('自产测试纸箱甲');
+    await expect(firstSpec).toHaveValue('20×15×10');
 
     const firstQuantity = input('货物 1 本次完工数量');
     const firstPrice = input('货物 1 入库单价');
@@ -261,7 +260,7 @@ async function main() {
     assert.equal(newPost.body.vehicle_no, '');
     assert.equal(newPost.body.freight, 0);
     assert.equal(newPost.body.work_order_no, 'PROD-BROWSER-20261023-01');
-    assert.equal(newPost.body.lines[0].specification, '30×20×15');
+    assert.equal(newPost.body.lines[0].specification, '20×15×10');
     assert.equal(newPost.body.lines[0].delivered_qty, 2.5);
     assert.equal(newPost.body.lines[0].unit_price, 1.23);
     assert.equal(newPost.body.lines[1].delivered_qty, 3);
@@ -277,7 +276,7 @@ async function main() {
     assert.equal(productionNote.supplier_name, '');
     assert.equal(productionNote.total_amount, 7.28, '服务端应按各行完工数 × 入库单价取金额后求和');
     assert.deepEqual(productionNote.lines.map(line => line.amount), [3.08, 4.2]);
-    assert.deepEqual(productionNote.lines.map(line => line.specification), ['30×20×15', '18×12×8']);
+    assert.deepEqual(productionNote.lines.map(line => line.specification), ['20×15×10', '18×12×8']);
     assert.equal(db.getProduct(cartonProduct.id).stock, baseline.cartonStock + 2.5);
     assert.equal(db.getProduct(finishedProduct.id).stock, baseline.finishedStock + 3);
     assert.equal(db.getSupplier(supplier.id).payable, baseline.supplierPayable, '自产金额不得增加历史供货商应付');
@@ -357,9 +356,36 @@ async function main() {
     assert.equal(db.getProduct(finishedProduct.id).stock, baseline.finishedStock);
     assert.deepEqual(db.listLedger({ include_voided: 'true' }).map(entry => ({ ...entry })), baseline.ledger);
 
+    // The common path needs no details expansion: choose a complete existing
+    // SKU, enter the received count, then save the stock-only receipt.
+    await page.goto(`${origin}${productionPath}`);
+    await expect(input('货物 1 本次完工数量')).toBeVisible();
+    await chooseQuickReceipt(page, cartonProduct.name, { kind: 'product' });
+    await expect(page.getByTestId('inbound-selected-summary-1')).toContainText(cartonProduct.specification);
+    await expect(input('货物 1 入库单价')).toBeHidden();
+    await expect(page.getByRole('button', { name: '创建并关联商品', exact: true })).toHaveCount(0);
+    await input('货物 1 本次完工数量').fill('2');
+    await expectedTotal('5.00');
+    await assertNoOverflow(320); await assertNoOverflow(390);
+    const quickResponse = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/delivery-notes');
+    await buttonContainingText('确认纸箱入库').click();
+    const quickResult = await quickResponse;
+    assert.equal(quickResult.status(), 200);
+    const quickNote = (await quickResult.json()).data;
+    assert.equal(quickNote.lines[0].product_id, cartonProduct.id);
+    assert.equal(quickNote.lines[0].delivered_qty, 2);
+    assert.equal(quickNote.total_amount, 5);
+    assert.equal(db.getProduct(cartonProduct.id).stock, baseline.cartonStock + 2);
+    assert.equal(db.getSupplier(supplier.id).payable, baseline.supplierPayable);
+    assert.equal(db.getCustomer(customer.id).debt, baseline.customerDebt);
+    await buttonContainingText('作废整张入库单').click();
+    await page.locator('.taro-modal__content:visible').last().locator('.taro-model__confirm').click();
+    await expect.poll(() => db.getDeliveryNote(quickNote.id).voided_at).toBeGreaterThan(0);
+    assert.equal(db.getProduct(cartonProduct.id).stock, baseline.cartonStock);
+
     assert.deepEqual(pageErrors, [], '浏览器页面不应产生运行时异常');
     assert.ok(externalBlocked.every(request => !request.includes('youxishen.online')), '拦截的跨域非 API 请求不得触达生产域名');
-    console.log(`PASS: production-only carton inbound, auto amount and zero price, multi-line totals, separator, duplicate-click lock, persisted stock-only notes, legacy history separation, void stock rollback, local-only API, 320/390px layouts. Evidence: ${evidence}`);
+    console.log(`PASS: quick SKU selection with quantity-only save, production-only carton inbound, auto amount and zero price, multi-line totals, separator, duplicate-click lock, persisted stock-only notes, legacy history separation, void stock rollback, local-only API, 320/390px layouts. Evidence: ${evidence}`);
   } finally {
     await context.close();
     await browser.close();

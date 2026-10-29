@@ -13,12 +13,13 @@ import { blankItem, copyNoteDraft, draftFromTransactions, draftTotal, newNote, n
 import type { ItemDraft, NoteDraft } from './model';
 import { formatSpecificationInput } from './specification-input';
 import PrintPreview from './preview';
+import PrintConnection from './connection';
 import PrintPaper from './paper';
 import PrintStatement from './statement';
 import SpecificationPicker from './specification-picker';
 import { addSpecificationOptions, buildSpecificationOptions } from './specification-library';
 import type { SpecificationOption } from './specification-library';
-import { getRemoteDevice, getRemotePrintHistory, readPrintAfterOutbound, readPrintPair, savePrintAfterOutbound } from '@/services/remote-print';
+import { getRemotePrintHistory, readPrintAfterOutbound, readPrintPair, savePrintAfterOutbound } from '@/services/remote-print';
 import PrintNotifications from '@/components/PrintNotifications';
 import styles from './index.module.scss';
 
@@ -47,12 +48,12 @@ export default function PrintCenterPage() {
   const [temporaryMode, setTemporaryMode] = useState(() => params.mode === 'temporary');
   const [tab, setTab] = useState<PrintTab>(() => params.transaction_id || params.mode === 'edit' || params.mode === 'temporary' ? 'edit' : 'home');
   const [printType, setPrintType] = useState<'delivery' | 'statement'>(() => params.mode === 'statement' ? 'statement' : 'delivery');
-  const [printerStatus, setPrinterStatus] = useState<{ label: string; ready: boolean }>(() => ({ label: readPrintPair() ? '正在检查打印电脑' : '电脑打印未连接', ready: false }));
   const [preview, setPreview] = useState<PrintNoteInput>();
   const [previewIntent, setPreviewIntent] = useState<'preview' | 'reprint' | 'auto'>('preview');
   const [showPrices, setShowPrices] = useState(true);
   const [paired, setPaired] = useState(() => !!readPrintPair());
   const [printAfterOutbound, setPrintAfterOutbound] = useState(readPrintAfterOutbound);
+  const refreshPrintPair = useCallback(() => { setPaired(!!readPrintPair()); setPrintAfterOutbound(readPrintAfterOutbound()); }, []);
   const closePreview = useCallback(() => {
     setPreview(undefined); setPaired(!!readPrintPair()); setPrintAfterOutbound(readPrintAfterOutbound());
   }, []);
@@ -60,21 +61,6 @@ export default function PrintCenterPage() {
   const [printTimeError,setPrintTimeError]=useState('');
   useEffect(() => { setPaired(!!readPrintPair()); setPrintAfterOutbound(readPrintAfterOutbound()); }, [tab, preview]);
   useEffect(()=>{if(tab!=='history'||!readPrintPair())return;let active=true;setPrintTimeError('');getRemotePrintHistory().then(rows=>{if(active)setPrintTimes(Object.fromEntries(rows.map(row=>[row.note_id,row.printed_at])));}).catch(()=>{if(active)setPrintTimeError('打印时间暂时无法获取，请稍后刷新');});return()=>{active=false;};},[tab]);
-  useEffect(() => {
-    if (tab !== 'home') return;
-    if (!readPrintPair()) {
-      setPrinterStatus({ label: '电脑打印未连接', ready: false });
-      return;
-    }
-    let active = true;
-    setPrinterStatus({ label: '正在检查打印电脑', ready: false });
-    getRemoteDevice().then(device => {
-      if (active) setPrinterStatus({ label: device.online ? device.ready ? `${device.name} · 已就绪` : `${device.name} · 待就绪` : `${device.name} · 未在线`, ready: device.online && device.ready });
-    }).catch(() => {
-      if (active) setPrinterStatus({ label: '打印电脑连接异常', ready: false });
-    });
-    return () => { active = false; };
-  }, [tab]);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const [error, setError] = useState('');
@@ -430,7 +416,7 @@ export default function PrintCenterPage() {
       {notice && <div className={styles.notice} role='status'>{notice}</div>}
       {tab === 'home' ? <section className={styles.workspace} data-print-workbench='demo'>
         <header className={styles.demoHeader}><button type='button' className={styles.back} aria-label='返回总台' onClick={() => void Taro.switchTab({ url: '/pages/home/index' })}>‹</button><div><span className={styles.eyebrow}>曙 光 库 存</span><h1>打印中心</h1></div></header>
-        <div className={`${styles.demoConnection} ${printerStatus.ready ? styles.demoConnected : ''}`} role='status'><span className={styles.printerState}><i aria-hidden='true' />{printerStatus.label}</span></div>
+        {!preview && <PrintConnection onPairChange={refreshPrintPair} />}
         {printModes}
         <section className={styles.demoSource}>
           <div className={styles.sectionHeading}><h2>选择出库单</h2><span>原单资料自动带出</span></div>

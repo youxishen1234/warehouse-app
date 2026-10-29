@@ -74,10 +74,15 @@ function createBluetoothFixture() {
   };
 }
 const bluetooth = bluetoothFixture ? createBluetoothFixture() : undefined;
+function useDidShow(callback) {
+  const latest = React.useRef(callback);
+  latest.current = callback;
+  React.useEffect(() => { latest.current(); }, []);
+}
 const cache = {
   react: React,
   'react-dom': ReactDOM,
-  '@tarojs/taro': { __esModule: true, default: taro, useRouter: () => ({ params: Object.fromEntries(new URLSearchParams(location.hash.split('?')[1] || '')) }) },
+  '@tarojs/taro': { __esModule: true, default: taro, useRouter: () => ({ params: Object.fromEntries(new URLSearchParams(location.hash.split('?')[1] || '')) }), useDidShow },
   'react/jsx-runtime': { jsx: (type, props, key) => React.createElement(type, { ...props, key }), jsxs: (type, props, key) => React.createElement(type, { ...props, key }), Fragment: React.Fragment },
   '@/services/bluetooth-630k': bluetooth?.service,
   '@/services/print-transport-pending': bluetooth?.pending,

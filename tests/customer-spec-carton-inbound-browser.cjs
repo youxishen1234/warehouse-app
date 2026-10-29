@@ -1,4 +1,4 @@
-const { openGoods, chooseReceipt } = require('./receipt-ui-actions.cjs');
+const { openGoods, chooseReceipt, chooseQuickReceipt } = require('./receipt-ui-actions.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -152,7 +152,10 @@ async function main() {
     await choose('选择客户', customerName);
     await expect(page.getByLabel('常用货物', { exact: true })).toBeVisible();
   };
-  const chooseCustomerSpec = (fragment, index = 1) => choose(`货物 ${index} 客户常用规格`, fragment);
+  const chooseCustomerSpec = async (fragment, index = 1) => {
+    await chooseQuickReceipt(page, fragment, { index, kind: 'common' });
+    await openGoods(page, index);
+  };
   const saveReceipt = async (workOrder, quantity, manualPrice = null) => {
     await input('货物 1 本次完工数量').fill(String(quantity));
     if (manualPrice !== null) await input('货物 1 入库单价').fill(String(manualPrice));
@@ -208,6 +211,16 @@ async function main() {
     await expect(page.getByLabel('常用货物', { exact: true })).toBeVisible();
     await openGoods(page);
     await expect(input('货物 1 入库单价')).toHaveValue('');
+    await chooseQuickReceipt(page, '零报价客户纸箱', { kind: 'common' });
+    await expect(page.getByTestId('inbound-selected-summary-1')).toContainText('零报价客户纸箱');
+    await expect(input('货物 1 入库单价')).toBeHidden();
+    await expect(page.getByRole('button', { name: '创建并关联商品', exact: true })).toBeVisible();
+    await input('货物 1 本次完工数量').fill('1');
+    const receiptsBeforeExplicitCreation = apiRequests.filter(row => row.method === 'POST' && row.path === '/delivery-notes').length;
+    await clickText('确认纸箱入库');
+    await expect(page.getByText('第 1 项请选择现有商品，或明确创建并关联商品', { exact: true })).toBeVisible();
+    assert.equal(apiRequests.filter(row => row.method === 'POST' && row.path === '/delivery-notes').length, receiptsBeforeExplicitCreation);
+    assert.equal(db.listProducts().length, 0, 'new specification needs explicit SKU creation before saving');
     await chooseCustomerSpec('零报价客户纸箱');
     const zeroPrice = input('货物 1 入库单价');
     await expect(zeroPrice).toHaveValue('0');
@@ -326,6 +339,13 @@ async function main() {
     successMessage = 'PASS: management-only party creation, searchable customer selection and cards, explicit SKU creation/reuse, quote/manual/zero price snapshots, legacy dimensions, draft price refresh, failed-load retry, 320/390/1280 layouts.';
   } catch (error) {
     primaryError = error;
+    fs.writeFileSync(path.join(evidence, 'failure-overflow.json'), JSON.stringify(await page.evaluate(() => ({
+      viewport: innerWidth, document: document.documentElement.scrollWidth, body: document.body.scrollWidth,
+      root: [...document.querySelectorAll('[data-testid="stock-entry-page"]')].map(node => ({ width: node.clientWidth, scrollWidth: node.scrollWidth })),
+      inputs: [...document.querySelectorAll('input, textarea')].filter(node => node.getClientRects().length && getComputedStyle(node).visibility !== 'hidden').map(node => {
+        const bounds = node.getBoundingClientRect(); return { label: node.getAttribute('aria-label'), left: bounds.left, right: bounds.right, width: bounds.width };
+      })
+    })).catch(() => ({})), null, 2));
     await page.screenshot({ path: path.join(evidence, 'failure.png'), fullPage: true }).catch(() => {});
     fs.writeFileSync(path.join(evidence, 'failure-text.txt'), await page.locator('body').innerText().catch(() => ''));
     fs.writeFileSync(path.join(evidence, 'failure.html'), await page.content().catch(() => ''));

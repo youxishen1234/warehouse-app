@@ -23,7 +23,27 @@ html.sg-native-ios taro-scroll-view-core.taro-scroll-view__scroll-y { padding-bo
 
 html, body, #app { width: 100%; height: 100%; overflow: hidden; }
 .taro_router { height: 100%; min-height: 0; }
-.taro_page { height: 100%; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
-.taro-tabbar__panel .taro_page { -webkit-overflow-scrolling: touch; touch-action: pan-y; }
+.taro_page { height: 100%; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; touch-action: auto; }
+.taro-tabbar__panel .taro_page { -webkit-overflow-scrolling: touch; touch-action: auto; }
 .sg-app-nav button { touch-action: manipulation; }
 @media (max-width: 500px) { .taro-tabbar__panel, .taro_page, .sg-app-nav { max-width: none; width: 100%; } }
+
+@media (min-width: 768px) {
+  html, body { background: #f4f7fc; }
+  .taro-tabbar__panel { max-width: none; margin: 0; }
+  .taro_router > .taro_page { width: 100%; max-width: none; margin: 0; }
+  .sg-app-nav { max-width: 768px; }
+}
+
+@media (min-width: 1024px) {
+  html { --sg-desktop-nav-width: 208px; }
+  html .taro_router > .taro_page { width: calc(100% - var(--sg-desktop-nav-width)); margin-left: var(--sg-desktop-nav-width); }
+  taro-tabbar.taro-tabbar__tabbar { top: 0 !important; bottom: 0 !important; right: auto !important; width: var(--sg-desktop-nav-width) !important; height: 100% !important; }
+  .sg-app-nav { flex-direction: column; align-items: stretch; gap: 10px; width: 100%; max-width: none; height: 100%; margin: 0; padding: 32px 16px 24px; border-top: 0; border-right: 1px solid #e5ecf5; background: #fff; backdrop-filter: none; }
+  .sg-app-nav::before { content: '工作空间'; display: block; margin: 0 12px 24px; color: #162741; font: 700 18px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif; }
+  .sg-app-nav button { flex-direction: row; justify-content: flex-start; gap: 12px; width: 100%; min-height: 50px; padding: 12px 16px; border-radius: 12px; color: #7789a1; font-size: 14px; text-align: left; }
+  .sg-app-nav button:hover { background: #f4f7fc; color: #2469ee; }
+  .sg-app-nav button.sg-app-nav-selected { background: #edf3ff; color: #2469ee; }
+  .sg-app-nav svg { width: 22px; height: 22px; }
+  taro-scroll-view-core.taro-scroll-view__scroll-y { padding-bottom: 32px !important; }
+}

@@ -15,6 +15,8 @@ vm.runInNewContext(source, template, { filename: templatePath });
 let win;
 let active = false;
 const indexUrl = pathToFileURL(path.join(__dirname, 'index.html')).href;
+const virtualPrinter = name => /(?:print|save).*pdf|microsoft xps|onenote|fax/i.test(name);
+const unavailablePrinter = printer => Boolean(printer.status & (0x80 | 0x1000 | 0x2));
 
 function validate(input) {
   const settings = template.exports.normalizePrintSettings({
@@ -43,7 +45,10 @@ async function renderJob(job, callback) {
 }
 ipcMain.handle('print-tool:printers', async event => {
   assertSender(event);
-  return (await win.webContents.getPrintersAsync()).map(p => ({ name: p.name, isDefault: p.isDefault, status: p.status }));
+  return (await win.webContents.getPrintersAsync()).map(p => ({
+    name: p.name, isDefault: p.isDefault, status: p.status,
+    virtual: virtualPrinter(p.name), unavailable: unavailablePrinter(p),
+  }));
 });
 ipcMain.handle('print-tool:preview', async (event, input) => {
   assertSender(event);
@@ -70,12 +75,9 @@ ipcMain.handle('print-tool:print', async (event, input) => {
     const printers = await win.webContents.getPrintersAsync();
     const printer = printers.find(p => p.name === job.printerName);
     if (!printer) throw new Error('请选择本机已安装的打印机');
-    if (printer.status & (0x80 | 0x1000 | 0x2)) throw new Error('打印机离线或存在错误，请检查连接和纸张');
-    if (/print to pdf/i.test(printer.name)) throw new Error('保存 PDF 请使用“导出 PDF”按钮');
+    if (unavailablePrinter(printer)) throw new Error('打印机离线或存在错误，请检查连接和纸张');
+    if (virtualPrinter(printer.name)) throw new Error('请选择实体打印机；保存文件请使用“导出 PDF”');
     return await renderJob(job, async (contents, layout) => {
-      const confirmation = await dialog.showMessageBox(win, { type: 'question', title: '确认发送打印', message: '打印到：' + printer.name,
-        detail: `客户：${job.document.party}\n共 ${layout.pages} 页，每页一份，241 × 93 mm。\n请确认纸张已装好；该操作只打印，不改变库存或账款。`, buttons: ['取消', '打印一份'], defaultId: 0, cancelId: 0 });
-      if (confirmation.response !== 1) return { kind: 'cancelled' };
       await new Promise((resolve, reject) => contents.print(printOptions(printer.name, job.settings), (ok, reason) => ok ? resolve() : reject(new Error('打印未被接受：' + (reason || '请检查打印队列')))));
       return { kind: 'queued', printerName: printer.name, pages: layout.pages };
     });

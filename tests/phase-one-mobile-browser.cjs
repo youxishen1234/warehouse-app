@@ -62,6 +62,11 @@ async function main() {
     const details = page.getByTestId(`inbound-line-${index}`).locator('details');
     if (!(await details.evaluate(element => element.hasAttribute('open')))) await details.locator('summary').click();
   };
+  const chooseGoods = async (name, index = 1) => {
+    const picker = page.getByTestId(`inbound-line-${index}`).locator('.quick-spec-picker');
+    await picker.locator('.quick-spec-trigger').click();
+    await picker.locator('.quick-spec-options button').filter({ hasText: name }).first().click();
+  };
   const noOverflow = async () => assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'mobile screen has no horizontal overflow');
   try {
     await go('/pages/home/index'); await expect(page.getByTestId('workbench-sync-status')).toContainText('已同步');
@@ -105,14 +110,15 @@ async function main() {
     const produced = db.listDeliveryNotes().find(note => note.source_type === 'production'); assert.equal(produced.total_amount, 7.5); assert.equal(produced.customer_id, customer.id);
 
     await go('/pages/carton-inbound/index'); await selectParty('customer', multiCustomer.id, '多款');
+    await openGoods();
     await expect(input('货物 1 纸箱名称（必填）')).toHaveValue(''); await expect(page.getByLabel('常用货物', { exact: true })).toContainText('仅名称货物'); await expect(page.getByLabel('常用货物', { exact: true })).toContainText(cartonGood.goods);
     await page.getByLabel('常用货物', { exact: true }).selectOption('name-only'); await expect(input('货物 1 纸箱名称（必填）')).toHaveValue('仅名称货物'); await expect(input('货物 1 规格尺寸')).toHaveValue(''); await expect(input('货物 1 入库单价')).toHaveValue(''); await input('货物 1 本次完工数量').fill('4');
     await expect(page.getByTestId('inbound-line-amount-1')).toContainText('金额未记录'); await expect(page.getByTestId('inbound-total-amount')).toContainText('金额未记录');
     assert.equal(db.listProducts().length, 2, 'incomplete goods do not silently create inventory');
-    await page.getByText('更多信息', { exact: true }).click(); await click('＋ 再添加一项'); await expect(page.getByLabel('关联客户', { exact: true })).toHaveValue(String(multiCustomer.id)); await page.getByLabel('常用货物', { exact: true }).selectOption('multi-complete'); await expect(input('货物 2 纸箱名称（必填）')).toHaveValue(cartonGood.goods); await input('货物 2 本次完工数量').fill('2'); await expect(page.getByTestId('inbound-total-amount')).toContainText('¥5.00'); await page.getByLabel('移除货物 1', { exact: true }).click(); await expect(page.getByTestId('inbound-line-2')).toHaveCount(0);
+    await click('＋ 再添加一项'); await expect(page.getByLabel('关联客户', { exact: true })).toHaveValue(String(multiCustomer.id)); await chooseGoods(cartonGood.goods, 2); await expect(input('货物 2 纸箱名称（必填）')).toHaveValue(cartonGood.goods); await input('货物 2 本次完工数量').fill('2'); await expect(page.getByTestId('inbound-total-amount')).toContainText('¥5.00'); await page.getByLabel('移除货物 1', { exact: true }).click(); await expect(page.getByTestId('inbound-line-2')).toHaveCount(0);
     await page.screenshot({ path: path.join(evidence, 'carton-multi-390.png'), fullPage: true });
 
-    await go('/pages/carton-inbound/index?kind=purchase'); await selectParty('supplier', supplier.id, '采购纸箱'); await page.getByLabel('常用货物', { exact: true }).selectOption('purchase-complete'); await openGoods(); await expect(input('货物 1 入库单价')).toHaveValue('4.2'); await expect(input('货物 1 规格尺寸')).toHaveValue(purchaseGood.specification); await input('货物 1 本次完工数量').fill('3'); await expect(page.getByTestId('inbound-total-amount')).toContainText('¥12.60'); await click('确认入库');
+    await go('/pages/carton-inbound/index?kind=purchase'); await selectParty('supplier', supplier.id, '采购纸箱'); await chooseGoods(purchaseGood.goods); await expect(input('货物 1 入库单价')).toHaveValue('4.2'); await expect(input('货物 1 规格尺寸')).toHaveValue(purchaseGood.specification); await input('货物 1 本次完工数量').fill('3'); await expect(page.getByTestId('inbound-total-amount')).toContainText('¥12.60'); await click('确认入库');
     await expect.poll(() => db.getProduct(purchaseProduct.id).stock).toBe(7); const purchased = db.listDeliveryNotes().find(note => note.source_type !== 'production'); assert.equal(purchased.total_amount, 12.6); assert.equal(purchased.supplier_id, supplier.id); assert.equal(db.getSupplier(supplier.id).payable, 24.6);
     await page.screenshot({ path: path.join(evidence, 'purchase-390.png'), fullPage: true });
 
@@ -121,11 +127,11 @@ async function main() {
     await openGoods(); await page.getByLabel('货物 1 选择已有商品', { exact: true }).selectOption(String(purchaseProduct.id)); await openGoods(); await input('货物 1 本次完工数量').fill('2'); await input('货物 1 入库单价').fill('1.5'); await click('确认入库');
     await expect.poll(() => db.getProduct(purchaseProduct.id).stock).toBe(9); assert.equal(db.getSupplier(supplier.id).payable, payableBeforeUnlinked, 'unassociated purchasing changes stock without adding supplier payable'); const unlinked = db.listDeliveryNotes().find(note => note.supplier_id == null && note.source_type !== 'production'); assert.ok(unlinked); assert.equal(unlinked.total_amount, 3);
 
-    await go('/pages/board-inbound/index'); await selectParty('supplier', supplier.id, '常用纸板'); await page.getByLabel('供货商常购规格', { exact: true }).selectOption('board-complete');
-    await page.getByText('采购纸板尺寸 · 查看 / 调整', { exact: true }).click(); await expect(input('实际纸板长')).toHaveValue('160'); await expect(input('实际纸板宽')).toHaveValue('110'); await expect(input('纸箱尺寸：长 × 宽 × 高')).toHaveValue('40×30×20'); await expect(input('每平米单价')).toHaveValue('1.8'); await expect(input('实收数')).toHaveValue('');
+    await go('/pages/board-inbound/index'); await selectParty('supplier', supplier.id, '常用纸板'); await page.getByRole('button', { name: '点击选择常用规格', exact: true }).click(); await page.getByRole('button', { name: /常用纸板 · 40\s*×\s*30\s*×\s*20 cm.*供货商常购 · 常用板厂/ }).click();
+    await page.getByText('新增 / 修改规格', { exact: true }).click(); await page.getByText('采购纸板尺寸 · 查看 / 调整', { exact: true }).click(); await expect(input('实际纸板长')).toHaveValue('160'); await expect(input('实际纸板宽')).toHaveValue('110'); await expect(input('纸箱尺寸：长 × 宽 × 高')).toHaveValue('40×30×20'); await expect(input('每平米单价')).toHaveValue('1.8'); await expect(input('实收数')).toHaveValue('');
     await page.getByText('更多信息', { exact: true }).click(); await expect(input('本次运费')).toHaveValue(''); await expect(input('订购数')).toHaveValue(''); await expect(page.getByLabel('入库日期时间', { exact: true })).toHaveValue(new RegExp('^' + localDay(0) + 'T'));
     await input('实收数').fill('10'); await input('计费平米').fill('17.6'); await input('本次运费').fill('6'); await click('再添加一项'); await expect(page.getByLabel('供货商', { exact: true })).toHaveValue(String(supplier.id)); await expect(input('实收数')).toHaveValue(''); await expect(input('本次运费')).toHaveValue('');
-    await page.getByLabel('供货商常购规格', { exact: true }).selectOption(''); await page.getByLabel('供货商常购规格', { exact: true }).selectOption('board-complete'); await input('实收数').fill('5'); await input('计费平米').fill('8.8'); await click('确认纸板入库');
+    await page.getByRole('button', { name: '点击选择常用规格', exact: true }).click(); await page.getByRole('button', { name: /常用纸板 · 40\s*×\s*30\s*×\s*20 cm.*供货商常购 · 常用板厂/ }).click(); await input('实收数').fill('5'); await input('计费平米').fill('8.8'); await click('确认纸板入库');
     await expect.poll(() => db.listBoards().length).toBe(2); assert.deepEqual(db.listBoards().map(row => row.receivedQty).sort((a, b) => a - b), [5, 10]); assert.equal(db.listBoards().reduce((sum, row) => sum + row.freight, 0), 6); assert.equal(db.listBoards()[0].supplier_id, supplier.id);
     await page.screenshot({ path: path.join(evidence, 'board-390.png'), fullPage: true });
 

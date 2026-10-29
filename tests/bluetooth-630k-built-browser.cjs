@@ -134,6 +134,10 @@ async function main() {
     await expect(preview).toBeVisible();
     const bluetoothChannel = preview.getByRole('button', { name: '630K 蓝牙打印', exact: true });
     const networkChannel = preview.getByRole('button', { name: '网络打印', exact: true });
+    await expect(networkChannel).toHaveAttribute('aria-pressed', 'true');
+    await expect(bluetoothChannel).toHaveAttribute('aria-pressed', 'false');
+    await expect(preview.getByRole('button', { name: '发送到630K', exact: true })).toBeEnabled();
+    await bluetoothChannel.click();
     await expect(bluetoothChannel).toHaveAttribute('aria-pressed', 'true');
     await expect(networkChannel).toHaveAttribute('aria-pressed', 'false');
     const bluetoothSection = preview.locator('[data-transport="bluetooth"]');
@@ -167,7 +171,7 @@ async function main() {
     assert.deepEqual(errors, [], 'built preview has no page errors');
     console.log(JSON.stringify({
       builtWebRoot: webRoot, artifacts, noteNumber: saved.number, runtime,
-      defaultChannel: 'bluetooth', printerSelectionVisible: true, networkChannelUsable: true,
+      defaultChannel: 'network', explicitBluetoothSelection: true, printerSelectionVisible: true, networkChannelUsable: true,
       layoutWidths: [320, 390, 768], layout, nativeBridgeCalls: bridgeCalls, printCalls, printSubmissions,
       blockedExternalRequests: externalBlocked.length, pageErrors: errors
     }));

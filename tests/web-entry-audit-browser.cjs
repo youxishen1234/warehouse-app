@@ -125,6 +125,7 @@ async function main() {
     await page.pdf({ path: path.join(evidence, 'statement.pdf'), format: 'A4', printBackground: true });
     await page.emulateMedia({ media: 'screen' });
     await go('/pages/board-inbound/index');
+    await page.getByText('新增 / 修改规格', { exact: true }).click();
     await page.getByLabel('纸箱尺寸：长 × 宽 × 高', { exact: true }).fill('30×20×15');
     await page.getByLabel('实收数', { exact: true }).fill('12');
     await page.getByText('确认纸板入库', { exact: true }).click();

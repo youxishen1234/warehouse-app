@@ -19,7 +19,7 @@ export default function StockList({ kind, boards, cartons, transactions, onStock
   onInbound: (product: Product) => void;
 }) {
   const [selected, setSelected] = useState<Product>();
-  return <View>
+  return <View data-testid='workbench-stock-list'>
     {kind !== 'carton' && boards.map(batch => <Button className={styles.stockCard} key={batch.id} data-testid='workbench-board' data-record-id={batch.id} onClick={() => void openBusinessPage('/pages/management/index?section=paperboard-batch&id=' + encodeURIComponent(batch.id))}>
       <View className={styles.stockTop}><View className={styles.avatar}>板</View><View className={styles.stockIdentity}><strong>{batch.name || `${batch.layers}层 ${batch.fluteType}楞纸板`}</strong><Text>{boardSpec(batch)} cm</Text><Text>成箱 {cartonSpec(batch)} cm</Text><Text>入库：{batch.enteredAt?.replace('T', ' ') || batch.date}</Text><Text>入库金额：{batch.amountMode === 'pending' ? '待核算' : formatMoney(batch.amount)}</Text></View><View className={styles.stockAmount}>{batch.remainingQty.toLocaleString()} <Text>张</Text></View></View>
       <View className={styles.stockBottom}><View><Text>客户：{batch.customerName || '公共备货'}</Text><Text>供货来源：{batch.supplier || '未关联供货商'}</Text><Text>库位：{batch.location || '未设库位'}</Text></View><Text>查看明细 ›</Text></View>

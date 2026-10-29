@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 /* eslint-disable react/forbid-elements */
 import Taro, { useLoad, useRouter } from '@tarojs/taro';
 import { DemoSheet, DemoField, DemoDetail } from '@/components/DemoUI';
+import QuickSpecPicker from '@/components/QuickSpecPicker';
 import type { PartyGood } from '@/components/PartySearchPanel';
-import { getSuppliers } from '@/services/api';
+import { getCustomers, getSuppliers } from '@/services/api';
 import type { Supplier } from '@/types';
 import { BoardBatch, getBoards, getBoard, receiveBoard, receiveBoards, updateBoard, boardSpec, today } from '@/services/boards';
 import { BusinessSpecification, getBusinessSpecifications } from '@/services/business-workflow';
@@ -15,6 +16,7 @@ import { parseDimensionSpecification, preserveDimensionGrouping, shouldPreserveD
 const localEntryTime = () => { const now = new Date(); return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`; };
 const initial = { name: '纸板', enteredAt: '', supplier: '', customerName: '', material: '', printPlate: '', printColor: '', date: today(), boardLength: '', boardWidth: '', cartonLength: '', cartonWidth: '', cartonHeight: '', fluteType: 'BC', layers: '5', faceGsm: '', linerGsm: '', flutingGsm: '', orderedQty: '', receivedQty: '', billedArea: '', unitPrice: '', freight: '', warningQty: '0', location: '', deliveryNo: '', remark: '' };
 type BoardDraft = Record<string, string | number | boolean | null>;
+type BoardSpecification = BusinessSpecification & { unitPrice?: number | null; location?: string; faceGsm?: number | null; linerGsm?: number | null; flutingGsm?: number | null };
 export default function BoardReceive() {
   const { params: entryParams } = useRouter();
   const prefillApplied = useRef(false);
@@ -23,6 +25,7 @@ export default function BoardReceive() {
   const [cartonSpecification, setCartonSpecification] = useState('');
   const [manualAmount, setManualAmount] = useState('');
   const [saveSupplierSpec, setSaveSupplierSpec] = useState(true);
+  const [specDetailsOpen, setSpecDetailsOpen] = useState(false);
 
   const [customerSource, setCustomerSource] = useState('');
   const [sharedSpecId, setSharedSpecId] = useState('');
@@ -34,12 +37,11 @@ export default function BoardReceive() {
   const supplier = suppliers.find(item => item.id === supplierId && !item.deleted_at);
   const supplierSpecs = (supplier?.specs || []).filter(item => item.category === '纸板' || item.kind === '纸板');
   const orderedQuantityEdited = useRef(false);
-  const [templateQuery, setTemplateQuery] = useState('');
   const [allRows, setAllRows] = useState<BoardBatch[]>([]);
   const [editingId, setEditingId] = useState('');
   const [editReady, setEditReady] = useState(false);
   const [boardLoadError, setBoardLoadError] = useState('');
-  const [sharedSpecs, setSharedSpecs] = useState<BusinessSpecification[]>([]);
+  const [sharedSpecs, setSharedSpecs] = useState<BoardSpecification[]>([]);
   const [specError, setSpecError] = useState('');
   const mounted = useRef(true);
   const boardSequence = useRef(0), specSequence = useRef(0);
@@ -51,38 +53,62 @@ export default function BoardReceive() {
     catch (e) { if (mounted.current) setSupplierError(e.message || '供货商资料读取失败'); }
   }, []);
   useEffect(() => { void loadSuppliers(); }, [loadSuppliers]);
-  const applySupplierSpec = (spec: PartyGood) => {
+  const applySupplierSpec = useCallback((spec: PartyGood, owner = supplier) => {
     if (saving.current) return;
     draftChanged.current = true;
     setSelected(null);
+    setSharedSpecId('');
+    setCustomerSource('');
     setManualAmount('');
     const text = (value: unknown) => value == null ? '' : String(value);
-    setBoardSpecification(spec.boardLength && spec.boardWidth ? specificationFromDimensions([spec.boardLength, spec.boardWidth]) : spec.specification || '');
-    setCartonSpecification(spec.cartonLength && spec.cartonWidth && spec.cartonHeight ? specificationFromDimensions([spec.cartonLength, spec.cartonWidth, spec.cartonHeight]) : '');
-    setForm(f => ({ ...f, boardLength: text(spec.boardLength), boardWidth: text(spec.boardWidth), cartonLength: text(spec.cartonLength), cartonWidth: text(spec.cartonWidth), cartonHeight: text(spec.cartonHeight), name: spec.goods || '纸板', material: spec.material || '', fluteType: spec.fluteType || '', layers: text(spec.layers), unitPrice: text(spec.unitPrice ?? spec.price) }));
-  };
+    const metadata = spec as PartyGood & Partial<BoardBatch>;
+    const boardSize = spec.boardLength && spec.boardWidth ? specificationFromDimensions([spec.boardLength, spec.boardWidth]) : (spec.specification || '').replace(/\s*(?:cm|厘米|㎝)\s*$/i, '');
+    const boardDimensions = parseDimensionSpecification(boardSize, 2);
+    if (owner) setSupplierId(owner.id);
+    setBoardSpecification(boardSize);
+    const cartonSize = spec.cartonLength && spec.cartonWidth && spec.cartonHeight ? specificationFromDimensions([spec.cartonLength, spec.cartonWidth, spec.cartonHeight]) : '';
+    setCartonSpecification(cartonSize);
+    setSpecDetailsOpen(!cartonSize);
+    setForm(f => ({ ...f, supplier: owner?.name || '', boardLength: text(boardDimensions?.[0]), boardWidth: text(boardDimensions?.[1]), cartonLength: text(spec.cartonLength), cartonWidth: text(spec.cartonWidth), cartonHeight: text(spec.cartonHeight), name: spec.goods || '纸板', customerName: '', material: spec.material || '', fluteType: spec.fluteType || initial.fluteType, layers: text(spec.layers) || initial.layers, unitPrice: text(spec.unitPrice ?? spec.price), billedArea: '', location: metadata.location || '', faceGsm: text(metadata.faceGsm), linerGsm: text(metadata.linerGsm), flutingGsm: text(metadata.flutingGsm), printPlate: '', printColor: '' }));
+  }, [supplier]);
   useEffect(() => {
     if (prefillApplied.current || !entryParams.spec_id || !supplier || draftChanged.current) return;
     const spec = supplierSpecs.find(item => item.id === entryParams.spec_id);
     if (spec) { applySupplierSpec(spec); prefillApplied.current = true; }
-  }, [supplier, supplierSpecs, entryParams.spec_id]);
+  }, [supplier, supplierSpecs, entryParams.spec_id, applySupplierSpec]);
   const loadSpecs = useCallback(async () => {
     const current = ++specSequence.current;
-    try { const rows = await getBusinessSpecifications(); if (!mounted.current || current !== specSequence.current) return; setSharedSpecs(rows); setSpecError(''); }
+    try {
+      const [rows, customers] = await Promise.all([getBusinessSpecifications(), getCustomers().catch(() => [])]);
+      if (!mounted.current || current !== specSequence.current) return;
+      setSharedSpecs(rows.map(row => {
+        if (row.source !== 'customer') return row;
+        const customer = customers.find(item => item.name === row.customer_name && !item.deleted_at);
+        const spec = customer?.specs?.find(item => item.id === row.source_id || item.dimension_source?.spec_id === row.source_id);
+        if (!spec) return row;
+        const board = [spec.boardLength, spec.boardWidth].every(value => Number(value) > 0) ? [Number(spec.boardLength), Number(spec.boardWidth)] : row.board;
+        const carton = [spec.cartonLength, spec.cartonWidth, spec.cartonHeight].every(value => Number(value) > 0) ? [Number(spec.cartonLength), Number(spec.cartonWidth), Number(spec.cartonHeight)] : row.carton;
+        return { ...row, name: spec.goods || row.name, board, carton, material: spec.material || row.material, fluteType: spec.fluteType || row.fluteType, layers: spec.layers || row.layers, unitPrice: spec.unitPrice ?? (spec.kind === '纸板' || spec.category === '纸板' ? spec.price : undefined), faceGsm: spec.faceGsm, linerGsm: spec.linerGsm, flutingGsm: spec.flutingGsm };
+      }));
+      setSpecError('');
+    }
     catch (e) { if (mounted.current && current === specSequence.current) setSpecError(e.message || '共享规格读取失败'); }
   }, []);
   useEffect(() => { void loadSpecs(); }, [loadSpecs]);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; boardSequence.current += 1; specSequence.current += 1; }; }, []);
-  const applySharedSpec = (spec: BusinessSpecification) => {
+  const applySharedSpec = (spec: BoardSpecification) => {
     if (saving.current) return;
     draftChanged.current = true;
     setSelected(null);
+    setSharedSpecId(spec.id);
+    setCustomerSource(spec.customer_name || '');
     setManualAmount('');
     const boardSize = spec.board ? specificationFromDimensions(spec.board) : '';
     const cartonSize = spec.carton ? specificationFromDimensions(spec.carton) : '';
     setBoardSpecification(boardSize);
     setCartonSpecification(cartonSize);
-    setForm(f => ({ ...f, name: spec.name || f.name, customerName: spec.customer_name || f.customerName, material: spec.material || f.material, ...(spec.board ? { boardLength: String(spec.board[0]), boardWidth: String(spec.board[1]) } : { boardLength: '', boardWidth: '' }), ...(spec.carton ? { cartonLength: String(spec.carton[0]), cartonWidth: String(spec.carton[1]), cartonHeight: String(spec.carton[2]) } : { cartonLength: '', cartonWidth: '', cartonHeight: '' }), ...(spec.fluteType ? { fluteType: spec.fluteType } : {}), ...(spec.layers ? { layers: String(spec.layers) } : {}) }));
+    setSpecDetailsOpen(!cartonSize);
+    setForm(f => ({ ...f, name: spec.name || '纸板', customerName: spec.customer_name || '', material: spec.material || '', ...(spec.board ? { boardLength: String(spec.board[0]), boardWidth: String(spec.board[1]) } : { boardLength: '', boardWidth: '' }), ...(spec.carton ? { cartonLength: String(spec.carton[0]), cartonWidth: String(spec.carton[1]), cartonHeight: String(spec.carton[2]) } : { cartonLength: '', cartonWidth: '', cartonHeight: '' }), fluteType: spec.fluteType || initial.fluteType, layers: spec.layers ? String(spec.layers) : initial.layers, unitPrice: spec.unitPrice == null ? '' : String(spec.unitPrice), billedArea: '', location: spec.location || '', faceGsm: spec.faceGsm == null ? '' : String(spec.faceGsm), linerGsm: spec.linerGsm == null ? '' : String(spec.linerGsm), flutingGsm: spec.flutingGsm == null ? '' : String(spec.flutingGsm), printPlate: '', printColor: '' }));
   };
   const changeSpecification = (kind: 'board' | 'carton', value: string) => {
     if (saving.current) return;
@@ -107,7 +133,7 @@ export default function BoardReceive() {
     if (key === 'orderedQty') orderedQuantityEdited.current = true;
     setForm(f => ({ ...f, [key]: value, ...(key === 'receivedQty' && !orderedQuantityEdited.current ? { orderedQty: value } : {}) }));
   };
-  const fill = useCallback((b: BoardBatch) => { if (saving.current) return; draftChanged.current = true; orderedQuantityEdited.current = false; setSelected(b);  setManualAmount(''); setError(''); setBoardSpecification(b.boardDimensionsPending ? '' : specificationFromDimensions([b.boardLength, b.boardWidth])); setCartonSpecification(specificationFromDimensions([b.cartonLength, b.cartonWidth, b.cartonHeight])); setForm(() => { const next = { ...initial, enteredAt: `${today()}T${localEntryTime()}`, date: today() }; for (const k of ['name', 'customerName', 'material', 'boardLength', 'boardWidth', 'cartonLength', 'cartonWidth', 'cartonHeight', 'fluteType', 'layers', 'faceGsm', 'linerGsm', 'flutingGsm', 'unitPrice', 'warningQty', 'location']) next[k] = String(b[k] ?? (k === 'name' ? '纸板' : '')); return next; }); }, []);
+  const fill = useCallback((b: BoardBatch) => { if (saving.current) return; draftChanged.current = true; orderedQuantityEdited.current = false; setSelected(b); setSupplierId(b.supplier_id ?? null); setSharedSpecId(''); setCustomerSource(b.customerName || ''); setSpecDetailsOpen(false); setManualAmount(''); setError(''); setBoardSpecification(b.boardDimensionsPending ? '' : specificationFromDimensions([b.boardLength, b.boardWidth])); setCartonSpecification(specificationFromDimensions([b.cartonLength, b.cartonWidth, b.cartonHeight])); setForm(() => { const next = { ...initial, enteredAt: `${today()}T${localEntryTime()}`, date: today() }; for (const k of ['name', 'customerName', 'material', 'boardLength', 'boardWidth', 'cartonLength', 'cartonWidth', 'cartonHeight', 'fluteType', 'layers', 'faceGsm', 'linerGsm', 'flutingGsm', 'unitPrice', 'warningQty', 'location']) next[k] = String(b[k] ?? (k === 'name' ? '纸板' : '')); return next; }); }, []);
   const loadBoards = useCallback(async () => {
     const params = routeParams.current;
     if (!params) return;
@@ -138,7 +164,6 @@ export default function BoardReceive() {
   const specificationField = (kind: 'board' | 'carton', label: string, value: string) => <DemoField label={label + '（cm）'}><input type='text' aria-label={label} disabled={fieldsDisabled} value={value} onChange={event => changeSpecification(kind, event.target.value)} /></DemoField>;
   const options = (key: string) => [...new Set(allRows.map(b => String(b[key] || '')).filter(Boolean))];
   const selectField = (key: keyof typeof initial, label: string, choices: string[]) => <DemoField label={label}><select aria-label={label} disabled={fieldsDisabled} value={form[key]} onChange={event => change(key, event.target.value)}><option value=''>请选择{label}</option>{Array.from(new Set([...(form[key] ? [form[key]] : []), ...choices])).map(value => <option key={value} value={value}>{key === 'layers' ? ({ '3': '三层', '5': '五层', '7': '七层' }[value] || `${value}层`) : value}</option>)}</select></DemoField>;
-  const matches = templates.filter(b => [boardSpec(b), b.supplier, b.fluteType, b.layers + '层'].join(' ').toLowerCase().replace(/[ ×x*]/g, '').includes(templateQuery.toLowerCase().replace(/[ ×x*]/g, '')));
   const gift = Math.max(0, Number(form.receivedQty) - Number(form.orderedQty)); const shortage = Math.max(0, Number(form.orderedQty) - Number(form.receivedQty));
   const calculatedArea = Number(form.boardLength) > 0 && Number(form.boardWidth) > 0 && Number(form.receivedQty) > 0 ? Math.round(Number(form.boardLength) * Number(form.boardWidth) / 10000 * Number(form.receivedQty) * 10000) / 10000 : null;
   const billedArea = form.billedArea.trim() || (calculatedArea == null ? '' : String(calculatedArea));
@@ -162,24 +187,26 @@ export default function BoardReceive() {
       const data = currentDraft();
       setPending(rows => [...rows, {key: `${Date.now()}-${Math.random()}`, data}]);
       setForm({...initial, supplier: supplier?.name || '', enteredAt: form.enteredAt, date: form.date});
-      setBoardSpecification(''); setCartonSpecification(''); setManualAmount(''); setSelected(null); orderedQuantityEdited.current = false; draftChanged.current = false; setError('');
+      setBoardSpecification(''); setCartonSpecification(''); setManualAmount(''); setSelected(null); setSharedSpecId(''); setCustomerSource(''); setSpecDetailsOpen(false); orderedQuantityEdited.current = false; draftChanged.current = false; setError('');
     } catch (e) { setError(e.message); }
   };
   const changeSupplier = async (id: number | null) => {
-    if (saving.current || id === supplierId) return;
+    if (saving.current) return false;
+    if (id === supplierId) return true;
     if (pending.length || draftChanged.current) {
       const confirmation = await Taro.showModal({ title: '改变本单关联对象', content: '更改供货商会改变本单全部纸板的关联对象，并清空已选规格和待入库明细。请确认。' });
-      if (!confirmation.confirm) return;
+      if (!confirmation.confirm) return false;
       setPending([]); setForm({...initial, date: form.date}); setBoardSpecification(''); setCartonSpecification(''); setManualAmount('');
     }
-    setSupplierId(id); draftChanged.current = false;
+    setSupplierId(id); setSelected(null); setSharedSpecId(''); setCustomerSource(''); setSpecDetailsOpen(false); draftChanged.current = false;
+    return true;
   };
   const save = async () => {
     if (saving.current) return;
     if (routeParams.current?.id && !editReady) { setError('请先读取原入库单后再保存'); return; }
     let items: BoardDraft[];
     try { items = [...pending.map(row => row.data), ...(!pending.length || boardSpecification || form.receivedQty ? [currentDraft()] : [])]; if (!items.length) throw new Error('请先填写一项纸板入库资料'); }
-    catch (e) { setError(e.message); return; }
+    catch (e) { setError(e.message); if (!parseDimensionSpecification(cartonSpecification, 3) || !form.name.trim()) setSpecDetailsOpen(true); return; }
     saving.current = true; setBusy(true); setError('');
     try {
       const b = editingId ? await updateBoard(editingId, items[0]) : items.length === 1 ? await receiveBoard(items[0]) : (await receiveBoards(supplierId, items)).batches[0];
@@ -188,33 +215,64 @@ export default function BoardReceive() {
   };
   const customerNames = Array.from(new Set(sharedSpecs.filter(spec => spec.source === 'customer' && spec.customer_name).map(spec => spec.customer_name as string)));
   const customerGoods = sharedSpecs.filter(spec => spec.source === 'customer' && spec.customer_name === customerSource);
-  return <DemoSheet title={editingId ? '编辑纸板入库' : '自定义纸板入库'} busy={busy} testId='paperboard-receipt-sheet'>
-    <p>先选客户常用资料，已有纸板尺寸直接带入；也可填写新规格。</p>
+  const supplierChoices = suppliers.filter(item => !item.deleted_at).flatMap(owner => (owner.specs || [])
+    .filter(spec => spec.category === '纸板' || spec.kind === '纸板').map(spec => ({ owner, spec, id: `supplier:${owner.id}:${spec.id}` })));
+  const quickOptions = [
+    ...templates.map(batch => ({ id: 'history:' + batch.id, title: `${batch.name || '纸板'} · ${specificationFromDimensions([batch.cartonLength, batch.cartonWidth, batch.cartonHeight])} cm`, detail: `历史入库 · ${batch.supplier || '未关联供货商'} · ${boardSpec(batch)}${batch.boardDimensionsPending ? '' : ' cm'}${batch.material ? ' · ' + batch.material : ''}${batch.location ? ' · ' + batch.location : ''}`, search: [batch.customerName, batch.layers + '层', batch.fluteType].join(' ') })),
+    ...supplierChoices.map(({ owner, spec, id }) => ({ id, title: `${spec.goods || '纸板'} · ${spec.cartonLength && spec.cartonWidth && spec.cartonHeight ? specificationFromDimensions([spec.cartonLength, spec.cartonWidth, spec.cartonHeight]) + ' cm' : spec.specification || '尺寸待补充'}`, detail: `供货商常购 · ${owner.name}${spec.material ? ' · ' + spec.material : ''}`, search: spec.specification })),
+    ...sharedSpecs.filter(spec => spec.source !== 'board').map(spec => ({ id: 'shared:' + spec.id, title: `${spec.name} · ${(spec.carton || spec.board || []).join(' × ')} cm`, detail: `${spec.source === 'customer' ? '客户常用 · ' + spec.customer_name : '库存规格'}${spec.material ? ' · ' + spec.material : ''}`, search: [spec.fluteType, spec.layers ? spec.layers + '层' : '', ...(spec.board || [])].join(' ') }))
+  ];
+  const chooseQuickSpec = async (id: string) => {
+    const batch = templates.find(item => 'history:' + item.id === id);
+    if (batch) {
+      if (pending.length && batch.supplier_id !== supplierId && !await changeSupplier(batch.supplier_id ?? null)) return;
+      fill(batch); return;
+    }
+    const choice = supplierChoices.find(item => item.id === id);
+    if (choice) {
+      if (pending.length && choice.owner.id !== supplierId && !await changeSupplier(choice.owner.id)) return;
+      applySupplierSpec(choice.spec, choice.owner); return;
+    }
+    const common = sharedSpecs.find(item => 'shared:' + item.id === id);
+    if (common) applySharedSpec(common);
+  };
+  const createSpecification = () => {
+    if (saving.current) return;
+    setSelected(null); setSharedSpecId(''); setCustomerSource(''); setBoardSpecification(''); setCartonSpecification(''); setManualAmount(''); setError('');
+    setForm(f => ({ ...initial, enteredAt: f.enteredAt, date: f.date }));
+    orderedQuantityEdited.current = false; draftChanged.current = true; setSpecDetailsOpen(true);
+  };
+  const selectedLabel = cartonSpecification || boardSpecification ? `${form.name || '纸板'} · ${cartonSpecification || boardSpecification} cm` : undefined;
+  return <DemoSheet title={editingId ? '编辑纸板入库' : '纸板入库'} busy={busy} testId='paperboard-receipt-sheet'>
+    <p>选择常用规格，带出尺寸和单价，填写本次实收数量即可入库。</p>
     {boardLoadError && <div className='demo-error' role='alert'>{boardLoadError}<button type='button' className='demo-action' onClick={() => void loadBoards()}>重新读取</button></div>}
     {editingId && !editReady && !boardLoadError && <p role='status'>正在读取原入库单…</p>}
-    <DemoField label='客户资料（选填）'><select aria-label='客户资料' value={customerSource} disabled={fieldsDisabled} onChange={event => { setCustomerSource(event.target.value); change('customerName', event.target.value); setSharedSpecId(''); }}><option value=''>不引用客户资料</option>{customerNames.map(name => <option key={name}>{name}</option>)}</select></DemoField>
-    <DemoField label='客户常用货物'><select aria-label='客户常用货物' value={sharedSpecId} disabled={fieldsDisabled || !customerSource} onChange={event => { setSharedSpecId(event.target.value); const spec = customerGoods.find(item => item.id === event.target.value); if (spec) applySharedSpec(spec); }}><option value=''>{customerSource ? '选择客户货物' : '先选择客户'}</option>{customerGoods.map(spec => <option key={spec.id} value={spec.id}>{spec.name} · {(spec.carton || spec.board || []).join(' × ')} cm</option>)}</select></DemoField>
+    <QuickSpecPicker label='选择纸板规格' options={quickOptions} selected={selectedLabel} disabled={fieldsDisabled} onSelect={id => void chooseQuickSpec(id)} onCreate={createSpecification} />
     {specError && <div className='demo-error' role='alert'>{specError}<button type='button' className='demo-action' onClick={() => void loadSpecs()}>重新读取</button></div>}
-    <div className='demo-note'>成箱尺寸与纸板尺寸不同；没有纸板尺寸时需核对后补充一次。</div>
+    {selectedLabel && <div className='demo-note' data-testid='board-selected-summary'><strong>{form.name || '纸板'}</strong><div>成箱 {cartonSpecification || '尺寸待补充'}{cartonSpecification ? ' cm' : ''} · 纸板 {boardSpecification || '尺寸待补充'}{boardSpecification ? ' cm' : ''}</div><div>{form.layers ? `${form.layers}层` : ''}{form.fluteType ? ` · ${form.fluteType}楞` : ''}{form.material ? ` · ${form.material}` : ''}{form.unitPrice ? ` · ¥${form.unitPrice}/㎡` : ' · 单价待核算'}{form.location ? ` · ${form.location}` : ''}</div>{selected && <div>已带入历史规格，本次另建新批次。</div>}</div>}
+    <details className='demo-more' open={specDetailsOpen} onToggle={event => setSpecDetailsOpen(event.currentTarget.open)} data-testid='board-specification-details'><summary>新增 / 修改规格</summary>
+      <DemoField label='客户资料（选填）'><select aria-label='客户资料' value={customerSource} disabled={fieldsDisabled} onChange={event => { setCustomerSource(event.target.value); change('customerName', event.target.value); setSharedSpecId(''); }}><option value=''>不引用客户资料</option>{customerNames.map(name => <option key={name}>{name}</option>)}</select></DemoField>
+      <DemoField label='客户常用货物'><select aria-label='客户常用货物' value={sharedSpecId} disabled={fieldsDisabled || !customerSource} onChange={event => { setSharedSpecId(event.target.value); const spec = customerGoods.find(item => item.id === event.target.value); if (spec) applySharedSpec(spec); }}><option value=''>{customerSource ? '选择客户货物' : '先选择客户'}</option>{customerGoods.map(spec => <option key={spec.id} value={spec.id}>{spec.name} · {(spec.carton || spec.board || []).join(' × ')} cm</option>)}</select></DemoField>
+      {!!supplierSpecs.length && <DemoField label='供货商常购规格'><select aria-label='供货商常购规格' disabled={fieldsDisabled} defaultValue='' onChange={event => { const spec = supplierSpecs.find(item => item.id === event.target.value); if (spec) applySupplierSpec(spec); }}><option value=''>选择常购规格</option>{supplierSpecs.map(spec => <option key={spec.id} value={spec.id}>{spec.goods} · {spec.specification}</option>)}</select></DemoField>}
+      {specificationField('carton', '纸箱尺寸：长 × 宽 × 高', cartonSpecification)}
+      {field('name', '纸板名称（必填）')}
+      <details className='demo-more'><summary>采购纸板尺寸 · 查看 / 调整</summary><p>已有对应纸板尺寸会自动带出。可以不填，先登记库存；面积和金额标记待核算，补齐前不增加应付。</p><div className='demo-two'>{(['boardLength', 'boardWidth'] as const).map((key, index) => <DemoField key={key} label={`实际纸板${index ? '宽' : '长'}（cm，选填）`}><input type='number' step='any' min='0' aria-label={`实际纸板${index ? '宽' : '长'}`} disabled={fieldsDisabled} value={form[key]} onChange={event => { const value = event.target.value; change(key, value); const length = key === 'boardLength' ? value : form.boardLength; const width = key === 'boardWidth' ? value : form.boardWidth; setBoardSpecification(length || width ? `${length} × ${width}` : ''); }} /></DemoField>)}</div></details>
+      <div className='demo-two'>{selectField('layers', '层数', ['3', '5', '7'])}{field('fluteType', '楞型（可自定义）')}</div>
+      {field('material', '材质 / 配纸（选填）')}
+      {field('unitPrice', '每平米单价', true, '元 / ㎡')}
+    </details>
     <DemoField label='供货商（选填）'><select aria-label='供货商' value={supplierId || ''} disabled={fieldsDisabled} onChange={event => void changeSupplier(Number(event.target.value) || null)}><option value=''>不关联供货商 · 只登记库存</option>{suppliers.filter(item => !item.deleted_at).map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select></DemoField>
     {supplierError && <div className='demo-error' role='alert'>{supplierError}<button type='button' className='demo-action' onClick={() => void loadSuppliers()}>重新读取</button></div>}
-    {!!supplierSpecs.length && <DemoField label='供货商常购规格'><select aria-label='供货商常购规格' disabled={fieldsDisabled} defaultValue='' onChange={event => { const spec = supplierSpecs.find(item => item.id === event.target.value); if (spec) applySupplierSpec(spec); }}><option value=''>选择常购规格</option>{supplierSpecs.map(spec => <option key={spec.id} value={spec.id}>{spec.goods} · {spec.specification}</option>)}</select></DemoField>}
-    {specificationField('carton', '纸箱尺寸：长 × 宽 × 高', cartonSpecification)}
-    {field('name', '纸板名称（必填）')}
-    <details className='demo-more'><summary>采购纸板尺寸 · 查看 / 调整</summary><p>已有对应纸板尺寸会自动带出。可以不填，先登记库存；面积和金额标记待核算，补齐前不增加应付。</p><div className='demo-two'>{(['boardLength', 'boardWidth'] as const).map((key, index) => <DemoField key={key} label={`实际纸板${index ? '宽' : '长'}（cm，选填）`}><input type='number' step='any' min='0' aria-label={`实际纸板${index ? '宽' : '长'}`} disabled={fieldsDisabled} value={form[key]} onChange={event => { const value = event.target.value; change(key, value); const length = key === 'boardLength' ? value : form.boardLength; const width = key === 'boardWidth' ? value : form.boardWidth; setBoardSpecification(length || width ? `${length} × ${width}` : ''); }} /></DemoField>)}</div></details>
-    <div className='demo-two'>{selectField('layers', '层数', ['3', '5', '7'])}{field('fluteType', '楞型（可自定义）')}</div>
-    {field('material', '材质 / 配纸（选填）')}
-    <div className='demo-two'>{field('receivedQty', '实收数', true, '张')}{field('unitPrice', '每平米单价', true, '元 / ㎡')}</div>
-    {field('location', '库位（选填）')}
-    <DemoField label='本次入库总金额（元，可直接填送货单金额）'><input type='number' step='0.01' min='0' aria-label='本批金额' value={manualAmount} disabled={fieldsDisabled} onChange={event => { draftChanged.current = true; setManualAmount(event.target.value); }} /></DemoField>
-    <p className='demo-meta'>有纸板面积时自动计算；没有面积也可直接填写总金额，按该金额登记供货商应付。</p>
-    <DemoField label='入库日期时间'><input type='datetime-local' aria-label='入库日期时间' value={form.enteredAt || `${form.date}T00:00`} max={`${today()}T23:59`} disabled={fieldsDisabled} onChange={event => { change('enteredAt', event.target.value); change('date', event.target.value.slice(0, 10)); }} /></DemoField>
-    {field('deliveryNo', '送货单号（选填）')}
+    {field('receivedQty', '实收数', true, '张')}
     <div className='demo-note' data-testid='board-cost-preview'>面积与金额：{calculatedArea == null ? '填写纸板长宽、数量及每平方米单价后自动计算。' : `${calculatedArea} ㎡`}{amount != null && Number.isFinite(amount) ? ` · ¥ ${amount.toFixed(2)}` : ' · 金额待核算'}</div>
-    <label className='demo-checkbox'><input type='checkbox' checked={saveSupplierSpec} disabled={fieldsDisabled || Boolean(editingId)} onChange={event => setSaveSupplierSpec(event.target.checked)} />保存为该供货商常购规格</label>
-    <p className='demo-meta'>入库总金额优先使用手填金额，否则按面积计算；有金额并关联供货商时增加应付。实际付款单独登记。</p>
-    <details className='demo-more'><summary>选择已有规格</summary><DemoField label='搜索规格'><input type='search' aria-label='搜索规格' disabled={fieldsDisabled} value={templateQuery} onChange={event => setTemplateQuery(event.target.value)} /></DemoField>{sharedSpecs.filter(spec => spec.source !== 'board' && [spec.name, spec.material, ...(spec.carton || spec.board || [])].join(' ').toLowerCase().includes(templateQuery.toLowerCase())).map(spec => <button type='button' className='demo-card' key={spec.id} disabled={fieldsDisabled} onClick={() => applySharedSpec(spec)}>{spec.name} · {(spec.carton || spec.board || []).join(' × ')} cm</button>)}{matches.map(batch => <button type='button' className='demo-card' key={batch.id} disabled={fieldsDisabled} onClick={() => fill(batch)}>{boardSpec(batch)} cm · {batch.supplier}</button>)}{selected && <p>已带入历史规格，本次另建新批次。</p>}</details>
-    <details className='demo-more'><summary>更多信息</summary>{field('customerName', '客户')}{field('billedArea', '计费平米', true, '㎡')}{field('freight', '本次运费', true, '元')}{field('orderedQty', '订购数', true, '张')}{form.orderedQty && form.receivedQty && <p>{gift ? `多送 ${gift} 张` : shortage ? `少送 ${shortage} 张` : '实收与订购数量一致'}</p>}<div className='demo-two'>{field('faceGsm', '面纸克重', true)}{field('linerGsm', '里纸克重', true)}{field('flutingGsm', '楞纸克重', true)}{selectField('location', '已有库位', options('location'))}</div>{field('warningQty', '规格预警线', true, '张')}{field('remark', '备注')}
+    <details className='demo-more'><summary>更多信息</summary>
+      <DemoField label='本次入库总金额（元，可直接填送货单金额）'><input type='number' step='0.01' min='0' aria-label='本批金额' value={manualAmount} disabled={fieldsDisabled} onChange={event => { draftChanged.current = true; setManualAmount(event.target.value); }} /></DemoField>
+      <p className='demo-meta'>有纸板面积时自动计算；没有面积也可直接填写总金额，按该金额登记供货商应付。</p>
+      <DemoField label='入库日期时间'><input type='datetime-local' aria-label='入库日期时间' value={form.enteredAt || `${form.date}T00:00`} max={`${today()}T23:59`} disabled={fieldsDisabled} onChange={event => { change('enteredAt', event.target.value); change('date', event.target.value.slice(0, 10)); }} /></DemoField>
+      {field('location', '库位（选填）')}{field('deliveryNo', '送货单号（选填）')}
+      <label className='demo-checkbox'><input type='checkbox' checked={saveSupplierSpec} disabled={fieldsDisabled || Boolean(editingId)} onChange={event => setSaveSupplierSpec(event.target.checked)} />保存为该供货商常购规格</label>
+      <p className='demo-meta'>入库总金额优先使用手填金额，否则按面积计算；有金额并关联供货商时增加应付。实际付款单独登记。</p>
+      {field('customerName', '客户')}{field('billedArea', '计费平米', true, '㎡')}{field('freight', '本次运费', true, '元')}{field('orderedQty', '订购数', true, '张')}{form.orderedQty && form.receivedQty && <p>{gift ? `多送 ${gift} 张` : shortage ? `少送 ${shortage} 张` : '实收与订购数量一致'}</p>}<div className='demo-two'>{field('faceGsm', '面纸克重', true)}{field('linerGsm', '里纸克重', true)}{field('flutingGsm', '楞纸克重', true)}{selectField('location', '已有库位', options('location'))}</div>{field('warningQty', '规格预警线', true, '张')}{field('remark', '备注')}
       {pending.map((row, index) => <DemoDetail key={row.key} label={`待入库 ${index + 1}`}><span>{row.data.receivedQty} 张 <button type='button' className='demo-action' disabled={fieldsDisabled} onClick={() => setPending(rows => rows.filter(item => item.key !== row.key))}>移除</button></span></DemoDetail>)}
       {!editingId && <button type='button' className='demo-primary demo-secondary' disabled={fieldsDisabled} onClick={addNext}>再添加一项</button>}
       {pending.length > 0 && <p>已选 {pending.length} 项 · 已知货款 ¥ {(pendingTotal + (amount ?? 0)).toFixed(2)}</p>}

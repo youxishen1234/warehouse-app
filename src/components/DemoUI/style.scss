@@ -71,3 +71,30 @@
 .demo-backdrop :is(p).demo-meta { font-size: 10PX; color: #94a0b2; }
 
 @media (max-width: 500px) { .demo-dialog { padding: 18PX 16PX calc(20PX + env(safe-area-inset-bottom, 0PX)); }.demo-field { margin: 12PX 0; }.demo-page-content { padding-left: 16PX; padding-right: 16PX; } }
+
+@media (max-width: 767PX) {
+  .demo-page-header { padding-top: calc(16PX + env(safe-area-inset-top, 0PX)); padding-bottom: 12PX; }
+  .demo-page-content { padding-top: 14PX; }
+  .demo-dialog { padding-top: 16PX; }
+  .demo-dialog-head { margin-bottom: 4PX; }
+  .demo-page p, .demo-backdrop p { margin: 8PX 0; }
+  .demo-field { margin: 9PX 0; }
+  .demo-field :is(input:not([type='checkbox']), select, textarea), .demo-value { margin-top: 4PX; }
+  .demo-two { gap: 8PX; }
+  .demo-two > .demo-field { margin-top: 9PX; margin-bottom: 0; }
+  .demo-page .demo-primary, .demo-backdrop .demo-primary { margin-top: 12PX; }
+  .demo-note { margin-top: 8PX; padding: 8PX 10PX; }
+  .demo-detail { padding: 10PX 0; }
+  .demo-card { padding: 12PX; margin-bottom: 8PX; }
+  .demo-goods { margin: 10PX 0 9PX; }
+  .demo-card-foot { padding-top: 9PX; }
+  .demo-page .demo-action, .demo-backdrop .demo-action { min-height: 44PX; }
+  .demo-search { min-height: 46PX; margin-bottom: 12PX; padding: 11PX 12PX; font-size: 16PX; }
+  .demo-pills { gap: 6PX; margin: 10PX 0 12PX; }
+  .demo-page .demo-pills > button, .demo-backdrop .demo-pills > button { min-height: 44PX; }
+  .demo-more { margin: 10PX 0; }
+  .demo-more > summary { min-height: 44PX; padding: 12PX 0; }
+  .demo-check, .demo-checkbox { min-height: 44PX; margin-top: 8PX; }
+  .demo-menu { margin-top: 12PX; }
+  .demo-empty { padding: 22PX 10PX; }
+}

@@ -104,8 +104,9 @@ async function main() {
     await expect(first.getByText('当前待付款 ¥126.00', { exact: true })).toBeVisible();
     await go(first); await button(first.getByTestId('workbench-actions'), '生产纸箱并入库').click(); await expect(first.getByRole('dialog', { name: '纸箱入库', exact: true })).toBeVisible();
     await go(first); await button(first.getByTestId('workbench-actions'), '纸板入库').click();
-    await first.getByText('选择已有规格', { exact: true }).click();
-    await first.getByText('160 × 110 cm · 学习板厂', { exact: true }).click(); await first.getByText('采购纸板尺寸 · 查看 / 调整', { exact: true }).click();
+    await first.getByRole('button', { name: '点击选择常用规格', exact: true }).click();
+    await first.getByRole('button', { name: /纸板 · 40\s*×\s*30\s*×\s*20 cm.*历史入库 · 学习板厂/ }).click();
+    await first.getByText('新增 / 修改规格', { exact: true }).click(); await first.getByText('采购纸板尺寸 · 查看 / 调整', { exact: true }).click();
     await expect(first.getByLabel('实际纸板长', { exact: true })).toHaveValue('160'); await expect(first.getByLabel('实际纸板宽', { exact: true })).toHaveValue('110');
     await expect(first.getByLabel('纸箱尺寸：长 × 宽 × 高', { exact: true })).toHaveValue('40×30×20');
     await first.screenshot({ path: path.join(artifacts, 'shared-specifications.png'), fullPage: true });

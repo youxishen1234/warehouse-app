@@ -25,7 +25,10 @@ export function installTabNavigation(nav: Navigation): () => void {
   let navigationFailed = false;
   let lastNativeState = '';
   let frame = 0;
-  let state: { x: number; y: number; dx: number; locked: boolean; index: number; page: HTMLElement; back: boolean; ownerAlias: boolean } | null = null;
+  let state: { x: number; y: number; dx: number; locked: boolean; index: number; page: HTMLElement; width: number; back: boolean; ownerAlias: boolean; kind: 'touch' | 'pointer'; pointerId?: number } | null = null;
+  let wheelDelta = 0;
+  let wheelSwitched = false;
+  let wheelTimer: ReturnType<typeof setTimeout> | null = null;
   let suppressClickUntil = 0;
   let disposed = false;
   let dock: ReturnType<typeof createGlassTabBar> | null = null;
@@ -101,6 +104,7 @@ export function installTabNavigation(nav: Navigation): () => void {
     page.style.removeProperty('transform');
     page.style.removeProperty('transition');
     page.style.removeProperty('will-change');
+    page.style.removeProperty('user-select');
   };
   const animate = (page: HTMLElement, x: number) => new Promise<void>(resolve => {
     page.style.setProperty('transition', reduced ? 'none' : 'transform 160ms ease-out', 'important');
@@ -143,25 +147,43 @@ export function installTabNavigation(nav: Navigation): () => void {
     state = null;
     if (current) { restore(current.page); dock?.update(Math.max(0, current.index)); }
   };
-  const start = (event: TouchEvent) => {
-    if (busy || event.touches.length !== 1) { cancel(); return; }
-    const target = event.target as HTMLElement;
-    if (target.closest('input, textarea, select, video, taro-input-core, taro-picker-core, taro-textarea-core, .weui-tabbar, .sg-app-nav, [data-no-tab-swipe]') || modalOpen()) return;
-    const touch = event.touches[0];
+  const clearWheel = () => {
+    if (wheelTimer !== null) clearTimeout(wheelTimer);
+    wheelTimer = null;
+    wheelDelta = 0;
+    wheelSwitched = false;
+  };
+  const gestureTarget = (event: Event) => event.target instanceof Element ? event.target : null;
+  const protectedTarget = (target: Element) => {
+    if (target.closest('input, textarea, select, video, audio, iframe, taro-input-core, taro-picker-core, taro-textarea-core, [contenteditable]:not([contenteditable="false"]), [role="slider"], .weui-tabbar, .sg-app-nav, [data-no-tab-swipe]')) return true;
+    for (let element: Element | null = target; element && element !== document.documentElement; element = element.parentElement) {
+      const style = getComputedStyle(element);
+      if (style.touchAction === 'none') return true;
+      if (/^(auto|scroll|overlay)$/.test(style.overflowX) && element.scrollWidth > element.clientWidth + 1) return true;
+    }
+    return false;
+  };
+  const begin = (target: Element | null, x: number, y: number, kind: 'touch' | 'pointer', pointerId?: number) => {
+    if (disposed || busy || !target || protectedTarget(target) || modalOpen()) return;
     const actual = route();
     const owner = ownedRoute(actual);
     const index = tabRoutes.indexOf(owner);
-    const back = !android && !tabRoutes.includes(actual) && nav.depth() > 1 && touch.clientX < 35;
+    const back = kind === 'touch' && !android && !tabRoutes.includes(actual) && nav.depth() > 1 && x < 35;
     // Reserve both Android system-back edges. Tab gestures also stay central on iOS.
-    if (!back && (touch.clientX < 24 || touch.clientX > innerWidth - 24)) return;
+    if (kind === 'touch' && !back && (x < 24 || x > innerWidth - 24)) return;
     const page = activePage();
     if (!page || (index < 0 && !back)) return;
-    state = { x: touch.clientX, y: touch.clientY, dx: 0, locked: false, index, page, back, ownerAlias: index >= 0 && owner !== actual };
+    clearWheel();
+    state = { x, y, dx: 0, locked: false, index, page, width: page.getBoundingClientRect().width, back, ownerAlias: index >= 0 && owner !== actual, kind, pointerId };
   };
-  const move = (event: TouchEvent) => {
-    if (!state || event.touches.length !== 1) { cancel(); return; }
-    const dx = event.touches[0].clientX - state.x;
-    const dy = event.touches[0].clientY - state.y;
+  const start = (event: TouchEvent) => {
+    if (busy || event.touches.length !== 1) { cancel(); return; }
+    begin(gestureTarget(event), event.touches[0].clientX, event.touches[0].clientY, 'touch');
+  };
+  const moveGesture = (event: Event, x: number, y: number) => {
+    if (!state) return;
+    const dx = x - state.x;
+    const dy = y - state.y;
     if (!state.locked) {
       if (Math.abs(dy) > 10 && Math.abs(dy) >= Math.abs(dx)) { cancel(); return; }
       if (Math.abs(dx) < 12 || Math.abs(dx) < Math.abs(dy) * 1.35) return;
@@ -169,6 +191,7 @@ export function installTabNavigation(nav: Navigation): () => void {
       state.locked = true;
       state.page.style.setProperty('will-change', 'transform');
       state.page.style.setProperty('transition', 'none', 'important');
+      state.page.style.setProperty('user-select', 'none', 'important');
     }
     if (event.cancelable) event.preventDefault();
     state.dx = dx;
@@ -176,10 +199,14 @@ export function installTabNavigation(nav: Navigation): () => void {
     const returningOwner = state.ownerAlias && dx > 0;
     const amount = !state.back && !returningOwner && (next < 0 || next >= tabRoutes.length) ? dx * .2 : dx;
     state.page.style.setProperty('transform', 'translate3d(' + amount + 'px,0,0)', 'important');
-    if (!state.back) dock?.preview(state.index - dx / innerWidth);
+    if (!state.back) dock?.preview(state.index - dx / state.width);
   };
-  const end = async (event: TouchEvent) => {
-    if (event.touches.length || event.changedTouches.length !== 1) { cancel(); return; }
+  const move = (event: TouchEvent) => {
+    if (!state || state.kind !== 'touch') return;
+    if (event.touches.length !== 1) { cancel(); return; }
+    moveGesture(event, event.touches[0].clientX, event.touches[0].clientY);
+  };
+  const finish = async () => {
     const current = state;
     state = null;
     if (!current?.locked) return;
@@ -191,7 +218,7 @@ export function installTabNavigation(nav: Navigation): () => void {
     busy = true;
     if (!current.back) dock?.update(commit ? destination : current.index);
     try {
-      await animate(current.page, commit ? (current.dx < 0 ? -innerWidth : innerWidth) : 0);
+      await animate(current.page, commit ? (current.dx < 0 ? -current.width : current.width) : 0);
       if (commit && !disposed) {
         await (current.back ? nav.back() : nav.switchTab(tabRoutes[destination]));
       }
@@ -203,15 +230,66 @@ export function installTabNavigation(nav: Navigation): () => void {
       else scheduleSync();
     }
   };
+  const end = (event: TouchEvent) => {
+    if (state?.kind !== 'touch') return;
+    if (event.touches.length || event.changedTouches.length !== 1) { cancel(); return; }
+    void finish();
+  };
+  const pointerStart = (event: PointerEvent) => {
+    // Real touches also emit pointer events. Keeping those with the touch
+    // owner avoids two switches for one gesture on a phone.
+    if (!['mouse', 'pen'].includes(event.pointerType) || event.button !== 0 || !event.isPrimary) return;
+    if (state) cancel();
+    begin(gestureTarget(event), event.clientX, event.clientY, 'pointer', event.pointerId);
+  };
+  const pointerMove = (event: PointerEvent) => {
+    if (state?.kind !== 'pointer' || state.pointerId !== event.pointerId) return;
+    if (!(event.buttons & 1)) { cancel(); return; }
+    moveGesture(event, event.clientX, event.clientY);
+  };
+  const pointerEnd = (event: PointerEvent) => {
+    if (state?.kind === 'pointer' && state.pointerId === event.pointerId) void finish();
+  };
+  const pointerCancel = (event: PointerEvent) => {
+    if (state?.kind === 'pointer' && state.pointerId === event.pointerId) cancel();
+  };
+  const wheel = (event: WheelEvent) => {
+    if (disposed || event.ctrlKey || event.metaKey || state) return;
+    const target = gestureTarget(event);
+    if (!target || protectedTarget(target) || modalOpen()) return;
+    let dx = event.deltaX, dy = event.deltaY;
+    if (event.shiftKey && Math.abs(dy) > Math.abs(dx)) { dx = dy; dy = 0; }
+    if (!dx || Math.abs(dx) < Math.abs(dy) * 1.35) return;
+    const actual = route(), index = tabRoutes.indexOf(ownedRoute(actual));
+    if (index < 0) return;
+    if (event.cancelable) event.preventDefault();
+    if (wheelTimer !== null) clearTimeout(wheelTimer);
+    wheelTimer = setTimeout(clearWheel, 180);
+    if (busy || wheelSwitched) return;
+    const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? (activePage()?.clientHeight || innerHeight) : 1;
+    if (wheelDelta && Math.sign(dx) !== Math.sign(wheelDelta)) wheelDelta = 0;
+    wheelDelta += dx * scale;
+    if (Math.abs(wheelDelta) < 64) return;
+    wheelSwitched = true;
+    const returningOwner = !tabRoutes.includes(actual) && wheelDelta < 0;
+    const next = returningOwner ? index : index + (wheelDelta > 0 ? 1 : -1);
+    if (next >= 0 && next < tabRoutes.length) void switchTo(tabRoutes[next]);
+  };
   const blockClick = (event: MouseEvent) => {
     if ((event.target as Element)?.closest('.sg-app-nav')) return;
     if (Date.now() < suppressClickUntil) { event.preventDefault(); event.stopImmediatePropagation(); }
   };
-  // Touch only: installing pointer and touch handlers together double-switches iOS tabs.
+  // Touch owns phones; mouse/pen and horizontal wheel own desktop gestures.
   window.addEventListener('touchstart', start, { passive: true, capture: true });
   window.addEventListener('touchmove', move, { passive: false, capture: true });
   window.addEventListener('touchend', end, { passive: true, capture: true });
   window.addEventListener('touchcancel', cancel, { passive: true, capture: true });
+  window.addEventListener('pointerdown', pointerStart, true);
+  window.addEventListener('pointermove', pointerMove, { passive: false, capture: true });
+  window.addEventListener('pointerup', pointerEnd, true);
+  window.addEventListener('pointercancel', pointerCancel, true);
+  window.addEventListener('wheel', wheel, { passive: false, capture: true });
+  window.addEventListener('blur', cancel);
   window.addEventListener('click', blockClick, true);
   window.addEventListener('sg-native-tab', nativeSelect);
   window.addEventListener('sg-native-ready', nativeReady);
@@ -229,6 +307,7 @@ export function installTabNavigation(nav: Navigation): () => void {
     disposed = true;
     root.removeAttribute('data-workbench-shell');
     queued = null;
+    clearWheel();
     cancel();
     cancelAnimationFrame(frame);
     observer.disconnect();
@@ -239,6 +318,12 @@ export function installTabNavigation(nav: Navigation): () => void {
     window.removeEventListener('touchmove', move, true);
     window.removeEventListener('touchend', end, true);
     window.removeEventListener('touchcancel', cancel, true);
+    window.removeEventListener('pointerdown', pointerStart, true);
+    window.removeEventListener('pointermove', pointerMove, true);
+    window.removeEventListener('pointerup', pointerEnd, true);
+    window.removeEventListener('pointercancel', pointerCancel, true);
+    window.removeEventListener('wheel', wheel, true);
+    window.removeEventListener('blur', cancel);
     window.removeEventListener('click', blockClick, true);
     window.removeEventListener('sg-native-tab', nativeSelect);
     window.removeEventListener('sg-native-ready', nativeReady);

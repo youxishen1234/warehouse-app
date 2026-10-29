@@ -13,16 +13,8 @@ import { useMobilePrintNotifications } from '@/services/mobile-print-notificatio
 import Bluetooth630KPrint from './bluetooth';
 import { isBluetooth630KSupported } from '@/services/bluetooth-630k';
 import { readBluetooth630KPending, readRemotePrintPending } from '@/services/print-transport-pending';
-import Taro from '@tarojs/taro';
-
-const TRANSPORT_KEY = 'warehouse_print_transport_v1';
-type PrintTransport = 'bluetooth' | 'network';
-function readPreferredPrintTransport(bluetoothSupported: boolean): PrintTransport {
-  if (!bluetoothSupported) return 'network';
-  try { return Taro.getStorageSync(TRANSPORT_KEY) === 'network' ? 'network' : 'bluetooth'; }
-  catch { return 'bluetooth'; }
-}
-function savePreferredPrintTransport(value: PrintTransport): void { Taro.setStorageSync(TRANSPORT_KEY, value); }
+import { readPreferredPrintTransport, savePreferredPrintTransport } from '@/services/print-transport';
+import type { PrintTransport } from '@/services/print-transport';
 
 
 export default function PrintPreview({ note, saved, postedSource = false, reprintIntent = false, autoSend = false, showPrices = true, onClose }: {

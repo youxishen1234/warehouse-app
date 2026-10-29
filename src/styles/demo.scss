@@ -17,3 +17,51 @@ html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Micros
 #app .business-sheet-screen [class*='deviceStatus___'] { flex-basis: 100%; }
 #app .business-sheet-screen [class*='entrySection___'] { padding: 17PX; border: 1PX solid #edf1f6; border-radius: 16PX; background: #fff; }
 #app .business-sheet-screen [class*='previewBox___'] { border-radius: 10PX; box-shadow: none; }
+
+@media (min-width: 768PX) {
+  #app .demo-page, #app .business-sheet-screen > [class*='page___'] { max-width: none; }
+  #app [data-print-view] { left: 0; right: 0; width: 100%; }
+  #app [data-print-view] > [class*='shell___'] { max-width: 1120PX; }
+  #app .business-sheet-screen > [class*='remote-module__page___'],
+  #app .business-sheet-screen > [class*='index-module__page___']:has([aria-label='打印类型']) { left: 0; right: 0; width: 100%; }
+}
+
+@media (min-width: 1024PX) {
+  #app .demo-page { max-width: 1240PX; }
+  #app .demo-page-header { padding: 28PX 32PX 22PX; }
+  #app .demo-page-content { padding: 24PX 32PX 40PX; }
+  #app .demo-backdrop { align-items: center; padding: 24PX; }
+  #app .demo-dialog { max-width: 720PX; max-height: calc(100dvh - 48PX); padding: 28PX 30PX; margin: 0; border-radius: 20PX; }
+  #app .demo-dialog-head { margin-bottom: 12PX; }
+  #app .demo-two { gap: 16PX; }
+  #app .business-sheet-screen > [class*='remote-module__page___'],
+  #app .business-sheet-screen > [class*='index-module__page___']:has([aria-label='打印类型']) { left: var(--sg-desktop-nav-width, 208PX); width: calc(100% - var(--sg-desktop-nav-width, 208PX)); padding: 28PX 32PX 40PX; }
+  #app [data-print-view] { left: var(--sg-desktop-nav-width, 208PX); right: 0; width: calc(100% - var(--sg-desktop-nav-width, 208PX)); padding: 0 32PX 40PX; scroll-padding-bottom: 32PX; }
+  #app [data-print-view] > [class*='shell___'] { max-width: 1160PX; }
+  #app [data-print-view] [class*='workspace___'] { padding: 0 0 24PX; }
+  #app [data-print-view] [class*='demoHeader___'] { padding: 28PX 0 22PX; margin: 0 0 24PX; }
+  #app [data-print-view='home'] > [class*='shell___'] { padding-bottom: 0; }
+  #app [data-print-view] [class*='demoPaper___'] { min-height: 300PX; }
+  #app [data-print-view] [class*='demoPaperEmpty___'] { min-height: 300PX; }
+  #app [data-print-view] [class*='demoSource___'] { padding: 22PX; }
+  #app [data-print-view] [class*='demoPrintActions___'] { max-width: 560PX; margin-left: auto; }
+  #app :is([data-testid='customer-center'], [data-testid='supplier-center']) > [aria-live='polite'] { display: grid; grid-template-columns: repeat(auto-fill, minmax(280PX, 1fr)); align-items: start; gap: 16PX; }
+  #app :is([data-testid='customer-center'], [data-testid='supplier-center']) > [aria-live='polite'] > :is(button, taro-button-core) { margin-bottom: 0; }
+  #app :is([data-testid='customer-center'], [data-testid='supplier-center']) > [aria-live='polite'] > :not(button, taro-button-core) { grid-column: 1 / -1; }
+}
+
+@media (max-width: 767PX) {
+  #app .business-sheet-screen :is(input:not([type='checkbox'], [type='radio']), textarea, select) { font-size: 16PX; }
+  #app .business-sheet-screen [class*='entrySection___'] { padding: 13PX; margin-bottom: 10PX; }
+  #app .business-sheet-screen [class*='topBar___'] { padding-bottom: 12PX; }
+  #app .board-section { padding: 12PX; margin-bottom: 10PX; }
+  #app .board-section-title { margin-bottom: 9PX; }
+  #app .board-field { margin: 9PX 0; }
+  #app .board-field-label { margin-bottom: 4PX; }
+  #app .board-input-wrap :is(input, taro-input-core) { font-size: 16PX; }
+  #app .board-grid { gap: 8PX; }
+  #app .board-note { margin: 8PX 0; }
+  #app .board-actions { margin: 10PX 0; }
+  #app .board-confirm-rail { margin-top: 14PX; }
+  #app .board-confirm-bar { padding: 12PX; }
+}

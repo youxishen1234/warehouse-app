@@ -4,6 +4,27 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      operation:
+        description: Full release or one encrypted printer pairing
+        type: choice
+        options:
+          - release
+          - printer-provision
+        default: release
+        required: true
+      printer-public-key:
+        description: RSA 4096 public PEM encoded as base64 (pairing only)
+        type: string
+        required: false
+      printer-name:
+        description: Exact Windows printer name (pairing only)
+        type: string
+        required: false
+      printer-device-name:
+        description: Unique printer computer name (pairing only)
+        type: string
+        required: false
 
 concurrency:
   group: publish-hotupdate
@@ -11,6 +32,7 @@ concurrency:
 
 jobs:
   publish:
+    if: ${{ github.event_name == 'push' || inputs.operation != 'printer-provision' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -173,6 +195,11 @@ jobs:
           PRINT_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
           PRINT_ARTIFACTS: release/print-native-flow-${{ github.run_id }}-${{ github.run_attempt }}
         run: node tests/print-center-native-flow.cjs
+      - name: Validate phone pairing from the print center home
+        env:
+          PRINT_HOME_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
+          PRINT_HOME_EVIDENCE_DIR: release/print-home-pairing-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node tests/print-center-home-pairing-browser.cjs
       - name: Validate 630K Bluetooth original-job recovery and mobile layout
         env:
           PRINT_ARTIFACTS: release/bluetooth-630k-${{ github.run_id }}-${{ github.run_attempt }}
@@ -278,3 +305,45 @@ jobs:
           node scripts/upload-backend.cjs
           node scripts/upload-hotupdate.cjs
           node tests/published-web-browser.cjs
+  printer-provision:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.operation == 'printer-provision' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      HOTUPDATE_HOST: ${{ secrets.SHUGUANG_SERVER_HOST }}
+      HOTUPDATE_USER: ${{ secrets.SHUGUANG_SERVER_USER }}
+      HOTUPDATE_PASSWORD: ${{ secrets.SHUGUANG_SERVER_PASSWORD }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      PRINTER_PUBLIC_KEY: ${{ inputs['printer-public-key'] }}
+      PRINTER_NAME: ${{ inputs['printer-name'] }}
+      PRINTER_DEVICE_NAME: ${{ inputs['printer-device-name'] }}
+      PRINTER_PROVISION_OUTPUT: release/printer-provision-${{ github.run_id }}-${{ github.run_attempt }}/envelope.json
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate pairing inputs before accessing the server
+        run: node -e "require('./scripts/provision-print-receiver.cjs').validateProvisionInputs()"
+      - name: Validate printer provisioning in isolation
+        run: node --test tests/provision-print-receiver.test.cjs
+      - name: Prepare authenticated server connection
+        run: |
+          sudo apt-get install -y -qq sshpass
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -H "$HOTUPDATE_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          chmod 600 ~/.ssh/known_hosts
+      - name: Register one printer and encrypt its pairing credentials
+        run: node scripts/provision-print-receiver.cjs
+      - name: Preserve encrypted pairing for the requesting computer
+        uses: actions/upload-artifact@v4
+        with:
+          name: printer-pairing-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.PRINTER_PROVISION_OUTPUT }}
+          retention-days: 1
+          if-no-files-found: error
