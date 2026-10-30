@@ -10,6 +10,10 @@ import styles from './index.module.scss';
 
 import { PUBLIC_ORIGIN, TEAM_ORIGIN, session, watchSession } from '@/services/session';
 
+const DOWNLOAD_PAGE_URL = 'https://youxishen.online/download/';
+const IPA_URL = 'https://youxishen.online/shuguang.ipa';
+const IPA_METADATA_URL = `${DOWNLOAD_PAGE_URL}ipa.json`;
+
 const MineContent: React.FC = () => {
   const [currentSession, setCurrentSession] = useState(session);
   React.useEffect(() => watchSession(() => setCurrentSession(session())), []);
@@ -26,6 +30,8 @@ const MineContent: React.FC = () => {
   const [ipaProgress, setIpaProgress] = useState(0);
   const [ipaMessage, setIpaMessage] = useState('正在下载新版 IPA');
   const [ipaCompleted, setIpaCompleted] = useState(false);
+  const [installHelpOpen, setInstallHelpOpen] = useState(false);
+  const [ipaDirectUrl, setIpaDirectUrl] = useState(IPA_URL);
   const [nativeVersion, setNativeVersion] = useState('');
   const [connection, setConnection] = useState('检测中');
   const [updateKind, setUpdateKind] = useState<'web' | 'ipa'>('web');
@@ -137,38 +143,28 @@ const MineContent: React.FC = () => {
     }
   };
 
-  const openUpdateAddress = () => {
-    if (typeof window !== 'undefined') {
-      window.open('https://youxishen.online/download/', '_blank', 'noopener');
-    }
+  const openExternal = (url: string) => {
+    if (typeof window === 'undefined') return;
+    const opened = window.open(url, '_blank', 'noopener');
+    if (!opened) window.location.assign(url);
   };
 
-  const downloadIpa = async () => {
-    if (ipaDownloading) return;
-    setUpdateKind('ipa');
-    setIpaDownloading(true);
-    setIpaCompleted(false);
-    setIpaMessage('正在下载新版 IPA');
-    setIpaProgress(0);
-    try {
-      const task = Taro.downloadFile({
-        url: `https://youxishen.online/shuguang.ipa?t=${Date.now()}`,
-        timeout: 10 * 60 * 1000
-      });
-      task.onProgressUpdate((res) => {
-        setIpaProgress(Math.max(0, Math.min(100, res.progress || 0)));
-      });
-      const result = await task;
-      if (result.statusCode < 200 || result.statusCode >= 300) {
-        throw new Error(`HTTP ${result.statusCode}`);
-      }
-      setIpaProgress(100);
-      setIpaMessage('IPA 已下载，需要签名安装；重启 App 不会安装 IPA');
-      setIpaCompleted(true);
-    } catch (e: any) {
-      setIpaMessage(e?.message || '下载失败，请重试');
-      setIpaCompleted(true);
-    }
+  const openUpdateAddress = () => openExternal(DOWNLOAD_PAGE_URL);
+
+  const openInstallHelp = () => {
+    setInstallHelpOpen(true);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    fetch(IPA_METADATA_URL, { cache: 'no-store', signal: controller.signal })
+      .then(response => response.ok ? response.json() : null)
+      .then((metadata: any) => {
+        const path = typeof metadata?.url === 'string' ? metadata.url : '';
+        if (/^\/download\/[A-Za-z0-9._-]+\.ipa$/.test(path)) {
+          setIpaDirectUrl(`https://youxishen.online${path}`);
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => clearTimeout(timer));
   };
 
   const addrSummary = getBaseUrl().replace(/^https?:\/\//, '');
@@ -245,7 +241,7 @@ const MineContent: React.FC = () => {
           <View className={styles.systemCopy}><Text>连接设置</Text><Text>{addrSummary}</Text></View>
           <Icon name='chevron' color='#b2bfd0' className={styles.rowArrow} />
         </Button>
-        <Button className={styles.systemCard} onClick={downloadIpa} disabled={ipaDownloading}>
+        <Button className={styles.systemCard} onClick={openInstallHelp}>
           <View className={`${styles.systemIcon} ${styles.cyan}`}><Icon name="download" color="#3a987d" className={styles.systemIconImg} /></View>
           <View className={styles.systemCopy}><Text>下载安装包</Text><Text>iOS App 安装与升级</Text></View>
           <Icon name='chevron' color='#b2bfd0' className={styles.rowArrow} />
@@ -268,6 +264,20 @@ const MineContent: React.FC = () => {
             {!ipaCompleted && <View className={styles.ipaProgressTrack}><View className={styles.ipaProgressBar} style={{ width: `${ipaProgress}%` }} /></View>}
             {!ipaCompleted && <Text className={styles.ipaProgressText}>{ipaProgress}%</Text>}
             {ipaCompleted && <View className={styles.ipaCloseBtn} onClick={() => setIpaDownloading(false)}>关闭</View>}
+          </View>
+        </View>
+      )}
+
+      {installHelpOpen && (
+        <View className={styles.mask} onClick={() => setInstallHelpOpen(false)}>
+          <View className={styles.ipaDialog} onClick={e => e.stopPropagation()}>
+            <View className={styles.ipaTitleRow}><View className={styles.ipaIcon}><Icon name="download" color="#fff" className={styles.ipaIconImg} /></View><Text className={styles.ipaTitle}>安装包下载</Text></View>
+            <Text className={styles.ipaStatus}>下载 IPA 文件后，需要使用与手机匹配的开发者证书签名安装。已经安装的 App，网页功能更新请使用“检查更新”。</Text>
+            <View className={styles.ipaActions}>
+              <Button className={styles.ipaPrimaryBtn} onClick={() => openExternal(DOWNLOAD_PAGE_URL)}>打开下载页</Button>
+              <Button className={styles.ipaSecondaryBtn} onClick={() => openExternal(ipaDirectUrl)}>直接下载 IPA</Button>
+              <Button className={styles.ipaTextBtn} onClick={() => setInstallHelpOpen(false)}>关闭</Button>
+            </View>
           </View>
         </View>
       )}

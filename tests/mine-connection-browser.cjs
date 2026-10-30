@@ -13,7 +13,9 @@ async function main() {
   const server = require('../backend/server').listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
   const origin = 'http://127.0.0.1:' + server.address().port;
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({
+    executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined
+  });
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const requests = [], errors = [];
   let unhealthy = false;
@@ -97,9 +99,39 @@ async function main() {
     await page.getByText('测试连接', { exact: true }).click();
     await page.getByText('连接成功 ✓ 服务器可以正常访问', { exact: true }).waitFor();
     await expect(page.getByText('已连接', { exact: true })).toBeVisible();
+    await page.getByText('取消', { exact: true }).click();
+    await page.evaluate(() => {
+      window.__openedDownloadUrl = '';
+      window.open = url => {
+        window.__openedDownloadUrl = String(url);
+        return {};
+      };
+    });
+    await page.route('**/download/ipa.json', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ url: '/download/shuguang-1.1.178-311-958ca3c01954.ipa' })
+    }));
+    await page.getByText('下载安装包', { exact: true }).locator('xpath=ancestor::taro-button-core[1]').click();
+    await expect(page.getByText(/需要使用与手机匹配的开发者证书签名安装/)).toBeVisible();
+    for (const width of [320, 390, 430]) {
+      await page.setViewportSize({ width, height: 844 });
+      const dialog = await page.locator('[class*="ipaDialog"]').evaluate(element => {
+        const bounds = element.getBoundingClientRect();
+        const buttons = [...element.querySelectorAll('taro-button-core')].map(button => button.getBoundingClientRect());
+        return { left: bounds.left, right: bounds.right, viewport: innerWidth, buttons: buttons.map(button => ({ left: button.left, right: button.right })) };
+      });
+      assert.ok(dialog.left >= 0 && dialog.right <= dialog.viewport + 1, 'install dialog stays inside the phone viewport');
+      assert.ok(dialog.buttons.every(button => button.left >= dialog.left && button.right <= dialog.right + 1), 'install dialog buttons stay inside the dialog');
+    }
+    await page.getByText('打开下载页', { exact: true }).click();
+    assert.equal(await page.evaluate(() => window.__openedDownloadUrl), 'https://youxishen.online/download/');
+    await page.getByText('直接下载 IPA', { exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.__openedDownloadUrl))
+      .toBe('https://youxishen.online/download/shuguang-1.1.178-311-958ca3c01954.ipa');
     assert(requests.every(item => item.origin === 'https://youxishen.online'), 'never contact retired IP');
     assert.deepEqual(errors, []);
-    console.log('Mine connection: legacy migration, no business dependency, bounded bridge timeout, deduplication, HTTP error, offline recovery and address test passed.');
+    console.log('Mine connection: legacy migration, bounded bridge timeout, offline recovery, address test and iOS package navigation passed.');
   } finally {
     await context.unrouteAll({ behavior: 'wait' });
     await browser.close();

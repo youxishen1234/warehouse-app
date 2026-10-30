@@ -58,6 +58,11 @@
 .ipaProgressBar { height: 100%; border-radius: inherit; background: #2563eb; }
 .ipaProgressText { display: block; margin-top: 14rpx; font-size: 24rpx; text-align: center; color: #627086; }
 .ipaCloseBtn { padding: 22rpx; margin-top: 28rpx; border-radius: 18rpx; color: #fff; background: #2563eb; font-size: 28rpx; font-weight: 600; text-align: center; }
+.ipaActions { display: flex; flex-direction: column; gap: 16rpx; margin-top: 30rpx; }
+.container .ipaPrimaryBtn, .container .ipaSecondaryBtn, .container .ipaTextBtn { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 88rpx; margin: 0; padding: 20rpx; box-sizing: border-box; border: 0; border-radius: 18rpx; font-size: 27rpx; font-weight: 600; text-align: center; }
+.container .ipaPrimaryBtn { color: #fff; background: #2563eb; }
+.container .ipaSecondaryBtn { color: #245fce; background: #eaf1ff; }
+.container .ipaTextBtn { min-height: 64rpx; color: #627086; background: transparent; font-weight: 500; }
 .addrTip { display: block; margin-top: 16rpx; color: #627086; font-size: 24rpx; line-height: 1.6; }
 .addrTestRow { display: flex; align-items: center; flex-wrap: wrap; gap: 14rpx; margin-top: 22rpx; }
 .addrTestBtn, .addrAutoBtn { padding: 20rpx; border-radius: 16rpx; font-size: 24rpx; background: #eaf1ff; color: #245fce; }
