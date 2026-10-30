@@ -239,6 +239,7 @@ export function useRemotePrint(saved: SavedPrintNote | undefined, paper: string,
       setDeviceError('');
       setNow(Date.now());
       setRefreshMessage(!result.online ? '已刷新，打印电脑仍离线' : !result.ready ? '已刷新，打印机暂不可用' : '已刷新，打印电脑在线');
+      setRefresh(value => value + 1);
     } catch (issue) {
       if (readPrintPair() !== token) return;
       setDeviceError(messageOf(issue));

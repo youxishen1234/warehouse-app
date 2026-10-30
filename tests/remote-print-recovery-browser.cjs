@@ -57,6 +57,7 @@ async function main() {
     page.on('pageerror', error => pageErrors.push(error.message));
     const button = name => page.getByRole('button', { name, exact: true });
     const dialog = () => page.getByRole('dialog', { name: '送货单预览' });
+    const jobStatus = () => dialog().locator('p[role="status"][aria-live="polite"]');
     const jobs = () => JSON.parse(fs.readFileSync(process.env.WAREHOUSE_REMOTE_PRINT_FILE)).jobs;
     await page.goto(origin + '/#/pages/print-center/index?mode=edit');
     await page.locator('.team-boot').waitFor({ state: 'hidden' });
@@ -67,7 +68,7 @@ async function main() {
     await page.getByText(/远程打印到店里/).click();
     await expect(page.getByText('打印电脑离线；可以先发送，电脑恢复在线后自动接收。')).toBeVisible();
     await button('发送到630K').click();
-    await expect(dialog().getByRole('status')).toContainText('任务已提交，但打印电脑离线');
+    await expect(jobStatus()).toContainText('任务已提交，但打印电脑离线');
     assert.equal(submissions, 1); assert.equal(jobs().length, 1, 'lost response is recovered by status query');
     await expect(button('任务处理中…')).toBeDisabled();
 
@@ -76,7 +77,7 @@ async function main() {
     assert.equal(submissions, 1);
     failStatus = false; deviceOnline = true;
     await button('刷新打印状态').click();
-    await expect(dialog().getByRole('status')).toContainText('打印机暂不可用');
+    await expect(jobStatus()).toContainText('打印机暂不可用');
     await expect(dialog().getByRole('alert')).toHaveCount(0);
 
     stallStatus = true; await button('刷新打印状态').click();
@@ -89,10 +90,10 @@ async function main() {
     assert.equal(claim.id, sentIds[0]);
     store.acknowledge(pair.agent, claim.id, { lease: claim.lease, status: 'uncertain', message: '测试结果未确认' });
     await button('刷新打印状态').click();
-    await expect(dialog().getByRole('status')).toContainText('已暂停重复发送');
+    await expect(jobStatus()).toContainText('已暂停重复发送');
     store.acknowledge(pair.agent, claim.id, { lease: claim.lease, status: 'queued' });
     await expect(button('再打印一份')).toBeEnabled();
-    await expect(dialog().getByRole('status')).toContainText('已送入630K打印队列');
+    await expect(jobStatus()).toContainText('已送入630K打印队列');
     assert.equal(await page.evaluate(() => localStorage.getItem('warehouse_remote_print_pending_v1')), null, 'terminal remote status releases the global pending gate');
     const originalAttemptPreserved = await page.evaluate(({ id, wrapped }) => Object.entries(localStorage).some(([key, value]) => {
       if (!key.startsWith('warehouse_remote_print_pair_v1:')) return false;
