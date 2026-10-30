@@ -45,17 +45,30 @@ async function main() {
 
   const errors = [];
   const writes = [];
+  const connections = [];
   let page;
   try {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'zh-CN' });
     context.on('request', request => {
       const url = new URL(request.url());
+      if (request.method() === 'POST' && url.pathname === '/api/remote-print/connect'
+        && request.postData() === '{}') {
+        connections.push(url.pathname);
+        return;
+      }
       if (request.method() !== 'GET' && url.pathname.startsWith('/api/')) {
         writes.push({ method: request.method(), path: url.pathname, body: request.postData() || '' });
       }
     });
     await context.route('**/*', async route => {
       const request = route.request(), url = new URL(request.url());
+      if (request.method() === 'POST' && url.pathname === '/api/remote-print/connect') {
+        assert.equal(request.postData(), '{}', 'automatic discovery carries no business payload');
+        return route.fulfill({
+          status: 404, contentType: 'application/json',
+          body: JSON.stringify({ success: false, message: '隔离测试未设置默认打印电脑' })
+        });
+      }
       if (url.origin === origin || !/^https?:$/.test(url.protocol)) return route.continue();
       if (!url.pathname.startsWith('/api/')) return route.abort();
       const response = await route.fetch({ url: origin + url.pathname + url.search });
@@ -166,6 +179,7 @@ async function main() {
 
     const result = {
       engine,
+      automaticConnections: connections.length,
       items: 46,
       stock: { before: 100, after: sourceSnapshot.stock },
       debt: sourceSnapshot.debt,
