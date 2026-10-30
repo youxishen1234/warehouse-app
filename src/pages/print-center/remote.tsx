@@ -22,6 +22,8 @@ export type RemotePrintController = {
   message: string;
   busy: boolean;
   checking: boolean;
+  refreshing: boolean;
+  refreshMessage: string;
   canSend: boolean;
   resolving: string;
   confirmCopy: boolean;
@@ -50,6 +52,8 @@ export function useRemotePrint(saved: SavedPrintNote | undefined, paper: string,
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshMessage, setRefreshMessage] = useState('');
   const [confirmCopy, setConfirmCopy] = useState(false);
   const [attemptId, setAttemptId] = useState('');
   const [attemptScope, setAttemptScope] = useState('');
@@ -219,9 +223,30 @@ export function useRemotePrint(saved: SavedPrintNote | undefined, paper: string,
 
   const disconnect = () => {
     try {
-      savePrintPair(''); setToken(''); setDevice(undefined); setDeviceError('');
+      savePrintPair(''); setToken(''); setDevice(undefined); setDeviceError(''); setRefreshMessage('');
       if (mobileNotices) void refreshPrintNotices();
     } catch (issue) { setMessage(messageOf(issue)); }
+  };
+
+  const requestRefresh = async () => {
+    if (!token || refreshing) return;
+    setRefreshing(true);
+    setRefreshMessage('');
+    try {
+      const result = await getRemoteDevice(token);
+      if (readPrintPair() !== token) return;
+      setDevice(result);
+      setDeviceError('');
+      setNow(Date.now());
+      setRefreshMessage(!result.online ? '已刷新，打印电脑仍离线' : !result.ready ? '已刷新，打印机暂不可用' : '已刷新，打印电脑在线');
+    } catch (issue) {
+      if (readPrintPair() !== token) return;
+      setDeviceError(messageOf(issue));
+      setRefreshMessage('刷新失败，请检查网络后重试');
+      setRefresh(value => value + 1);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const terminal = !!job && terminalStatuses.has(job.status);
@@ -238,9 +263,9 @@ export function useRemotePrint(saved: SavedPrintNote | undefined, paper: string,
   if (job?.status === 'uncertain') progress = '打印结果尚未确认，已暂停重复发送。请核对电脑打印队列和实际出纸；状态会自动更新。';
 
   return {
-    token, saved, device, deviceError, job, jobError, message, busy, checking, canSend, resolving,
+    token, saved, device, deviceError, job, jobError, message, busy, checking, refreshing, refreshMessage, canSend, resolving,
     confirmCopy, setConfirmCopy, progress, deviceStatus, terminal, pending, lastSentId,
-    pair, send, resolve, requestRefresh: () => setRefresh(value => value + 1), disconnect
+    pair, send, resolve, requestRefresh, disconnect
   };
 }
 
@@ -265,8 +290,9 @@ export default function RemotePrint({ remote, open, onOpenChange, showSendAction
         {device && !deviceError && !device.online && !pending && <p className={styles.muted}>打印电脑离线；可以先发送，电脑恢复在线后自动接收。</p>}
         <div className={styles.previewControls}>
           {showSendAction && <button type='button' className={styles.primary} disabled={!remote.canSend} onClick={() => terminal ? setConfirmCopy(true) : void remote.send()}>{busy ? '正在发送…' : checking ? '正在查询上次打印…' : terminal ? '再打印一份' : pending ? '任务处理中…' : '发送到630K'}</button>}
-          <button type='button' className={styles.secondary} disabled={busy} onClick={remote.requestRefresh}>刷新打印状态</button>
+          <button type='button' className={styles.secondary} disabled={busy || remote.refreshing} onClick={remote.requestRefresh}>{remote.refreshing ? '正在刷新…' : '刷新打印状态'}</button>
         </div>
+        {remote.refreshMessage && <p role='status' className={styles.muted}>{remote.refreshMessage}</p>}
         {confirmCopy && <div role='group' aria-label='确认重新打印'><p className={styles.muted}>请先检查电脑队列和实际出纸，确认后会新建任务再打印一份。</p><button type='button' className={styles.secondary} onClick={() => setConfirmCopy(false)}>取消</button><button type='button' className={styles.primary} disabled={busy} onClick={() => void remote.send(true)}>确认再打印一份</button></div>}
         {job?.status === 'uncertain' && <div role='group' aria-label='核对实际出纸'>
           <p className={styles.muted}>请到打印机前确认这张单子是否已经出来。在核对之前，这台电脑不会接收新的打印任务。</p>

@@ -13,9 +13,9 @@ export default function PrintConnection({ onPairChange }: { onPairChange: () => 
   return <section aria-label='连接打印电脑' className={`${styles.demoConnection} ${ready ? styles.demoConnected : ''}`}>
     <div className={connectionStyles.header}>
       <span className={styles.printerState} role='status'><i aria-hidden='true' />{remote.deviceStatus}</span>
-      <button type='button' className={styles.secondary} disabled={remote.busy}
+      <button type='button' className={styles.secondary} disabled={remote.busy || remote.refreshing}
         onClick={() => remote.token ? remote.requestRefresh() : void remote.pair()}>
-        {remote.busy ? '正在连接电脑…' : remote.token ? '刷新打印状态' : '重新连接打印电脑'}
+        {remote.busy ? '正在连接电脑…' : remote.refreshing ? '正在刷新…' : remote.token ? '刷新打印状态' : '重新连接打印电脑'}
       </button>
     </div>
     <p className={connectionStyles.description}>{remote.token
@@ -23,6 +23,9 @@ export default function PrintConnection({ onPairChange }: { onPairChange: () => 
       : '自动连接本仓库的打印电脑，连接后可直接发送单据。'}</p>
     {remote.deviceError && <p role='alert' className={styles.error}>{remote.deviceError}</p>}
     {remote.message && <p role='alert' className={styles.error}>{remote.message}</p>}
+    {remote.refreshMessage && <p role='status' className={connectionStyles.description}>{remote.refreshMessage}</p>}
+    {remote.device && !remote.device.online && <button type='button' className={styles.secondary}
+      disabled={remote.busy || remote.refreshing} onClick={remote.disconnect}>重新连接本仓库电脑</button>}
     {remote.job && <RemotePrint remote={remote} open showSendAction={false} />}
   </section>;
 }

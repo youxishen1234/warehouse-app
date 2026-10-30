@@ -41,6 +41,12 @@ async function main() {
         submitted.push(request.method());
         return route.abort();
       }
+      if (url.pathname === '/api/remote-print/device' && state.offline) {
+        const response = await route.fetch({ url: origin + url.pathname + url.search });
+        const result = await response.json();
+        if (result.success) result.data.online = false;
+        return route.fulfill({ response, json: result });
+      }
       if (url.pathname.startsWith('/api/')) {
         const response = await route.fetch({ url: origin + url.pathname + url.search });
         return route.fulfill({ response });
@@ -76,6 +82,8 @@ async function main() {
     await expect(connection).toContainText('店里打印电脑');
     await expect(connection).toContainText('EPSON LQ-630K ESC/P2');
     await expect(connection).toContainText('电脑在线');
+    await connection.getByRole('button', { name: '刷新打印状态' }).click();
+    await expect(connection).toContainText('已刷新，打印电脑在线');
     await expect.poll(() => storedPairMatches(page, automatic.client)).toBe(true);
     assert.equal(discoveries.length, 1, 'the first visit discovers the explicitly enabled warehouse computer');
     assert.deepEqual(discoveries[0], {}, 'no connection code is supplied');
@@ -115,13 +123,29 @@ async function main() {
     await expect(connectionFor(retry)).toContainText('店里打印电脑');
     await expect.poll(() => storedPairMatches(retry, automatic.client)).toBe(true);
 
+    const offlineState = { offline: true };
+    const { page: offline, discoveries: offlineDiscoveries } = await newPage({
+      warehouse_remote_print_pair_v1: replacement.client
+    }, offlineState);
+    await offline.goto(`${origin}/#/pages/print-center/index`);
+    await expect(connectionFor(offline)).toContainText('电脑离线');
+    await connectionFor(offline).getByRole('button', { name: '刷新打印状态' }).click();
+    await expect(connectionFor(offline)).toContainText('已刷新，打印电脑仍离线');
+    offlineState.offline = false;
+    await connectionFor(offline).getByRole('button', { name: '重新连接本仓库电脑' }).click();
+    await expect(connectionFor(offline)).toContainText('店里打印电脑');
+    await expect.poll(() => storedPairMatches(offline, automatic.client)).toBe(true);
+    assert.equal(offlineDiscoveries.length, 1);
+
     const pendingId = 'remote-existing-task-00000001';
     const { page: pending, discoveries: pendingDiscoveries } = await newPage({
       warehouse_remote_print_pair_v1: replacement.client,
       warehouse_remote_print_pending_v1: { id: pendingId, noteId: 1 }
-    });
+    }, { offline: true });
     await pending.goto(`${origin}/#/pages/print-center/index`);
     await expect(connectionFor(pending)).toContainText('另一台打印电脑');
+    await connectionFor(pending).getByRole('button', { name: '重新连接本仓库电脑' }).click();
+    await expect(connectionFor(pending).getByRole('alert')).toContainText('网络原任务尚未确认');
     assert.equal(await storedPairMatches(pending, replacement.client), true, 'unresolved work keeps its original computer rather than switching to the default');
     assert.equal(pendingDiscoveries.length, 0);
     assert.equal(await pending.evaluate(() => {
