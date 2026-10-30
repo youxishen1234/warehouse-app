@@ -49,6 +49,7 @@ async function main() {
   const paperboardFontGate = new Promise(resolve => { releasePaperboardFonts = resolve; });
   let deviceOnline = true;
   let deviceReady = true;
+  let deviceAuthorized = true;
   let lostLabelResponse = false;
   let rejectNextBoardJob = false;
   let labelStatusReads = 0;
@@ -89,8 +90,17 @@ async function main() {
       status, headers: { 'access-control-allow-origin': '*' },
       contentType: 'application/json', body: JSON.stringify({ success: status < 400, data, ...(status >= 400 ? { message: 'fixture error' } : {}) })
     });
+    if (url.pathname === '/api/remote-print/connect' && request.method() === 'POST') {
+      return json({
+        client: token,
+        device: {
+          id: 'shop-device-fixture', name: '店里电脑', printer: 'EPSON LQ-630K ESC/P2',
+          online: deviceOnline, ready: deviceReady
+        }
+      });
+    }
     if (url.pathname === '/api/remote-print/labels/device') {
-      if (request.headers()['x-print-client'] !== token) return json(null, 401);
+      if (!deviceAuthorized || request.headers()['x-print-client'] !== token) return json(null, 401);
       return json({
         id: 'shop-device-fixture', name: '店里电脑', printer: profile.printerName,
         online: deviceOnline, ready: deviceReady,
@@ -182,16 +192,20 @@ async function main() {
   try {
     // Keep this regression on the prior finished-product inventory flow now
     // that the label page opens in manual paperboard mode by default.
-    await page.goto(`${origin}/#/pages/management/index?section=labels&kind=finished-product&id=12&print_pair=${token}`);
+    await page.goto(`${origin}/#/pages/management/index?section=labels&kind=finished-product&id=12`);
     await expect(page.getByText('电脑 USB 打印 K3', { exact: true })).toBeVisible();
     await expect(page.getByText('在线 · K3-I911020404', { exact: true })).toBeVisible();
     await expect(page.getByLabel('打印电脑配对码')).toHaveCount(0);
-    assert.ok(!page.url().includes(token), 'pair token is removed from the page URL after validation');
+    await expect(page.getByText('扫描连接二维码', { exact: true })).toHaveCount(0);
+    assert.ok(!page.url().includes(token), 'automatic connection does not put internal credentials in the page URL');
     await expect(page.getByText('在线 · K3-I911020404', { exact: true })).toBeVisible();
-    assert.ok(requests.some(item => item.path === '/api/remote-print/labels/device' && item.method === 'GET'), 'pairing verifies the remote device');
-    assert.ok(requests.filter(item => item.path.includes('/remote-print/labels/')).every(item => item.clientHeader === token), 'pair code is sent only in the X-Print-Client request header');
-    assert.ok(requests.every(item => !decodeURIComponent(item.path).includes(token)), 'pair code never appears in a request URL');
-    assert.ok(requests.filter(item => item.path.includes('/labels/')).every(item => item.body?.token === undefined), 'pair token is never copied into JSON bodies');
+    assert.equal(requests.filter(item => item.path === '/api/remote-print/connect' && item.method === 'POST').length, 1,
+      'labels automatically obtain the warehouse default computer without a code or QR link');
+    assert.ok(requests.some(item => item.path === '/api/remote-print/labels/device' && item.method === 'GET'), 'automatic connection verifies K3 label capability before binding');
+    assert.ok(requests.filter(item => item.path.includes('/remote-print/labels/')).every(item => item.clientHeader === token), 'internal client credentials travel only in the X-Print-Client request header');
+    assert.ok(requests.every(item => !decodeURIComponent(item.path).includes(token)), 'internal client credentials never appear in a request URL');
+    assert.ok(requests.filter(item => item.path.includes('/labels/')).every(item => item.body?.token === undefined), 'internal client credentials are never copied into JSON bodies');
+    assert.equal(postCount, 0, 'automatic connection never submits a print job');
 
     await page.locator('taro-button-core').filter({ hasText: /^保存纸张配置$/ }).click();
     await expect(page.locator('taro-button-core').filter({ hasText: /待校准/ })).toBeVisible();
@@ -240,6 +254,8 @@ async function main() {
     await expect(page.getByText('出纸已确认，任务完成。', { exact: true })).toBeVisible();
     const postsAfterReload = requests.filter(item => item.path === '/api/remote-print/labels/jobs' && item.method === 'POST').length;
     assert.equal(postsAfterReload, 2, 'reload resumes polling the durable job id without duplicate submission');
+    assert.equal(requests.filter(item => item.path === '/api/remote-print/connect').length, 1,
+      'a saved client resumes its original device instead of discovering another computer');
 
     for (const width of [320, 390, 1280]) {
       await page.setViewportSize({ width, height: 900 });
@@ -258,6 +274,7 @@ async function main() {
     completedJob.message = '打印结果未确认，请检查实物';
     await page.reload();
     await expect(page.getByText('打印结果未确认，请检查实物', { exact: true })).toBeVisible();
+    await expect(page.getByText('重新连接打印电脑', { exact: true })).toHaveAttribute('disabled');
     await page.locator('taro-button-core').filter({ hasText: /^已经出纸$/ }).click();
     await expect(page.getByText('经人工核对，出纸正常', { exact: true })).toBeVisible();
     await expect(page.getByText('出纸已确认，任务完成。', { exact: true })).toBeVisible();
@@ -409,13 +426,33 @@ async function main() {
     deviceOnline = false;
     await page.locator('taro-button-core').filter({ hasText: /^刷新状态$/ }).click();
     await expect(page.getByText('打印电脑离线', { exact: true })).toBeVisible();
+    deviceAuthorized = false;
+    await page.locator('taro-button-core').filter({ hasText: /^刷新状态$/ }).click();
+    await expect(page.getByText('当前打印电脑连接已失效，请确认原任务状态后重新连接。', { exact: true })).toBeVisible();
+    const connectsBeforeRecovery = requests.filter(item => item.path === '/api/remote-print/connect').length;
+    const readsBeforeRecovery = requests.filter(item => item.path === '/api/remote-print/labels/device').length;
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event('online'));
+      window.dispatchEvent(new Event('focus'));
+    });
+    await expect.poll(() => requests.filter(item => item.path === '/api/remote-print/labels/device').length).toBeGreaterThan(readsBeforeRecovery);
+    assert.equal(requests.filter(item => item.path === '/api/remote-print/connect').length, connectsBeforeRecovery,
+      'an expired saved client is never silently changed to another default device');
+    const postsBeforeMissingClient = postCount;
+    await page.evaluate(() => localStorage.removeItem('warehouse_remote_print_pair_v1'));
+    await page.reload();
+    await expect(page.getByText('原标签任务尚未确认，请先恢复原打印电脑连接后查询，不会自动更换打印电脑。', { exact: true })).toBeVisible();
+    await expect(page.getByText('重试连接', { exact: true })).toHaveAttribute('disabled');
+    assert.equal(requests.filter(item => item.path === '/api/remote-print/connect').length, connectsBeforeRecovery,
+      'a saved attempt without its original client blocks device discovery');
+    assert.equal(postCount, postsBeforeMissingClient, 'missing-client recovery never resubmits a print job');
     assert.deepEqual(errors, [], 'no uncaught browser errors');
     assert.ok(requests.every(item => item.path !== '/api/remote-print/jobs'), 'label path never enters the delivery-note 630K queue');
     assert.ok(requests.filter(item => !['GET', 'OPTIONS'].includes(item.method) && item.path !== '/api/auth/guest')
-      .every(item => item.path.startsWith('/api/remote-print/labels/')), 'all writes stay on the isolated label queue');
+      .every(item => item.path === '/api/remote-print/connect' || item.path.startsWith('/api/remote-print/labels/')), 'writes are restricted to automatic connection and the isolated label queue');
     console.log(JSON.stringify({
       passed: true,
-      checks: ['pairing and HTTP-header token handling', 'separate density-3 finished-product and density-4 paperboard profiles with independent calibration', 'real label preview and fresh-record validation', 'lost-response durable recovery without duplicate job', 'manual confirmation is not a printer receipt', 'business board fields, stale-color/409 rejection, and no stock mutation', 'offline state', '320/390/1280px layout'],
+      checks: ['automatic no-code connection and HTTP-header client handling', 'saved-client expiry and unresolved-attempt device binding', 'separate density-3 finished-product and density-4 paperboard profiles with independent calibration', 'real label preview and fresh-record validation', 'lost-response durable recovery without duplicate job', 'manual confirmation is not a printer receipt', 'business board fields, stale-color/409 rejection, and no stock mutation', 'offline state', '320/390/1280px layout'],
       requests: requests.length,
       postedLabelJobs: requests.filter(item => item.path === '/api/remote-print/labels/jobs' && item.body.kind !== 'calibration').length,
       screenshots: [320, 390, 1280].map(width => path.join(output, `remote-label-${width}.png`)),

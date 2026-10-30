@@ -131,6 +131,13 @@ test('server registration preserves all existing devices/jobs and returns encryp
   assert.deepEqual(state.metadata, previous.metadata);
   assert.equal(state.devices[1].agent_hash, crypto.createHash('sha256').update(config.agent).digest('hex'));
   assert.equal(state.devices[1].client_hash, crypto.createHash('sha256').update(config.client).digest('hex'));
+  assert.equal(state.default_device_id, config.device.id, 'provisioning explicitly enables the registered receiver as the warehouse default');
+  const automatic = require(moduleFile).createStore(remoteFile).autoConnect();
+  assert.equal(automatic.device.id, config.device.id);
+  assert.match(automatic.client, /^[a-f0-9]{64}$/);
+  assert.notEqual(automatic.client, config.client);
+  assert.equal(JSON.stringify(config).includes('auto_connect_secret'), false);
+  assert.equal(result.stdout.includes(state.devices[1].auto_connect_secret), false);
   if (process.platform !== 'win32') assert.equal(fs.statSync(remoteFile).mode & 0o777, 0o600);
   const beforeDuplicate = fs.readFileSync(remoteFile);
   const duplicate = run(input);
@@ -157,6 +164,93 @@ test('server registration preserves all existing devices/jobs and returns encryp
   assert.equal(reRegistration.stdout, '');
   assert.equal(reRegistration.stderr.trim(), 'PRINTER_PROVISION_FAILURE registration');
   assert.deepEqual(fs.readFileSync(remoteFile), beforeDuplicate, 'a different key must not replace an existing device');
+});
+
+test('an earlier encrypted receipt upgrades only its original device and preserves old credentials, jobs and retry bytes', t => {
+  const directory = temporary(t);
+  const remoteFile = path.join(directory, 'remote-print.json');
+  const moduleFile = path.join(directory, 'remote-print.js');
+  fs.copyFileSync(path.resolve(__dirname, '../backend/remote-print.js'), moduleFile);
+  const input = {
+    moduleFile, remoteFile, publicKey,
+    deviceName: fixtureConfig.device.name,
+    printerName: fixtureConfig.device.printer
+  };
+  const run = () => spawnSync(process.execPath, ['-e', provisioner.REGISTRATION_NODE_SOURCE], {
+    input: JSON.stringify(input), encoding: 'utf8', timeout: 15000, windowsHide: true
+  });
+  const first = run();
+  assert.equal(first.status, 0, first.stderr);
+  const envelope = provisioner.parseRemoteOutput(first.stdout);
+  const config = decrypt(envelope);
+  const store = require(moduleFile).createStore(remoteFile);
+  store.register('已有其他电脑', '已有其他队列');
+  store.enqueue(config.client, { id: 'provision-kept-pending-01', paper: '241-93' }, { id: 71, version: 1, number: 'LOCAL-71', items: [] });
+  const oldState = JSON.parse(fs.readFileSync(remoteFile, 'utf8'));
+  delete oldState.default_device_id;
+  delete oldState.devices[0].auto_connect_secret;
+  delete oldState.devices[0].auto_client_hash;
+  oldState.metadata = { preserved: 'earlier-schema' };
+  fs.writeFileSync(remoteFile, JSON.stringify(oldState, null, 2));
+
+  const upgraded = run();
+  assert.equal(upgraded.status, 0, upgraded.stderr);
+  assert.deepEqual(JSON.parse(upgraded.stdout), envelope, 'no new agent or encrypted credential envelope is issued');
+  const state = JSON.parse(fs.readFileSync(remoteFile, 'utf8'));
+  assert.equal(state.default_device_id, config.device.id);
+  assert.equal(state.devices.length, 2);
+  assert.deepEqual(state.devices[1], oldState.devices[1]);
+  assert.deepEqual(state.jobs, oldState.jobs, 'pending work and saved note snapshots remain unchanged');
+  assert.deepEqual(state.metadata, oldState.metadata);
+  assert.equal(state.devices[0].agent_hash, oldState.devices[0].agent_hash);
+  assert.equal(state.devices[0].client_hash, oldState.devices[0].client_hash);
+  assert.equal(store.agentDevice(config.agent).id, config.device.id);
+  assert.equal(store.device(config.client).id, config.device.id);
+  assert.equal(store.autoConnect().device.id, config.device.id);
+
+  const beforeRetry = fs.readFileSync(remoteFile);
+  fs.utimesSync(remoteFile, new Date(1000), new Date(1000));
+  const modifiedAt = fs.statSync(remoteFile).mtimeMs;
+  const retry = run();
+  assert.equal(retry.status, 0, retry.stderr);
+  assert.deepEqual(JSON.parse(retry.stdout), envelope);
+  assert.deepEqual(fs.readFileSync(remoteFile), beforeRetry);
+  assert.equal(fs.statSync(remoteFile).mtimeMs, modifiedAt, 'a repeated provision does not rewrite the shared queue');
+
+  const competing = JSON.parse(fs.readFileSync(remoteFile, 'utf8'));
+  competing.default_device_id = state.devices[1].id;
+  fs.writeFileSync(remoteFile, JSON.stringify(competing));
+  const beforeConflict = fs.readFileSync(remoteFile);
+  const conflict = run();
+  assert.equal(conflict.status, 1);
+  assert.equal(conflict.stdout, '');
+  assert.equal(conflict.stderr.trim(), 'PRINTER_PROVISION_FAILURE registration');
+  assert.deepEqual(fs.readFileSync(remoteFile), beforeConflict, 'an old receipt cannot replace another explicitly chosen default');
+});
+
+test('provisioning cannot silently replace another warehouse default or leak its credentials', t => {
+  const directory = temporary(t);
+  const remoteFile = path.join(directory, 'remote-print.json');
+  const moduleFile = path.join(directory, 'remote-print.js');
+  fs.copyFileSync(path.resolve(__dirname, '../backend/remote-print.js'), moduleFile);
+  const store = require(moduleFile).createStore(remoteFile);
+  const existing = store.register('已启用的默认电脑', '已有队列', { autoConnect: true });
+  const before = fs.readFileSync(remoteFile);
+  const result = spawnSync(process.execPath, ['-e', provisioner.REGISTRATION_NODE_SOURCE], {
+    input: JSON.stringify({
+      moduleFile, remoteFile, publicKey,
+      deviceName: fixtureConfig.device.name,
+      printerName: fixtureConfig.device.printer
+    }),
+    encoding: 'utf8', timeout: 15000, windowsHide: true
+  });
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, '');
+  assert.equal(result.stderr.trim(), 'PRINTER_PROVISION_FAILURE registration');
+  assert.equal(result.stderr.includes(existing.agent), false);
+  assert.equal(result.stderr.includes(existing.client), false);
+  assert.deepEqual(fs.readFileSync(remoteFile), before);
+  assert.deepEqual(fs.readdirSync(remoteFile + '.provision-receipts'), []);
 });
 
 test('failed encrypted receipt persistence rolls back only the new registration before restoring service', t => {

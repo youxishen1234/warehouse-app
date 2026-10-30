@@ -3,7 +3,6 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { chromium, webkit, expect } = require('@playwright/test');
-const QRCode = require('qrcode');
 
 async function main() {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'warehouse-delivery-browser-'));
@@ -15,7 +14,7 @@ async function main() {
 
   process.env.WAREHOUSE_REMOTE_PRINT_FILE = path.join(directory,'remote-print.json');
   const app = process.env.PRINT_SOURCE_PREVIEW === '1' ? require('./helpers/print-center-source.cjs')(db) : require('../backend/server');
-  const pair = require('../backend/remote-print').createStore(process.env.WAREHOUSE_REMOTE_PRINT_FILE).register('店里电脑','EPSON LQ-630K ESC/P2');
+  const pair = require('../backend/remote-print').createStore(process.env.WAREHOUSE_REMOTE_PRINT_FILE).register('店里电脑','EPSON LQ-630K ESC/P2', { autoConnect: true });
   require('../backend/remote-print').createStore(process.env.WAREHOUSE_REMOTE_PRINT_FILE).claim(pair.agent,true);
   const customer = db.addCustomer({ name: '华兴包装（演示）', contact: '王先生', phone: '13800000000', address: '河北省沧州市东光县工业园', specs: [{ id: 'spec-demo', goods: '五层瓦楞纸箱', specification: '30x20*15mm', material: '五层', unit: '箱', price: 3.5 }] });
   db.updateCustomer(customer.id, { specs: [{ id: 'spec-demo', goods: '五层瓦楞纸箱', specification: '30x20*15mm', unit: '个', price: 3.5 }] });
@@ -226,14 +225,8 @@ async function main() {
     remoteStore.claim(pair.agent,true);
     await page.getByText(/远程打印到店里/).click();
     await expect(page.getByLabel('打印电脑配对码')).toHaveCount(0);
-    const fileChooserPromise = page.waitForEvent('filechooser');
-    await button('扫描连接二维码').click();
-    const fileChooser = await fileChooserPromise;
-    await fileChooser.setFiles({
-      name: 'print-pair.png',
-      mimeType: 'image/png',
-      buffer: await QRCode.toBuffer(pair.client, { width: 360, margin: 2 })
-    });
+    await expect(page.getByRole('button', { name: /扫描连接|扫码连接/ })).toHaveCount(0);
+    await expect(button('发送到630K')).toBeEnabled();
     await button('发送到630K').click();
     await expect(page.getByRole('dialog', { name: '送货单预览' }).getByRole('status')).toContainText('等待打印电脑接收');
     const remoteClaim=remoteStore.claim(pair.agent,true).job;

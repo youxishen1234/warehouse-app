@@ -45,7 +45,7 @@ test('pending network work blocks another task and changing the paired computer'
 });
 test('first submit clears pending only for explicit pre-enqueue 400/401 rejections', async () => {
   const job = { id: 'remote-task-0000001', note_id: 1, version: 1, paper: '241-93' };
-  for (const [status, message] of [[400, '请先保存送货单'], [401, '打印配对已失效，请重新配对']]) {
+  for (const [status, message] of [[400, '请先保存送货单'], [401, '打印电脑连接已失效，请重新连接']]) {
     let storage;
     const h = setup(async () => {
       assert.equal(storage.get(pendingKey)?.id, job.id, 'pending is persisted before the HTTP request');
@@ -167,14 +167,48 @@ test('both a stalled connection and a stalled JSON body have a hard eight-second
     assert.deepEqual(timers, [8000]);
   }
 });
-test('pairing validation uses the candidate token without storing invalid pairing or logging out', async () => {
+test('expired connection validation preserves the original connection', async () => {
   const candidate = 'b'.repeat(64);
   const { api, storage } = setup(async (_, options) => {
     assert.equal(options.headers['X-Print-Client'], candidate);
-    return { ok: false, status: 401, json: async () => ({ success: false, message: '打印配对已失效，请重新配对' }) };
+    return { ok: false, status: 401, json: async () => ({ success: false, message: '打印电脑连接已失效，请重新连接' }) };
   });
-  await assert.rejects(api.getRemoteDevice(candidate), error => error.statusCode === 401 && /配对/.test(error.message));
+  await assert.rejects(api.getRemoteDevice(candidate), error => error.statusCode === 401 && /连接/.test(error.message));
   assert.equal(storage.get('warehouse_remote_print_pair_v1'), token);
+});
+test('automatic connection shares simultaneous discovery without codes, printing, or changing pending work', async () => {
+  const candidate = 'b'.repeat(64), calls = [];
+  let finish;
+  const result = new Promise(resolve => { finish = resolve; });
+  const { api, storage } = setup(async (url, options) => { calls.push({ url, options }); return result; });
+  storage.delete('warehouse_remote_print_pair_v1');
+  storage.set(pendingKey, { id: 'remote-original-task-00001', noteId: 1 });
+  const first = api.connectRemotePrinter(), second = api.connectRemotePrinter();
+  assert.equal(first, second);
+  finish(response({ client: candidate, device: { id: 'shop-computer-1', printer: 'EPSON LQ-630K ESC/P2', online: true, ready: true } }));
+  const connection = await first;
+  assert.equal(connection.client, candidate);
+  assert.equal(connection.device.ready, true);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://print.example.test/api/remote-print/connect');
+  assert.equal(calls[0].options.method, 'POST');
+  assert.equal(calls[0].options.body, '{}', 'a person does not supply a connection code');
+  assert.equal(calls[0].options.headers['X-Print-Client'], undefined);
+  assert.equal(storage.has('warehouse_remote_print_pair_v1'), false, 'the controller validates before persisting a connection');
+  assert.equal(storage.get(pendingKey).id, 'remote-original-task-00001');
+  assert.throws(() => api.savePrintPair(candidate), /原任务尚未确认/, 'an unresolved original job prevents switching computers');
+});
+test('automatic discovery rejects missing defaults and invalid replies and bounds stalled replies', async () => {
+  const missing = setup(async () => rejectedResponse(404, '本仓库尚未设置默认打印电脑'));
+  await assert.rejects(missing.api.connectRemotePrinter(), error => error.statusCode === 404);
+  assert.equal(missing.storage.get('warehouse_remote_print_pair_v1'), token);
+  const malformed = setup(async () => response({ client: 'invalid', device: { id: 'unexpected', printer: 'printer' } }));
+  await assert.rejects(malformed.api.connectRemotePrinter(), /信息无效/);
+  for (const fetch of [() => new Promise(() => {}), async () => ({ ok: true, json: () => new Promise(() => {}) })]) {
+    const timed = setup(fetch);
+    await assert.rejects(timed.api.connectRemotePrinter(), /连接打印电脑超时/);
+    assert.deepEqual(timed.timers, [8000]);
+  }
 });
 test('connection links and raw QR payloads resolve the pairing token and can be cleaned', () => {
   const { api } = setup(() => { throw new Error('unused'); });

@@ -36,6 +36,49 @@ export const savePrintPair = (value: string) => {
 };
 
 const printPairToken = /^[a-f0-9]{64}$/;
+type PrinterConnection = { client: string; device: RemoteDevice };
+let connecting: { origin: string; promise: Promise<PrinterConnection> } | undefined;
+
+// The warehouse explicitly enables its default computer. Its credentials stay
+// internal: phones discover it without asking a person to type or scan a code.
+export function connectRemotePrinter(): Promise<PrinterConnection> {
+  const origin = getBaseUrl();
+  if (connecting?.origin === origin) return connecting.promise;
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout>;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error('连接打印电脑超时，请重试'));
+      controller.abort();
+    }, 8000);
+  });
+  const request = (async () => {
+    try {
+      const response = await fetch(origin + '/api/remote-print/connect', {
+        method: 'POST', cache: 'no-store', signal: controller.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+      });
+      const body = await response.json();
+      if (!response.ok || body?.success !== true) {
+        throw Object.assign(new Error(body?.message || '暂时无法连接打印电脑，请重试'), { statusCode: response.status });
+      }
+      if (!printPairToken.test(body.data?.client || '') || !body.data?.device?.id || !body.data.device.printer) {
+        throw new Error('打印电脑信息无效，请重试');
+      }
+      return body.data as PrinterConnection;
+    } catch (error) {
+      if (/fetch|network|load failed|abort/i.test(String(error?.message || ''))) throw new Error('暂时无法连接打印电脑，网络恢复后将自动重试');
+      throw error;
+    }
+  })();
+  const promise = Promise.race([request, deadline]).finally(() => {
+    clearTimeout(timer);
+    if (connecting?.promise === promise) connecting = undefined;
+  });
+  connecting = { origin, promise };
+  return promise;
+}
 
 /** Accept the receiver's raw token or a link carrying it in print_pair. */
 export function parsePrintPairToken(value: string): string {

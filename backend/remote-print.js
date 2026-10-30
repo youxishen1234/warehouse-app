@@ -6,6 +6,9 @@ const hash = value => crypto.createHash('sha256').update(String(value || '')).di
 const terminal = new Set(['queued', 'failed', 'uncertain', 'expired']);
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const PRUNE_INTERVAL_MS = 60 * 60 * 1000;
+const TOKEN = /^[a-f0-9]{64}$/;
+const automaticClient = device => crypto.createHmac('sha256', Buffer.from(device.auto_connect_secret, 'hex'))
+  .update('warehouse-shared-print-client-v1:' + device.id).digest('hex');
 function createStore(file, clock = Date.now) {
   const read = () => fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : { devices: [], jobs: [] };
   // The agent polls every second and the phone polls every two seconds. Each
@@ -24,12 +27,26 @@ function createStore(file, clock = Date.now) {
   };
   const flush = state => { if (dirty) write(state); };
   const authenticate = (state, token, type) => {
-    if (!/^[a-f0-9]{64}$/.test(String(token || ''))) throw fail('请先配对打印电脑', 401);
-    const device = state.devices.find(row => row[type + '_hash'] === hash(token));
-    if (!device) throw fail('打印配对已失效，请重新配对', 401);
+    if (!TOKEN.test(String(token || ''))) throw fail('请先连接打印电脑', 401);
+    const digest = hash(token);
+    const device = state.devices.find(row => row[type + '_hash'] === digest || (type === 'client' && row.auto_client_hash === digest));
+    if (!device) throw fail('打印电脑连接已失效，请重新连接', 401);
     return device;
   };
   const publicDevice = device => ({ id: device.id, name: device.name, printer: device.printer, online: clock() - device.last_seen < 25000, ready: device.ready, last_seen: device.last_seen });
+  const enableAutomatic = (state, device) => {
+    if (state.default_device_id && state.default_device_id !== device.id) throw fail('本仓库已有其他默认打印电脑，请先由维护人员确认', 409);
+    let changed = state.default_device_id !== device.id;
+    if (!device.auto_connect_secret && !device.auto_client_hash) {
+      device.auto_connect_secret = crypto.randomBytes(32).toString('hex');
+      device.auto_client_hash = hash(automaticClient(device));
+      changed = true;
+    } else if (!TOKEN.test(device.auto_connect_secret || '') || device.auto_client_hash !== hash(automaticClient(device))) {
+      throw fail('默认打印电脑配置无效，请联系维护人员', 409);
+    }
+    state.default_device_id = device.id;
+    return changed;
+  };
   const publicJob = job => ({
     id: job.id, note_id: job.note_id, note_number: job.note_number, status: job.status,
     message: job.message, created_at: job.created_at, updated_at: job.updated_at,
@@ -53,12 +70,28 @@ function createStore(file, clock = Date.now) {
     return changed;
   };
   return {
-    register(name, printer) {
+    register(name, printer, options = {}) {
       if (!name || name.length > 80 || !printer || printer.length > 256) throw fail('打印电脑资料无效');
       const state = read(), agent = crypto.randomBytes(32).toString('hex'), client = crypto.randomBytes(32).toString('hex');
       const device = { id: crypto.randomUUID(), name, printer, agent_hash: hash(agent), client_hash: hash(client), last_seen: 0, ready: false };
+      if (options?.autoConnect === true) enableAutomatic(state, device);
       state.devices.push(device); write(state);
       return { device: publicDevice(device), agent, client };
+    },
+    // Provisioning explicitly opts a single device into this anonymous shared
+    // warehouse. Existing client and agent credentials remain valid.
+    enableAutoConnect(id) {
+      const state = read(), device = state.devices.find(row => row.id === id);
+      if (!device) throw fail('打印电脑不存在', 404);
+      if (enableAutomatic(state, device)) write(state);
+      return publicDevice(device);
+    },
+    autoConnect() {
+      const state = read(), device = state.devices.find(row => row.id === state.default_device_id);
+      if (!device || !TOKEN.test(device.auto_connect_secret || '') || device.auto_client_hash !== hash(automaticClient(device))) {
+        throw fail('本仓库尚未设置默认打印电脑，请启动电脑接收器后重试', 404);
+      }
+      return { client: automaticClient(device), device: publicDevice(device) };
     },
     // Label registration reuses the delivery pairing. Return a public device
     // only; the delivery agent token must never become a label credential.
@@ -161,7 +194,25 @@ function createStore(file, clock = Date.now) {
 function install(router, db, options = {}) {
   const file = options.file || process.env.WAREHOUSE_REMOTE_PRINT_FILE || path.join(path.dirname(process.env.WAREHOUSE_DATA_FILE || path.join(__dirname,'data.json')), 'remote-print.json');
   const store = createStore(file);
-  const route = (method, url, handler) => router[method](url, (req,res,next) => Promise.resolve().then(() => handler(req)).then(data => res.json({success:true,data})).catch(next));
+  const route = (method, url, handler) => router[method](url, (req,res,next) => Promise.resolve().then(() => handler(req, res)).then(data => res.json({success:true,data})).catch(next));
+  const connectBuckets = new Map();
+  const { consumeRateLimit } = require('./rate-limit');
+  const allowedOrigins = new Set(String(process.env.WAREHOUSE_ALLOWED_ORIGINS || 'https://youxishen.online,capacitor://localhost,https://localhost,http://localhost')
+    .split(',').map(value => value.trim()).filter(Boolean));
+  const allowedOrigin = origin => allowedOrigins.has(origin) || /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(origin);
+  route('post', '/remote-print/connect', (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    const origin = req.get('Origin');
+    // The shared warehouse has no accounts. This blocks browser requests from
+    // unrelated sites; it does not invent user-level authorization.
+    if ((origin && !allowedOrigin(origin)) || (!origin && req.get('Sec-Fetch-Site') === 'cross-site')) throw fail('请求来源不在允许名单内', 403);
+    const source = String(req.warehouseClientIp || req.ip || req.socket?.remoteAddress || 'unknown');
+    if (!consumeRateLimit(connectBuckets, source, { limit: 60 })) {
+      res.set('Retry-After', '60');
+      throw fail('连接打印电脑过于频繁，请稍后重试', 429);
+    }
+    return store.autoConnect();
+  });
   const client = req => req.get('X-Print-Client'), agent = req => req.get('X-Print-Agent');
   route('get','/remote-print/device',req => store.device(client(req)));
   route('get','/remote-print/agent/device',req => store.agentDevice(agent(req)));

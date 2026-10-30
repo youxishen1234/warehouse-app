@@ -139,7 +139,7 @@ async function main() {
     assert.equal(db.listCustomers().filter(customer => customer.name === homeCustomer.name).length, 1, 'editing an existing customer must not create a duplicate');
     await page.getByText('‹ 全部客户', { exact: true }).click();
     const responsiveLayouts = [];
-    for (const width of [320, 390, 768, 1280, 1920]) {
+    for (const width of [320, 390, 736, 767, 768, 1023, 1024, 1280, 1920]) {
       await noOverflow(width);
       await expect(customerCenterAdd).toBeInViewport();
       assert.equal(await customerCenterAdd.evaluate(addButton => {
@@ -147,9 +147,44 @@ async function main() {
         return !!firstCustomer && addButton.getBoundingClientRect().bottom <= firstCustomer.getBoundingClientRect().top;
       }), true, 'customer creation stays above the populated customer list');
 
-      const geometry = await page.getByTestId('customer-center').boundingBox();
-      assert.ok(geometry.width > 0 && geometry.width <= Math.min(width, 430), 'customer layout follows the demo phone width');
-      responsiveLayouts.push({ width, contentWidth: geometry.width });
+      const center = page.getByTestId('customer-center');
+      const search = center.getByTestId('customer-center-search');
+      const searchInput = search.locator('input');
+      await expect.poll(() => searchInput.evaluate(element => parseFloat(getComputedStyle(element).fontSize))).toBe(16);
+      const searchLayout = await search.evaluate(element => {
+        const field = element.getBoundingClientRect(), input = element.querySelector('input').getBoundingClientRect();
+        return { height: field.height, inputHeight: input.height, inputFits: input.left >= field.left && input.right <= field.right && input.top >= field.top && input.bottom <= field.bottom };
+      });
+      assert.ok(searchLayout.height >= 44 && searchLayout.height <= 52 && searchLayout.inputHeight >= 20 && searchLayout.inputHeight <= 28 && searchLayout.inputFits, 'customer search text fits a stable touch-sized field');
+      await searchInput.fill(homeCustomer.name);
+      await expect(customerCard).toBeVisible();
+      await searchInput.fill('');
+      const geometry = await center.boundingBox();
+      const shell = await page.getByTestId('simple-workbench').filter({ visible: true }).last().boundingBox();
+      const navigation = await page.locator('.sg-app-nav').boundingBox();
+      assert.ok(geometry && shell && navigation, 'customer content and navigation are visible');
+      assert.ok(geometry.width > 0 && geometry.x >= shell.x - 1 && geometry.x + geometry.width <= shell.x + shell.width + 1, 'customer content stays within its page');
+      assert.ok(await center.evaluate(element => element.scrollWidth <= element.clientWidth + 1), 'customer content does not overflow horizontally');
+      if (width >= 1024) {
+        assert.ok(Math.abs(navigation.x) <= 1 && Math.abs(navigation.width - 208) <= 1 && navigation.height >= 899, 'desktop uses the full-height 208px sidebar');
+        assert.ok(shell.x >= navigation.x + navigation.width - 1 && Math.abs(shell.width - (width - navigation.width)) <= 1, 'desktop customer page fills the area beside its sidebar');
+        assert.ok(geometry.width > 700 && geometry.width <= 1240, 'desktop customers use a wide content area');
+      } else {
+        const expected = width >= 768 || width <= 500 ? width : 430;
+        assert.ok(Math.abs(shell.width - expected) <= 1 && Math.abs(shell.x - (width - shell.width) / 2) <= 1, 'phone and tablet customers use their available page width');
+        assert.ok(navigation.y >= 800 && navigation.width <= Math.min(width, 768) + 1, 'phone and tablet navigation stays below customer content');
+        if (width >= 768) assert.ok(geometry.width > 430, 'tablet customer content expands beyond the phone width');
+      }
+      await customerCenterAdd.click();
+      await expect(editor()).toBeVisible();
+      await editor().getByRole('button', { name: '关闭', exact: true }).click();
+      await expect(editor()).toHaveCount(0);
+      await customerCard.click();
+      await expect(page.getByTestId(`customer-edit-${homeCustomer.id}`)).toBeVisible();
+      await page.getByText('‹ 全部客户', { exact: true }).click();
+      await expect(customerCenterAdd).toBeVisible();
+      assert.equal(db.listCustomers().length, startingCustomerCount + 1, 'responsive customer actions must not change saved customers');
+      responsiveLayouts.push({ width, content: geometry, shell, navigation, search: searchLayout });
       await page.screenshot({ path: path.join(evidence, `customer-management-${width}.png`), fullPage: true });
     }
     await page.setViewportSize({ width: 390, height: 900 });
@@ -195,7 +230,7 @@ async function main() {
       result: 'PASS single customer entry and order customer selection',
       customerIds: [homeCustomer.id],
       order: { id: createdOrder.id, customer_id: createdOrder.customer_id, amount: createdOrder.amount },
-      widths: [320, 390, 1280],
+      widths: responsiveLayouts.map(layout => layout.width),
       responsiveLayouts,
       pageErrors: errors,
       evidence

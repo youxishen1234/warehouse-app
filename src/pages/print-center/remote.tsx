@@ -1,8 +1,7 @@
 /* eslint-disable react/forbid-elements */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { cleanPrintPairFromAddress, getRemoteDevice, getRemotePrintJob, newRemotePrintId, parsePrintPairToken, readPrintAttempt, readPrintPair, readPrintPairFromAddress, resolveRemotePrintJob, savePrintAttempt, savePrintPair, submitRemotePrint } from '@/services/remote-print';
+import { cleanPrintPairFromAddress, connectRemotePrinter, getRemoteDevice, getRemotePrintJob, newRemotePrintId, readPrintAttempt, readPrintPair, resolveRemotePrintJob, savePrintAttempt, savePrintPair, submitRemotePrint } from '@/services/remote-print';
 import type { RemoteDevice, RemoteJob } from '@/services/remote-print';
-import { scanPrintPairQr } from '@/services/print-pair-scan';
 import type { SavedPrintNote } from '@/services/print-notes';
 import { refreshPrintNotices, reportPrintNoticeError, trackPrintNotice, updatePrintNotice } from '@/services/print-notifications';
 import { useMobilePrintNotifications } from '@/services/mobile-print-notifications';
@@ -34,7 +33,7 @@ export type RemotePrintController = {
   // The id this screen submitted, so a caller can tell a job it started from
   // an older one it merely opened.
   lastSentId: string;
-  pair: (value?: string) => Promise<void>;
+  pair: () => Promise<void>;
   send: (newCopy?: boolean) => Promise<void>;
   resolve: (outcome: 'printed' | 'missing') => Promise<void>;
   requestRefresh: () => void;
@@ -43,9 +42,6 @@ export type RemotePrintController = {
 
 export function useRemotePrint(saved: SavedPrintNote | undefined, paper: string, enabled = true): RemotePrintController {
   const mobileNotices = useMobilePrintNotifications();
-  const [linkedPair] = useState(readPrintPairFromAddress);
-  const [hadPairLink] = useState(() => typeof window !== 'undefined' && window.location.href.includes('print_pair='));
-  const linkHandled = useRef(false);
   const [token, setToken] = useState(readPrintPair);
   const [device, setDevice] = useState<RemoteDevice>();
   const [deviceError, setDeviceError] = useState('');
@@ -73,7 +69,9 @@ export function useRemotePrint(saved: SavedPrintNote | undefined, paper: string,
   useEffect(() => {
     const id = globalPendingId || (fingerprint ? readPrintAttempt(fingerprint) : '');
     const scope = token + fingerprint;
-    setJob(previous => previous?.id === id ? previous : undefined); setJobError(''); setMessage(''); setConfirmCopy(false);
+    setJob(previous => previous?.id === id ? previous : undefined); setJobError('');
+    setMessage(globalPendingId && !token ? '网络原任务尚未确认，请先恢复原打印电脑的连接' : '');
+    setConfirmCopy(false);
     setAttemptId(id); setAttemptScope(scope);
     if (id !== attemptId || attemptScope !== scope) setChecking(!!id);
   }, [fingerprint, token, globalPendingId, attemptId, attemptScope]);
@@ -94,7 +92,22 @@ export function useRemotePrint(saved: SavedPrintNote | undefined, paper: string,
       try {
         const result = await getRemoteDevice(token);
         if (active) { setDevice(result); setDeviceError(''); setNow(Date.now()); }
-      } catch (issue) { if (active) setDeviceError(messageOf(issue)); }
+      } catch (issue) {
+        if (active) {
+          setDeviceError(messageOf(issue));
+          // An invalid old connection can be rediscovered. An unresolved job
+          // must retain its original computer and task id.
+          if ((issue as { statusCode?: number })?.statusCode === 401) {
+            try {
+              if (!readRemotePrintPending(true)) {
+                const current = readPrintPair();
+                if (current === token) savePrintPair('');
+                setToken(current === token ? '' : current); setDevice(undefined);
+              }
+            } catch (storageIssue) { setDeviceError(messageOf(storageIssue)); }
+          }
+        }
+      }
       finally { if (active && (!mobileNotices || document.visibilityState !== 'hidden')) timer = setTimeout(() => void poll(), 5000); }
     };
     void poll();
@@ -138,28 +151,35 @@ export function useRemotePrint(saved: SavedPrintNote | undefined, paper: string,
     return () => { window.removeEventListener('online', resume); window.removeEventListener('focus', resume); document.removeEventListener('visibilitychange', resume); };
   }, []);
 
-  const pair = useCallback(async (raw?: string) => {
+  const pair = useCallback(async () => {
     if (sending.current) return;
-    sending.current = true; setBusy(true); setMessage('');
+    sending.current = true; setBusy(true); setMessage(''); setDeviceError('');
     try {
-      const scanned = raw === undefined ? await scanPrintPairQr() : raw;
-      if (!scanned) return;
-      const candidate = parsePrintPairToken(scanned);
-      if (!candidate) throw new Error('没有识别到有效的打印连接二维码，请重新扫码或打开连接链接');
-      const result = await getRemoteDevice(candidate);
-      cleanPrintPairFromAddress();
-      savePrintPair(candidate); setDevice(result); setDeviceError(''); setToken(candidate);
+      const existing = readPrintPair();
+      if (!existing && readRemotePrintPending(true)) throw new Error('网络原任务尚未确认，请先恢复原打印电脑的连接');
+      const connection = existing
+        ? { client: existing, device: await getRemoteDevice(existing) }
+        : await connectRemotePrinter();
+      const current = readPrintPair();
+      if (current !== existing && current !== connection.client) {
+        setToken(current); setDevice(undefined);
+        return;
+      }
+      savePrintPair(connection.client); setDevice(connection.device); setDeviceError(''); setToken(connection.client);
       if (mobileNotices) void refreshPrintNotices();
     } catch (issue) { setMessage(messageOf(issue)); }
     finally { sending.current = false; setBusy(false); }
   }, [mobileNotices]);
 
   useEffect(() => {
-    if (!enabled || linkHandled.current) return;
-    linkHandled.current = true;
-    if (linkedPair) void pair(linkedPair);
-    else if (hadPairLink) setMessage('打印连接链接无效，请重新扫描电脑上的二维码');
-  }, [enabled, hadPairLink, linkedPair, pair]);
+    cleanPrintPairFromAddress();
+    if (!enabled || token) return;
+    void pair();
+    const retry = () => { if (document.visibilityState !== 'hidden') void pair(); };
+    window.addEventListener('online', retry);
+    window.addEventListener('focus', retry);
+    return () => { window.removeEventListener('online', retry); window.removeEventListener('focus', retry); };
+  }, [enabled, token, pair, refresh]);
 
   const send = async (newCopy = false) => {
     if (!saved || !canSend || sending.current) return;
@@ -237,8 +257,8 @@ export default function RemotePrint({ remote, open, onOpenChange, showSendAction
     <summary>远程打印到店里 · {deviceStatus}</summary>
     <div className={styles.settingsBody}>
       {!token ? <>
-        <p className={styles.muted}>扫描店里打印电脑上的连接二维码，即可完成连接；也可直接打开电脑提供的连接链接。</p>
-        <button type='button' className={styles.secondary} disabled={busy} onClick={() => void remote.pair()}>{busy ? '正在验证连接…' : '扫描连接二维码'}</button>
+        <p className={styles.muted}>正在连接本仓库的打印电脑，连接后即可直接发送单据。</p>
+        <button type='button' className={styles.secondary} disabled={busy} onClick={() => void remote.pair()}>{busy ? '正在连接电脑…' : '重新连接打印电脑'}</button>
       </> : <>
         <p className={styles.muted}>{device?.name || '打印电脑'} · {device?.printer || '630K'}<br />电脑需开机、登录并联网，打印机需开机。仅发送已出库单据，不会重复扣减库存。</p>
         {showSendAction && !remote.saved && <p className={styles.muted}>请先保存单据，再发送远程打印。</p>}
@@ -254,7 +274,6 @@ export default function RemotePrint({ remote, open, onOpenChange, showSendAction
           <button type='button' className={styles.secondary} disabled={!!resolving} onClick={() => void remote.resolve('missing')}>{resolving === 'missing' ? '正在确认…' : '没有出纸'}</button>
         </div>}
         {!showSendAction && job?.status === 'queued' && !job.confirmed_printed_at && !/人工核对|人工确认/.test(job.message) && <button type='button' className={styles.secondary} disabled={!!resolving} onClick={() => void remote.resolve('printed')}>{resolving === 'printed' ? '正在确认…' : '已经出纸了'}</button>}
-        <button type='button' className={styles.textButton} disabled={busy} onClick={remote.disconnect}>更换打印电脑</button>
       </>}
       {job && <p role='status' aria-live='polite' className={styles.notice}>{progress}</p>}
       {deviceError && <p role='alert' className={styles.error}>{deviceError}</p>}

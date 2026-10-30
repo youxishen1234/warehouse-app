@@ -187,6 +187,8 @@ try {
   const previousBytes = existed ? fs.readFileSync(input.remoteFile) : null;
   const previous = existed ? JSON.parse(previousBytes.toString('utf8')) : { devices: [], jobs: [] };
   if (!Array.isArray(previous.devices) || !Array.isArray(previous.jobs)) throw new Error('invalid printer store');
+  const { createStore } = require(input.moduleFile);
+  const store = createStore(input.remoteFile);
   const requestId = crypto.createHash('sha256').update(JSON.stringify({
     publicKey: publicKey.key.export({ type: 'spki', format: 'der' }).toString('base64'),
     name: input.deviceName,
@@ -203,16 +205,19 @@ try {
     const receipt = JSON.parse(fs.readFileSync(receiptFile, 'utf8'));
     const device = previous.devices.find(row => row && row.id === receipt.device_id && row.name === input.deviceName && row.printer === input.printerName);
     if (receipt.request_id !== requestId || !device) throw new Error('receipt does not match device');
-    process.stdout.write(JSON.stringify(validateEnvelope(receipt.envelope)));
+    const envelope = validateEnvelope(receipt.envelope);
+    // A pre-auto-connect receipt upgrades this exact device without replacing
+    // its credentials or creating another receiver.
+    store.enableAutoConnect(device.id);
+    process.stdout.write(JSON.stringify(envelope));
   } else {
   if (previous.devices.some(device => device && device.name === input.deviceName && device.printer === input.printerName)) {
     throw new Error('printer device already exists');
   }
-  const { createStore } = require(input.moduleFile);
   let registered = false, receiptCommitted = false;
   const temporaryReceipt = receiptFile + '.tmp-' + crypto.randomUUID();
   try {
-    const result = createStore(input.remoteFile).register(input.deviceName, input.printerName);
+    const result = store.register(input.deviceName, input.printerName, { autoConnect: true });
     registered = true;
     const envelope = createEnvelope({ origin: ORIGIN, ...result }, publicKey);
     fs.writeFileSync(temporaryReceipt, JSON.stringify({

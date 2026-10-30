@@ -17,11 +17,21 @@ async function serveWeb(directory) {
 }
 
 async function isolateBusinessAPI(context, origin, options = {}) {
-  const writes = [];
+  const writes = [], connections = [];
+  const printer = { id: 'navigation-printer', name: '隔离打印电脑', printer: 'EPSON LQ-630K ESC/P2', online: false, ready: false };
   await context.addInitScript(() => localStorage.setItem('sg_getting_started_seen_v1', JSON.stringify({ data: true })));
   await context.route('**/*', route => {
     const request = route.request(), url = new URL(request.url());
     if (!url.pathname.startsWith('/api/')) return url.origin === origin || ['data:', 'blob:'].includes(url.protocol) ? route.continue() : route.abort();
+    if (request.method() === 'POST' && url.pathname === '/api/remote-print/connect') {
+      connections.push(request.method() + ' ' + url.pathname);
+      return route.fulfill({
+        status: 200,
+        headers: { 'access-control-allow-origin': '*', 'cache-control': 'no-store' },
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, data: { client: 'a'.repeat(64), device: printer } })
+      });
+    }
     if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method()) && !url.pathname.endsWith('/auth/guest')) writes.push(request.method() + ' ' + url.pathname);
     let data = [];
     if (url.pathname.endsWith('/auth/guest')) data = { token: 'navigation-check', user: { id: 1, username: 'navigation-check', role: 'viewer' } };
@@ -31,6 +41,7 @@ async function isolateBusinessAPI(context, origin, options = {}) {
     if (url.pathname.endsWith('/stats')) data = { todayIn: 0, todayOut: 0, totalProducts: 0, totalStock: 0, lowStock: 0, totalValue: 0, totalReceivable: 0, totalPayable: 0 };
     if (url.pathname.includes('dimensions')) data = { customers: [], inactiveCustomerNames: [], schemaVersion: 1, revision: 0, theme: {} };
     if (url.pathname.endsWith('/print-notes')) data = { items: [], total: 0, page: 1, page_size: 30 };
+    if (url.pathname === '/api/remote-print/device') data = printer;
     return route.fulfill({
       status: request.method() === 'OPTIONS' ? 204 : 200,
       headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET,POST,OPTIONS' },
@@ -38,7 +49,7 @@ async function isolateBusinessAPI(context, origin, options = {}) {
       body: request.method() === 'OPTIONS' ? '' : JSON.stringify({ success: true, data })
     });
   });
-  return writes;
+  return { writes, connections };
 }
 
 async function touchDrag(page, { x, y, dx, dy = 0 }) {

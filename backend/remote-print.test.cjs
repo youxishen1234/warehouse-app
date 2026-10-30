@@ -4,7 +4,7 @@ test('paired print jobs persist, claim once, deduplicate, and never resend uncer
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'remote-print-'));let now=100000;const file=path.join(dir,'queue.json');
  try{
   const store=createStore(file,()=>now),pair=store.register('店里电脑','EPSON LQ-630K ESC/P2');
-  assert.throws(()=>store.device('wrong'),/配对/);assert.throws(()=>store.device(pair.agent),/配对/);
+  assert.throws(()=>store.device('wrong'),/连接/);assert.throws(()=>store.device(pair.agent),/连接/);
   const note={id:1,version:1,number:'SH-001',items:[]};const input={id:'remote-print-task-001',paper:'241-93'};
   const job=store.enqueue(pair.client,input,note);assert.equal(job.status,'waiting');
   assert.deepEqual(store.enqueue(pair.client,input,note),job);
@@ -17,7 +17,7 @@ test('paired print jobs persist, claim once, deduplicate, and never resend uncer
   store.acknowledge(pair.agent,job.id,{lease:claim.lease,status:'queued'});assert.equal(store.status(pair.client,job.id).status,'queued');
   assert.deepEqual(store.history(pair.client),[{note_id:1,printed_at:now}]);
   const other=store.register('其他电脑','其他打印机');assert.deepEqual(store.history(other.client),[]);
-  assert.throws(()=>store.history(pair.agent),/配对/);
+  assert.throws(()=>store.history(pair.agent),/连接/);
   assert.equal(note.printed_at,undefined,'print time stays outside delivery data');
   assert.equal(createStore(file,()=>now).claim(pair.agent,true).job.id,'remote-print-task-002');
   const raw=fs.readFileSync(file,'utf8');assert.ok(!raw.includes(pair.client));assert.ok(!raw.includes(pair.agent));
@@ -81,7 +81,7 @@ test('only a person at the printer can clear an uncertain job and unblock the qu
   assert.throws(()=>store.resolve(pair.client,'remote-print-task-102',{outcome:'printed'}),/未确认/);
   assert.throws(()=>store.resolve(pair.client,first.id,{outcome:'maybe'}),/出纸/);
   assert.throws(()=>store.resolve(pair.client,'no-such-job',{outcome:'printed'}),/不存在/);
-  assert.throws(()=>store.resolve(pair.agent,first.id,{outcome:'printed'}),/配对/);
+  assert.throws(()=>store.resolve(pair.agent,first.id,{outcome:'printed'}),/连接/);
 
   // Confirming real output makes it terminal and releases the queue.
   const resolved=store.resolve(pair.client,first.id,{outcome:'printed'});
@@ -138,7 +138,7 @@ test('queued jobs can confirm physical output without changing queue status or p
 
   const other=store.register('另一台电脑','630K');
   assert.throws(()=>store.resolve(other.client,queued.id,{outcome:'printed'}),/不存在/,'a paired client cannot confirm another device task');
-  assert.throws(()=>store.resolve(pair.agent,queued.id,{outcome:'printed'}),/配对/,'the agent credential cannot use the client confirmation route');
+  assert.throws(()=>store.resolve(pair.agent,queued.id,{outcome:'printed'}),/连接/,'the agent credential cannot use the client confirmation route');
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
 
@@ -175,8 +175,8 @@ test('receiver recovery is authenticated, persisted, bounded and visible to the 
  try{
   const store=createStore(file,()=>now),pair=store.register('店里电脑','EPSON LQ-630K ESC/P2');
   assert.deepEqual(store.recovery(pair.client),{count:0,repaired:false,last_kind:'receiver'});
-  assert.throws(()=>store.recovery(pair.agent),/配对/);
-  assert.throws(()=>store.recover(pair.client,{kind:'receiver'}),/配对/);
+  assert.throws(()=>store.recovery(pair.agent),/连接/);
+  assert.throws(()=>store.recover(pair.client,{kind:'receiver'}),/连接/);
   assert.throws(()=>store.recover(pair.agent,{kind:'script'}),/恢复记录/);
   store.recover(pair.agent,{kind:'receiver',repaired:true});
   now+=7000;
@@ -198,8 +198,185 @@ test('label pairing can still resolve the public device without exposing credent
  try{
   const store=createStore(file),pair=store.register('店里电脑','EPSON LQ-630K ESC/P2');
   assert.equal(store.agentDevice(pair.agent).id,pair.device.id);
-  assert.throws(()=>store.agentDevice(pair.client),/配对/);
+  assert.throws(()=>store.agentDevice(pair.client),/连接/);
   const installed=install({get(){},post(){}},{} ,{file});
   assert.equal(typeof installed.agentDevice,'function','the installed store is available to label registration');
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('automatic connection requires one explicitly selected default and stays read-only across reloads', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'remote-print-auto-default-'));
+  const file = path.join(directory, 'queue.json');
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const store = createStore(file);
+  assert.throws(() => store.autoConnect(), error => error.status === 404);
+  assert.equal(fs.existsSync(file), false, 'opening an unconfigured warehouse cannot create credentials');
+  const first = store.register('先注册的电脑', '队列一');
+  const chosen = store.register('明确选中的电脑', '队列二');
+  const beforeSelection = fs.readFileSync(file);
+  assert.throws(() => store.autoConnect(), error => error.status === 404);
+  assert.deepEqual(fs.readFileSync(file), beforeSelection, 'there is no fallback to the first registered device');
+
+  store.enableAutoConnect(chosen.device.id);
+  const connected = store.autoConnect();
+  assert.equal(connected.device.id, chosen.device.id);
+  assert.match(connected.client, /^[a-f0-9]{64}$/);
+  assert.notEqual(connected.client, chosen.client, 'automatic access keeps the original client credential intact');
+  assert.deepEqual(Object.keys(connected).sort(), ['client', 'device']);
+  assert.deepEqual(Object.keys(connected.device).sort(), ['id', 'last_seen', 'name', 'online', 'printer', 'ready']);
+  assert.equal(store.device(chosen.client).id, chosen.device.id);
+  assert.equal(store.device(connected.client).id, chosen.device.id);
+  assert.equal(store.agentDevice(chosen.agent).id, chosen.device.id);
+  assert.throws(() => store.agentDevice(connected.client), error => error.status === 401);
+  assert.throws(() => store.enableAutoConnect(first.device.id), error => error.status === 409);
+  assert.throws(() => store.register('另一默认电脑', '队列三', { autoConnect: true }), error => error.status === 409);
+
+  const saved = fs.readFileSync(file);
+  fs.utimesSync(file, new Date(1000), new Date(1000));
+  const modifiedAt = fs.statSync(file).mtimeMs;
+  for (let index = 0; index < 20; index++) {
+    assert.deepEqual(store.autoConnect(), connected);
+    store.enableAutoConnect(chosen.device.id);
+  }
+  assert.deepEqual(createStore(file).autoConnect(), connected, 'the same phone credential survives a backend restart');
+  assert.deepEqual(fs.readFileSync(file), saved);
+  assert.equal(fs.statSync(file).mtimeMs, modifiedAt, 'repeated connection and provisioning do not rewrite the store');
+  const raw = saved.toString('utf8'), state = JSON.parse(raw);
+  assert.equal(state.devices.length, 2);
+  assert.equal(state.default_device_id, chosen.device.id);
+  for (const credential of [chosen.client, chosen.agent, first.client, first.agent, connected.client]) assert.equal(raw.includes(credential), false);
+  assert.match(state.devices[1].auto_connect_secret, /^[a-f0-9]{64}$/);
+  assert.match(state.devices[1].auto_client_hash, /^[a-f0-9]{64}$/);
+});
+
+test('opt-in registration and automatic clients preserve pending work, old credentials and idempotency', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'remote-print-auto-jobs-'));
+  const file = path.join(directory, 'queue.json');
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  let now = 100000;
+  const store = createStore(file, () => now);
+  const pair = store.register('自动连接电脑', 'EPSON LQ-630K', { autoConnect: true });
+  const connected = store.autoConnect();
+  assert.equal(connected.device.id, pair.device.id);
+  assert.equal(connected.device.online, false, 'connection can return a configured but offline receiver');
+  const note = { id: 31, version: 2, number: 'LOCAL-AUTO-31', items: [] };
+  const first = store.enqueue(pair.client, { id: 'auto-connection-job-001', paper: '241-93' }, note);
+  assert.deepEqual(store.enqueue(connected.client, { id: first.id, paper: '241-93' }, note), first);
+  const claim = store.claim(pair.agent, true).job;
+  assert.equal(claim.id, first.id);
+  store.enqueue(connected.client, { id: 'auto-connection-job-002', paper: '241-93' }, note);
+  const before = fs.readFileSync(file);
+  store.enableAutoConnect(pair.device.id);
+  store.autoConnect();
+  assert.deepEqual(fs.readFileSync(file), before, 'connecting never edits pending jobs or leases');
+  assert.equal(store.claim(pair.agent, true).job, null);
+  now += 180001;
+  assert.equal(store.status(connected.client, first.id).status, 'uncertain');
+  assert.equal(store.claim(pair.agent, true).job, null, 'automatic connection cannot bypass uncertain-job recovery');
+  store.resolve(connected.client, first.id, { outcome: 'printed' });
+  assert.equal(store.status(pair.client, first.id).status, 'queued', 'the old phone client still sees the same queue');
+  assert.equal(store.claim(pair.agent, true).job.id, 'auto-connection-job-002');
+});
+
+test('missing, dangling or corrupt default configuration never selects another printer or mints a new client', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'remote-print-auto-invalid-'));
+  const file = path.join(directory, 'queue.json');
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const store = createStore(file);
+  const pair = store.register('默认电脑', '队列', { autoConnect: true });
+  const valid = JSON.parse(fs.readFileSync(file, 'utf8'));
+  for (const changed of [
+    { ...valid, default_device_id: undefined },
+    { ...valid, default_device_id: 'removed-device' },
+    { ...valid, devices: valid.devices.map(device => ({ ...device, auto_connect_secret: 'invalid' })) },
+    { ...valid, devices: valid.devices.map(device => ({ ...device, auto_client_hash: '0'.repeat(64) })) }
+  ]) {
+    fs.writeFileSync(file, JSON.stringify(changed));
+    const before = fs.readFileSync(file);
+    assert.throws(() => store.autoConnect(), error => error.status === 404);
+    assert.deepEqual(fs.readFileSync(file), before);
+    assert.equal(store.device(pair.client).id, pair.device.id, 'an unusable automatic configuration does not revoke old clients');
+    assert.equal(store.agentDevice(pair.agent).id, pair.device.id);
+  }
+});
+
+async function automaticConnectionServer(t) {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'remote-print-auto-api-'));
+  const file = path.join(directory, 'queue.json');
+  const express = require('express'), app = express(), router = express.Router();
+  app.use(express.json());
+  app.use((req, _res, next) => { req.warehouseClientIp = 'trusted-test-peer'; next(); });
+  const store = install(router, { listPrintNotes() { assert.fail('automatic connection cannot read business data'); } }, { file });
+  app.use('/api', router);
+  app.use((error, _req, res, _next) => res.status(error.status || 500).json({ success: false, message: error.message })); // eslint-disable-line no-unused-vars
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+  const base = 'http://127.0.0.1:' + server.address().port + '/api/remote-print';
+  const connect = (headers = {}, body = {}) => fetch(base + '/connect', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body)
+  });
+  return { file, store, base, connect };
+}
+
+test('automatic connection route returns only the explicit default credential without accounts or business access', async t => {
+  const fixture = await automaticConnectionServer(t);
+  const absent = await fixture.connect();
+  assert.equal(absent.status, 404);
+  assert.equal(absent.headers.get('cache-control'), 'no-store');
+  assert.equal(fs.existsSync(fixture.file), false);
+  const other = fixture.store.register('其他电脑', '其他队列');
+  const pair = fixture.store.register('默认电脑', '630K', { autoConnect: true });
+  const before = fs.readFileSync(fixture.file);
+  const response = await fixture.connect({ Authorization: 'Bearer anonymous-optional-session' }, { device_id: other.device.id });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  const payload = await response.json();
+  assert.equal(payload.success, true);
+  assert.deepEqual(Object.keys(payload.data).sort(), ['client', 'device']);
+  assert.equal(payload.data.device.id, pair.device.id, 'request data cannot choose a different receiver');
+  const serialized = JSON.stringify(payload);
+  for (const value of [pair.agent, pair.client, 'auto_connect_secret', 'auto_client_hash', 'agent_hash', 'client_hash']) assert.equal(serialized.includes(value), false);
+  const status = await fetch(fixture.base + '/device', { headers: { 'X-Print-Client': payload.data.client } });
+  assert.equal(status.status, 200);
+  assert.equal((await status.json()).data.id, pair.device.id);
+  assert.deepEqual(fs.readFileSync(fixture.file), before, 'the HTTP connection endpoint is read-only');
+  assert.equal((await fetch(fixture.base + '/connect')).status, 404, 'credentials cannot be loaded through an image or script GET');
+});
+
+test('automatic connection permits warehouse/native origins and rejects unrelated browser sites', async t => {
+  const fixture = await automaticConnectionServer(t);
+  fixture.store.register('默认电脑', '630K', { autoConnect: true });
+  for (const origin of ['https://youxishen.online', 'capacitor://localhost', 'https://localhost', 'http://localhost:18742', 'http://127.0.0.1:18742']) {
+    const response = await fixture.connect({ Origin: origin, 'Sec-Fetch-Site': 'cross-site' });
+    assert.equal(response.status, 200, origin + ' is an existing warehouse/native source');
+  }
+  for (const origin of ['https://unrelated.invalid', 'https://youxishen.online.unrelated.invalid', 'https://localhost.unrelated.invalid', 'null']) {
+    const response = await fixture.connect({ Origin: origin });
+    assert.equal(response.status, 403, origin);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.equal(Object.hasOwn(await response.json(), 'data'), false);
+  }
+  assert.equal((await fixture.connect({ 'Sec-Fetch-Site': 'cross-site' })).status, 403);
+  assert.equal((await fixture.connect({ 'Sec-Fetch-Site': 'same-origin' })).status, 200);
+});
+
+test('automatic connection has an IP limit that rotating client-controlled device headers cannot bypass', async t => {
+  const fixture = await automaticConnectionServer(t);
+  fixture.store.register('默认电脑', '630K', { autoConnect: true });
+  const before = fs.readFileSync(fixture.file);
+  for (let index = 0; index < 60; index++) {
+    const response = await fixture.connect({ 'X-Warehouse-Device': 'phone-' + index, 'X-Forwarded-For': '192.0.2.' + index });
+    assert.equal(response.status, 200, 'allowed connection ' + index);
+  }
+  const limited = await fixture.connect({ 'X-Warehouse-Device': 'new-phone', 'X-Forwarded-For': '198.51.100.42' });
+  assert.equal(limited.status, 429);
+  assert.equal(limited.headers.get('retry-after'), '60');
+  assert.equal(limited.headers.get('cache-control'), 'no-store');
+  assert.equal(Object.hasOwn(await limited.json(), 'data'), false);
+  assert.deepEqual(fs.readFileSync(fixture.file), before);
 });

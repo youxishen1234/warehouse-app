@@ -25,7 +25,7 @@ async function swipe(page, dx, dy = 0) {
         window.__sgNativeDock = { api: 2, bottomSpace: 100 };
         window.webkit = { messageHandlers: { nativeTabSelected: { postMessage: message => { window.__lastNavigationState = message; } } } };
       });
-      const writes = await isolateBusinessAPI(context, origin, { customers: 20 });
+      const { writes, connections } = await isolateBusinessAPI(context, origin, { customers: 20 });
       const page = await context.newPage();
       const active = () => page.locator('.taro_page:visible').last();
       page.on('pageerror', error => errors.push(error.message));
@@ -106,7 +106,8 @@ async function swipe(page, dx, dy = 0) {
         await page.screenshot({ path: path.join(evidence, width + '-' + route.split('/')[0] + '.png') });
       }
       assert.deepEqual(writes, [], 'mobile navigation must not write business data');
-      results.push({ width, trustedTouch: 'pass', pageScroll: scroll, customerScroll, nativeHorizontalScroll: 'pass', formScroll: 'pass' });
+      assert.ok(connections.length > 0, 'opening printing discovers the configured computer without a business write');
+      results.push({ width, trustedTouch: 'pass', pageScroll: scroll, customerScroll, nativeHorizontalScroll: 'pass', formScroll: 'pass', printerConnections: connections.length, writes });
       await context.close();
     }
     assert.deepEqual(errors, []);

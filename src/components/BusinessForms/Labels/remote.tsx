@@ -24,8 +24,7 @@ import {
 import type {
   RemoteLabelAttempt, RemoteLabelDevice, RemoteLabelJob, RemoteLabelJobInput
 } from '@/services/remote-label-print';
-import { cleanPrintPairFromAddress, parsePrintPairToken, readPrintPair, readPrintPairFromAddress, savePrintPair } from '@/services/remote-print';
-import { scanPrintPairQr } from '@/services/print-pair-scan';
+import { connectRemotePrinter, readPrintPair, savePrintPair } from '@/services/remote-print';
 import styles from '@/components/BusinessForms/Labels/remote.module.scss';
 
 type RecordChoice = { kind: 'finished-product'; data: Product } | { kind: 'paperboard-batch'; data: BoardBatch };
@@ -215,6 +214,7 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
   const [jobError, setJobError] = useState('');
   const [notFound, setNotFound] = useState(false);
   const [action, setAction] = useState('');
+  const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [preview, setPreview] = useState('');
@@ -232,9 +232,8 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
   const previewGeneration = useRef(0);
   const previewFitGeneration = useRef(0);
   const activeKind: RemotePrintableLabelKind = entryMode === 'manual' ? 'paperboard-manual' : kind;
-  const linkedPair = useRef(readPrintPairFromAddress());
-  const hadPairLink = useRef(typeof window !== 'undefined' && window.location.href.includes('print_pair='));
-  const pairLinkHandled = useRef(false);
+  const connectionState = useRef({ attempt, job });
+  connectionState.current = { attempt, job };
   const currentProfile = useMemo(() => device?.profiles.find(item =>
     item.profileId === profileId && item.printerName === device.printer && profileMatchesKind(activeKind, item)), [device, profileId, activeKind]);
   const previewProfile = currentProfile || (entryMode === 'manual' ? manualPreviewProfile : undefined);
@@ -259,6 +258,7 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
   const maxCopies = Math.max(1, Math.min(99, Math.floor(device?.maxCopies || 99)));
   const copiesValid = /^\d+$/.test(copies) && Number.isSafeInteger(copyCount) && copyCount >= 1 && copyCount <= maxCopies;
   const pending = Boolean(job && ['waiting', 'processing', 'uncertain'].includes(job.status));
+  const unresolvedAttempt = Boolean(attempt && (!job || pending));
   const deviceForAttempt = !attempt || !device || attempt.deviceId === device.id;
   const busy = Boolean(action || (pending && deviceForAttempt));
 
@@ -294,7 +294,7 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
         if (active && alive.current) {
           const statusCode = (issue as { statusCode?: number })?.statusCode;
           setDeviceError(statusCode === 401 || statusCode === 403
-            ? '打印电脑配对已失效，请重新输入新的配对码。'
+            ? '当前打印电脑连接已失效，请确认原任务状态后重新连接。'
             : remoteLabelErrorMessage(issue));
         }
       } finally {
@@ -410,21 +410,9 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
     };
     void poll();
     return () => { active = false; clearTimeout(timer); };
-    // Binding follows only this attempt, pairing token, and target device.
+    // Binding follows only this attempt, saved client, and target device.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attempt, token, device?.id, refresh, action]);
-
-  useEffect(() => {
-    const resume = () => { if (document.visibilityState !== 'hidden') setRefresh(value => value + 1); };
-    window.addEventListener('online', resume);
-    window.addEventListener('focus', resume);
-    document.addEventListener('visibilitychange', resume);
-    return () => {
-      window.removeEventListener('online', resume);
-      window.removeEventListener('focus', resume);
-      document.removeEventListener('visibilitychange', resume);
-    };
-  }, []);
 
   const previewKey = built.data && previewProfile
     ? JSON.stringify({ kind: activeKind, data: built.data, profile: previewProfile, copies: copyCount })
@@ -562,37 +550,67 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
     };
   }, [preview, previewBuiltKey, previewProfile, checkFrameGeometry]);
 
-  const pair = useCallback(async (raw?: string) => {
+  const connect = useCallback(async () => {
+    if (token) return;
     if (actionLock.current) return;
+    const savedClient = readPrintPair();
+    if (savedClient) {
+      setToken(savedClient);
+      return;
+    }
+    const current = connectionState.current;
+    if (current.attempt && (!current.job || ['waiting', 'processing', 'uncertain'].includes(current.job.status))) {
+      setPairError('原标签任务尚未确认，请先恢复原打印电脑连接后查询，不会自动更换打印电脑。');
+      return;
+    }
     actionLock.current = true;
-    setAction('正在验证连接…');
+    setConnecting(true);
     setPairError('');
     try {
-      const scanned = raw === undefined ? await scanPrintPairQr() : raw;
-      if (!scanned) return;
-      const candidate = parsePrintPairToken(scanned);
-      if (!candidate) throw new Error('没有识别到有效的打印连接二维码，请重新扫码或打开连接链接');
-      const result = await getRemoteLabelDevice(candidate);
+      const connection = await connectRemotePrinter();
+      const result = await getRemoteLabelDevice(connection.client);
       if (!alive.current) return;
-      cleanPrintPairFromAddress();
-      savePrintPair(candidate);
-      setToken(candidate);
+      const currentClient = readPrintPair();
+      if (currentClient && currentClient !== connection.client) {
+        setToken(currentClient);
+        return;
+      }
+      const savedAttempt = readRemoteLabelAttempt();
+      if (savedAttempt && savedAttempt.id !== current.attempt?.id) {
+        throw new Error('另一标签任务尚未确认，请先查询原任务，不会自动更换打印电脑。');
+      }
+      savePrintPair(connection.client);
+      setToken(connection.client);
       setDevice(result);
       setPairError('');
     } catch (issue) {
       if (alive.current) setPairError(remoteLabelErrorMessage(issue));
     } finally {
       actionLock.current = false;
-      if (alive.current) setAction('');
+      if (alive.current) setConnecting(false);
     }
-  }, []);
+  }, [token]);
 
   useEffect(() => {
-    if (pairLinkHandled.current) return;
-    pairLinkHandled.current = true;
-    if (linkedPair.current) void pair(linkedPair.current);
-    else if (hadPairLink.current) setPairError('打印连接链接无效，请重新扫描电脑上的二维码');
-  }, [pair]);
+    if (!token) void connect();
+  }, [token, connect]);
+
+  useEffect(() => {
+    const resume = (event: Event) => {
+      if (event.type === 'focus' && event.target !== window) return;
+      if (document.visibilityState === 'hidden') return;
+      if (!token) void connect();
+      else setRefresh(value => value + 1);
+    };
+    window.addEventListener('online', resume);
+    window.addEventListener('focus', resume);
+    document.addEventListener('visibilitychange', resume);
+    return () => {
+      window.removeEventListener('online', resume);
+      window.removeEventListener('focus', resume);
+      document.removeEventListener('visibilitychange', resume);
+    };
+  }, [token, connect]);
 
   const validateMedia = () => {
     const fields = Object.values(media).map(value => value.trim());
@@ -940,7 +958,7 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
         <Text className={styles.deviceStatus}>{deviceState}</Text>
         <Text className={styles.deviceMeta}>{device ? `${device.name} · USB 打印机：${device.printer}` : '店里电脑需开机、登录并联网，K3 通过 USB 接入'}</Text>
       </View>
-      <Button className={styles.secondaryButton} disabled={disabledIf(Boolean(action))} onClick={() => setRefresh(value => value + 1)}>刷新状态</Button>
+      <Button className={styles.secondaryButton} disabled={disabledIf(Boolean(action) || connecting)} onClick={() => setRefresh(value => value + 1)}>刷新状态</Button>
     </View>
 
     <section className={styles.labelStage} aria-label='实际标签预览'>
@@ -1014,8 +1032,8 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
 
     {!token ? <View className={styles.card}>
       <Text className={styles.sectionTitle}>连接店里打印电脑</Text>
-      <Text className={styles.help}>扫描店里打印电脑上的连接二维码，即可连接标签打印；也可直接打开电脑提供的连接链接。</Text>
-      <Button className={styles.primaryButton} disabled={disabledIf(Boolean(action))} onClick={() => void pair()}>{action || '扫描连接二维码'}</Button>
+      <Text className={styles.help}>自动连接本仓库默认打印电脑，连接后使用 USB K3 打印标签。</Text>
+      <Button className={styles.primaryButton} disabled={disabledIf(Boolean(action) || connecting || unresolvedAttempt)} onClick={() => void connect()}>{connecting ? '正在连接打印电脑…' : action || '重试连接'}</Button>
       {pairError && <Text className={styles.error}>{pairError}</Text>}
       {entryMode === 'inventory' && <>
       <Text className={styles.sectionSubTitle}>可先浏览标签记录</Text>
@@ -1166,13 +1184,24 @@ export default function RemoteLabelPrintPage({ onBluetooth }: { onBluetooth: () 
         {!deviceForAttempt && <Text className={styles.error}>此任务绑定到另一台打印电脑；当前没有自动查询或重新发送。</Text>}
       </View>}
       <View className={styles.card}>
-        <Button className={styles.textButton} disabled={disabledIf(Boolean(action) || pending)} onClick={() => {
-          savePrintPair('');
-          setToken('');
-          setDevice(undefined);
-          setProfileId('');
-          setNotice('已断开当前打印电脑配对。');
-        }}>更换打印电脑</Button>
+        <Button className={styles.textButton} disabled={disabledIf(Boolean(action) || unresolvedAttempt)} onClick={() => {
+          try {
+            const savedAttempt = readRemoteLabelAttempt();
+            if (readPrintPair() !== token || (savedAttempt && savedAttempt.id !== attempt?.id)) {
+              throw new Error('打印连接或原任务已更新，请刷新状态后再重新连接。');
+            }
+            savePrintPair('');
+            if (attempt) saveRemoteLabelAttempt(null);
+            setAttempt(null);
+            setJob(undefined);
+            setToken('');
+            setDevice(undefined);
+            setProfileId('');
+            setNotice('正在重新连接本仓库默认打印电脑。');
+          } catch (issue) {
+            setError(remoteLabelErrorMessage(issue));
+          }
+        }}>重新连接打印电脑</Button>
         <Text className={styles.help}>标签通过店里电脑已有远程打印接收通道发送，直接交给已配置的 USB K3，不会走送货单 630K，也不会更改库存。</Text>
       </View>
     </>}

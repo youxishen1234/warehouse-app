@@ -10,7 +10,11 @@ const output = path.resolve(process.env.LABEL_CONNECTION_CHECK_DIR || 'release/l
 const apiOrigin = 'https://youxishen.online';
 const printerName = 'K3-I911020404';
 const guest = { token: 'label-connection-local-fixture', user: { id: 'label-reader', username: 'anonymous-reader', role: 'viewer' } };
-const cors = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET,POST,OPTIONS', 'access-control-allow-headers': 'Content-Type,Authorization,X-Warehouse-Device' };
+const automaticPrinter = {
+  client: 'c'.repeat(64),
+  device: { id: 'label-connection-local-default', name: '本机隔离打印电脑', printer: 'EPSON LQ-630K', online: true, ready: true }
+};
+const cors = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET,POST,OPTIONS', 'access-control-allow-headers': 'Content-Type,Authorization,X-Warehouse-Device,X-Print-Client' };
 const results = [];
 const evidence = [];
 const layoutEvidence = [];
@@ -28,7 +32,7 @@ const server = http.createServer((request, response) => {
 
 async function fixture(browser, origin, scenario, options = {}) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
-  const requests = [], errors = [], unexpected = [], logs = [];
+  const requests = [], connections = [], errors = [], unexpected = [], logs = [];
   // @capacitor/core discovers native methods through PluginHeaders, then delegates
   // its real registerPlugin proxy to nativePromise/nativeCallback. Do not replace
   // the app's service, supported checks, modal implementation, or component logic.
@@ -88,7 +92,17 @@ async function fixture(browser, origin, scenario, options = {}) {
     if (url.origin === origin) return route.continue();
     if (url.origin !== apiOrigin || !url.pathname.startsWith('/api/')) { unexpected.push(request.url()); return route.abort(); }
     if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+    if (url.pathname === '/api/remote-print/connect' && request.method() === 'POST') {
+      const body = request.postDataJSON();
+      assert.deepEqual(body, {}, 'automatic discovery accepts no connection code or business payload');
+      connections.push({ method: request.method(), path: url.pathname, body });
+      return route.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify({ success: true, data: automaticPrinter }) });
+    }
     requests.push({ path: url.pathname, method: request.method() });
+    if (url.pathname === '/api/remote-print/labels/device' && request.method() === 'GET') {
+      assert.equal(request.headers()['x-print-client'], automaticPrinter.client);
+      return route.fulfill({ status: 404, headers: cors, contentType: 'application/json', body: JSON.stringify({ success: false, message: '这台电脑尚未登记标签打印机' }) });
+    }
     let data;
     if (url.pathname === '/api/auth/guest') data = guest;
     else if (url.pathname === '/api/sync') data = { revision: 1 };
@@ -143,7 +157,7 @@ async function fixture(browser, origin, scenario, options = {}) {
   const close = async () => {
     try {
       await page.screenshot({ path: path.join(output, scenario + '.png'), fullPage: true, animations: 'disabled' });
-      evidence.push({ scenario, requests, errors, unexpected, logs, nativeCalls: await page.evaluate(() => window.__labelConnectionFixture?.state.calls || []), status: await status.allTextContents(), feedback: await feedback.allTextContents() });
+      evidence.push({ scenario, requests, connections, errors, unexpected, logs, nativeCalls: await page.evaluate(() => window.__labelConnectionFixture?.state.calls || []), status: await status.allTextContents(), feedback: await feedback.allTextContents() });
     } finally { await context.close(); }
   };
   return { page, device, choose, scan, refresh, status, feedback, modal, calls, open, confirm, finish, done, close };

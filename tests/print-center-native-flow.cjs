@@ -3,7 +3,6 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { chromium, webkit, expect } = require('@playwright/test');
-const QRCode = require('qrcode');
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const dateValue = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -19,8 +18,8 @@ async function main() {
   const db = require('../backend/db');
   const remotePrint = require('../backend/remote-print');
   const remoteStore = remotePrint.createStore(process.env.WAREHOUSE_REMOTE_PRINT_FILE);
-  // A registered, online shop computer is the other half of the pairing flow.
-  const pairing = remoteStore.register('店里电脑', 'EPSON LQ-630K ESC/P2');
+  // The warehouse explicitly enables its default shop computer.
+  const pairing = remoteStore.register('店里电脑', 'EPSON LQ-630K ESC/P2', { autoConnect: true });
   remoteStore.claim(pairing.agent, true);
 
   const app = process.env.PRINT_SOURCE_PREVIEW === '1'
@@ -177,7 +176,7 @@ async function main() {
     await expect(page.getByText(saved.customer_name, { exact: true })).toBeVisible();
     const autoPrint = page.getByLabel('出库后自动打印');
     await expect(autoPrint).not.toBeChecked();
-    await expect(autoPrint).toBeDisabled();
+    await expect(autoPrint).toBeEnabled();
     await page.screenshot({ path: path.join(artifacts, 'outbound-auto-print-default-off.png'), fullPage: true });
 
     await button('编辑单据').click();
@@ -193,15 +192,7 @@ async function main() {
     await expect(preview()).toBeVisible();
     await wait(1200);
     assert.equal(postedJobs.length, 0, 'default-off outbound flow stays manual and never auto-sends');
-    await expect(button('扫码连接打印电脑')).toBeVisible();
-    const fileChooserPromise = page.waitForEvent('filechooser');
-    await button('扫码连接打印电脑').click();
-    const fileChooser = await fileChooserPromise;
-    await fileChooser.setFiles({
-      name: 'print-pair.png',
-      mimeType: 'image/png',
-      buffer: await QRCode.toBuffer(pairing.client, { width: 360, margin: 2 })
-    });
+    await expect(page.getByRole('button', { name: /扫描连接|扫码连接/ })).toHaveCount(0);
     await expect(remotePanel()).toHaveAttribute('open', '');
     await expect(preview().getByRole('button', { name: '发送到630K', exact: true })).toBeEnabled();
     await expect(remotePanel()).toContainText('店里电脑');

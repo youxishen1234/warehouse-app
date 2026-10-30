@@ -11,7 +11,7 @@ async function main() {
   fs.mkdirSync(evidence, { recursive: true });
   const browser = await chromium.launch(process.env.CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.CHROMIUM_EXECUTABLE_PATH } : {});
   const context = await browser.newContext({ viewport: { width: 1366, height: 900 } });
-  const writes = await isolateBusinessAPI(context, origin, { customers: 20 });
+  const { writes, connections } = await isolateBusinessAPI(context, origin, { customers: 20 });
   const page = await context.newPage();
   page.setDefaultTimeout(12000);
   const errors = [], sizes = [];
@@ -32,7 +32,7 @@ async function main() {
       await current(route);
     }
 
-    for (const width of [320, 390, 736, 820, 1024, 1280, 1366, 1920]) {
+    for (const width of [320, 390, 736, 768, 820, 1024, 1280, 1366, 1920]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(origin + '/#/pages/home/index');
       const workbench = page.getByTestId('simple-workbench').filter({ visible: true }).last();
@@ -58,8 +58,17 @@ async function main() {
       await inventoryInput.waitFor();
       const inputBounds = await inventoryInput.boundingBox();
       assert.ok(inputBounds && inputBounds.x >= -1 && inputBounds.x + inputBounds.width <= width + 1, 'inventory search remains in the viewport: ' + JSON.stringify({ width, inputBounds }));
+      await expect.poll(() => inventoryInput.evaluate(element => parseFloat(getComputedStyle(element).fontSize))).toBe(16);
+      const inputLayout = await inventoryInput.evaluate(element => {
+        const input = element.getBoundingClientRect(), field = element.closest('taro-input-core').getBoundingClientRect();
+        return { height: field.height, inputHeight: input.height, inputFits: input.left >= field.left && input.right <= field.right && input.top >= field.top && input.bottom <= field.bottom };
+      });
+      assert.ok(inputLayout.height >= 44 && inputLayout.height <= 52 && inputLayout.inputHeight >= 20 && inputLayout.inputHeight <= 28 && inputLayout.inputFits, 'inventory search text fits a stable touch-sized field: ' + JSON.stringify({ width, inputLayout }));
+      await inventoryInput.fill('搜索点击检查');
+      await expect(inventoryInput).toHaveValue('搜索点击检查');
+      await inventoryInput.fill('');
       await tab(0).click(); await current('home');
-      sizes.push({ width, page: bounds, navigation: dock, inventoryInput: inputBounds });
+      sizes.push({ width, page: bounds, navigation: dock, inventoryInput: inputBounds, inputLayout });
       await page.screenshot({ path: path.join(evidence, width + '-home.png') });
       await page.getByTestId('workbench-actions').filter({ visible: true }).last().getByTestId('workbench-customer-management').click();
       await current('customers');
@@ -125,8 +134,9 @@ async function main() {
     await page.keyboard.press('End'); await current('mine');
     await page.keyboard.press('Home'); await current('home');
     assert.deepEqual(writes, [], 'navigation must not write business data');
+    assert.ok(connections.length > 0, 'opening printing discovers the configured computer without a business write');
     assert.deepEqual(errors, []);
-    fs.writeFileSync(path.join(evidence, 'results.json'), JSON.stringify({ sizes, mouseDrag: 'pass', horizontalWheel: 'pass', verticalWheel: 'pass', inputSelection: 'pass', nativeHorizontalScroll: 'pass', errors, writes }, null, 2));
+    fs.writeFileSync(path.join(evidence, 'results.json'), JSON.stringify({ sizes, mouseDrag: 'pass', horizontalWheel: 'pass', verticalWheel: 'pass', inputSelection: 'pass', nativeHorizontalScroll: 'pass', errors, writes, printerConnections: connections.length }, null, 2));
   } finally {
     await browser.close();
     await server.close();

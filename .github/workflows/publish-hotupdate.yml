@@ -195,7 +195,7 @@ jobs:
           PRINT_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
           PRINT_ARTIFACTS: release/print-native-flow-${{ github.run_id }}-${{ github.run_attempt }}
         run: node tests/print-center-native-flow.cjs
-      - name: Validate phone pairing from the print center home
+      - name: Validate automatic phone connection from the print center home
         env:
           PRINT_HOME_WEB_DIR: dist-${{ github.run_id }}-${{ github.run_attempt }}
           PRINT_HOME_EVIDENCE_DIR: release/print-home-pairing-${{ github.run_id }}-${{ github.run_attempt }}

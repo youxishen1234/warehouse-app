@@ -69,13 +69,33 @@ async function main() {
     await expect(feed).toContainText('成品 B · 生产单'); await expect(feed).toContainText('100 个');
     assert.equal(await feed.locator('taro-button-core').count(), 3);
     await page.screenshot({ path: path.join(artifacts, 'reference-home-desktop.png'), fullPage: true });
-    for (const width of [320, 390, 736, 1280]) {
+    for (const width of [320, 390, 736, 767, 768, 1023, 1024, 1280, 1920]) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 1068 });
-      const pageRoot = page.getByTestId('simple-workbench');
+      const pageRoot = page.getByTestId('simple-workbench').filter({ visible: true }).last();
       const geometry = await pageRoot.boundingBox();
-      if (width >= 1024) assert.ok(geometry.x >= 209, 'desktop page clears the 210px liquid sidebar: ' + JSON.stringify(geometry));
-      else assert.ok(Math.abs(geometry.x - Math.max(0, (width - 430) / 2)) < 1, 'demo shell stays centered: ' + JSON.stringify(geometry));
+      const navigation = await page.locator('.sg-app-nav').boundingBox();
+      assert.ok(geometry && navigation, 'workbench and navigation are visible');
+      assert.ok(geometry.x >= -1 && geometry.x + geometry.width <= width + 1, 'workbench stays within the viewport');
+      if (width >= 1024) {
+        assert.ok(Math.abs(navigation.x) <= 1 && Math.abs(navigation.width - 208) <= 1 && navigation.height >= 1067, 'desktop uses the full-height 208px sidebar');
+        assert.ok(geometry.x >= navigation.x + navigation.width - 1 && Math.abs(geometry.width - (width - navigation.width)) <= 1, 'desktop workbench fills the area beside its sidebar: ' + JSON.stringify({ geometry, navigation }));
+        const firstTab = await dock.locator('.sg-app-nav button[data-tab="0"]').boundingBox();
+        const lastTab = await dock.locator('.sg-app-nav button[data-tab="4"]').boundingBox();
+        assert.ok(firstTab && lastTab && lastTab.y > firstTab.y && Math.abs(firstTab.x - lastTab.x) <= 1, 'desktop navigation items are vertically arranged');
+      } else {
+        const expected = width >= 768 || width <= 500 ? width : 430;
+        assert.ok(Math.abs(geometry.width - expected) <= 1 && Math.abs(geometry.x - (width - geometry.width) / 2) <= 1, 'phone and tablet workbenches use their available page width: ' + JSON.stringify(geometry));
+        assert.ok(navigation.y >= (width === 390 ? 844 : 1068) - 100 && navigation.width <= Math.min(width, 768) + 1, 'phone and tablet navigation stays at the bottom');
+      }
       assert.ok(await pageRoot.evaluate(el => el.scrollWidth <= el.clientWidth + 1), 'no horizontal overflow');
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1 || document.body.scrollWidth > innerWidth + 1), false, 'the viewport does not overflow horizontally');
+      await dock.locator('.sg-app-nav button[data-tab="2"]').click();
+      await expect(page).toHaveURL(/\/pages\/inventory\/index/);
+      await expect(dock.locator('.sg-app-nav button[data-tab="2"]')).toHaveAttribute('aria-current', 'page');
+      await dock.locator('.sg-app-nav button[data-tab="0"]').click();
+      await expect(page).toHaveURL(/\/pages\/home\/index/);
+      await expect(dock.locator('.sg-app-nav button[data-tab="0"]')).toHaveAttribute('aria-current', 'page');
+      await expect(page.getByTestId('workbench-today')).toContainText('示例客户 · 收款记录');
       await page.screenshot({ path: path.join(artifacts, 'reference-home-' + width + '.png'), fullPage: true });
     }
     await page.setViewportSize({ width: 390, height: 844 });
@@ -107,7 +127,7 @@ async function main() {
     await page.locator('[aria-label="返回总台"]:visible').last().click(); await button(page.getByTestId('simple-workbench').filter({ visible: true }).last(), '成品 B · 生产单').click();
     await expect(page.getByText('领用 100 张 · 完工 100 个', { exact: true })).toBeVisible();
     assert.deepEqual(errors, []);
-    console.log('PASS reference UI: liquid dock ownership, real home navigation, four actions, daily records, bills, deep links, 320/390/736/1280 widths');
+    console.log('PASS reference UI: sidebar and bottom navigation, real home navigation, four actions, daily records, bills, deep links, 320/390/736/767/768/1023/1024/1280/1920 widths');
   } finally {
     await Promise.all(contexts.map(c => c.close())); await browser.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); fs.rmSync(temporary, { recursive: true, force: true });
   }

@@ -11,6 +11,10 @@ const webRoot = path.resolve(process.env.PRINT_WEB_DIR || 'release/layout-label-
 const engine = process.env.PRINT_BROWSER || 'chromium';
 const artifacts = path.resolve(process.env.PRINT_ARTIFACTS || 'release/print-modes-check', engine);
 const guest = { token: 'print-modes-isolated-fixture', user: { id: 'print-modes-reader', username: 'print-modes-reader', role: 'viewer' } };
+const automaticPrinter = {
+  client: 'c'.repeat(64),
+  device: { id: 'print-modes-local-default', name: '本机隔离打印电脑', printer: 'EPSON LQ-630K', online: true, ready: true }
+};
 const note = {
   id: 901, number: 'TEST-PRINT-MODES-901', version: 1, company: '本机回归测试公司',
   customer_id: null, customer_name: '模式回归客户（仅本机）', address: '隔离测试地址',
@@ -18,8 +22,8 @@ const note = {
   items: [{ product_id: null, name: '本机测试纸箱', specification: '30×20×15', unit: '个', quantity: 10, price: 2, amount: 20, remark: '' }],
   total: 20, created_at: 1792540800000, updated_at: 1792540800000,
 };
-const cors = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET,POST,OPTIONS', 'access-control-allow-headers': 'Content-Type,Authorization,X-Warehouse-Device' };
-const requests = [], unexpected = [], errors = [], checks = [], layoutEvidence = [];
+const cors = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET,POST,OPTIONS', 'access-control-allow-headers': 'Content-Type,Authorization,X-Warehouse-Device,X-Print-Client' };
+const requests = [], connections = [], unexpected = [], errors = [], checks = [], layoutEvidence = [];
 const server = http.createServer((request, response) => {
   let pathname;
   try { pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname); }
@@ -58,11 +62,26 @@ async function installFixture(context, webOrigin, native = false) {
   await context.route('**/*', async route => {
     const request = route.request(), url = new URL(request.url()), method = request.method();
     if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
-      requests.push({ method, path: url.pathname, origin: url.origin });
       if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
       const fulfill = (data, status = 200) => route.fulfill({ status, headers: cors, contentType: 'application/json', body: JSON.stringify({ success: status === 200, data, ...(status !== 200 ? { message: '隔离测试未允许此接口或写入' } : {}) }) });
+      if (url.pathname === '/api/remote-print/connect' && method === 'POST') {
+        const body = request.postDataJSON();
+        assert.deepEqual(body, {}, 'automatic discovery accepts no connection code or business payload');
+        connections.push({ method, path: url.pathname, body });
+        return fulfill(automaticPrinter);
+      }
+      requests.push({ method, path: url.pathname, origin: url.origin });
       if (url.pathname === '/api/auth/guest' && ['GET', 'POST'].includes(method)) return fulfill(guest);
       if (method !== 'GET') { unexpected.push({ method, path: url.pathname, reason: 'business write blocked' }); return fulfill(null, 405); }
+      if (url.pathname === '/api/remote-print/device') {
+        assert.equal(request.headers()['x-print-client'], automaticPrinter.client);
+        return fulfill(automaticPrinter.device);
+      }
+      if (url.pathname === '/api/remote-print/history') return fulfill([]);
+      if (url.pathname === '/api/remote-print/labels/device') {
+        assert.equal(request.headers()['x-print-client'], automaticPrinter.client);
+        return route.fulfill({ status: 404, headers: cors, contentType: 'application/json', body: JSON.stringify({ success: false, message: '这台电脑尚未登记标签打印机' }) });
+      }
       if (url.pathname === '/api/health') return fulfill({ online: true, dataReadable: true, dataWritable: true });
       if (url.pathname === '/api/sync') return fulfill({ revision: 'print-modes-isolated-1' });
       if (url.pathname === '/api/stats') return fulfill({ todayIn: 0, todayOut: 0, totalProducts: 0, totalStock: 0, lowStock: 0, totalValue: 0 });
@@ -294,6 +313,7 @@ async function main() {
 
     assert.deepEqual(unexpected, [], 'all APIs known and every business write blocked');
     assert.deepEqual(errors, [], 'no browser runtime errors');
+    assert.ok(connections.length > 0, 'automatic connection is fulfilled locally and audited separately from business writes');
     assert.equal(requests.filter(item => !['GET', 'OPTIONS'].includes(item.method) && item.path !== '/api/auth/guest').length, 0, 'navigation never changes inventory, bills or notes');
     console.log(JSON.stringify({ browser: engine, assets: webOrigin, checks, API: 'all origins intercepted with in-memory fixtures; no live writes', physicalPrintingTested: false, artifacts }, null, 2));
   } catch (error) {
@@ -305,7 +325,7 @@ async function main() {
     }
     throw error;
   } finally {
-    fs.writeFileSync(path.join(artifacts, 'results.json'), JSON.stringify({ checkedAt: new Date().toISOString(), browser: engine, assets: process.env.PRINT_WEB_ORIGIN || webRoot, checks, passed: !failure, failure, requests, unexpected, errors, layoutEvidence, API: 'all origins intercepted with in-memory fixtures; no live writes', physicalPrintingTested: false }, null, 2));
+    fs.writeFileSync(path.join(artifacts, 'results.json'), JSON.stringify({ checkedAt: new Date().toISOString(), browser: engine, assets: process.env.PRINT_WEB_ORIGIN || webRoot, checks, passed: !failure, failure, requests, connections, unexpected, errors, layoutEvidence, API: 'all origins intercepted with in-memory fixtures; no live writes', physicalPrintingTested: false }, null, 2));
     if (browser) await browser.close();
     if (server.listening) await new Promise(resolve => server.close(resolve));
   }

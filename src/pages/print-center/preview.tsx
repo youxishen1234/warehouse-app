@@ -196,7 +196,7 @@ export default function PrintPreview({ note, saved, postedSource = false, reprin
 
   const mobileAction = (() => {
     if (!remote.token) return {
-      label: remote.busy ? '正在验证连接…' : '扫码连接打印电脑',
+      label: remote.busy ? '正在连接电脑…' : '重新连接打印电脑',
       disabled: remote.busy,
       run: () => void remote.pair()
     };

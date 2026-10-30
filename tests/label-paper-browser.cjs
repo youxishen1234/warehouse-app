@@ -10,7 +10,11 @@ const output = path.resolve(process.env.LABEL_PAPER_CHECK_DIR || 'release/label-
 const apiOrigin = 'https://youxishen.online';
 const printerName = 'K3-I911020404';
 const guest = { token: 'label-paper-local-fixture', user: { id: 'label-reader', username: 'reader', role: 'viewer' } };
-const cors = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET,POST,OPTIONS', 'access-control-allow-headers': 'Content-Type,Authorization,X-Warehouse-Device' };
+const automaticPrinter = {
+  client: 'c'.repeat(64),
+  device: { id: 'label-paper-local-default', name: '本机隔离打印电脑', printer: 'EPSON LQ-630K', online: true, ready: true }
+};
+const cors = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET,POST,OPTIONS', 'access-control-allow-headers': 'Content-Type,Authorization,X-Warehouse-Device,X-Print-Client' };
 
 const server = http.createServer((request, response) => {
   const pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
@@ -28,6 +32,7 @@ const server = http.createServer((request, response) => {
   const browser = await chromium.launch();
   const errors = [];
   const requests = [];
+  const connections = [];
   try {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     await context.addInitScript(initial => {
@@ -60,7 +65,17 @@ const server = http.createServer((request, response) => {
       if (url.origin === origin) return route.continue();
       if (url.origin !== apiOrigin || !url.pathname.startsWith('/api/')) return route.abort();
       if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+      if (url.pathname === '/api/remote-print/connect' && request.method() === 'POST') {
+        const body = request.postDataJSON();
+        assert.deepEqual(body, {}, 'automatic discovery accepts no connection code or business payload');
+        connections.push({ method: request.method(), path: url.pathname, body });
+        return route.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify({ success: true, data: automaticPrinter }) });
+      }
       requests.push({ path: url.pathname, method: request.method() });
+      if (url.pathname === '/api/remote-print/labels/device' && request.method() === 'GET') {
+        assert.equal(request.headers()['x-print-client'], automaticPrinter.client);
+        return route.fulfill({ status: 404, headers: cors, contentType: 'application/json', body: JSON.stringify({ success: false, message: '这台电脑尚未登记标签打印机' }) });
+      }
       let data;
       if (url.pathname === '/api/auth/guest') data = guest;
       else if (url.pathname === '/api/sync') data = { revision: 1 };
@@ -137,7 +152,7 @@ const server = http.createServer((request, response) => {
     await page.screenshot({ path: path.join(output, 'label-paper-70x100.png'), fullPage: true, animations: 'disabled' });
     assert.deepEqual(errors, [], 'no runtime errors');
     assert.deepEqual(requests.filter(item => item.method !== 'GET' && item.path !== '/api/auth/guest'), [], 'paper setup never writes business records');
-    fs.writeFileSync(path.join(output, 'results.json'), JSON.stringify({ checkedAt: new Date().toISOString(), browser: 'Chromium', build: webRoot, native: 'mocked Capacitor iOS bridge; not hardware acceptance', api: 'local fixture only; no business writes', profile, errors }, null, 2));
+    fs.writeFileSync(path.join(output, 'results.json'), JSON.stringify({ checkedAt: new Date().toISOString(), browser: 'Chromium', build: webRoot, native: 'mocked Capacitor iOS bridge; not hardware acceptance', api: 'local fixture only; no business writes', profile, connections, errors }, null, 2));
     console.log('Label 70 x 100 mm default browser check passed (mocked iOS bridge; no hardware print).');
   } finally {
     await browser.close();

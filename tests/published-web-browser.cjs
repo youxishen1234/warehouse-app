@@ -63,16 +63,30 @@ async function main() {
   }
   const browser = await chromium.launch(process.env.CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.CHROMIUM_EXECUTABLE_PATH } : {});
   try {
-    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
-    const writes = [], errors = [];
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
+    const writes = [], connections = [], errors = [];
+    const automaticPrinter = {
+      client: 'c'.repeat(64),
+      device: { id: 'published-ui-local-default', name: '隔离验证打印电脑', printer: 'EPSON LQ-630K', online: true, ready: true }
+    };
     await context.route('**/api/**', route => {
       const request = route.request();
       const pathname = new URL(request.url()).pathname;
+      if (pathname === '/api/remote-print/connect' && request.method() === 'POST') {
+        const body = request.postDataJSON();
+        assert.deepEqual(body, {}, 'automatic discovery accepts no connection code or business payload');
+        connections.push(body);
+        return route.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*' }, contentType: 'application/json', body: JSON.stringify({ success: true, data: automaticPrinter }) });
+      }
       if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method()) && pathname !== '/api/auth/guest') {
         writes.push(request.method() + ' ' + pathname);
         return route.abort();
       }
       let data = [];
+      if (pathname === '/api/remote-print/device' && request.method() === 'GET') {
+        assert.equal(request.headers()['x-print-client'], automaticPrinter.client);
+        data = automaticPrinter.device;
+      }
       if (pathname.endsWith('/auth/guest')) data = { token: 'published-ui-check', user: { id: 1, username: '界面验证', role: 'viewer' } };
       if (pathname.endsWith('/sync')) data = { revision: 1 };
       if (pathname.endsWith('/stats')) data = { todayIn: 0, todayOut: 0, totalProducts: 0, totalStock: 0, lowStock: 0, totalValue: 0 };
@@ -109,6 +123,7 @@ async function main() {
       assert.ok(geometry.x >= -1 && geometry.right <= geometry.viewportWidth + 1 && geometry.y >= 0 && geometry.bottom <= geometry.viewportHeight + 1 && !geometry.overflow, route + ': ' + JSON.stringify(geometry));
     }
     assert.deepEqual(writes, [], 'Online verification must never change business data');
+    assert.ok(connections.length > 0, 'automatic connection is fulfilled locally without contacting the print service');
     assert.deepEqual(errors, []);
     console.log('PASS: published source revision, public framing headers, homepage, inventory, print modes Mine UI and four new responsive business routes');
   } finally {

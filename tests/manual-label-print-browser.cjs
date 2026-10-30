@@ -58,6 +58,10 @@ async function main() {
   const productWrites = [];
   let deviceOnline = true;
   let deviceReady = true;
+  let connectionAvailable = false;
+  let labelDeviceAvailable = false;
+  let connectionGate;
+  let releaseConnection = () => {};
   let calibrationId = '';
   let calibrationProfileId = '';
   const manualPostBehaviors = ['stored-lost-response', 'missing-first-response'];
@@ -103,8 +107,20 @@ async function main() {
         body: JSON.stringify({ success: status < 400, data, ...(status >= 400 ? { message: 'fixture error' } : {}) }),
       });
 
+      if (url.pathname === '/api/remote-print/connect' && item.method === 'POST') {
+        if (connectionGate) await connectionGate;
+        if (!connectionAvailable) return json(null, 503);
+        return json({
+          client: token,
+          device: {
+            id: 'shop-device-manual-fixture', name: '店里电脑', printer: 'EPSON LQ-630K ESC/P2',
+            online: deviceOnline, ready: deviceReady,
+          },
+        });
+      }
       if (url.pathname === '/api/remote-print/labels/device') {
         if (item.clientHeader !== token) return json(null, 401);
+        if (!labelDeviceAvailable) return json(null, 409);
         return json({
           id: 'shop-device-manual-fixture',
           name: '店里电脑',
@@ -216,7 +232,9 @@ async function main() {
     const printButton = page.getByText('复核最新资料并发送到 K3', { exact: true });
     const fillRequired = async (customer = '客户手填验收') => {
       await field('客户 *').fill(customer);
+      await expect(field('客户 *')).toHaveValue(customer);
       await field('纸板长（cm）*').fill('120');
+      await expect(field('纸板长（cm）*')).toHaveValue('120');
       await field('纸板宽（cm）*').fill('80');
       await field('纸板高（cm）*').fill('60');
       await field('材质 / 配纸 *').fill('五层 BC 瓦楞纸板');
@@ -272,7 +290,13 @@ async function main() {
     };
 
     await page.goto(`${origin}/#/pages/management/index?section=labels`);
-    await expect(manualMode).toHaveClass(/tabActive/, 'manual entry is the default before pairing');
+    await expect(manualMode).toHaveClass(/tabActive/, 'manual entry is the default before connection');
+    await expect(page.getByText('fixture error', { exact: true })).toBeVisible();
+    const retryConnection = page.getByText('重试连接', { exact: true });
+    await expectEnabled(retryConnection);
+    await expect(page.getByLabel('打印电脑配对码')).toHaveCount(0);
+    await expect(page.getByText('扫描连接二维码', { exact: true })).toHaveCount(0);
+    const connectsBeforeDraft = requests.filter(item => item.path === '/api/remote-print/connect').length;
     await fillRequired();
     await expect(field('纸板高（cm）*')).toHaveValue('60');
     const unpairedPreview = page.locator('iframe[title="K3 标签预览"]');
@@ -282,15 +306,58 @@ async function main() {
     await expect(page.getByText('单张预览 70 × 100 mm，未发现内容溢出。', { exact: true })).toBeVisible();
     await expectDisabled(page.getByText('等待打印电脑与 K3 就绪', { exact: true }));
     assert.equal(posts.filter(item => item.kind === 'paperboard-manual').length, 0,
-      'a valid preview before pairing never submits a print job');
-    await expectPreviewGeometry(unpairedPreview, 'unpaired preview');
+      'a valid preview before connection never submits a print job');
+    await expectPreviewGeometry(unpairedPreview, 'preview while automatic connection is unavailable');
+    const connectsAfterDraft = requests.filter(item => item.path === '/api/remote-print/connect').length;
+    assert.ok(connectsAfterDraft >= 1 && connectsAfterDraft <= connectsBeforeDraft + 1,
+      `draft and preview renders do not loop connection requests; returning window focus may retry once (${connectsBeforeDraft} → ${connectsAfterDraft})`);
     await scrollPageTop();
 
-    // Re-enter with pairing after the preview-only draft and verify the paired flow starts clean.
-    await page.goto(`${origin}/#/pages/management/index?section=labels&print_pair=${token}`);
+    // Network and app focus retry discovery; explicit retry preserves the draft.
+    connectionGate = new Promise(resolve => { releaseConnection = resolve; });
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await expect.poll(() => requests.filter(item => item.path === '/api/remote-print/connect').length).toBe(connectsAfterDraft + 1);
+    await expect(page.getByText('正在连接打印电脑…', { exact: true })).toBeVisible();
+    await expect(field('客户 *')).toBeEditable();
+    await expect(field('纸板长（cm）*')).toBeEditable();
+    await field('客户 *').fill('连接期间继续填写');
+    await expect(field('客户 *')).toHaveValue('连接期间继续填写');
+    await field('客户 *').fill('客户手填验收');
+    await expect(field('客户 *')).toHaveValue('客户手填验收');
+    await expectDisabled(page.getByText('等待打印电脑与 K3 就绪', { exact: true }));
+    connectionGate = undefined;
+    releaseConnection();
+    await expectEnabled(retryConnection);
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect.poll(() => requests.filter(item => item.path === '/api/remote-print/connect').length).toBe(connectsAfterDraft + 2);
+    await expectEnabled(retryConnection);
+    connectionAvailable = true;
+    await retryConnection.click();
+    await expectEnabled(retryConnection);
+    assert.equal(requests.filter(item => item.path === '/api/remote-print/connect').length, connectsAfterDraft + 3);
+    assert.equal(await page.evaluate(() => localStorage.getItem('warehouse_remote_print_pair_v1')), null,
+      'a default computer is not saved before its K3 label capability is verified');
+    await expect(field('客户 *')).toHaveValue('客户手填验收');
+    labelDeviceAvailable = true;
+    await retryConnection.click();
+    await expect(page.getByText(`在线 · ${printerName}`, { exact: true })).toBeVisible();
+    const connectsAfterSuccess = requests.filter(item => item.path === '/api/remote-print/connect').length;
+    assert.equal(connectsAfterSuccess, connectsAfterDraft + 4,
+      'manual retry discovers the default computer without entering a code');
+    await expect(field('客户 *')).toHaveValue('客户手填验收');
+    await expect(field('纸板长（cm）*')).toHaveValue('120');
+    await expect(field('纸板宽（cm）*')).toHaveValue('80');
+    await expect(field('纸板高（cm）*')).toHaveValue('60');
+    await expect(field('材质 / 配纸 *')).toHaveValue('五层 BC 瓦楞纸板');
+    assert.equal(posts.length, 0, 'connection and retries never submit calibration or label jobs');
+    assert.ok(!page.url().includes(token), 'automatic connection never puts the internal client in the page URL');
+
+    // A fresh visit starts with empty fields while reusing its verified client.
+    await page.reload();
     await expect(manualMode).toHaveClass(/tabActive/, 'manual entry is the default');
     await expect(page.getByText(`在线 · ${printerName}`, { exact: true })).toBeVisible();
-    assert.ok(!page.url().includes(token), 'pair token is removed from the page URL');
+    assert.equal(requests.filter(item => item.path === '/api/remote-print/connect').length, connectsAfterSuccess,
+      'a saved connection does not rediscover or change the default computer on reload');
     await expect(field('客户 *')).toHaveValue('');
     await expect(field('纸板长（cm）*')).toHaveValue('');
     await expect(field('纸板宽（cm）*')).toHaveValue('');
@@ -330,7 +397,7 @@ async function main() {
     await expect(field('数量（张，选填）')).toHaveValue('0');
     await expect(field('日期（选填）')).toHaveValue(todayLocal());
 
-    assert.ok(requests.some(item => item.path === '/api/remote-print/labels/device' && item.method === 'GET'), 'pairing verifies the remote device');
+    assert.ok(requests.some(item => item.path === '/api/remote-print/labels/device' && item.method === 'GET'), 'automatic connection verifies remote label capability');
 
     const profilePostsBeforeInvalidSize = requests.filter(item =>
       item.path === '/api/remote-print/labels/profiles' && item.method === 'POST'
@@ -641,10 +708,15 @@ async function main() {
     assert.equal(productWrites.length, 0, 'no product inventory writes occurred');
     assert.equal(boardRequests.some(item => ['POST', 'PUT', 'PATCH', 'DELETE'].includes(item.method)), false,
       'no board inventory writes occurred');
+    assert.ok(requests.every(item => item.path !== '/api/remote-print/jobs'), 'manual labels never enter the delivery-note queue');
+    assert.ok(requests.filter(item => !['GET', 'OPTIONS'].includes(item.method) && item.path !== '/api/auth/guest')
+      .every(item => item.path === '/api/remote-print/connect' || item.path.startsWith('/api/remote-print/labels/')),
+    'writes are restricted to automatic connection and the isolated label queue');
     console.log(JSON.stringify({
       passed: true,
       checks: [
         'default manual entry without stock reads or writes',
+        'automatic no-code connection, stable failure, online/focus and manual retry without interrupting draft input',
         'empty inventory navigation preserves the manual draft',
         '70×100 density-4 profile, calibration, online and copy gates',
         'required long/width/height, number, date and long-text geometry validation',
@@ -663,6 +735,7 @@ async function main() {
       physicalPrintingTested: false,
     }, null, 2));
   } finally {
+    releaseConnection();
     if (context) await context.close();
     if (browser) await browser.close();
     if (server.listening) await new Promise(resolve => server.close(resolve));
