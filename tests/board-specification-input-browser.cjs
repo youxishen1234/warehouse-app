@@ -32,89 +32,91 @@ async function main() {
   app.use('/api', require(path.join(root, 'backend/team'))(db));
   app.use(express.static(webRoot));
   const server = app.listen(0, '127.0.0.1');
-  await new Promise(resolve => server.once('listening', resolve));
-  const origin = `http://127.0.0.1:${server.address().port}`;
-  const browser = await chromium.launch(process.env.PLAYWRIGHT_BROWSER_CHANNEL ? { channel: process.env.PLAYWRIGHT_BROWSER_CHANNEL } : {});
-  const context = await browser.newContext({ viewport: { width: 390, height: 900 }, locale: 'zh-CN' });
-  const page = await context.newPage();
-  page.setDefaultTimeout(12000);
-  const pageErrors = [];
-  const externalBlocked = [];
-  const boardPosts = [];
-  page.on('pageerror', error => pageErrors.push(error.message));
-  page.on('request', request => {
-    const url = new URL(request.url());
-    if (url.pathname === '/api/boards' && request.method() === 'POST') boardPosts.push(request);
-  });
-
-  const historicalSupplier = db.addSupplier({ name: '历史模板板厂' });
-  const commonCustomer = db.addCustomer({
-    name: '常用纸板客户',
-    specs: [{
-      id: 'customer-board-common',
-      goods: '客户常用纸板',
-      specification: '150×100 cm',
-      material: '客户牛卡',
-      unit: '张',
-      price: 2.2,
-      unitPrice: 2.2,
-      category: '纸板',
-      kind: '纸板',
-      boardLength: 150,
-      boardWidth: 100,
-      cartonLength: 42,
-      cartonWidth: 32,
-      cartonHeight: 22,
-      fluteType: 'BC',
-      layers: 5
-    }]
-  });
-  const historyDate = '2026-10-01';
-  const sharedHistory = {
-    supplier: historicalSupplier.name, supplier_id: historicalSupplier.id,
-    fluteType: 'B',
-    layers: 3,
-    orderedQty: 25,
-    receivedQty: 25,
-    billedArea: 176,
-    unitPrice: 1,
-    date: historyDate
-  };
-  const historyBoard = db.receiveBoard({
-    ...sharedHistory,
-    boardLength: 160,
-    boardWidth: 110,
-    cartonLength: 40,
-    cartonWidth: 30,
-    cartonHeight: 20,
-    deliveryNo: 'HISTORY-BOARD-160-110'
-  });
-  const decimalHistory = db.receiveBoard({
-    ...sharedHistory,
-    customerName: '历史客户',
-    material: '历史材质',
-    printPlate: '历史版名',
-    printColor: '蓝 / 黑',
-    boardLength: 30.5,
-    boardWidth: 20.25,
-    cartonLength: 40.5,
-    cartonWidth: 30.25,
-    cartonHeight: 20.75,
-    deliveryNo: 'HISTORY-DECIMAL-SIZES'
-  });
-  const historyPayable = db.getSupplier(historicalSupplier.id).payable;
-  const stockBefore = db.listProducts().map(product => ({ id: product.id, stock: product.stock }));
-
-  const externalApiPath = pathname => pathname.startsWith('/api/');
-  const corsHeaders = {
-    'access-control-allow-origin': '*',
-    'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS',
-    'access-control-allow-headers': 'Authorization,Content-Type,If-Match,Idempotency-Key,X-Warehouse-Device',
-    'access-control-expose-headers': 'X-Warehouse-Revision'
-  };
-
+  let browser;
+  let context;
   let tearingDown = false;
   try {
+    await new Promise(resolve => server.once('listening', resolve));
+    const origin = `http://127.0.0.1:${server.address().port}`;
+    browser = await chromium.launch(process.env.PLAYWRIGHT_BROWSER_CHANNEL ? { channel: process.env.PLAYWRIGHT_BROWSER_CHANNEL } : {});
+    context = await browser.newContext({ viewport: { width: 390, height: 900 }, locale: 'zh-CN' });
+    const page = await context.newPage();
+    page.setDefaultTimeout(12000);
+    const pageErrors = [];
+    const externalBlocked = [];
+    const boardPosts = [];
+    page.on('pageerror', error => pageErrors.push(error.message));
+    page.on('request', request => {
+      const url = new URL(request.url());
+      if (url.pathname === '/api/boards' && request.method() === 'POST') boardPosts.push(request);
+    });
+
+    const historicalSupplier = db.addSupplier({ name: '历史模板板厂' });
+    const commonCustomer = db.addCustomer({
+      name: '常用纸板客户',
+      specs: [{
+        id: 'customer-board-common',
+        goods: '客户常用纸板',
+        specification: '150×100 cm',
+        material: '客户牛卡',
+        unit: '张',
+        price: 2.2,
+        unitPrice: 2.2,
+        category: '纸板',
+        kind: '纸板',
+        boardLength: 150,
+        boardWidth: 100,
+        cartonLength: 42,
+        cartonWidth: 32,
+        cartonHeight: 22,
+        fluteType: 'BC',
+        layers: 5
+      }]
+    });
+    const historyDate = '2026-10-01';
+    const sharedHistory = {
+      supplier: historicalSupplier.name, supplier_id: historicalSupplier.id,
+      fluteType: 'B',
+      layers: 3,
+      orderedQty: 25,
+      receivedQty: 25,
+      billedArea: 176,
+      unitPrice: 1,
+      date: historyDate
+    };
+    const historyBoard = db.receiveBoard({
+      ...sharedHistory,
+      boardLength: 160,
+      boardWidth: 110,
+      cartonLength: 40,
+      cartonWidth: 30,
+      cartonHeight: 20,
+      deliveryNo: 'HISTORY-BOARD-160-110'
+    });
+    const decimalHistory = db.receiveBoard({
+      ...sharedHistory,
+      customerName: '历史客户',
+      material: '历史材质',
+      printPlate: '历史版名',
+      printColor: '蓝 / 黑',
+      boardLength: 30.5,
+      boardWidth: 20.25,
+      cartonLength: 40.5,
+      cartonWidth: 30.25,
+      cartonHeight: 20.75,
+      deliveryNo: 'HISTORY-DECIMAL-SIZES'
+    });
+    const historyPayable = db.getSupplier(historicalSupplier.id).payable;
+    const stockBefore = db.listProducts().map(product => ({ id: product.id, stock: product.stock }));
+
+    const externalApiPath = pathname => pathname.startsWith('/api/');
+    const corsHeaders = {
+      'access-control-allow-origin': '*',
+      'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS',
+      'access-control-allow-headers': 'Authorization,Content-Type,If-Match,Idempotency-Key,X-Warehouse-Device',
+      'access-control-expose-headers': 'X-Warehouse-Revision'
+    };
+
     await context.route('**/*', async route => {
       const request = route.request();
       const url = new URL(request.url());
@@ -267,11 +269,16 @@ async function main() {
     console.log('PASS new board entry: separate dimensions, decimal history, invalid input, native keyboard formatting, metadata/edit reload, supplier accounting, 320/390px.');
   } finally {
     tearingDown = true;
-    await context.unrouteAll({ behavior: 'wait' });
-    await context.close();
-    await browser.close();
+    if (context) {
+      await context.unrouteAll({ behavior: 'wait' });
+      await context.close();
+    }
+    if (browser) await browser.close();
     server.closeAllConnections();
-    await new Promise(resolve => server.close(resolve));
+    await Promise.race([
+      new Promise(resolve => server.close(resolve)),
+      new Promise(resolve => setTimeout(resolve, 2000))
+    ]);
     const tempRoot = path.resolve(os.tmpdir()) + path.sep;
     assert.ok(path.resolve(temporary).startsWith(tempRoot), 'temporary database must remain inside the OS temp directory');
     fs.rmSync(temporary, { recursive: true, force: true });
