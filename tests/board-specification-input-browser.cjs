@@ -113,6 +113,7 @@ async function main() {
     'access-control-expose-headers': 'X-Warehouse-Revision'
   };
 
+  let tearingDown = false;
   try {
     await context.route('**/*', async route => {
       const request = route.request();
@@ -124,6 +125,10 @@ async function main() {
         return route.fulfill({
           response,
           headers: { ...response.headers(), ...corsHeaders }
+        }).catch(issue => {
+          // Context teardown may finish an in-flight read before route.fetch
+          // returns. Ignore only that completed route during cleanup.
+          if (!tearingDown || !/Route is already handled/.test(issue.message)) throw issue;
         });
       }
       if (/^https?:$/.test(url.protocol)) externalBlocked.push(`${request.method()} ${url.origin}${url.pathname}`);
@@ -261,6 +266,7 @@ async function main() {
     assert.deepEqual(pageErrors, []); assert.deepEqual(externalBlocked, []);
     console.log('PASS new board entry: separate dimensions, decimal history, invalid input, native keyboard formatting, metadata/edit reload, supplier accounting, 320/390px.');
   } finally {
+    tearingDown = true;
     await context.unrouteAll({ behavior: 'wait' });
     await context.close();
     await browser.close();
