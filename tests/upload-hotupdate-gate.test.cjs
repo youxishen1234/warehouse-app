@@ -13,7 +13,7 @@ test('hot-update upload validates archive integrity before loading SSH dependenc
   const bytes = Buffer.from('fixture archive');
   const digest = crypto.createHash('sha256').update(bytes).digest('hex');
   fs.writeFileSync(zip, bytes);
-  const valid = { version: '20260927123456', url: 'www.zip', size: bytes.length, sha256: digest, integrity: { algorithm: 'sha256', value: digest } };
+  const valid = { version: '20260927123456', displayVersion: '1.23', url: 'www.zip', size: bytes.length, sha256: digest, integrity: { algorithm: 'sha256', value: digest } };
   fs.writeFileSync(manifest, JSON.stringify(valid));
   try {
     const modulePath = require.resolve(script);
@@ -24,7 +24,8 @@ test('hot-update upload validates archive integrity before loading SSH dependenc
       { ...valid, size: bytes.length + 1 },
       { ...valid, sha256: 'f'.repeat(64) },
       { ...valid, url: 'evil.zip' },
-      { ...valid, version: 'latest' }
+      { ...valid, version: 'latest' },
+      { ...valid, displayVersion: '1' }
     ]) {
       fs.writeFileSync(manifest, JSON.stringify(bad));
       assert.throws(() => uploader.validateLocalRelease(zip, manifest), /hot-update manifest/);

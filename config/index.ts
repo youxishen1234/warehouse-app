@@ -4,6 +4,10 @@ import devConfig from './dev';
 import prodConfig from './prod';
 // https://taro-docs.jd.com/docs/next/config#defineconfig-辅助函数
 export default defineConfig<'webpack5'>(async (merge, { mode }) => {
+  const displayVersion = process.env.TARO_APP_DISPLAY_VERSION || '1.23';
+  if (!/^\d+\.\d+$/.test(displayVersion)) {
+    throw new Error('TARO_APP_DISPLAY_VERSION must use major.minor format');
+  }
   const baseConfig: UserConfigExport<'webpack5'> = {
     projectName: 'taro_template',
     date: '2025-12-10',
@@ -33,6 +37,9 @@ export default defineConfig<'webpack5'>(async (merge, { mode }) => {
       prebundle: {
         enable: false,
       },
+    },
+    defineConstants: {
+      __WEB_DISPLAY_VERSION__: JSON.stringify(displayVersion),
     },
     cache: {
       enable: false, // Webpack 持久化缓存配置，建议开启。默认配置请参考：https://docs.taro.zone/docs/config-detail#cache

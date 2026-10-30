@@ -50,6 +50,9 @@ def publish(directory, staging, web_directory=None):
     version = manifest.get('version', '')
     if not re.fullmatch(r'\d{14}', version):
         raise ValueError('Unified releases require a 14-digit UTC version')
+    display_version = manifest.get('displayVersion', '')
+    if not isinstance(display_version, str) or not re.fullmatch(r'\d+\.\d+', display_version):
+        raise ValueError('Release displayVersion must use major.minor format')
     commit = manifest.get('commit', '')
     ancestors = manifest.get('ancestors', [])
     if not re.fullmatch(r'[a-f0-9]{40,64}', commit) or commit not in ancestors:
@@ -66,8 +69,11 @@ def publish(directory, staging, web_directory=None):
             raise ValueError('Unsafe release archive paths')
         if any(stat.S_ISLNK(info.external_attr >> 16) for info in zipped.infolist()):
             raise ValueError('Symlinks are not allowed in release archives')
-        if json.loads(zipped.read('release-info.json')).get('commit') != commit:
+        provenance = json.loads(zipped.read('release-info.json'))
+        if provenance.get('commit') != commit:
             raise ValueError('Archive was built from a different commit')
+        if provenance.get('displayVersion') != display_version:
+            raise ValueError('Archive display version does not match manifest')
     with publication_lock(root):
         current_path = root / 'manifest.json'
         current_bytes = current_path.read_bytes() if current_path.exists() else b''

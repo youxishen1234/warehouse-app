@@ -14,13 +14,13 @@ test('web and hot update share a commit; rejected and failed releases retain the
   fs.mkdirSync(root);
   function stage(name, commit, base, ancestors, files) {
     const incoming = path.join(root, '.incoming-' + name); fs.mkdirSync(incoming);
-    const entries = { 'index.html': commit, 'release-info.json': JSON.stringify({ commit }), ...files };
+    const entries = { 'index.html': commit, 'release-info.json': JSON.stringify({ commit, displayVersion: '1.23' }), ...files };
     execFileSync(python, ['-c', `import sys,json,zipfile
 with zipfile.ZipFile(sys.argv[1],"w") as z:
  for name,body in json.loads(sys.argv[2]).items(): z.writestr(name,body)`, path.join(incoming, 'www.zip'), JSON.stringify(entries)]);
     const bytes = fs.readFileSync(path.join(incoming, 'www.zip'));
     const sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
-    fs.writeFileSync(path.join(incoming, 'manifest.json'), JSON.stringify({ version: '2026100900000' + name, commit, ancestors, baseManifestSha256: base, size: bytes.length, sha256, integrity: { algorithm: 'sha256', value: sha256 } }));
+    fs.writeFileSync(path.join(incoming, 'manifest.json'), JSON.stringify({ version: '2026100900000' + name, displayVersion: '1.23', commit, ancestors, baseManifestSha256: base, size: bytes.length, sha256, integrity: { algorithm: 'sha256', value: sha256 } }));
     return incoming;
   }
   const run = incoming => execFileSync(python, [publisher, root, incoming, web], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });

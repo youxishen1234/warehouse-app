@@ -29,7 +29,7 @@ function loadUpdateService({ currentVersion, latestVersion }) {
     '@/services/session': { deviceId: () => 'fixture-device', PUBLIC_ORIGIN: 'https://youxishen.online' },
     './update-download': { UPDATE_DOWNLOAD_TIMEOUT: 190000, downloadBundleWithRetry: async run => ({ bundle: await run(1), emptyBundle: false }) },
     './update-version': versionContext.exports,
-    '@/config/release': { WEB_DISPLAY_VERSION: '1.1.137' }
+    '@/config/release': { WEB_DISPLAY_VERSION: '1.23' }
   };
   const source = fs.readFileSync('src/services/update.ts', 'utf8');
   const output = ts.transpileModule(source, {
@@ -46,13 +46,13 @@ function loadUpdateService({ currentVersion, latestVersion }) {
   return { checkAndUpdate: context.exports.checkAndUpdate, requests, downloads };
 }
 
-test('latest update notice shows the fixed web release version, not timestamp bundle IDs', async () => {
+test('latest update notice shows the release display version, not timestamp bundle IDs', async () => {
   const internalVersion = '20261027025127';
   const service = loadUpdateService({ currentVersion: internalVersion, latestVersion: internalVersion });
   const result = await service.checkAndUpdate();
 
   assert.equal(result.hasUpdate, false);
-  assert.equal(result.message, '已是最新版本 v1.1.137');
+  assert.equal(result.message, '已是最新版本 v1.23');
   assert.equal(result.message.includes(internalVersion), false);
   assert.match(service.requests[0], /current=20261027025127/);
   assert.deepEqual(service.downloads, []);

@@ -9,6 +9,7 @@ function validateLocalRelease(zipFile, manifestFile) {
   const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8').replace(/^\ufeff/, ''));
   const digest = crypto.createHash('sha256').update(bytes).digest('hex');
   if (!/^(?:\d{14}|\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)$/.test(manifest.version || '')) throw new Error('hot-update manifest version is invalid');
+  if (!/^\d+\.\d+$/.test(manifest.displayVersion || '')) throw new Error('hot-update manifest displayVersion is invalid');
   if (manifest.url !== 'www.zip') throw new Error('hot-update manifest url must be www.zip');
   if (manifest.size !== bytes.length || manifest.sha256 !== digest || manifest.integrity?.algorithm !== 'sha256' || manifest.integrity.value !== digest) throw new Error('hot-update manifest integrity does not match archive');
   return { manifest, size: bytes.length, sha256: digest };

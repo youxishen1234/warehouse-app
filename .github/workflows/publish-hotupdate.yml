@@ -89,6 +89,8 @@ jobs:
         run: |
           if [ -n "$SSH_PRIVATE_KEY" ]; then export HOTUPDATE_PASSWORD=''; fi
           node scripts/deploy-nginx-config.cjs --inspect
+      - name: Calculate release display version
+        run: node scripts/release-display-version.cjs --baseline "$HOTUPDATE_BASE_MANIFEST" --github-env "$GITHUB_ENV"
       - name: Validate source
         env:
           HOTUPDATE_COMMIT: ''

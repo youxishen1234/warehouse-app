@@ -13,9 +13,9 @@ test('concurrent releases cannot replace an already published build, and old URL
   const commitA = 'a'.repeat(40), commitB = 'b'.repeat(40), commitC = 'c'.repeat(40);
   function stage(name, version, commit, baseline, ancestors = [commit]) {
     const dir = path.join(root, '.incoming-' + name); fs.mkdirSync(dir);
-    execFileSync(python, ['-c', 'import sys,zipfile,json\nwith zipfile.ZipFile(sys.argv[1],"w") as z:\n z.writestr("index.html",sys.argv[2]); z.writestr("release-info.json",json.dumps({"commit":sys.argv[2]}))', path.join(dir, 'www.zip'), commit]);
+    execFileSync(python, ['-c', 'import sys,zipfile,json\nwith zipfile.ZipFile(sys.argv[1],"w") as z:\n z.writestr("index.html",sys.argv[2]); z.writestr("release-info.json",json.dumps({"commit":sys.argv[2],"displayVersion":"1.23"}))', path.join(dir, 'www.zip'), commit]);
     const bytes = fs.readFileSync(path.join(dir, 'www.zip')), digest = crypto.createHash('sha256').update(bytes).digest('hex');
-    fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify({ version, commit, ancestors, baseManifestSha256: baseline, url: 'www.zip', sha256: digest, size: bytes.length, integrity: { algorithm: 'sha256', value: digest } }));
+    fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify({ version, displayVersion: '1.23', commit, ancestors, baseManifestSha256: baseline, url: 'www.zip', sha256: digest, size: bytes.length, integrity: { algorithm: 'sha256', value: digest } }));
     return dir;
   }
   const run = dir => execFileSync(python, [publisher, root, dir], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });

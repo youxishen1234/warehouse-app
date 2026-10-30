@@ -12,17 +12,25 @@ source = Path(sys.argv[1] if len(sys.argv) > 1 else "dist")
 output = Path(sys.argv[2] if len(sys.argv) > 2 else "release/www.zip")
 manifest_path = Path(sys.argv[3]) if len(sys.argv) > 3 else output.parent / "manifest.json"
 version = os.environ.get("HOTUPDATE_VERSION", "").strip() or datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+display_version = os.environ.get("HOTUPDATE_DISPLAY_VERSION", "").strip()
 release_notes = os.environ.get("HOTUPDATE_RELEASE_NOTES", "").strip()
 commit = os.environ.get("HOTUPDATE_COMMIT", "").strip()
 provenance = {}
+if not re.fullmatch(r"\d+\.\d+", display_version):
+    raise SystemExit("HOTUPDATE_DISPLAY_VERSION must use major.minor format")
 if commit:
     if not re.fullmatch(r'[a-f0-9]{40,64}', commit):
         raise SystemExit('Invalid release commit')
     provenance = json.loads((source / 'release-info.json').read_text(encoding='utf-8'))
     if provenance.get('commit') != commit:
         raise SystemExit('Build provenance does not match commit')
+    if provenance.get('displayVersion') != display_version:
+        raise SystemExit('Build provenance does not match display version')
     ancestors = subprocess.check_output(['git', 'rev-list', commit], text=True).splitlines()
     baseline = Path(os.environ['HOTUPDATE_BASE_MANIFEST']).read_bytes()
+    baseline_manifest = json.loads(baseline.decode('utf-8-sig')) if baseline else {}
+    if baseline_manifest.get('displayVersion') == display_version:
+        raise SystemExit('Display version must advance for every published release')
 # Keep release ordering predictable across clients: accept either the existing
 # UTC timestamp form or a three-part semantic version with an optional suffix.
 if not re.fullmatch(r"(?:\d{14}|\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)", version):
@@ -53,6 +61,7 @@ with ZipFile(output) as archive:
 zip_bytes = output.read_bytes()
 manifest = {
     "version": version,
+    "displayVersion": display_version,
     "url": output.name,
     "publishedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     "releaseNotes": release_notes,

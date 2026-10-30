@@ -3,6 +3,9 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { chromium, expect } = require('@playwright/test');
+const releaseConfig = fs.readFileSync(path.join(__dirname, '..', 'src', 'config', 'release.ts'), 'utf8');
+const defaultDisplayVersion = releaseConfig.match(/(?:__WEB_DISPLAY_VERSION__|[\d]+\.[\d]+)/)?.[0] || '1.23';
+const displayVersion = process.env.TARO_APP_DISPLAY_VERSION || defaultDisplayVersion;
 
 async function main() {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'warehouse-connection-'));
@@ -26,7 +29,7 @@ async function main() {
         CapacitorUpdater: {
           current: async () => ({
             bundle: { version: '20261027025127' },
-            native: '1.1.137'
+            native: '1.1.178'
           })
         }
       }
@@ -61,7 +64,7 @@ async function main() {
     await page.goto(origin + '/#/pages/mine/index');
     await page.getByText('已连接', { exact: true }).waitFor();
     await page.locator('.team-boot').waitFor({ state: 'detached' });
-    await expect(page.getByText('当前版本 1.1.137', { exact: true })).toBeVisible();
+    await expect(page.getByText(`当前版本 ${displayVersion}`, { exact: true })).toBeVisible();
     await expect(page.getByText('20261027025127', { exact: true })).toHaveCount(0);
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('sg_custom_base')).data), 'https://youxishen.online');
     assert.equal(requests.some(item => item.path === '/api/stats'), false, 'connection must not depend on business statistics');
