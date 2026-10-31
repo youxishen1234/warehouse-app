@@ -13,6 +13,27 @@ function localDate() {
 }
 
 async function main() {
+  const watchdog = setTimeout(() => {
+    console.error('FAIL board specification browser test did not finish within 120 seconds');
+    process.exit(1);
+  }, 120000);
+  watchdog.unref();
+
+  const withTimeout = async (label, operation, milliseconds) => {
+    let timer;
+    try {
+      return await Promise.race([
+        Promise.resolve().then(operation),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`${label} timed out during cleanup`)), milliseconds);
+          timer.unref();
+        })
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
   const evidence = path.resolve(process.env.BOARD_SPEC_EVIDENCE_DIR || path.join(root, 'release/board-specification-input/evidence'));
   const webRoot = path.resolve(process.env.BOARD_SPEC_WEB_DIR || process.env.TARO_OUTPUT_DIR || path.join(root, 'dist'));
   if (!fs.existsSync(path.join(webRoot, 'index.html'))) throw new Error(`H5 构建目录缺少 index.html: ${webRoot}`);
@@ -269,16 +290,14 @@ async function main() {
     console.log('PASS new board entry: separate dimensions, decimal history, invalid input, native keyboard formatting, metadata/edit reload, supplier accounting, 320/390px.');
   } finally {
     tearingDown = true;
-    if (context) {
-      await context.unrouteAll({ behavior: 'wait' });
-      await context.close();
-    }
-    if (browser) await browser.close();
     server.closeAllConnections();
-    await Promise.race([
-      new Promise(resolve => server.close(resolve)),
-      new Promise(resolve => setTimeout(resolve, 2000))
-    ]);
+    if (context) {
+      await withTimeout('browser route cleanup', () => context.unrouteAll({ behavior: 'wait' }), 5000).catch(console.error);
+      await withTimeout('browser context cleanup', () => context.close(), 5000).catch(console.error);
+    }
+    if (browser) await withTimeout('browser cleanup', () => browser.close(), 5000).catch(console.error);
+    await withTimeout('server cleanup', () => new Promise(resolve => server.close(resolve)), 2000).catch(console.error);
+    clearTimeout(watchdog);
     const tempRoot = path.resolve(os.tmpdir()) + path.sep;
     assert.ok(path.resolve(temporary).startsWith(tempRoot), 'temporary database must remain inside the OS temp directory');
     fs.rmSync(temporary, { recursive: true, force: true });
