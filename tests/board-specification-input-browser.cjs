@@ -144,15 +144,19 @@ async function main() {
       if (url.origin === origin) return route.continue();
       if (/^https?:$/.test(url.protocol) && externalApiPath(url.pathname)) {
         if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: corsHeaders });
-        const response = await route.fetch({ url: origin + url.pathname + url.search });
-        return route.fulfill({
-          response,
-          headers: { ...response.headers(), ...corsHeaders }
-        }).catch(issue => {
-          // Context teardown may finish an in-flight read before route.fetch
-          // returns. Ignore only that completed route during cleanup.
-          if (!tearingDown || !/Route is already handled/.test(issue.message)) throw issue;
-        });
+        try {
+          const response = await route.fetch({ url: origin + url.pathname + url.search });
+          await route.fulfill({
+            response,
+            headers: { ...response.headers(), ...corsHeaders }
+          });
+          return;
+        } catch (issue) {
+          // Browser teardown may close an in-flight proxy request or a route
+          // after the page has already finished. Those are not workflow errors.
+          if (tearingDown && /Target page, context or browser has been closed|Route is already handled/.test(issue.message)) return;
+          throw issue;
+        }
       }
       if (/^https?:$/.test(url.protocol)) externalBlocked.push(`${request.method()} ${url.origin}${url.pathname}`);
       return route.abort();
@@ -292,11 +296,10 @@ async function main() {
     tearingDown = true;
     server.closeAllConnections();
     if (context) {
-      await withTimeout('browser route cleanup', () => context.unrouteAll({ behavior: 'wait' }), 5000).catch(console.error);
-      await withTimeout('browser context cleanup', () => context.close(), 5000).catch(console.error);
+      await withTimeout('browser context cleanup', () => context.close(), 5000).catch(() => {});
     }
-    if (browser) await withTimeout('browser cleanup', () => browser.close(), 5000).catch(console.error);
-    await withTimeout('server cleanup', () => new Promise(resolve => server.close(resolve)), 2000).catch(console.error);
+    if (browser) await withTimeout('browser cleanup', () => browser.close(), 5000).catch(() => {});
+    await withTimeout('server cleanup', () => new Promise(resolve => server.close(resolve)), 2000).catch(() => {});
     clearTimeout(watchdog);
     const tempRoot = path.resolve(os.tmpdir()) + path.sep;
     assert.ok(path.resolve(temporary).startsWith(tempRoot), 'temporary database must remain inside the OS temp directory');
