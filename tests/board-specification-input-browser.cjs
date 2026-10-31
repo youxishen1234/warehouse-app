@@ -154,7 +154,7 @@ async function main() {
         } catch (issue) {
           // Browser teardown may close an in-flight proxy request or a route
           // after the page has already finished. Those are not workflow errors.
-          if (tearingDown && /Target page, context or browser has been closed|Route is already handled/.test(issue.message)) return;
+          if (tearingDown && /Target page, context or browser has been closed|Route is already handled|Fetch response has been disposed/.test(issue.message)) return;
           throw issue;
         }
       }
