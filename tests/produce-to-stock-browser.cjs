@@ -86,6 +86,7 @@ async function main() {
     await noOverflow(390);
     await page.getByRole('button', { name: '保存订单 · 自动检查库存', exact: true }).click();
     await expect.poll(() => db.listOrders().length).toBe(1);
+    await expect(page.getByTestId('customer-order-sheet')).toHaveCount(0);
     const order = db.listOrders()[0];
     await page.goto(origin + '/#/pages/customer-orders/index');
     await expect(page.getByTestId(`order-card-${order.id}`)).toBeVisible();
