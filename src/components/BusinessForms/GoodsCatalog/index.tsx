@@ -10,6 +10,7 @@ import { invalidateProducts, loadProducts } from '@/services/product-store';
 import { numberValue, sanitizeDecimalInput } from '@/utils/stock-math';
 import type { Product, ProductForm } from '@/types';
 import { useRemoteData } from '@/hooks/useRemoteData';
+import { formatSpecificationInput } from '@/pages/print-center/specification-input';
 
 const units = ['件', '箱', '个', '千克'];
 const emptyForm = {
@@ -191,7 +192,7 @@ const ProductsPage: React.FC = () => {
     } catch (e) { if (e?.errMsg && /cancel/i.test(e.errMsg)) return; Taro.showToast({ title: e?.message || '图片上传失败', icon: 'none' }); }
   }, [load]);
 
-  const field = (key: keyof ProductDraft, label: string, numeric = false, precision = 6) => editor && <DemoField label={label}><input aria-label={label} type={numeric ? 'number' : 'text'} maxLength={key === 'name' ? 50 : 100} value={editor.draft[key]} disabled={saving || !!editorError} onChange={event => updateDraft(key, numeric ? sanitizeDecimalInput(event.target.value, precision) : event.target.value)} /></DemoField>;
+  const field = (key: keyof ProductDraft, label: string, numeric = false, precision = 6) => editor && <DemoField label={label}><input aria-label={label} type={numeric ? 'number' : 'text'} maxLength={key === 'name' ? 50 : 100} value={editor.draft[key]} disabled={saving || !!editorError} onChange={event => updateDraft(key, key === 'specification' ? formatSpecificationInput(event.target.value, editor.draft.specification) : numeric ? sanitizeDecimalInput(event.target.value, precision) : event.target.value)} /></DemoField>;
   return <DemoPage title='商品资料' action={<button type='button' className='demo-action' onClick={handleAdd}>＋ 新增</button>}>
     {loading ? <div className='demo-empty'>正在加载商品资料…</div> : loadError ? <div className='demo-error' role='alert'>{loadError}<button type='button' className='demo-action' onClick={() => void load()}>重新读取</button></div> : !list.length ? <div className='demo-empty'>暂无商品</div> : list.map(product => <ProductListRow key={product.id} product={product} onEdit={handleEdit} onDelete={handleDelete} onImage={handleImage} />)}
     {editor && <DemoSheet title={editor.productId ? '编辑商品' : '新增商品'} busy={saving} onClose={() => setEditor(null)} testId='product-editor'>

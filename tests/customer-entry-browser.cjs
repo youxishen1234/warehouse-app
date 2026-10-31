@@ -196,7 +196,12 @@ async function main() {
     await page.getByTestId(`customer-management-card-${homeCustomer.id}`).click(); await page.getByTestId('customer-center-orders').click();
     await expect(page.getByTestId('customer-order-sheet')).toBeVisible();
     await expect(page.getByRole('heading', { name: `给${homeCustomer.name}开单` })).toBeVisible();
-    await page.getByLabel('订单规格', { exact: true }).fill('120×80×60mm');
+    const orderSpecification = page.getByLabel('订单规格', { exact: true });
+    await orderSpecification.pressSequentially('4');
+    await orderSpecification.pressSequentially('0');
+    await expect(orderSpecification).toHaveValue('40×');
+    await orderSpecification.pressSequentially('3020');
+    await expect(orderSpecification).toHaveValue('40×30×20');
     await page.getByLabel('订单材质', { exact: true }).fill('五层AB楞');
     await page.getByLabel('订单单位', { exact: true }).selectOption('个');
     await page.getByLabel('订单数量', { exact: true }).fill('4');
@@ -213,7 +218,7 @@ async function main() {
     assert.ok(createdOrder, 'order for an existing customer should persist');
     assert.equal(createdOrder.customer_id, homeCustomer.id);
     assert.equal(createdOrder.customer_name, homeCustomer.name);
-    assert.equal(createdOrder.specification, '120×80×60mm');
+    assert.equal(createdOrder.specification, '40×30×20');
     assert.equal(createdOrder.material, '五层AB楞');
     assert.equal(createdOrder.quantity, 4);
     assert.equal(createdOrder.unit, '个');

@@ -10,6 +10,7 @@ import { loadProducts } from '@/services/product-store';
 import { sanitizeDecimalInput } from '@/utils/stock-math';
 import { formatMoney, formatShortTime } from '@/utils/format';
 import { useRemoteData } from '@/hooks/useRemoteData';
+import { formatSpecificationInput } from '@/pages/print-center/specification-input';
 
 
 const nextStatusMap: Record<CustomerOrder['status'], CustomerOrder['status'][]> = {
@@ -146,7 +147,7 @@ export default function Orders() {
       <div className='demo-two'><DemoField label={`数量（${unit || '个'}）`}><input aria-label='订单数量' type='number' min='0' step='any' value={qty} disabled={saving} onChange={event => setQty(sanitizeDecimalInput(event.target.value, 6))} /></DemoField><DemoField label='单价（元）'><input aria-label='订单单价' type='number' min='0' step='0.01' value={price} disabled={saving} onChange={event => setPrice(sanitizeDecimalInput(event.target.value, 2))} /></DemoField></div>
       <DemoField label='交货日期'><input aria-label='交货日期' type='date' value={delivery} disabled={saving} onChange={event => setDelivery(event.target.value)} /></DemoField>
       <div className='demo-note' data-testid='order-stock-flow'>{spec ? `可用库存：${spec} · ${available} ${unit}${Number(qty) > available ? `，缺货 ${Number(qty) - available} ${unit}` : '，库存充足可继续出库'}` : '选择货物后显示可用库存'}</div>
-      {!!customer && (!goods.length || !specId) && <details className='demo-more' open={!goods.length && !!customer}><summary>填写新货物规格</summary><DemoField label='规格'><input type='text' aria-label='订单规格' value={spec} disabled={saving} onChange={event => setSpec(event.target.value)} /></DemoField><DemoField label='材质'><input type='text' aria-label='订单材质' value={material} disabled={saving} onChange={event => setMaterial(event.target.value)} /></DemoField><DemoField label='单位'><select aria-label='订单单位' value={unit} disabled={saving} onChange={event => setUnit(event.target.value)}>{['个', '件', '箱', '千克'].map(value => <option key={value}>{value}</option>)}</select></DemoField></details>}
+      {!!customer && (!goods.length || !specId) && <details className='demo-more' open={!goods.length && !!customer}><summary>填写新货物规格</summary><DemoField label='规格'><input type='text' aria-label='订单规格' value={spec} disabled={saving} onChange={event => setSpec(formatSpecificationInput(event.target.value, spec))} /></DemoField><DemoField label='材质'><input type='text' aria-label='订单材质' value={material} disabled={saving} onChange={event => setMaterial(event.target.value)} /></DemoField><DemoField label='单位'><select aria-label='订单单位' value={unit} disabled={saving} onChange={event => setUnit(event.target.value)}>{['个', '件', '箱', '千克'].map(value => <option key={value}>{value}</option>)}</select></DemoField></details>}
 
       <button type='button' className='demo-primary' disabled={saving || remote.loading || !!remote.loadError} onClick={() => void save()}>{saving ? '正在保存…' : '保存订单 · 自动检查库存'}</button>
     </DemoSheet>}
