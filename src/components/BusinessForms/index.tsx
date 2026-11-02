@@ -9,6 +9,7 @@ import Labels from './Labels';
 import LabelLookup from './LabelLookup';
 import TeamSettings from './TeamSettings';
 import BackupSettings from './BackupSettings';
+import Attendance from './Attendance';
 import PartyDetails from './PartyDetails';
 import CustomerOriginals from './CustomerOriginals';
 import GoodsCatalog from './GoodsCatalog';
@@ -25,6 +26,7 @@ const forms = {
   'label-lookup': LabelLookup,
   team: TeamSettings,
   backup: BackupSettings,
+  attendance: Attendance,
   'party-details': PartyDetails,
   originals: CustomerOriginals,
   goods: GoodsCatalog,
@@ -40,7 +42,7 @@ export default function BusinessForm({ section }: { section: keyof typeof forms 
   const Screen = forms[section];
   const sheet = ['paperboard-batch', 'paperboard-movement', 'party-details', 'shipment'].includes(section);
   const owner = section === 'labels' ? 'print-center'
-    : ['backup', 'team'].includes(section) ? 'mine'
+    : ['attendance', 'backup', 'team'].includes(section) ? 'mine'
       : ['paperboard-batch', 'paperboard-movement', 'label-lookup', 'stock-scanner', 'goods'].includes(section) ? 'inventory'
         : 'home';
   return <View className='business-sheet-screen' data-ui-version='demo-layout-v1' data-tab-route={`/pages/${owner}/index`}>

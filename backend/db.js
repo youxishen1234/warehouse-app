@@ -9,6 +9,7 @@ const customerDimensions = require('./customer-dimensions');
 const productionPricing = require('./production-pricing');
 const partyGoods = require('./party-goods');
 const receiptMetadata = require('./receipt-metadata');
+const attendance = require('./attendance');
 const { productOwnerId, assertProductCustomer } = require('./product-ownership');
 
 const DB_PATH = process.env.WAREHOUSE_DATA_FILE || path.join(__dirname, 'data.json');
@@ -25,7 +26,7 @@ let migratedProductOwnership = false;
 
 function normalizeTimestampFields(data) {
   const fields = ['created_at', 'updated_at', 'profile_updated_at', 'stock_updated_at', 'balance_updated_at', 'counted_at', 'voided_at'];
-  const collections = ['products', 'customers', 'suppliers', 'transactions', 'ledger', 'orders', 'order_events', 'stocktakes', 'delivery_notes'];
+  const collections = ['products', 'customers', 'suppliers', 'transactions', 'ledger', 'orders', 'order_events', 'stocktakes', 'delivery_notes', 'attendance_records'];
   let converted = 0;
   for (const collection of collections) for (const row of data[collection] || []) for (const field of fields) {
     const value = row[field];
@@ -249,6 +250,7 @@ function load() {
     if (!Array.isArray(d.order_events)) d.order_events = [];
     if (!Array.isArray(d.stocktakes)) d.stocktakes = [];
     if (!Array.isArray(d.delivery_notes)) d.delivery_notes = [];
+    if (!Array.isArray(d.attendance_records)) d.attendance_records = [];
     const ownershipMigration = migrateProductOwnership(d);
     if (ownershipMigration.changed.length) {
       migratedProductOwnership = true;
@@ -260,7 +262,7 @@ function load() {
     require('./print-notes').validateBackup(d);
     if (!d.print_notes) d.print_notes = [];
     if (!d._meta.nextLedgerId) d._meta.nextLedgerId = d.ledger.length + 1;
-    for (const [collection, counter] of [['products','nextProductId'],['customers','nextCustomerId'],['suppliers','nextSupplierId'],['transactions','nextTransactionId'],['ledger','nextLedgerId'],['orders','nextOrderId'],['order_events','nextOrderEventId'],['stocktakes','nextStocktakeId']]) {
+    for (const [collection, counter] of [['products','nextProductId'],['customers','nextCustomerId'],['suppliers','nextSupplierId'],['transactions','nextTransactionId'],['ledger','nextLedgerId'],['orders','nextOrderId'],['order_events','nextOrderEventId'],['stocktakes','nextStocktakeId'],['attendance_records','nextAttendanceId']]) {
       if (!Array.isArray(d[collection])) d[collection] = [];
       d._meta[counter] = d[collection].reduce((next, row) => Math.max(next, Number(row.id) + 1), Number(d._meta[counter]) || 1);
     }
@@ -276,6 +278,7 @@ function load() {
       if (t.product_name === undefined) t.product_name = d.products.find(p => p.id === Number(t.product_id))?.name || '';
     });
     d.stocktakes.forEach(t => { if (t.counted_at === undefined) t.counted_at = Number(t.created_at) || Date.now(); });
+    attendance.validateRecords(d.attendance_records);
     normalizeTimestampFields(d);
     if (!d._meta.nextDeliveryNoteId) d._meta.nextDeliveryNoteId = d.delivery_notes.length + 1;
     d._meta.nextDeliveryNoteId = d.delivery_notes.reduce((next, row) => Math.max(next, Number(row.id) + 1), Number(d._meta.nextDeliveryNoteId) || 1);
@@ -1039,6 +1042,7 @@ function validateNonNegativeState(data) {
   check(data.delivery_notes, 'freight', '送货运费');
   check(data.delivery_notes, 'total_amount', '送货单金额');
   check(data.delivery_notes, 'total_square_meters', '送货单面积');
+  check(data.attendance_records, 'overtime_hours', '考勤加班时长');
   (data.delivery_notes || []).forEach(note => (note.lines || []).forEach(line => {
     for (const [field, label] of [['quantity', '送货计划数量'], ['delivered_qty', '送货实收数量'], ['unit_price', '送货单价'], ['amount', '送货金额'], ['square_meters', '送货面积']]) {
       if (line[field] === undefined || line[field] === null) continue;
@@ -1882,7 +1886,7 @@ function normalizeLegacyBackup(value) {
   }
   const next = JSON.parse(JSON.stringify(value));
   migrateProductOwnership(next);
-  for (const collection of ['orders', 'order_events', 'stocktakes', 'delivery_notes']) {
+  for (const collection of ['orders', 'order_events', 'stocktakes', 'delivery_notes', 'attendance_records']) {
     if (next[collection] === undefined) next[collection] = [];
   }
   for (const product of next.products || []) {
@@ -1926,7 +1930,7 @@ function validateBackupData(data) {
   if (data?.customer_dimensions !== undefined) customerDimensions.validateDocument(data.customer_dimensions);
   require('./boards').validate(data || {});
   require('./business-workflow').validate(data || {});
-  const collections = ['products', 'customers', 'suppliers', 'transactions', 'ledger', 'orders', 'order_events', 'stocktakes', 'delivery_notes'];
+  const collections = ['products', 'customers', 'suppliers', 'transactions', 'ledger', 'orders', 'order_events', 'stocktakes', 'delivery_notes', 'attendance_records'];
   if (!data || Number(data?._meta?.schemaVersion) > SCHEMA_VERSION) throw new Error('backup requires a newer schema version');
   if (!data || collections.some(name => !Array.isArray(data[name]))) throw new Error('备份文件缺少必要数据表');
   const ids = name => {
@@ -1940,7 +1944,8 @@ function validateBackupData(data) {
   };
   const productIds = ids('products'); const customerIds = ids('customers'); const supplierIds = ids('suppliers');
   const transactionIds = ids('transactions'); ids('ledger'); const orderIds = ids('orders');
-  ids('order_events'); const stocktakeIds = ids('stocktakes'); const deliveryNoteIds = ids('delivery_notes');
+  ids('order_events'); const stocktakeIds = ids('stocktakes'); const deliveryNoteIds = ids('delivery_notes'); ids('attendance_records');
+  attendance.validateRecords(data.attendance_records);
   const nonNegative = (value, label) => {
     if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) throw new Error(`${label}必须是有效非负数`);
   };
@@ -2221,11 +2226,11 @@ function restoreData(value) {
   const collaboration = JSON.parse(JSON.stringify(cache._collaboration || { revision: 0, audit: [], receipts: {}, generation: 0 }));
   // 恢复后的数据集与恢复前的回执不再对应：递增数据代次，旧回执重放会得到明确的 409 提示，而不是静默重新执行。
   collaboration.generation = (Number(collaboration.generation) || 0) + 1;
-  next.orders = Array.isArray(next.orders) ? next.orders : []; next.order_events = Array.isArray(next.order_events) ? next.order_events : []; next.stocktakes = Array.isArray(next.stocktakes) ? next.stocktakes : []; next.delivery_notes = Array.isArray(next.delivery_notes) ? next.delivery_notes : [];
+  next.orders = Array.isArray(next.orders) ? next.orders : []; next.order_events = Array.isArray(next.order_events) ? next.order_events : []; next.stocktakes = Array.isArray(next.stocktakes) ? next.stocktakes : []; next.delivery_notes = Array.isArray(next.delivery_notes) ? next.delivery_notes : []; next.attendance_records = Array.isArray(next.attendance_records) ? next.attendance_records : [];
   next.products = (next.products || []).map(product => ({ ...product, image_url: portableImageUrl(product.image_url) }));
   if (!next._meta) next._meta = {};
   next._meta.schemaVersion = SCHEMA_VERSION;
-  for (const [collection, counter] of [['products','nextProductId'],['customers','nextCustomerId'],['suppliers','nextSupplierId'],['transactions','nextTransactionId'],['ledger','nextLedgerId'],['orders','nextOrderId'],['delivery_notes','nextDeliveryNoteId'],['order_events','nextOrderEventId'],['stocktakes','nextStocktakeId']]) { next[collection] = Array.isArray(next[collection]) ? next[collection] : []; next._meta[counter] = next[collection].reduce((n, row) => Math.max(n, Number(row.id) + 1), Number(next._meta[counter]) || 1); }
+  for (const [collection, counter] of [['products','nextProductId'],['customers','nextCustomerId'],['suppliers','nextSupplierId'],['transactions','nextTransactionId'],['ledger','nextLedgerId'],['orders','nextOrderId'],['delivery_notes','nextDeliveryNoteId'],['order_events','nextOrderEventId'],['stocktakes','nextStocktakeId'],['attendance_records','nextAttendanceId']]) { next[collection] = Array.isArray(next[collection]) ? next[collection] : []; next._meta[counter] = next[collection].reduce((n, row) => Math.max(n, Number(row.id) + 1), Number(next._meta[counter]) || 1); }
   normalizeGhostStock(next, 'restore');
   ledgerAttachments.restore(next);
   productImages.restore(next);
@@ -2244,6 +2249,30 @@ function updateCustomerDimensions(raw) {
     cache.customer_dimensions = next;
     persist();
     return getCustomerDimensions();
+  });
+}
+function listAttendance(filters = {}) {
+  return attendance.list(cache.attendance_records, filters);
+}
+function addAttendance(raw) {
+  return atomicMutation(() => {
+    const record = attendance.create(cache.attendance_records, cache._meta, raw);
+    persist();
+    return record;
+  });
+}
+function updateAttendance(id, raw) {
+  return atomicMutation(() => {
+    const record = attendance.update(cache.attendance_records, id, raw);
+    persist();
+    return record;
+  });
+}
+function deleteAttendance(id) {
+  return atomicMutation(() => {
+    const record = attendance.remove(cache.attendance_records, id);
+    persist();
+    return record;
   });
 }
 function listPrintNotes(keyword) { return JSON.parse(JSON.stringify(require('./print-notes').list(cache, keyword))); }
@@ -2376,7 +2405,7 @@ function deleteBoard(id) { return atomicMutation(() => { const batch = cache.boa
 function listBusinessSpecifications() { return require('./business-workflow').specifications(cache); }
 function listProduction() { return (cache.production_records || []).slice().reverse(); }
 function completeProduction(raw, operator) { return atomicMutation(() => { const record = require('./business-workflow').complete(cache, raw, operator, stockIn, addProduct); persist(); return record; }); }
-module.exports = { listBusinessSpecifications, listProduction, completeProduction, listPrintNotes, savePrintNote, deletePrintNote, temporaryPrintNote, shipPrintNote, getCustomerDimensions, updateCustomerDimensions, listBoards, receiveBoard, receiveBoards, moveBoard, updateBoard, deleteBoard, listProducts, getProduct, addProduct, updateProduct, deleteProduct,
+module.exports = { listBusinessSpecifications, listProduction, completeProduction, listAttendance, addAttendance, updateAttendance, deleteAttendance, listPrintNotes, savePrintNote, deletePrintNote, temporaryPrintNote, shipPrintNote, getCustomerDimensions, updateCustomerDimensions, listBoards, receiveBoard, receiveBoards, moveBoard, updateBoard, deleteBoard, listProducts, getProduct, addProduct, updateProduct, deleteProduct,
   getLedgerAttachments, addLedgerAttachment, readLedgerAttachment, listCustomerAttachments, addCustomerAttachment, readCustomerAttachment, prepareLedgerAttachment: ledgerAttachments.prepare, prepareCustomerAttachment, validateBackup,
   listCustomers, listCartonInboundCustomers, getCustomer, listInactiveCustomerNames, addCustomer, updateCustomer, saveCustomerSpecs, deleteCustomer,
   listSuppliers, getSupplier, addSupplier, updateSupplier, deleteSupplier,

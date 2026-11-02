@@ -217,6 +217,11 @@ const MineContent: React.FC = () => {
 
       <View className={styles.sectionHead}><Text>仓库管理</Text><Text>WORKSPACE</Text></View>
       <View className={styles.menuGrid}>
+        <Button className={styles.menuCard} onClick={() => openPage('/pages/management/index?section=attendance')}>
+          <View className={`${styles.menuIcon} ${styles.cyan}`}><Icon name='clock' color='#3a987d' className={styles.menuIconImg} /></View>
+          <Text className={styles.menuText}>考勤记录</Text><Text className={styles.menuDesc}>出勤、工时与加班</Text>
+          <Icon name='chevron' color='#b2bfd0' className={styles.menuArrow} />
+        </Button>
         <Button className={styles.menuCard} onClick={() => openPage('/pages/management/index?section=team')}>
           <View className={`${styles.menuIcon} ${styles.blue}`}><Icon name='mine' color='#2469ee' className={styles.menuIconImg} /></View>
           <Text className={styles.menuText}>团队管理</Text><Text className={styles.menuDesc}>成员与访问权限</Text>

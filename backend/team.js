@@ -79,7 +79,7 @@ async function streamJson(res, value) {
 }
 const error = (message, status = 400) => Object.assign(new Error(message), { status });
 const IDENTITY_KEY_PATTERN = /^[\w-]{16,100}$/;
-const requiresIdempotencyKey = pathName => { if (pathName.startsWith('/customers/') && pathName.includes('/attachments')) return false; const prefixes = ['/products', '/customers', '/suppliers', '/orders', '/transactions', '/ledger', '/backup', '/stocktake', '/delivery-notes', '/print-notes']; return prefixes.some(prefix => pathName === prefix || pathName.startsWith(prefix + '/')) || ['/stock/in', '/stock/out', '/stock/out/batch'].includes(pathName); };
+const requiresIdempotencyKey = pathName => { if (pathName.startsWith('/customers/') && pathName.includes('/attachments')) return false; const prefixes = ['/products', '/customers', '/suppliers', '/orders', '/transactions', '/ledger', '/backup', '/stocktake', '/delivery-notes', '/print-notes', '/attendance']; return prefixes.some(prefix => pathName === prefix || pathName.startsWith(prefix + '/')) || ['/stock/in', '/stock/out', '/stock/out/batch'].includes(pathName); };
 function install(db, options = {}) {
   const router = require('express').Router();
   const dailyBackup = options.dailyBackup || require('./daily-backup').createDailyBackup(db);
@@ -477,6 +477,34 @@ function install(db, options = {}) {
       if (line.product_id === undefined || line.quantity === undefined && line.delivered_qty === undefined) throw error(`第 ${index + 1} 行缺少商品或数量`);
     });
   };
+  route('get', '/attendance', (req, res) => {
+    const month = queryString(req.query, 'month');
+    const keyword = queryString(req.query, 'keyword');
+    if (month !== undefined && !/^\d{4}-(?:0[1-9]|1[0-2])$/.test(month)) throw error('月份格式应为 YYYY-MM');
+    if (keyword !== undefined && keyword.length > 100) throw error('搜索关键词不能超过 100 个字符');
+    ok(res, db.listAttendance({ month, keyword }));
+  });
+  route('post', '/attendance', (req, res) => {
+    if (req.user.role === 'viewer') throw error('只读账号不能新增考勤', 403);
+    const operation = 'POST /attendance';
+    const result = db.transact(req.user, req.get('Idempotency-Key'), digest(operation + JSON.stringify(req.body)), req.get('If-Match'), operation, () => db.addAttendance(req.body));
+    res.set('X-Warehouse-Revision', String(result.revision));
+    ok(res, result.data);
+  });
+  route('put', '/attendance/:id', (req, res) => {
+    if (req.user.role === 'viewer') throw error('只读账号不能修改考勤', 403);
+    const operation = `PUT /attendance/${req.params.id}`;
+    const result = db.transact(req.user, req.get('Idempotency-Key'), digest(operation + JSON.stringify(req.body)), req.get('If-Match'), operation, () => db.updateAttendance(Number(req.params.id), req.body));
+    res.set('X-Warehouse-Revision', String(result.revision));
+    ok(res, result.data);
+  });
+  route('delete', '/attendance/:id', (req, res) => {
+    if (req.user.role === 'viewer') throw error('只读账号不能删除考勤', 403);
+    const operation = `DELETE /attendance/${req.params.id}`;
+    const result = db.transact(req.user, req.get('Idempotency-Key'), digest(operation), req.get('If-Match'), operation, () => db.deleteAttendance(Number(req.params.id)));
+    res.set('X-Warehouse-Revision', String(result.revision));
+    ok(res, result.data);
+  });
   // 原子结算：提交本次结算金额，由服务端基于当前余额扣减，避免并发结算记错金额。
   route('post', '/customers/:id/settlement', (req, res) => {
     const key = req.get('Idempotency-Key'); const body = req.body || {};

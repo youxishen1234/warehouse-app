@@ -147,6 +147,28 @@ export const getBackup = () => request<BackupExport>({ url: '/api/backup', timeo
 // serialized backup contents are not copied into device storage keys.
 export const restoreBackup = (data: unknown) => request<Stats>({ url: '/api/backup', method: 'POST', data: { data }, persistRetryMetadata: false, timeout: 120000 });
 export const uploadProductImage = (id: number, data: string) => request<Product>({ url: `/api/products/${id}/image`, method: 'POST', data: { data } });
+export type AttendanceStatus = 'present' | 'leave' | 'absent' | 'rest';
+export type AttendanceRecord = {
+  id: number;
+  employee_name: string;
+  date: string;
+  status: AttendanceStatus;
+  clock_in: string;
+  clock_out: string;
+  overtime_hours: number;
+  note: string;
+  created_at: number;
+  updated_at: number;
+};
+export type AttendanceInput = Omit<AttendanceRecord, 'id' | 'created_at' | 'updated_at'>;
+export const getAttendance = (params: { month?: string; keyword?: string } = {}) =>
+  request<AttendanceRecord[]>({ url: `/api/attendance?${queryString(params)}` });
+export const addAttendance = (data: AttendanceInput) =>
+  request<AttendanceRecord>({ url: '/api/attendance', method: 'POST', data });
+export const updateAttendance = (id: number, data: AttendanceInput) =>
+  request<AttendanceRecord>({ url: `/api/attendance/${id}`, method: 'PUT', data });
+export const deleteAttendance = (id: number) =>
+  request<AttendanceRecord>({ url: `/api/attendance/${id}`, method: 'DELETE' });
 export type OrderFilters = SortQuery<'orders'> & { status?: CustomerOrder['status'] };
 export const getOrders = (params?: OrderFilters) => {
   const query = params ? queryString(params) : '';
