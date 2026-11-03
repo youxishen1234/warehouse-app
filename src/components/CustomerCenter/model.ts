@@ -51,6 +51,12 @@ export const formatCustomerUnitPrice = (value: number | null) => {
   return `¥${whole}.${fraction.padEnd(2, '0')}`;
 };
 
+export function customerBalanceLabel(account: Pick<Customer, 'debt'> | null): string {
+  if (!account) return '待建立客户资料';
+  const debt = Number(account.debt ?? 0);
+  return debt > 0 ? `待收 ${formatCustomerUnitPrice(debt)}` : '暂无待收款';
+}
+
 export function customerSpecMissingFields(spec: Pick<CustomerSpecView, 'goods' | 'specification' | 'material' | 'unit' | 'price'>): string[] {
   return [
     !spec.goods.trim() ? '货物名称' : '',

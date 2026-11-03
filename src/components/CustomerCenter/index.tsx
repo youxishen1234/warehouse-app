@@ -6,7 +6,7 @@ import type { DimensionCustomer } from '@/services/customer-dimensions';
 import { session } from '@/services/session';
 import QuoteEditor from './QuoteEditor';
 import {
-  buildCustomerManagementRows, formatCustomerUnitPrice, MAX_VISIBLE_CUSTOMER_SPECS, specificationSearchText
+  buildCustomerManagementRows, customerBalanceLabel, formatCustomerUnitPrice, MAX_VISIBLE_CUSTOMER_SPECS, specificationSearchText
 } from './model';
 import type { CustomerSpecView } from './model';
 import styles from './index.module.scss';
@@ -130,7 +130,7 @@ export default function CustomerCenter({
       {visibleRows.map(row => {
         return <Button className={styles.listCard} key={row.key} data-testid={row.account ? `customer-management-card-${row.account.id}` : `customer-specs-only-${row.key}`} onClick={() => { setSelectedKey(row.key); setDetailTab('goods'); setExpandedSpecs(false); }}>
           <View className={styles.listCardTop}><View className={styles.partyAvatar}>{Array.from(row.name)[0]}</View><View className={styles.listCardIdentity}><strong>{row.name}</strong><Text>{[row.account?.contact, row.account?.phone].filter(Boolean).join(' · ')}</Text></View><Text className={styles.listChevron}>›</Text></View>
-          <View className={styles.listCardFoot}><Text>常用货物 {row.specs.length} 种</Text><Text>{Number(row.account?.debt || 0) > 0 ? `待收 ${formatCustomerUnitPrice(Number(row.account?.debt))}` : row.account ? '账款已结清' : '待建立客户资料'}</Text></View>
+          <View className={styles.listCardFoot}><Text>常用货物 {row.specs.length} 种</Text><Text>{customerBalanceLabel(row.account)}</Text></View>
         </Button>;
       })}
       {!visibleRows.length && <View className={styles.empty} data-testid='customer-center-empty'>

@@ -31,6 +31,12 @@ test('formats valid prices without reducing stored precision', () => {
   assert.equal(model.formatCustomerUnitPrice(-1), '¥-1.00');
 });
 
+test('describes a zero balance as no pending collection rather than settled', () => {
+  assert.equal(model.customerBalanceLabel(null), '待建立客户资料');
+  assert.equal(model.customerBalanceLabel({ debt: 0 }), '暂无待收款');
+  assert.equal(model.customerBalanceLabel({ debt: 12.5 }), '待收 ¥12.50');
+});
+
 test('keeps other quotes when appending a new quote and detects same-id conflicts', () => {
   const other = quote({ id: 'other', price: 2 });
   const added = quote({ id: 'new' });
