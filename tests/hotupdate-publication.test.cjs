@@ -11,11 +11,11 @@ const publisher = path.resolve('scripts/publish-hotupdate.py');
 test('concurrent releases cannot replace an already published build, and old URLs stay immutable', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'warehouse-release-gate-'));
   const commitA = 'a'.repeat(40), commitB = 'b'.repeat(40), commitC = 'c'.repeat(40);
-  function stage(name, version, commit, baseline, ancestors = [commit]) {
+  function stage(name, version, commit, baseline, ancestors = [commit], sourceSha256 = 'source-' + commit) {
     const dir = path.join(root, '.incoming-' + name); fs.mkdirSync(dir);
     execFileSync(python, ['-c', 'import sys,zipfile,json\nwith zipfile.ZipFile(sys.argv[1],"w") as z:\n z.writestr("index.html",sys.argv[2]); z.writestr("release-info.json",json.dumps({"commit":sys.argv[2],"displayVersion":"1.23"}))', path.join(dir, 'www.zip'), commit]);
     const bytes = fs.readFileSync(path.join(dir, 'www.zip')), digest = crypto.createHash('sha256').update(bytes).digest('hex');
-    fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify({ version, displayVersion: '1.23', commit, ancestors, baseManifestSha256: baseline, url: 'www.zip', sha256: digest, size: bytes.length, integrity: { algorithm: 'sha256', value: digest } }));
+    fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify({ version, displayVersion: '1.23', commit, ancestors, baseManifestSha256: baseline, sourceSha256, url: 'www.zip', sha256: digest, size: bytes.length, integrity: { algorithm: 'sha256', value: digest } }));
     return dir;
   }
   const run = dir => execFileSync(python, [publisher, root, dir], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
@@ -24,6 +24,10 @@ test('concurrent releases cannot replace an already published build, and old URL
     const first = JSON.parse(run(stage('first', '20261004000000', commitA, null)));
     const firstBytes = fs.readFileSync(path.join(root, first.url));
     const base = baseline();
+    const duplicate = stage('duplicate', '20261004000003', commitA, base, [commitA]);
+    assert.deepEqual(JSON.parse(run(duplicate)), first);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8')), first);
+    assert.throws(() => run(stage('divergent', '20261004000004', commitA, base, [commitA], 'different-source')), /different web build/);
     const b = stage('b', '20261004000001', commitB, base, [commitB, commitA]);
     const c = stage('c', '20261004000002', commitC, base, [commitC, commitB, commitA]);
     const launch = dir => new Promise(resolve => { const child = spawn(python, [publisher, root, dir]); let err = ''; child.stderr.on('data', d => { err += d; }); child.on('close', code => resolve({ code, err })); });

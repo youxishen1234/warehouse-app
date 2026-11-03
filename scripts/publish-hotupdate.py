@@ -82,13 +82,15 @@ def publish(directory, staging, web_directory=None):
         if 'baseManifestSha256' not in manifest or manifest['baseManifestSha256'] != expected:
             raise ValueError('Another release was published since build started; rebuild from latest main')
         old_version = current.get('version', '')
-        if old_version and (not re.fullmatch(r'\d{14}', old_version) or version <= old_version):
-            raise ValueError('Refusing older or duplicate release version')
         old_commit = current.get('commit')
         if old_commit and old_commit not in ancestors:
             raise ValueError('Release does not include previously published commit')
         if old_commit == commit:
-            raise ValueError('This commit has already been published')
+            if manifest.get('sourceSha256') != current.get('sourceSha256'):
+                raise ValueError('A different web build for this commit was already published')
+            return current
+        if old_version and (not re.fullmatch(r'\d{14}', old_version) or version <= old_version):
+            raise ValueError('Refusing older or duplicate release version')
         releases = root / 'releases'
         releases.mkdir(exist_ok=True)
         target = releases / (version + '-' + digest[:16] + '.zip')
