@@ -253,6 +253,90 @@ test('provisioning cannot silently replace another warehouse default or leak its
   assert.deepEqual(fs.readdirSync(remoteFile + '.provision-receipts'), []);
 });
 
+test('replacement requires the expected default and no unresolved jobs, and preserves history', t => {
+  const directory = temporary(t);
+  const remoteFile = path.join(directory, 'remote-print.json');
+  const moduleFile = path.join(directory, 'remote-print.js');
+  fs.copyFileSync(path.resolve(__dirname, '../backend/remote-print.js'), moduleFile);
+  const store = require(moduleFile).createStore(remoteFile);
+  const old = store.register('old computer', 'old printer', { autoConnect: true });
+  const state = JSON.parse(fs.readFileSync(remoteFile, 'utf8'));
+  state.jobs.push({ id: 'historic', device_id: old.device.id, status: 'queued' });
+  fs.writeFileSync(remoteFile, JSON.stringify(state));
+  const input = { moduleFile, remoteFile, publicKey, deviceName: fixtureConfig.device.name, printerName: fixtureConfig.device.printer, replaceDeviceId: old.device.id };
+  const run = changes => spawnSync(process.execPath, ['-e', provisioner.REGISTRATION_NODE_SOURCE], {
+    input: JSON.stringify({ ...input, ...changes }), encoding: 'utf8', timeout: 15000, windowsHide: true
+  });
+  const before = fs.readFileSync(remoteFile);
+  assert.equal(run({ replaceDeviceId: crypto.randomUUID() }).status, 1);
+  assert.deepEqual(fs.readFileSync(remoteFile), before);
+  for (const status of ['waiting', 'processing', 'uncertain']) {
+    const pending = JSON.parse(before);
+    pending.jobs.push({ id: 'pending', device_id: old.device.id, status });
+    fs.writeFileSync(remoteFile, JSON.stringify(pending));
+    const snapshot = fs.readFileSync(remoteFile);
+    assert.equal(run().status, 1);
+    assert.deepEqual(fs.readFileSync(remoteFile), snapshot);
+  }
+  fs.writeFileSync(remoteFile, before);
+  const online = JSON.parse(before);
+  online.devices[0].last_seen = Date.now();
+  fs.writeFileSync(remoteFile, JSON.stringify(online));
+  const onlineBytes = fs.readFileSync(remoteFile);
+  assert.equal(run().status, 1);
+  assert.deepEqual(fs.readFileSync(remoteFile), onlineBytes);
+  fs.writeFileSync(remoteFile, before);
+  const first = run();
+  assert.equal(first.status, 0, first.stderr);
+  const config = decrypt(provisioner.parseRemoteOutput(first.stdout));
+  const after = JSON.parse(fs.readFileSync(remoteFile, 'utf8'));
+  assert.equal(after.default_device_id, config.device.id);
+  assert.deepEqual(after.jobs, state.jobs);
+  assert.equal(after.devices.find(d => d.id === old.device.id).agent_hash, state.devices[0].agent_hash);
+  assert.equal(after.devices.find(d => d.id === old.device.id).auto_client_hash, undefined);
+  assert.equal(store.autoConnect().device.id, config.device.id);
+  const retry = run();
+  assert.equal(retry.status, 0, retry.stderr);
+  assert.equal(retry.stdout, first.stdout);
+});
+
+test('replacement recovers a committed encrypted receipt if switching the store was interrupted', t => {
+  const directory = temporary(t);
+  const remoteFile = path.join(directory, 'remote-print.json');
+  const moduleFile = path.join(directory, 'remote-print.js');
+  fs.copyFileSync(path.resolve(__dirname, '../backend/remote-print.js'), moduleFile);
+  const store = require(moduleFile).createStore(remoteFile);
+  const old = store.register('old computer', 'old printer', { autoConnect: true });
+  const input = { moduleFile, remoteFile, publicKey, deviceName: fixtureConfig.device.name, printerName: fixtureConfig.device.printer, replaceDeviceId: old.device.id };
+  const failRename = String.raw`
+const mockedFs = require('node:fs');
+const rename = mockedFs.renameSync;
+mockedFs.renameSync = function(from, to) {
+  if (String(from).endsWith('.json.stage')) throw new Error('simulated interruption');
+  return rename.call(this, from, to);
+};
+`;
+  const run = source => spawnSync(process.execPath, ['-e', source + provisioner.REGISTRATION_NODE_SOURCE], {
+    input: JSON.stringify(input), encoding: 'utf8', timeout: 15000, windowsHide: true
+  });
+  const interrupted = run(failRename);
+  assert.equal(interrupted.status, 1);
+  assert.equal(fs.existsSync(remoteFile + '.provision-receipts'), true, interrupted.stderr);
+  assert.equal(fs.readdirSync(remoteFile + '.provision-receipts').some(name => name.endsWith('.json')), true, interrupted.stderr);
+  assert.equal(store.autoConnect().device.id, old.device.id);
+  const original = fs.readFileSync(remoteFile);
+  const changed = JSON.parse(original);
+  changed.jobs.push({ id: 'new-history', device_id: old.device.id, status: 'queued' });
+  fs.writeFileSync(remoteFile, JSON.stringify(changed));
+  const changedBytes = fs.readFileSync(remoteFile);
+  assert.equal(run('').status, 1);
+  assert.deepEqual(fs.readFileSync(remoteFile), changedBytes, 'recovery cannot overwrite newer history');
+  fs.writeFileSync(remoteFile, original);
+  const resumed = run('');
+  assert.equal(resumed.status, 0, resumed.stderr);
+  assert.equal(store.autoConnect().device.id, decrypt(provisioner.parseRemoteOutput(resumed.stdout)).device.id);
+});
+
 test('failed encrypted receipt persistence rolls back only the new registration before restoring service', t => {
   const directory = temporary(t);
   const remoteFile = path.join(directory, 'remote-print.json');

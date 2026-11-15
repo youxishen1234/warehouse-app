@@ -25,6 +25,10 @@ on:
         description: Unique printer computer name (pairing only)
         type: string
         required: false
+      printer-replace-device-id:
+        description: Expected current default device ID when replacing an offline computer
+        type: string
+        required: false
 
 concurrency:
   group: publish-hotupdate
@@ -321,6 +325,7 @@ jobs:
       PRINTER_PUBLIC_KEY: ${{ inputs['printer-public-key'] }}
       PRINTER_NAME: ${{ inputs['printer-name'] }}
       PRINTER_DEVICE_NAME: ${{ inputs['printer-device-name'] }}
+      PRINTER_REPLACE_DEVICE_ID: ${{ inputs['printer-replace-device-id'] }}
       PRINTER_PROVISION_OUTPUT: release/printer-provision-${{ github.run_id }}-${{ github.run_attempt }}/envelope.json
     steps:
       - uses: actions/checkout@v4

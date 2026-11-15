@@ -63,7 +63,9 @@ function validateProvisionInputs(env = process.env) {
   const publicKey = decodePublicKey(env.PRINTER_PUBLIC_KEY);
   const deviceName = textInput('PRINTER_DEVICE_NAME', env.PRINTER_DEVICE_NAME, 80);
   const printerName = textInput('PRINTER_NAME', env.PRINTER_NAME, 256);
-  return { publicKey, deviceName, printerName };
+  const replaceDeviceId = String(env.PRINTER_REPLACE_DEVICE_ID || '').trim();
+  if (replaceDeviceId && !DEVICE_ID.test(replaceDeviceId)) throw new Error('PRINTER_REPLACE_DEVICE_ID is invalid');
+  return { publicKey, deviceName, printerName, replaceDeviceId };
 }
 
 function validateRemoteConfig(value) {
@@ -187,6 +189,8 @@ try {
   const previousBytes = existed ? fs.readFileSync(input.remoteFile) : null;
   const previous = existed ? JSON.parse(previousBytes.toString('utf8')) : { devices: [], jobs: [] };
   if (!Array.isArray(previous.devices) || !Array.isArray(previous.jobs)) throw new Error('invalid printer store');
+  const replaceId = String(input.replaceDeviceId || '');
+  if (replaceId && !DEVICE_ID.test(replaceId)) throw new Error('invalid replacement');
   const { createStore } = require(input.moduleFile);
   const store = createStore(input.remoteFile);
   const requestId = crypto.createHash('sha256').update(JSON.stringify({
@@ -200,9 +204,23 @@ try {
   if (fs.lstatSync(receiptDirectory).isSymbolicLink() || !fs.statSync(receiptDirectory).isDirectory()) throw new Error('invalid receipt directory');
   fs.chmodSync(receiptDirectory, 0o700);
   const receiptFile = receiptDirectory + '/' + requestId + '.json';
+  const staging = receiptFile + '.stage';
   if (fs.existsSync(receiptFile)) {
     if (fs.lstatSync(receiptFile).isSymbolicLink()) throw new Error('invalid receipt');
     const receipt = JSON.parse(fs.readFileSync(receiptFile, 'utf8'));
+    if (receipt.replace_device_id && previous.default_device_id === receipt.replace_device_id) {
+      if (receipt.request_id !== requestId || receipt.replace_device_id !== replaceId) throw new Error('receipt mismatch');
+      if (!previousBytes || crypto.createHash('sha256').update(previousBytes).digest('hex') !== receipt.previous_sha256) throw new Error('printer store changed since staging');
+      const oldDevice = previous.devices.find(d => d.id === replaceId);
+      if (!oldDevice || Date.now() - (Number(oldDevice.last_seen) || 0) < 25000) throw new Error('old receiver online');
+      if (!fs.existsSync(staging) || fs.lstatSync(staging).isSymbolicLink()) throw new Error('replacement stage missing');
+      if (previous.jobs.some(j => j.device_id === receipt.replace_device_id && ['waiting', 'processing', 'uncertain'].includes(j.status))) throw new Error('unresolved print jobs');
+      const staged = JSON.parse(fs.readFileSync(staging, 'utf8'));
+      if (staged.default_device_id !== receipt.device_id || !staged.devices.some(d => d.id === receipt.device_id)) throw new Error('replacement stage mismatch');
+      fs.renameSync(staging, input.remoteFile);
+      fs.writeSync(1, JSON.stringify(validateEnvelope(receipt.envelope)));
+      process.exit(0);
+    }
     const device = previous.devices.find(row => row && row.id === receipt.device_id && row.name === input.deviceName && row.printer === input.printerName);
     if (receipt.request_id !== requestId || !device) throw new Error('receipt does not match device');
     const envelope = validateEnvelope(receipt.envelope);
@@ -217,18 +235,33 @@ try {
   let registered = false, receiptCommitted = false;
   const temporaryReceipt = receiptFile + '.tmp-' + crypto.randomUUID();
   try {
-    const result = store.register(input.deviceName, input.printerName, { autoConnect: true });
-    registered = true;
+    let targetStore = store;
+    if (replaceId) {
+      if (previous.default_device_id !== replaceId || !previous.devices.some(d => d.id === replaceId)) throw new Error('default changed');
+      if (Date.now() - (Number(previous.devices.find(d => d.id === replaceId).last_seen) || 0) < 25000) throw new Error('old receiver online');
+      if (previous.jobs.some(j => j.device_id === replaceId && ['waiting', 'processing', 'uncertain'].includes(j.status))) throw new Error('unresolved print jobs');
+      const replacementState = JSON.parse(JSON.stringify(previous));
+      delete replacementState.default_device_id;
+      const old = replacementState.devices.find(d => d.id === replaceId);
+      delete old.auto_connect_secret;
+      delete old.auto_client_hash;
+      fs.writeFileSync(staging, JSON.stringify(replacementState), { mode: 0o600, flag: 'wx' });
+      targetStore = createStore(staging);
+    }
+    const result = targetStore.register(input.deviceName, input.printerName, { autoConnect: true });
+    if (!replaceId) registered = true;
     const envelope = createEnvelope({ origin: ORIGIN, ...result }, publicKey);
     fs.writeFileSync(temporaryReceipt, JSON.stringify({
       request_id: requestId,
       device_id: result.device.id,
+      ...(replaceId ? { replace_device_id: replaceId, previous_sha256: crypto.createHash('sha256').update(previousBytes).digest('hex') } : {}),
       envelope
     }), { mode: 0o600, flag: 'wx' });
     const fd = fs.openSync(temporaryReceipt, 'r+');
     try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
     fs.renameSync(temporaryReceipt, receiptFile);
     receiptCommitted = true;
+    if (replaceId) fs.renameSync(staging, input.remoteFile);
     process.stdout.write(JSON.stringify(envelope));
   } catch (error) {
     // The live writer is stopped and the shared release lock is held. If
@@ -246,7 +279,7 @@ try {
       }
     }
     throw error;
-  } finally { if (fs.existsSync(temporaryReceipt)) fs.unlinkSync(temporaryReceipt); }
+  } finally { if (fs.existsSync(temporaryReceipt)) fs.unlinkSync(temporaryReceipt); if (!receiptCommitted && fs.existsSync(staging)) fs.unlinkSync(staging); }
   }
 } catch {
   process.stderr.write('PRINTER_PROVISION_FAILURE registration\n');
@@ -344,7 +377,7 @@ try {
       cwd: actualCwd,
       uid,
       gid,
-      input: JSON.stringify({ remoteFile, moduleFile, publicKey: payload.publicKey, deviceName: payload.deviceName, printerName: payload.printerName }),
+      input: JSON.stringify({ remoteFile, moduleFile, publicKey: payload.publicKey, deviceName: payload.deviceName, printerName: payload.printerName, replaceDeviceId: payload.replaceDeviceId }),
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
       maxBuffer: 256 * 1024,
@@ -398,14 +431,14 @@ function parseRemoteOutput(raw) {
 
 function provision(options = {}) {
   const env = options.env || process.env;
-  const { publicKey, deviceName, printerName } = validateProvisionInputs(env);
+  const { publicKey, deviceName, printerName, replaceDeviceId } = validateProvisionInputs(env);
   const c = (options.connection || connection)(env);
   const execute = options.execute || execFileSync;
   const remoteRunner = options.executeRemote || ((phase, command, args, requestOptions, authEnv, password) =>
     executeRemote(phase, command, args, requestOptions, authEnv, password, execute));
   const authenticate = options.withAuth || withAuth;
   const moduleSha256 = crypto.createHash('sha256').update(fs.readFileSync(path.resolve(__dirname, '../backend/remote-print.js'))).digest('hex');
-  const payload = { publicKey: publicKey.encoded, deviceName, printerName, moduleSha256, registrationSource: REGISTRATION_NODE_SOURCE };
+  const payload = { publicKey: publicKey.encoded, deviceName, printerName, replaceDeviceId, moduleSha256, registrationSource: REGISTRATION_NODE_SOURCE };
   const remoteEnvelope = authenticate((authEnv, password) => remoteRunner(
     'provision remote printer receiver',
     'ssh',
