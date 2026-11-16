@@ -105,6 +105,41 @@ async function main() {
       await page.screenshot({ path: path.join(artifacts, 'demo-home-' + width + '.png'), fullPage: true });
     }
     await page.setViewportSize({ width: 390, height: 844 });
+    await button(home, '更多').click();
+    const more = page.getByTestId('workbench-more-sheet');
+    await expect(more).toBeVisible();
+    await expect(more.getByText('业务办理', { exact: true })).toBeVisible();
+    await expect(more.getByText('查询与工具', { exact: true })).toBeVisible();
+    await expect(more.getByText('扫码查库存', { exact: true })).toBeVisible();
+    await expect(more.getByText('纸箱计算器', { exact: true })).toBeVisible();
+    const moreLayout = await more.evaluate(el => {
+      const box = node => { const rect = node.getBoundingClientRect(); return { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right }; };
+      const sections = Array.from(el.querySelectorAll('taro-view-core')).filter(node => node.querySelector(':scope > taro-text-core') && node.querySelector(':scope > taro-view-core')).slice(0, 2);
+      return sections.map(section => ({ label: box(section.querySelector(':scope > taro-text-core')), grid: box(section.querySelector(':scope > taro-view-core')), cards: Array.from(section.querySelectorAll(':scope > taro-view-core > taro-button-core')).map(box) }));
+    });
+    const near = (actual, expected) => Math.abs(actual - expected) < 0.6;
+    for (const section of moreLayout) {
+      assert.ok(near(section.grid.top - section.label.bottom, 9), 'group labels keep a 9px gap from their cards');
+      for (let index = 1; index < section.cards.length; index++) {
+        const previous = section.cards[index - 1];
+        const current = section.cards[index];
+        const gap = near(current.top, previous.top) ? current.left - previous.right : current.top - previous.bottom;
+        assert.ok(near(gap, 10), 'more cards keep a consistent 10px grid gap');
+      }
+    }
+    await page.screenshot({ path: path.join(artifacts, 'workbench-more-390.png') });
+    assert.ok(await more.evaluate(el => el.scrollWidth <= el.clientWidth + 1), 'more sheet does not overflow horizontally');
+    const moreBoxes = await more.locator('taro-button-core').evaluateAll(nodes => nodes.map(el => el.getBoundingClientRect().height));
+    assert.ok(moreBoxes.every(height => height >= 44), 'every more action has a usable touch target');
+    await page.setViewportSize({ width: 320, height: 700 });
+    assert.ok(await more.evaluate(el => el.scrollWidth <= el.clientWidth + 1), 'more sheet stays within a 320px screen');
+    const firstTwoActions = await more.locator('taro-button-core').evaluateAll(nodes => nodes.slice(0, 2).map(el => el.getBoundingClientRect().x));
+    assert.ok(firstTwoActions[1] === firstTwoActions[0], 'narrow more actions switch to one column');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await more.getByText('票据原件', { exact: true }).locator('xpath=ancestor-or-self::*[self::button or self::taro-button-core][1]').click();
+    await expect(home).toHaveAttribute('data-panel', 'photos');
+    await page.getByLabel('返回总台').click();
+    await expect(home).toHaveAttribute('data-panel', 'home');
     await button(home, '收付款 / 账单').click();
     for (const view of ['overview', 'customer', 'supplier', 'ledger']) {
       await page.getByTestId('finance-tab-' + view).click();

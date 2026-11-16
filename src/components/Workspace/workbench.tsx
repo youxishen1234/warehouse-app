@@ -203,6 +203,25 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
     { title: '领纸板生产', fn: () => open('/pages/production-inbound/index') },
     { title: '成品入库', fn: () => open('/pages/production-inbound/index') }
   ];
+  const moreGroups: { title: string; items: { title: string; description: string; icon: IconName; fn: () => void }[] }[] = [
+    {
+      title: '业务办理',
+      items: [
+        { title: '业务记录', description: '出入库、生产与订单', icon: 'records', fn: () => changePanel('records') },
+        { title: '客户订单', description: '查看、打印与跟进', icon: 'clipboard', fn: () => open('/pages/customer-orders/index') },
+        { title: '客户出库', description: '关联订单与送货单', icon: 'outbound', fn: () => open('/pages/management/index?section=shipment') },
+        { title: '票据原件', description: '送货单、签收与付款凭证', icon: 'photos', fn: () => changePanel('photos') }
+      ]
+    },
+    {
+      title: '查询与工具',
+      items: [
+        { title: '扫码查库存', description: '扫描标签查看库存', icon: 'scan', fn: () => open('/pages/management/index?section=stock-scanner') },
+        { title: '商品资料', description: '维护商品与常用规格', icon: 'box', fn: () => open('/pages/management/index?section=goods') },
+        { title: '纸箱计算器', description: '换算尺寸、面积与规格', icon: 'workbench', fn: () => open('/pages/management/index?section=dimensions') }
+      ]
+    }
+  ];
   const nextOrders = data.orders.filter(order => !['已完成', '已取消', '已发货'].includes(order.status)).slice(0, 3);
   return <View className={styles.page} data-ui-version='web-workbench-v2' data-layout='demo-layout-v1' data-panel={panel} data-testid='simple-workbench' data-tab-route={embedded ? undefined : panel === 'stock' ? '/pages/inventory/index' : '/pages/home/index'}><View className={styles.surface}>
     <View className={styles.masthead}>
@@ -335,15 +354,17 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
       {panel === 'photos' && <View><Text className={styles.note}>原件照片按业务账单保存；选择一笔账单，可上传送货单、签收单或付款凭证。</Text>{activeLedger.map(l => <Button className={styles.photoRow} key={l.id} onClick={() => openFinance('ledger', l.id)}><strong>{l.party_name || l.remark}</strong><Text>{formatTime(l.created_at)} · {formatMoney(l.amount)}</Text><Text>{l.attachments?.length ? l.attachments.length + ' 张原件照片' : '上传原件照片 ›'}</Text></Button>)}{!activeLedger.length && <Text className={styles.empty}>入库或出库保存后，账单会出现在这里。</Text>}</View>}
     </View>}
     </View>
-    {moreOpen && <DemoSheet title='更多' onClose={() => setMoreOpen(false)}><div className='demo-menu'>{[
-      { title: '业务记录', fn: () => changePanel('records') },
-      { title: '客户订单', fn: () => open('/pages/customer-orders/index') },
-      { title: '客户出库', fn: () => open('/pages/management/index?section=shipment') },
-      { title: '扫码查库存', fn: () => open('/pages/management/index?section=stock-scanner') },
-      { title: '商品资料', fn: () => open('/pages/management/index?section=goods') },
-      { title: '纸箱计算器', fn: () => open('/pages/management/index?section=dimensions') },
-      { title: '票据原件', fn: () => changePanel('photos') }
-    ].map(item => <button type='button' key={item.title} onClick={() => { setMoreOpen(false); item.fn(); }}>{item.title}<span>›</span></button>)}</div></DemoSheet>}
+    {moreOpen && <DemoSheet title='更多' onClose={() => setMoreOpen(false)} testId='workbench-more-sheet'>
+      <Text className={styles.moreLead}>常用业务、资料查询与计算工具都集中在这里。</Text>
+      {moreGroups.map(group => <View className={styles.moreSection} key={group.title}>
+        <Text className={styles.moreSectionTitle}>{group.title}</Text>
+        <View className={styles.moreGrid}>{group.items.map(item => <Button className={styles.moreAction} key={item.title} onClick={() => { setMoreOpen(false); item.fn(); }}>
+          <View className={styles.moreIcon}><Icon name={item.icon} color='#4f73a9' strokeWidth={1.6} style={{ width: 20, height: 20 }} /></View>
+          <View className={styles.moreCopy}><strong>{item.title}</strong><Text>{item.description}</Text></View>
+          <Icon name='chevron' color='#a4b2c5' strokeWidth={1.6} style={{ width: 14, height: 14 }} />
+        </Button>)}</View>
+      </View>)}
+    </DemoSheet>}
     {stocktake && <DemoSheet title='库存盘点' busy={busy} onClose={() => { setStocktake(null); setError(''); }}>
       <p>{stocktake.product.name} · {stocktake.product.specification}</p><DemoDetail label='当前库存'>{stocktake.product.stock} {stocktake.product.unit}</DemoDetail>
       <DemoField label='新库存'><input type='number' step='any' min='0' aria-label='实盘库存' value={stocktakeValue} disabled={busy} onChange={event => setStocktakeValue(event.target.value)} /></DemoField>
