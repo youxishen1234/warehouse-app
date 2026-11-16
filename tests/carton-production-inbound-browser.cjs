@@ -309,7 +309,26 @@ async function main() {
     await expect(page.getByText('LEGACY-SUPPLIER-INBOUND', { exact: false })).toHaveCount(0);
     await expect(page.getByText('LEGACY-CUSTOMER-SUPPLY', { exact: false })).toHaveCount(0);
     await page.getByText('PROD-BROWSER-20261023-01', { exact: false }).last().click();
-    const voidButton = buttonContainingText('作废整张入库单');
+    await buttonContainingText('修改入库单').click();
+    await expect(page.getByRole('heading', { name: '编辑纸箱入库', exact: true })).toBeVisible();
+    await expect(input('货物 1 本次完工数量')).toHaveValue('2.5');
+    await input('货物 1 本次完工数量').fill('3');
+    await showMore();
+    await input('货物 1 计划数量').fill('3');
+    const editResponse = page.waitForResponse(response => response.request().method() === 'PUT' && new URL(response.url()).pathname === `/api/delivery-notes/${productionNote.id}`);
+    await buttonContainingText('保存修改').click();
+    const editedResponse = await editResponse;
+    assert.equal(editedResponse.status(), 200);
+    const editedNote = (await editedResponse.json()).data;
+    assert.equal(editedNote.id, productionNote.id, '修改后必须保留原入库单号');
+    assert.equal(editedNote.lines[0].delivered_qty, 3);
+    assert.equal(editedNote.total_amount, 7.89);
+    assert.equal(db.getProduct(cartonProduct.id).stock, baseline.cartonStock + 3);
+    await expect(page.getByText(`入库单 #${productionNote.id}`, { exact: false }).first()).toBeVisible();
+    await expect(input('工单编号或采购单号')).toHaveValue('');
+    await expect(input('货物 1 计划数量')).toHaveValue('');
+    await page.screenshot({ path: path.join(evidence, 'carton-production-edited.png'), fullPage: true });
+    const voidButton = buttonContainingText('删除入库单');
     await expect(voidButton).toBeVisible();
     await voidButton.click();
     const voidModal = page.locator('.taro-modal__content:visible').last();
@@ -347,7 +366,7 @@ async function main() {
     assert.equal(db.getSupplier(supplier.id).payable, baseline.supplierPayable);
     assert.equal(db.getCustomer(customer.id).debt, baseline.customerDebt);
     assert.deepEqual(db.listLedger({ include_voided: 'true' }).map(entry => ({ ...entry })), baseline.ledger);
-    await buttonContainingText('作废整张入库单').click();
+    await buttonContainingText('删除入库单').click();
     const zeroVoidModal = page.locator('.taro-modal__content:visible').last();
     await expect(zeroVoidModal).toBeVisible();
     await zeroVoidModal.locator('.taro-model__confirm').click();
@@ -378,14 +397,14 @@ async function main() {
     assert.equal(db.getProduct(cartonProduct.id).stock, baseline.cartonStock + 2);
     assert.equal(db.getSupplier(supplier.id).payable, baseline.supplierPayable);
     assert.equal(db.getCustomer(customer.id).debt, baseline.customerDebt);
-    await buttonContainingText('作废整张入库单').click();
+    await buttonContainingText('删除入库单').click();
     await page.locator('.taro-modal__content:visible').last().locator('.taro-model__confirm').click();
     await expect.poll(() => db.getDeliveryNote(quickNote.id).voided_at).toBeGreaterThan(0);
     assert.equal(db.getProduct(cartonProduct.id).stock, baseline.cartonStock);
 
     assert.deepEqual(pageErrors, [], '浏览器页面不应产生运行时异常');
     assert.ok(externalBlocked.every(request => !request.includes('youxishen.online')), '拦截的跨域非 API 请求不得触达生产域名');
-    console.log(`PASS: quick SKU selection with quantity-only save, production-only carton inbound, auto amount and zero price, multi-line totals, separator, duplicate-click lock, persisted stock-only notes, legacy history separation, void stock rollback, local-only API, 320/390px layouts. Evidence: ${evidence}`);
+    console.log(`PASS: quick SKU selection with quantity-only save, same-number receipt editing, delete stock rollback, production-only carton inbound, auto amount and zero price, multi-line totals, separator, duplicate-click lock, persisted stock-only notes, legacy history separation, local-only API, 320/390px layouts. Evidence: ${evidence}`);
   } finally {
     await context.close();
     await browser.close();

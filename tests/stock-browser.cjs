@@ -109,14 +109,14 @@ async function main() {
     const inboundNote = page.locator('[class*=note___]').filter({ hasText: '入库单 #1' });
     await expect(inboundNote).toContainText('已入库');
     await inboundNote.click();
-    await text('作废整张入库单').click(); await text('确定').click();
-    await text('入库单 #1 · 已作废').waitFor();
+    await text('删除入库单').click(); await text('确定').click();
+    await text('入库单 #1 · 已删除').waitFor();
     // The receipt added 8 and was reversed, while the 3 unit outbound remains:
     // the original 20 unit balance must end at 17.
     assert.equal(db.getProduct(a.id).stock, 17);
     await expect.poll(() => db.listDeliveryNotes().find(note => note.id === 1)?.voided_at || 0).toBeGreaterThan(0);
     await page.reload(); await text('入库开单').waitFor();
-    await expect.poll(async () => page.locator('[class*=note___]').filter({ hasText: '入库单 #1' }).innerText()).toContain('已作废');
+    await expect.poll(async () => page.locator('[class*=note___]').filter({ hasText: '入库单 #1' }).innerText()).toContain('已删除');
     const routes = [...new Set([...fs.readFileSync('src/app.config.ts', 'utf8').matchAll(/'pages\/([^']+)'/g)].map(match => match[1]))].filter(route => ['inbound/index', 'outbound/index'].includes(route));
     for (const width of [390, 1280]) {
       await page.setViewportSize({ width, height: 900 });

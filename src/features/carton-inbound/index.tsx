@@ -1,7 +1,7 @@
 ﻿import React, { useCallback, useMemo, useRef, useState } from 'react';
 /* eslint-disable react/forbid-elements */
 import Taro, { useDidShow, useRouter } from '@tarojs/taro';
-import { addDeliveryNote, deliveryNoteCsvUrl, getCartonInboundCustomers, getDeliveryNotes, getSuppliers, voidDeliveryNote, type DeliveryNote } from '@/services/api';
+import { addDeliveryNote, deliveryNoteCsvUrl, getCartonInboundCustomers, getDeliveryNote, getDeliveryNotes, getSuppliers, updateDeliveryNote, voidDeliveryNote, type DeliveryNote } from '@/services/api';
 import { invalidateProducts, loadProducts } from '@/services/product-store';
 import { downloadCsv } from '@/services/download';
 import { useSharedRefresh } from '@/services/shared-refresh';
@@ -21,6 +21,13 @@ type EditableLine = {
   customer_spec_id: string | null; supplier_spec_id: string | null; create_product: boolean;
 };
 const newLine = (): EditableLine => ({ key: `${Date.now()}-${Math.random()}`, product_id: null, goods: '', specification: '', material: '', unit: '', quantity: '', quantityEdited: false, unit_price: '', delivered_qty: '', customer_spec_id: null, supplier_spec_id: null, create_product: false });
+const lineFromNote = (line: DeliveryNote['lines'][number]): EditableLine => ({
+  key: `${Date.now()}-${Math.random()}`, product_id: line.product_id ?? null, goods: line.product_name || '',
+  specification: line.specification || '', material: line.material || '', unit: line.unit || '',
+  quantity: String(line.quantity ?? ''), quantityEdited: true, unit_price: String(line.unit_price ?? ''),
+  delivered_qty: String(line.delivered_qty ?? ''), customer_spec_id: line.customer_spec_id || null,
+  supplier_spec_id: line.supplier_spec_id || null, create_product: false
+});
 const message = (error: unknown) => error instanceof Error ? error.message : '操作失败，请重试';
 const amountText = (value: number | null) => value == null ? '金额未记录' : Number.isFinite(value) ? formatMoney(value) : '金额超出范围';
 const applyProduct = (line: EditableLine, product: Product): EditableLine => {
@@ -38,11 +45,13 @@ const applyGood = (line: EditableLine, item: PartyGood, products: Product[], car
 };
 
 const InboundNoteRow = React.memo(function InboundNoteRow({ note, onOpen }: { note: DeliveryNote; onOpen: (note: DeliveryNote) => void }) {
-  return <button type='button' className='demo-card' onClick={() => onOpen(note)}>{note.work_order_no || `入库单 #${note.id}`} · {note.date} · {formatMoney(note.total_amount)}</button>;
+  return <button type='button' className='demo-card' onClick={() => onOpen(note)}>{note.work_order_no || `入库单 #${note.id}`} · {note.date} · {formatMoney(note.total_amount)}<span className='demo-meta'>{note.voided_at ? ' · 已删除' : ' · 点击可查看、修改或删除'}</span></button>;
 });
 
 export default function InboundPage() {
-  const cartonOnly = useRouter().params.kind !== 'purchase';
+  const router = useRouter();
+  const cartonOnly = router.params.kind !== 'purchase';
+  const routeNoteId = /^[1-9]\d*$/.test(String(router.params.id || '')) ? Number(router.params.id) : null;
   const [parties, setParties] = useState<Supplier[]>([]), [customers, setCustomers] = useState<Customer[]>([]);
   const [partyId, setPartyId] = useState<number | null>(null), [billingCustomerId, setBillingCustomerId] = useState<number | null>(null);
   const [products, setProducts] = useState<Product[]>([]), [notes, setNotes] = useState<DeliveryNote[]>([]);
@@ -57,33 +66,57 @@ export default function InboundPage() {
   const [saving, setSaving] = useState(false), [ready, setReady] = useState(false), [loadError, setLoadError] = useState(''), [historyError, setHistoryError] = useState('');
   const [preview, setPreview] = useState<DeliveryNote | null>(null);
   const [specDetails, setSpecDetails] = useState<Record<string, boolean>>({});
-  const busy = useRef(false), sequence = useRef(0), loadedAt = useRef(0);
+  const [editingId, setEditingId] = useState<number | null>(routeNoteId);
+  const [editingSourceType, setEditingSourceType] = useState<'production' | 'carton_purchase' | null>(null);
+  const [editReady, setEditReady] = useState(!routeNoteId), [editError, setEditError] = useState('');
+  const busy = useRef(false), sequence = useRef(0), loadedAt = useRef(0), editApplied = useRef(false);
   const productMap = useMemo(() => new Map(products.map(product => [product.id, product])), [products]);
   const billingCustomer = customers.find(item => item.id === billingCustomerId && !item.deleted_at);
   const party = parties.find(item => item.id === partyId && !item.deleted_at);
   const selectedParty = cartonOnly ? billingCustomer : party;
   const goods = (selectedParty?.specs || []).filter(item => !cartonOnly || ((item.category || (item.kind === '纸板' ? '纸板' : '纸箱')) === '纸箱'));
   const totalAmount = draftTotal(lines);
-  const load = useCallback(async (force = false) => {
+  const applyNote = useCallback((note: DeliveryNote) => {
+    const stamp = note.entered_at || `${note.date}T00:00`;
+    setDate(stamp.slice(0, 10)); setEntryTime(stamp.slice(11, 16));
+    setWorkOrder(note.work_order_no || ''); setLocation(note.location || ''); setRemark(note.remark || '');
+    setOperator(note.operator || ''); setDriverPhone(note.driver_phone || ''); setVehicleNo(note.vehicle_no || '');
+    setFreight(String(note.freight ?? 0)); setBillingCustomerId(note.customer_id ?? null); setPartyId(note.supplier_id ?? null);
+    setLines(note.lines.length ? note.lines.map(lineFromNote) : [newLine()]);
+    setCostTotals({}); setSpecDetails({}); setEditingSourceType(note.source_type || (note.supplier_id ? 'carton_purchase' : 'production'));
+  }, []);
+  const load = useCallback(async (force = false, skipEditingLoad = false) => {
     if (!force && Date.now() - loadedAt.current < 250) return;
     loadedAt.current = Date.now();
     const current = ++sequence.current;
     const result = await Promise.allSettled([
-      cartonOnly ? getCartonInboundCustomers() : getSuppliers(), loadProducts(true), getDeliveryNotes(), ...(cartonOnly ? [getSuppliers()] : [])
+      cartonOnly ? getCartonInboundCustomers() : getSuppliers(), loadProducts(true), getDeliveryNotes(), getSuppliers(),
+      editingId && !skipEditingLoad ? getDeliveryNote(editingId) : Promise.resolve(null)
     ]);
     if (current !== sequence.current) return;
-    const [partyResult, productResult, historyResult, supplierResult] = result;
-    if (supplierResult?.status === 'fulfilled') setParties(supplierResult.value as Supplier[]);
+    const [partyResult, productResult, historyResult, supplierResult, noteResult] = result;
+    if (supplierResult.status === 'fulfilled') setParties(supplierResult.value as Supplier[]);
     if (partyResult.status === 'fulfilled') {
       if (cartonOnly) setCustomers(partyResult.value as Customer[]); else setParties(partyResult.value as Supplier[]);
     }
     if (productResult.status === 'fulfilled') setProducts(cartonOnly ? productResult.value.filter(item => item.category !== '纸板') : productResult.value);
-    const failed = [partyResult, productResult, ...(supplierResult ? [supplierResult] : [])].find(item => item.status === 'rejected');
+    const failed = [partyResult, productResult, supplierResult].find(item => item.status === 'rejected');
     setLoadError(failed?.status === 'rejected' ? message(failed.reason) : '');
     setReady(!failed);
+    if (editingId && !skipEditingLoad && noteResult.status === 'fulfilled' && noteResult.value) {
+      const note = noteResult.value as DeliveryNote;
+      if (note.voided_at) {
+        setEditError('这张入库单已删除，不能再修改'); setEditReady(false);
+      } else {
+        if (!editApplied.current) { applyNote(note); editApplied.current = true; }
+        setEditError(''); setEditReady(true);
+      }
+    } else if (editingId && !skipEditingLoad && noteResult.status === 'rejected') {
+      setEditError(message(noteResult.reason)); setEditReady(false);
+    }
     if (historyResult.status === 'fulfilled') { setNotes(historyResult.value.filter(note => cartonOnly ? ['production', 'carton_purchase'].includes(note.source_type || '') : !['production', 'carton_purchase'].includes(note.source_type || '')).slice(0, 8)); setHistoryError(''); }
     else setHistoryError(message(historyResult.reason));
-  }, [cartonOnly]);
+  }, [applyNote, cartonOnly, editingId]);
   useSharedRefresh(() => { void load(true); });
   useDidShow(() => { void load(); });
   const updateLine = (key: string, patch: Partial<EditableLine>) => {
@@ -129,11 +162,16 @@ export default function InboundPage() {
     const confirmation = await Taro.showModal({ title: '创建并关联商品', content: `确认入库时创建“${line.goods} / ${line.specification}”，并与本行关联。请确认现有库存中没有相同商品。`, confirmText: '确认创建' });
     if (confirmation.confirm) updateLine(line.key, { create_product: true });
   };
+  const resetEditingDraft = () => {
+    editApplied.current = false; setEditingId(null); setEditingSourceType(null); setEditReady(true); setEditError('');
+    setLines([newLine()]); setCostTotals({}); setSpecDetails({}); setRemark(''); setWorkOrder(''); setLocation('');
+  };
   const save = async () => {
     if (busy.current) return;
     busy.current = true; setSaving(true);
     try {
       if (!ready || loadError) throw new Error('请先刷新商品与关联对象资料');
+      if (editingId && !editReady) throw new Error('请先读取原入库单后再保存');
       if ((cartonOnly ? billingCustomerId : partyId) != null && !selectedParty) throw new Error('关联对象已停用，请重新选择');
       if (totalAmount != null && !Number.isFinite(totalAmount)) throw new Error('金额超出支持范围，请减少数量或单价');
       for (const line of lines) {
@@ -160,12 +198,15 @@ export default function InboundPage() {
         if (!confirmation.confirm) return;
       }
       if (cartonOnly && partyId != null && !party) throw new Error('供货商已停用，请重新选择');
-      const note = await addDeliveryNote({ date, entered_at: `${date}T${entryTime}`, location: location.trim(), work_order_no: workOrder.trim(), ...(cartonOnly ? { billing_mode: 'on_outbound' as const } : {}),
-        ...(cartonOnly ? { source_type: party ? 'carton_purchase' as const : 'production' as const, party_type: party ? 'supplier' as const : billingCustomer ? 'customer' as const : null, customer_id: billingCustomer?.id ?? null, customer_name: billingCustomer?.name || '', supplier_id: party?.id ?? null, supplier_name: party?.name || '', driver_phone: '', vehicle_no: '', freight: 0 }
+      const noteData = { date, entered_at: `${date}T${entryTime}`, location: location.trim(), work_order_no: workOrder.trim(), ...(cartonOnly ? { billing_mode: 'on_outbound' as const } : {}),
+        ...(cartonOnly ? { source_type: editingSourceType || (party ? 'carton_purchase' as const : 'production' as const), party_type: party ? 'supplier' as const : billingCustomer ? 'customer' as const : null, customer_id: billingCustomer?.id ?? null, customer_name: billingCustomer?.name || '', supplier_id: party?.id ?? null, supplier_name: party?.name || '', driver_phone: '', vehicle_no: '', freight: 0 }
           : { party_type: party ? 'supplier' as const : null, customer_id: null, customer_name: '', supplier_id: party?.id ?? null, supplier_name: party?.name || '', driver_phone: driverPhone.trim(), vehicle_no: vehicleNo.trim(), freight: numberValue(freight, '运费') }),
-        remark: remark.trim(), lines: payload, operator: operator.trim() });
+        remark: remark.trim(), lines: payload, operator: operator.trim() };
+      const note = editingId ? await updateDeliveryNote(editingId, noteData) : await addDeliveryNote(noteData);
       invalidateProducts(); setPreview(note); setCostTotals({}); setLines([newLine()]); setSpecDetails({}); setRemark(''); setWorkOrder('');
-      void Taro.showToast({ title: '入库单保存成功', icon: 'success' }); await load(true);
+      const wasEditing = editingId != null;
+      if (wasEditing) resetEditingDraft();
+      void Taro.showToast({ title: wasEditing ? '入库单修改成功' : '入库单保存成功', icon: 'success' }); await load(true, wasEditing);
     } catch (error) {
       setSpecDetails(current => ({ ...current, ...Object.fromEntries(lines.filter(line => !line.goods.trim() || !line.specification.trim() || !line.material.trim() || !line.unit.trim() || (!line.unit_price.trim() && !cartonOnly)).map(line => [line.key, true])) }));
       void Taro.showToast({ title: message(error), icon: 'none' });
@@ -174,12 +215,22 @@ export default function InboundPage() {
   };
   const voidNote = async (note: DeliveryNote) => {
     if (busy.current || note.voided_at) return;
-    const confirmation = await Taro.showModal({ title: '作废整张入库单', content: '将撤回全部明细的库存和本单往来金额，保留原单历史。已使用库存或已结算款项可能阻止作废。' });
+    const confirmation = await Taro.showModal({ title: '删除整张入库单', content: '删除后将撤回全部明细的库存和本单往来金额，并保留已删除记录。已使用库存或已结算款项可能阻止删除。', confirmText: '确认删除', confirmColor: '#dc2626' });
     if (!confirmation.confirm) return;
     busy.current = true; setSaving(true);
-    try { setPreview(await voidDeliveryNote(note.id)); invalidateProducts(); await load(true); }
+    try {
+      const deleted = await voidDeliveryNote(note.id); setPreview(deleted); invalidateProducts();
+      const deletedEditingDraft = editingId === note.id;
+      if (deletedEditingDraft) resetEditingDraft();
+      await load(true, deletedEditingDraft);
+    }
     catch (error) { void Taro.showToast({ title: message(error), icon: 'none' }); }
     finally { busy.current = false; setSaving(false); }
+  };
+  const editNote = (note: DeliveryNote) => {
+    if (note.voided_at) { void Taro.showToast({ title: '已删除的入库单不能修改', icon: 'none' }); return; }
+    applyNote(note); editApplied.current = true; setEditingId(note.id); setEditReady(true); setEditError('');
+    setPreview(null); setHistoryOpen(false);
   };
   const setCostTotal = (line: EditableLine, value: string) => {
     setCostTotals(current => ({ ...current, [line.key]: value }));
@@ -205,8 +256,10 @@ export default function InboundPage() {
     updateLine(line.key, applyProduct({ ...line, goods: '', specification: '', material: '', unit: '', customer_spec_id: null, supplier_spec_id: null }, product));
     setSpecDetails(current => ({ ...current, [line.key]: !product.specification || !product.material || !product.unit }));
   };
-  return <DemoSheet title={cartonOnly ? '纸箱入库' : '库存入库'} busy={saving} testId='carton-receipt-sheet'>
-    <p>选择常用货物或已有库存规格，带出货物资料，填写本次实际入库数量。</p>
+  return <DemoSheet title={editingId ? (cartonOnly ? '编辑纸箱入库' : '编辑库存入库') : cartonOnly ? '纸箱入库' : '库存入库'} busy={saving} testId='carton-receipt-sheet'>
+    <p>{editingId ? `正在修改入库单 #${editingId}，保存后单号和原单记录保持不变。` : '选择常用货物或已有库存规格，带出货物资料，填写本次实际入库数量。'}</p>
+    {editingId && !editReady && !editError && <p role='status'>正在读取原入库单…</p>}
+    {editError && <div className='demo-error' role='alert'>{editError}<button type='button' className='demo-action' onClick={() => { editApplied.current = false; void load(true); }}>重新读取</button></div>}
     {loadError && <div role='alert' className='demo-error'>{loadError}<button type='button' className='demo-action' disabled={saving} onClick={() => void load(true)}>重新读取</button></div>}
     <DemoField label={cartonOnly ? '关联客户' : '供货商'}><select aria-label={cartonOnly ? '关联客户' : '供货商'} disabled={saving || !ready} value={(cartonOnly ? billingCustomerId : partyId) || ''} onChange={event => void changeParty(Number(event.target.value) || null)}><option value=''>{cartonOnly ? '公共备货' : '不关联供货商'}</option>{(cartonOnly ? customers : parties).filter(item => !item.deleted_at).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></DemoField>
     {lines.map((line, index) => {
@@ -250,8 +303,9 @@ export default function InboundPage() {
       {!cartonOnly && <><DemoField label='司机电话'><input type='tel' value={driverPhone} onChange={event => setDriverPhone(event.target.value)} /></DemoField><DemoField label='车号'><input type='text' value={vehicleNo} onChange={event => setVehicleNo(event.target.value)} /></DemoField><DemoField label='运费（元）'><input type='number' value={freight} onChange={event => setFreight(sanitizeDecimalInput(event.target.value, 2))} /></DemoField></>}
       <DemoField label='操作人'><input type='text' value={operator} onChange={event => setOperator(event.target.value)} /></DemoField><DemoField label='备注'><input type='text' aria-label='入库备注' maxLength={500} value={remark} disabled={saving} onChange={event => setRemark(event.target.value)} /></DemoField>
     </details>
-    <button type='button' className='demo-primary' disabled={saving || !ready} onClick={() => void save()}>{saving ? '正在保存…' : cartonOnly ? '确认纸箱入库' : '确认入库'}</button>
-    {preview && <div className='demo-card' data-testid='inbound-receipt'><h3>入库单 #{preview.id}{preview.voided_at ? ' · 已作废' : ''}</h3><p>{preview.entered_at?.replace('T', ' ') || preview.date} · {preview.customer_name || preview.supplier_name || '公共备货'}</p>{preview.lines.map((line, index) => <DemoDetail key={index} label={line.product_name || line.specification}>{line.delivered_qty} {line.unit} · {formatMoney(line.amount || 0)}</DemoDetail>)}<DemoDetail label='库位'>{preview.location || '未设库位'}</DemoDetail><DemoDetail label='供货来源'>{preview.supplier_name || '自产 / 不关联供货商'}</DemoDetail><DemoDetail label='货款合计'>{formatMoney(preview.total_amount)}</DemoDetail><button type='button' className='demo-action' onClick={() => void downloadCsv(deliveryNoteCsvUrl(preview.id), `delivery-note-${preview.id}.csv`).catch(error => Taro.showToast({ title: message(error), icon: 'none' }))}>导出 CSV</button>{!preview.voided_at && <button type='button' className='demo-action' disabled={saving} onClick={() => void voidNote(preview)}>作废整张入库单</button>}</div>}
+    <button type='button' className='demo-primary' disabled={saving || !ready || Boolean(editingId && !editReady)} onClick={() => void save()}>{saving ? '正在保存…' : editingId ? '保存修改' : cartonOnly ? '确认纸箱入库' : '确认入库'}</button>
+    {editingId && <button type='button' className='demo-action' disabled={saving} onClick={resetEditingDraft}>取消修改</button>}
+    {preview && <div className='demo-card' data-testid='inbound-receipt'><h3>入库单 #{preview.id}{preview.voided_at ? ' · 已删除' : ''}</h3><p>{preview.entered_at?.replace('T', ' ') || preview.date} · {preview.customer_name || preview.supplier_name || '公共备货'}</p>{preview.lines.map((line, index) => <DemoDetail key={index} label={line.product_name || line.specification}>{line.delivered_qty} {line.unit} · {formatMoney(line.amount || 0)}</DemoDetail>)}<DemoDetail label='库位'>{preview.location || '未设库位'}</DemoDetail><DemoDetail label='供货来源'>{preview.supplier_name || '自产 / 不关联供货商'}</DemoDetail><DemoDetail label='货款合计'>{formatMoney(preview.total_amount)}</DemoDetail>{!preview.voided_at && <div className='demo-two'><button type='button' className='demo-action' disabled={saving} onClick={() => editNote(preview)}>修改入库单</button><button type='button' className='demo-action' disabled={saving} onClick={() => void voidNote(preview)}>删除入库单</button></div>}<button type='button' className='demo-action' onClick={() => void downloadCsv(deliveryNoteCsvUrl(preview.id), `delivery-note-${preview.id}.csv`).catch(error => Taro.showToast({ title: message(error), icon: 'none' }))}>导出 CSV</button></div>}
     <details className='demo-more'><summary>最近入库单</summary><button type='button' className='demo-action' onClick={() => setHistoryOpen(true)}>读取记录</button>{historyOpen && <>{historyError && <p role='alert'>{historyError}</p>}{notes.map(note => <InboundNoteRow key={note.id} note={note} onOpen={setPreview} />)}{!notes.length && <p>暂无入库单</p>}</>}</details>
     <span className='demo-meta' data-testid='inbound-total-amount'>{amountText(totalAmount)}</span>
   </DemoSheet>;

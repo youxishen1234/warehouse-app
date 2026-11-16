@@ -1005,6 +1005,72 @@ function addDeliveryNote(data) {
     cache.delivery_notes.push(note); persist(); return note;
   });
 }
+
+function updateDeliveryNote(id, data) {
+  return atomicMutation(() => {
+    const noteId = Number(id);
+    const previous = getDeliveryNote(noteId);
+    if (!previous || previous.voided_at) throw new Error('入库单不存在或已删除');
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('请提交有效的入库单数据');
+
+    // A receipt edit is one business operation: restore the old stock and
+    // accounting first, then validate and post the complete replacement.  The
+    // outer atomic mutation rolls all of it back if any line is invalid.
+    const previousTransactionIds = new Set(previous.lines
+      .filter(line => line.transaction_id)
+      .map(line => Number(line.transaction_id)));
+    for (const transactionId of previousTransactionIds) {
+      const transaction = cache.transactions.find(item => item.id === transactionId);
+      if (!transaction) throw new Error('原入库流水缺失，请核对历史数据');
+      reverseTransaction(transaction);
+    }
+    const previousFreightEntry = cache.ledger.find(entry => Number(entry.delivery_note_id) === noteId && entry.transaction_id == null);
+    cache.ledger.forEach(entry => {
+      if (Number(entry.delivery_note_id) === noteId || previousTransactionIds.has(Number(entry.transaction_id))) {
+        if (!entry.voided_at) entry.voided_at = Date.now();
+      }
+    });
+
+    const index = cache.delivery_notes.findIndex(note => Number(note.id) === noteId);
+    if (index < 0) throw new Error('入库单不存在');
+    cache.delivery_notes.splice(index, 1);
+
+    // Freight is handled separately because a note owns exactly one synthetic
+    // expense row. Reuse that row on edit so backups remain valid and the
+    // original document can still be edited repeatedly.
+    const freight = numberValue(data.freight === undefined ? 0 : data.freight, '运费');
+    const replacement = addDeliveryNote({ ...data, freight: 0, operator: data.operator || previous.operator || '' });
+    const temporaryId = replacement.id;
+    replacement.id = noteId;
+    replacement.created_at = previous.created_at;
+    replacement.updated_at = Date.now();
+    replacement.edit_count = Number(previous.edit_count || 0) + 1;
+    cache.transactions.forEach(transaction => {
+      if (Number(transaction.delivery_note_id) === Number(temporaryId)) {
+        transaction.delivery_note_id = noteId;
+        transaction.remark = String(transaction.remark || '').split(`送货单 #${temporaryId}`).join(`送货单 #${noteId}`);
+      }
+    });
+    cache.ledger.forEach(entry => {
+      if (Number(entry.delivery_note_id) === Number(temporaryId)) entry.delivery_note_id = noteId;
+    });
+    replacement.freight = roundDecimal(freight, 2);
+    if (freight > 0) {
+      if (previousFreightEntry) {
+        delete previousFreightEntry.voided_at;
+        previousFreightEntry.amount = replacement.freight;
+        previousFreightEntry.remark = `入库运费 · ${replacement.work_order_no || `送货单 #${noteId}`}`;
+      } else {
+        const entry = systemLedger('expense', freight, null, replacement.driver_phone || replacement.vehicle_no || '', null, `入库运费 · ${replacement.work_order_no || `送货单 #${noteId}`}`);
+        if (entry) entry.delivery_note_id = noteId;
+      }
+    } else if (previousFreightEntry) {
+      cache.ledger = cache.ledger.filter(entry => entry !== previousFreightEntry);
+    }
+    persist();
+    return replacement;
+  });
+}
 cleanupResidualTemps();
 createAutoBackup('startup');
 let batching = false;
@@ -1787,7 +1853,10 @@ function voidDeliveryNote(id) {
   return atomicMutation(() => {
     const transactionIds = new Set(note.lines.filter(line => line.transaction_id).map(line => Number(line.transaction_id)));
     const linkedLedgers = cache.ledger.filter(entry => entry.delivery_note_id === note.id || transactionIds.has(Number(entry.transaction_id)));
-    if (linkedLedgers.some(entry => entry.voided_at)) throw new Error('送货单关联账本流水已被单独作废，请先核对账本后再作废送货单');
+    const currentTransactionIds = new Set(note.lines.filter(line => line.transaction_id).map(line => Number(line.transaction_id)));
+    const currentLedgers = linkedLedgers.filter(entry => currentTransactionIds.has(Number(entry.transaction_id))
+      || (entry.delivery_note_id === note.id && entry.transaction_id == null && !entry.voided_at));
+    if (currentLedgers.some(entry => entry.voided_at)) throw new Error('送货单关联账本流水已被单独作废，请先核对账本后再作废送货单');
     for (const line of note.lines) {
       if (!line.transaction_id) continue;
       const tx = cache.transactions.find(item => item.id === line.transaction_id);
@@ -2409,4 +2478,4 @@ module.exports = { listBusinessSpecifications, listProduction, completeProductio
   getLedgerAttachments, addLedgerAttachment, readLedgerAttachment, listCustomerAttachments, addCustomerAttachment, readCustomerAttachment, prepareLedgerAttachment: ledgerAttachments.prepare, prepareCustomerAttachment, validateBackup,
   listCustomers, listCartonInboundCustomers, getCustomer, listInactiveCustomerNames, addCustomer, updateCustomer, saveCustomerSpecs, deleteCustomer,
   listSuppliers, getSupplier, addSupplier, updateSupplier, deleteSupplier,
-  stockIn, stockOut, stockOutBatch, orderToOutbound, listTx, streamTx, updateTransaction, deleteTransaction, listLedger, streamLedger, addLedger, deleteLedger, listOrders, listOrderEvents, addOrder, updateOrder, addStocktake, listStocktakes, listDeliveryNotes, getDeliveryNote, addDeliveryNote, voidDeliveryNote, backupData, restoreData, health, stats, transact, revision, audit, receipt, settleParty };
+  stockIn, stockOut, stockOutBatch, orderToOutbound, listTx, streamTx, updateTransaction, deleteTransaction, listLedger, streamLedger, addLedger, deleteLedger, listOrders, listOrderEvents, addOrder, updateOrder, addStocktake, listStocktakes, listDeliveryNotes, getDeliveryNote, addDeliveryNote, updateDeliveryNote, voidDeliveryNote, backupData, restoreData, health, stats, transact, revision, audit, receipt, settleParty };

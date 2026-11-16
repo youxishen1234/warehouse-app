@@ -317,6 +317,14 @@ function install(db, options = {}) {
     res.set('X-Warehouse-Revision', String(result.revision));
     ok(res, result.data);
   });
+  route('put', '/delivery-notes/:id', (req, res) => {
+    const remark = req.body?.remark;
+    if (remark !== undefined && (typeof remark !== 'string' || remark.length > 500)) throw error('remark 长度不能超过 500 个字符且必须为文本');
+    const operation = `PUT /delivery-notes/${req.params.id}`;
+    const result = db.transact(req.user, req.get('Idempotency-Key'), digest(operation + JSON.stringify(req.body)), req.get('If-Match'), operation,
+      () => db.updateDeliveryNote(Number(req.params.id), { ...req.body, operator: req.body.operator || req.user.username }));
+    res.set('X-Warehouse-Revision', String(result.revision)); ok(res, result.data);
+  });
   route('delete', '/delivery-notes/:id', (req, res) => { const key = req.get('Idempotency-Key');
     const operation = `DELETE /delivery-notes/${req.params.id}`;
     const result = db.transact(req.user, key, digest(operation), req.get('If-Match'), operation, () => db.voidDeliveryNote(Number(req.params.id)));

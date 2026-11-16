@@ -138,7 +138,10 @@ export const getStocktakes = (product_id?: number) => request<Stocktake[]>({ url
 export const getStocktakesPage = (params: PageQuery & SortQuery<'stocktakes'> & { product_id?: number }) => getPage<Stocktake>('/api/stocktakes', params);
 export const getDeliveryNotes = () => request<DeliveryNote[]>({ url: '/api/delivery-notes' });
 export const getDeliveryNotesPage = (params: PageQuery & SortQuery<'delivery_notes'>) => getPage<DeliveryNote>('/api/delivery-notes', params);
-export const addDeliveryNote = (data: Omit<DeliveryNote, 'id'|'created_at'|'total_square_meters'|'total_amount'> & { operator?: string }) => request<DeliveryNote>({ url: '/api/delivery-notes', method: 'POST', data });
+export type DeliveryNoteInput = Omit<DeliveryNote, 'id'|'created_at'|'total_square_meters'|'total_amount'> & { operator?: string };
+export const getDeliveryNote = (id: number) => request<DeliveryNote>({ url: `/api/delivery-notes/${id}` });
+export const addDeliveryNote = (data: DeliveryNoteInput) => request<DeliveryNote>({ url: '/api/delivery-notes', method: 'POST', data });
+export const updateDeliveryNote = (id: number, data: DeliveryNoteInput) => request<DeliveryNote>({ url: `/api/delivery-notes/${id}`, method: 'PUT', data });
 export const deliveryNoteCsvUrl = (id: number) => `/api/delivery-notes/${id}.csv`;
 export const voidDeliveryNote = (id: number) => request<DeliveryNote>({ url: `/api/delivery-notes/${id}`, method: 'DELETE' });
 export const getBackup = () => request<BackupExport>({ url: '/api/backup', timeout: 120000 });
