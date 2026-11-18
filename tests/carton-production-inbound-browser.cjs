@@ -427,7 +427,7 @@ async function main() {
 
     assert.deepEqual(pageErrors, [], '浏览器页面不应产生运行时异常');
     assert.ok(externalBlocked.every(request => !request.includes('youxishen.online')), '拦截的跨域非 API 请求不得触达生产域名');
-    console.log(`PASS: quick SKU selection with quantity-only save, same-number receipt editing, delete stock rollback, production-only carton inbound, auto amount and zero price, multi-line totals, separator, duplicate-click lock, persisted stock-only notes, legacy history separation, local-only API, 320/390px layouts. Evidence: ${evidence}`);
+    console.log(`PASS: quick SKU selection with quantity-only save, inventory-detail receipt actions, same-number receipt editing, delete stock rollback, production-only carton inbound, auto amount and zero price, multi-line totals, separator, duplicate-click lock, persisted stock-only notes, legacy history separation, local-only API, 320/390px layouts. Evidence: ${evidence}`);
   } finally {
     await context.close();
     await browser.close();
