@@ -1,12 +1,16 @@
 /* eslint-disable react/forbid-elements */
 import { View, Text, Button } from '@tarojs/components';
 import { useState } from 'react';
+import Taro from '@tarojs/taro';
 import { DemoSheet, DemoDetail } from '@/components/DemoUI';
 import type { BoardBatch } from '@/services/boards';
 import { boardSpec, cartonSpec } from '@/services/boards';
 import type { Product, Transaction } from '@/types';
 import { formatMoney, formatTime } from '@/utils/format';
 import { openBusinessPage } from '@/services/business-navigation';
+import { getDeliveryNote, voidDeliveryNote } from '@/services/api';
+import { invalidateProducts } from '@/services/product-store';
+import { refreshSharedData } from '@/services/shared-refresh';
 import styles from '@/components/Workspace/workbench.module.scss';
 
 export default function StockList({ kind, boards, cartons, transactions, onStocktake, onInbound }: {
@@ -19,6 +23,44 @@ export default function StockList({ kind, boards, cartons, transactions, onStock
   onInbound: (product: Product) => void;
 }) {
   const [selected, setSelected] = useState<Product>();
+  const [receiptBusy, setReceiptBusy] = useState(false);
+  const latestReceipt = selected ? transactions
+    .filter(row => row.product_id === selected.id && row.type === 'in' && !row.voided_at && !row.stocktake_id)
+    .sort((a, b) => b.created_at - a.created_at)[0] : undefined;
+  const latestNoteId = latestReceipt?.delivery_note_id;
+  const openLatestReceiptEditor = async () => {
+    if (receiptBusy) return;
+    const recordsUrl = '/pages/management/index?section=transactions&type=in&product_id=' + selected?.id;
+    if (!latestNoteId) { setSelected(undefined); await openBusinessPage(recordsUrl); return; }
+    setReceiptBusy(true);
+    try {
+      const note = await getDeliveryNote(latestNoteId);
+      setSelected(undefined);
+      await openBusinessPage('/pages/carton-inbound/index?id=' + latestNoteId + (note.source_type === 'carton_purchase' ? '&kind=purchase' : ''));
+    } catch (error) {
+      void Taro.showToast({ title: error instanceof Error ? error.message : '入库单读取失败', icon: 'none' });
+    } finally { setReceiptBusy(false); }
+  };
+  const removeLatestReceipt = async () => {
+    if (receiptBusy) return;
+    const recordsUrl = '/pages/management/index?section=transactions&type=in&product_id=' + selected?.id;
+    if (!latestNoteId) { setSelected(undefined); await openBusinessPage(recordsUrl); return; }
+    const confirmation = await Taro.showModal({
+      title: `删除入库单 #${latestNoteId}？`,
+      content: '这张单的全部货物都会退出库存，相关往来金额会同步回滚。记录会保留“已删除”历史；已使用库存或已结算款项可能阻止删除。',
+      confirmText: '确认删除',
+      confirmColor: '#dc2626'
+    });
+    if (!confirmation.confirm) return;
+    setReceiptBusy(true);
+    try {
+      await voidDeliveryNote(latestNoteId);
+      invalidateProducts(); refreshSharedData(); setSelected(undefined);
+      void Taro.showToast({ title: '入库单已删除并回滚库存', icon: 'success' });
+    } catch (error) {
+      void Taro.showToast({ title: error instanceof Error ? error.message : '删除失败', icon: 'none' });
+    } finally { setReceiptBusy(false); }
+  };
   return <View data-testid='workbench-stock-list'>
     {kind !== 'carton' && boards.map(batch => <Button className={styles.stockCard} key={batch.id} data-testid='workbench-board' data-record-id={batch.id} onClick={() => void openBusinessPage('/pages/management/index?section=paperboard-batch&id=' + encodeURIComponent(batch.id))}>
       <View className={styles.stockTop}><View className={styles.avatar}>板</View><View className={styles.stockIdentity}><strong>{batch.name || `${batch.layers}层 ${batch.fluteType}楞纸板`}</strong><Text>{boardSpec(batch)} cm</Text><Text>成箱 {cartonSpec(batch)} cm</Text><Text>入库：{batch.enteredAt?.replace('T', ' ') || batch.date}</Text><Text>入库金额：{batch.amountMode === 'pending' ? '待核算' : formatMoney(batch.amount)}</Text></View><View className={styles.stockAmount}>{batch.remainingQty.toLocaleString()} <Text>张</Text></View></View>
@@ -42,6 +84,7 @@ export default function StockList({ kind, boards, cartons, transactions, onStock
     <DemoDetail label='关联客户'>{selected.customer_name || '公共备货'}</DemoDetail>
     <DemoDetail label='供货来源'>{[...new Set(transactions.filter(row => row.product_id === selected.id && row.type === 'in' && !row.voided_at).map(row => row.supplier_name).filter(Boolean))].join('、') || '自产 / 未关联供货商'}</DemoDetail>
     <p>数量变化记录</p>{transactions.filter(row => row.product_id === selected.id && !row.voided_at).map(row => <DemoDetail key={row.id} label={`${row.type === 'in' ? '入库' : row.type === 'out' ? '出库' : '盘点'} · ${formatTime(row.created_at)}`}>{row.type === 'out' ? '−' : '+'}{row.type === 'adjustment' ? row.adjustment ?? row.quantity : row.quantity} {row.unit}</DemoDetail>)}
+    {latestReceipt && <div className='demo-card' data-testid='stock-latest-receipt-actions'><strong>最近入库单{latestNoteId ? ` #${latestNoteId}` : ''}</strong><p>{latestReceipt.entered_at?.replace('T', ' ') || formatTime(latestReceipt.created_at)} · {latestReceipt.quantity} {latestReceipt.unit}</p><div className='demo-two'><button type='button' className='demo-action' disabled={receiptBusy} onClick={() => void openLatestReceiptEditor()}>{receiptBusy ? '正在读取…' : '修改最近入库单'}</button><button type='button' className='demo-action' disabled={receiptBusy} onClick={() => void removeLatestReceipt()}>删除最近入库单</button></div></div>}
     <div className='demo-two'><button type='button' className='demo-primary' onClick={() => { setSelected(undefined); onInbound(selected); }}>同规格入库</button><button type='button' className='demo-primary demo-secondary' onClick={() => { setSelected(undefined); onStocktake(selected); }}>库存盘点</button></div>
     <details className='demo-more'><summary>更多操作</summary><div className='demo-menu'><button type='button' onClick={() => void openBusinessPage('/pages/management/index?section=labels&kind=finished-product&id=' + selected.id)}>标签打印<span>›</span></button><button type='button' onClick={() => void openBusinessPage('/pages/management/index?section=transactions&type=in&product_id=' + selected.id)}>入库单据与金额<span>›</span></button></div></details>
   </DemoSheet>}

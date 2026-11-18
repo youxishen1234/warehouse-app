@@ -293,6 +293,23 @@ async function main() {
     await expect(page.getByText('LEGACY-CUSTOMER-SUPPLY', { exact: false })).toHaveCount(0);
     await page.screenshot({ path: path.join(evidence, 'carton-production-saved.png'), fullPage: true });
 
+    // The inventory product card is a separate, common entry point. It must
+    // expose the same receipt actions instead of leaving warehouse staff to
+    // discover the editable record only inside the inbound page history.
+    await page.goto(`${origin}/#/pages/management/index?section=stock`);
+    await page.reload();
+    await page.locator('.team-boot').waitFor({ state: 'detached' });
+    const stockCard = page.getByTestId('workbench-carton').filter({ hasText: cartonProduct.name });
+    await expect(stockCard).toBeVisible();
+    await stockCard.click();
+    const stockReceiptActions = page.getByTestId('stock-latest-receipt-actions');
+    await expect(stockReceiptActions).toBeVisible();
+    await expect(stockReceiptActions.getByRole('button', { name: '修改最近入库单', exact: true })).toBeVisible();
+    await expect(stockReceiptActions.getByRole('button', { name: '删除最近入库单', exact: true })).toBeVisible();
+    await stockReceiptActions.getByRole('button', { name: '修改最近入库单', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '编辑纸箱入库', exact: true })).toBeVisible();
+    await expect(input('货物 1 本次完工数量')).toHaveValue('2.5');
+
     await page.goto(`${origin}/#/pages/carton-inbound/index?kind=purchase`);
     await expect(page.getByRole('heading', { name: '库存入库', exact: true })).toBeVisible();
     await showHistory();
@@ -366,7 +383,13 @@ async function main() {
     assert.equal(db.getSupplier(supplier.id).payable, baseline.supplierPayable);
     assert.equal(db.getCustomer(customer.id).debt, baseline.customerDebt);
     assert.deepEqual(db.listLedger({ include_voided: 'true' }).map(entry => ({ ...entry })), baseline.ledger);
-    await buttonContainingText('删除入库单').click();
+    await page.goto(`${origin}/#/pages/management/index?section=stock`);
+    await page.reload();
+    await page.locator('.team-boot').waitFor({ state: 'detached' });
+    const zeroStockCard = page.getByTestId('workbench-carton').filter({ hasText: finishedProduct.name });
+    await zeroStockCard.click();
+    const zeroStockReceiptActions = page.getByTestId('stock-latest-receipt-actions');
+    await zeroStockReceiptActions.getByRole('button', { name: '删除最近入库单', exact: true }).click();
     const zeroVoidModal = page.locator('.taro-modal__content:visible').last();
     await expect(zeroVoidModal).toBeVisible();
     await zeroVoidModal.locator('.taro-model__confirm').click();
