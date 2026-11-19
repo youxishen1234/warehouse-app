@@ -37,9 +37,9 @@ const applyProduct = (line: EditableLine, product: Product): EditableLine => {
     unit_price: fromGood ? line.unit_price : String(product.price) };
 };
 const applyGood = (line: EditableLine, item: PartyGood, products: Product[], cartonOnly: boolean): EditableLine => {
-  const matches = matchingProducts(item, products, cartonOnly);
+  const matches = cartonOnly ? [] : matchingProducts(item, products);
   return { ...line, product_id: matches.length === 1 ? matches[0].id : null,
-    goods: item.goods || '', specification: item.specification || '', material: item.material || '', unit: item.unit || '',
+    goods: item.goods?.trim() || (cartonOnly && item.specification ? `纸箱 ${item.specification}` : ''), specification: item.specification || '', material: item.material || '', unit: item.unit || '',
     unit_price: (item.unitPrice ?? item.price) == null ? '' : String(item.unitPrice ?? item.price), create_product: false,
     customer_spec_id: cartonOnly ? String(item.id) : null, supplier_spec_id: cartonOnly ? null : String(item.id) };
 };
@@ -74,6 +74,8 @@ export default function InboundPage() {
   const billingCustomer = customers.find(item => item.id === billingCustomerId && !item.deleted_at);
   const party = parties.find(item => item.id === partyId && !item.deleted_at);
   const selectedParty = cartonOnly ? billingCustomer : party;
+  const selectableProducts = products.filter(item => !item.deleted_at
+    && (!cartonOnly || (billingCustomer != null && item.customer_id === billingCustomer.id)));
   const goods = (selectedParty?.specs || []).filter(item => !cartonOnly || ((item.category || (item.kind === '纸板' ? '纸板' : '纸箱')) === '纸箱'));
   const totalAmount = draftTotal(lines);
   const applyNote = useCallback((note: DeliveryNote) => {
@@ -134,9 +136,10 @@ export default function InboundPage() {
     if (cartonOnly) setBillingCustomerId(id); else setPartyId(id);
     const next = newLine();
     const options = (nextParty?.specs || []).filter(item => !cartonOnly || ((item.category || (item.kind === '纸板' ? '纸板' : '纸箱')) === '纸箱'));
+    const onlyGood = options.length === 1 && (cartonOnly || completeGood(options[0])) ? options[0] : undefined;
     setCostTotals({});
-    setLines([options.length === 1 && completeGood(options[0]) ? applyGood(next, options[0], products, cartonOnly) : next]);
-    setSpecDetails({});
+    setLines([onlyGood ? applyGood(next, onlyGood, products, cartonOnly) : next]);
+    setSpecDetails(onlyGood && (!onlyGood.specification || !onlyGood.material || !onlyGood.unit) ? { [next.key]: true } : {});
   };
   const chooseGood = (line: EditableLine, item: PartyGood) => {
     if (busy.current) return;
@@ -157,7 +160,7 @@ export default function InboundPage() {
     if (!line.goods.trim() || !line.specification.trim() || !line.material.trim() || !line.unit.trim()) {
       void Taro.showToast({ title: '请先补齐名称、尺寸、材质和单位', icon: 'none' }); return;
     }
-    const matches = matchingProducts(line, products, cartonOnly);
+    const matches = matchingProducts(line, selectableProducts, cartonOnly);
     if (matches.length) { void Taro.showToast({ title: '已有匹配商品，请选择现有商品', icon: 'none' }); return; }
     const confirmation = await Taro.showModal({ title: '创建并关联商品', content: `确认入库时创建“${line.goods} / ${line.specification}”，并与本行关联。请确认现有库存中没有相同商品。`, confirmText: '确认创建' });
     if (confirmation.confirm) updateLine(line.key, { create_product: true });
@@ -172,6 +175,7 @@ export default function InboundPage() {
     try {
       if (!ready || loadError) throw new Error('请先刷新商品与关联对象资料');
       if (editingId && !editReady) throw new Error('请先读取原入库单后再保存');
+      if (cartonOnly && !editingId && !billingCustomer) throw new Error('请先选择客户');
       if ((cartonOnly ? billingCustomerId : partyId) != null && !selectedParty) throw new Error('关联对象已停用，请重新选择');
       if (totalAmount != null && !Number.isFinite(totalAmount)) throw new Error('金额超出支持范围，请减少数量或单价');
       for (const line of lines) {
@@ -183,14 +187,15 @@ export default function InboundPage() {
       if (new Set(selectedIds).size !== selectedIds.length) throw new Error('同一商品请合并数量后入库');
       const payload = lines.map((line, index) => {
         const label = `第 ${index + 1} 项`;
-        if (!line.product_id && !line.create_product) throw new Error(`${label}请选择现有商品，或明确创建并关联商品`);
+        const fromCustomerSpec = cartonOnly && Boolean(line.customer_spec_id);
+        if (!fromCustomerSpec && !line.product_id && !line.create_product) throw new Error(`${label}请选择现有商品，或明确创建并关联商品`);
         if (!line.goods.trim() || !line.specification.trim() || !line.material.trim() || !line.unit.trim()) throw new Error(`${label}请补齐名称、尺寸、材质和单位`);
         if (!line.unit_price.trim() && !cartonOnly) throw new Error(`${label}请填写本次单价，未记录价格不能按零元入账`);
         if (line.customer_spec_id && !billingCustomer?.specs?.some(item => item.id === line.customer_spec_id)) throw new Error(`${label}客户货物资料已变更，请重新选择`);
         if (line.supplier_spec_id && !party?.specs?.some(item => item.id === line.supplier_spec_id)) throw new Error(`${label}供货货物资料已变更，请重新选择`);
         return { product_id: line.product_id, product_name: line.goods.trim(), goods: line.goods.trim(), specification: line.specification.trim(), material: line.material.trim(), unit: line.unit.trim(),
           quantity: numberValue(line.quantity, `${label}计划数量`, true), delivered_qty: numberValue(line.delivered_qty, `${label}实际入库数量`, true),
-          unit_price: numberValue(line.unit_price || '0', `${label}单价`), ...(line.create_product ? { create_product: true } : {}),
+          unit_price: numberValue(line.unit_price || '0', `${label}单价`), ...(line.create_product || (fromCustomerSpec && !line.product_id) ? { create_product: true } : {}),
           ...(line.customer_spec_id ? { customer_spec_id: line.customer_spec_id } : {}), ...(line.supplier_spec_id ? { supplier_spec_id: line.supplier_spec_id } : {}) };
       });
       if (payload.some(line => line.delivered_qty > line.quantity)) {
@@ -250,7 +255,7 @@ export default function InboundPage() {
     if (busy.current) return;
     const good = goods.find(item => 'common:' + item.id === id);
     if (good) { chooseGood(line, good); return; }
-    const product = products.find(item => 'product:' + item.id === id && !item.deleted_at);
+    const product = selectableProducts.find(item => 'product:' + item.id === id);
     if (!product) return;
     setCostTotals(current => { const next = { ...current }; delete next[line.key]; return next; });
     updateLine(line.key, applyProduct({ ...line, goods: '', specification: '', material: '', unit: '', customer_spec_id: null, supplier_spec_id: null }, product));
@@ -261,28 +266,31 @@ export default function InboundPage() {
     {editingId && !editReady && !editError && <p role='status'>正在读取原入库单…</p>}
     {editError && <div className='demo-error' role='alert'>{editError}<button type='button' className='demo-action' onClick={() => { editApplied.current = false; void load(true); }}>重新读取</button></div>}
     {loadError && <div role='alert' className='demo-error'>{loadError}<button type='button' className='demo-action' disabled={saving} onClick={() => void load(true)}>重新读取</button></div>}
-    <DemoField label={cartonOnly ? '关联客户' : '供货商'}><select aria-label={cartonOnly ? '关联客户' : '供货商'} disabled={saving || !ready} value={(cartonOnly ? billingCustomerId : partyId) || ''} onChange={event => void changeParty(Number(event.target.value) || null)}><option value=''>{cartonOnly ? '公共备货' : '不关联供货商'}</option>{(cartonOnly ? customers : parties).filter(item => !item.deleted_at).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></DemoField>
+    <DemoField label={cartonOnly ? '关联客户' : '供货商'}><select aria-label={cartonOnly ? '关联客户' : '供货商'} disabled={saving || !ready} value={(cartonOnly ? billingCustomerId : partyId) || ''} onChange={event => void changeParty(Number(event.target.value) || null)}><option value='' disabled={cartonOnly}>{cartonOnly ? '请选择客户' : '不关联供货商'}</option>{(cartonOnly ? customers : parties).filter(item => !item.deleted_at).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></DemoField>
     {lines.map((line, index) => {
       const product = line.product_id == null ? undefined : productMap.get(line.product_id);
+      const fromCustomerSpec = cartonOnly && Boolean(line.customer_spec_id);
+      const lineProducts = selectableProducts.filter(item => !lines.some(other => other.key !== line.key && other.product_id === item.id));
       const amount = lineAmount(line);
       const editable = (key: 'goods' | 'material' | 'unit', label: string) => <DemoField label={label}><input type='text' aria-label={`货物 ${index + 1} ${label}`} disabled={saving} value={line[key]} onChange={event => updateLine(line.key, { [key]: event.target.value, product_id: null, create_product: false })} /></DemoField>;
       return <div key={line.key} data-testid={`inbound-line-${index + 1}`}>
         {lines.length > 1 && <DemoDetail label={`货物 ${index + 1}`}><button type='button' className='demo-action' disabled={saving} aria-label={`移除货物 ${index + 1}`} onClick={() => setLines(rows => rows.filter(item => item.key !== line.key))}>移除</button></DemoDetail>}
         <QuickSpecPicker label={`选择${cartonOnly ? '纸箱' : '入库'}规格${lines.length > 1 ? ` ${index + 1}` : ''}`}
           selected={line.goods || line.specification ? [line.goods, line.specification].filter(Boolean).join(' · ') : undefined}
-          disabled={saving || !ready}
+          disabled={saving || !ready || (cartonOnly && !billingCustomer)}
+          initiallyOpen={cartonOnly && Boolean(billingCustomer) && !line.customer_spec_id && !line.product_id}
           options={[
             ...goods.map(item => ({ id: 'common:' + item.id, title: `${item.goods} · ${item.specification}`, detail: `${cartonOnly ? '客户常用' : '供货商常购'} · ${selectedParty?.name || ''} · ${item.material || '材质待补充'} · ${item.unit || '单位待补充'}` })),
-            ...products.filter(item => !item.deleted_at && !lines.some(other => other.key !== line.key && other.product_id === item.id)).map(item => ({ id: 'product:' + item.id, title: `${item.name} · ${item.specification || '尺寸待补充'}`, detail: `已有库存 · ${item.material || '材质待补充'} · ${item.stock} ${item.unit || ''}`, search: item.customer_name }))
+            ...lineProducts.map(item => ({ id: 'product:' + item.id, title: `${item.name} · ${item.specification || '尺寸待补充'}`, detail: `已有库存 · ${item.material || '材质待补充'} · ${item.stock} ${item.unit || ''}`, search: item.customer_name }))
           ]}
           onSelect={id => chooseQuickSpec(line, id)} onCreate={() => createSpecification(line)} />
         {!!line.goods && <div className='demo-note' data-testid={`inbound-selected-summary-${index + 1}`}><strong>{line.goods}</strong><div>{line.specification || '尺寸待补充'} · {line.material || '材质待补充'} · {line.unit || '单位待补充'}{line.unit_price.trim() ? ` · ¥${line.unit_price}/${line.unit || '单位'}` : ' · 成本单价未记录'}</div>{product && <div>现有库存 {product.stock} {line.unit}</div>}</div>}
-        {!product && !!line.goods && !!line.specification && !!line.material && !!line.unit && <button type='button' className='demo-primary demo-secondary' disabled={saving || line.create_product} onClick={() => void confirmCreate(line)}>{line.create_product ? '已确认：入库时创建并关联商品' : '创建并关联商品'}</button>}
+        {!fromCustomerSpec && !product && !!line.goods && !!line.specification && !!line.material && !!line.unit && <button type='button' className='demo-primary demo-secondary' disabled={saving || line.create_product} onClick={() => void confirmCreate(line)}>{line.create_product ? '已确认：入库时创建并关联商品' : '创建并关联商品'}</button>}
         <DemoField label={`实际入库数量（${line.unit || '个'}）`}><input type='number' step='any' min='0' aria-label={`货物 ${index + 1} 本次完工数量`} disabled={saving} value={line.delivered_qty} onChange={event => setReceived(line, sanitizeDecimalInput(event.target.value, 6))} /></DemoField>
         <DemoField label='入库成本总金额（元，选填）'><input type='number' min='0' step='0.01' aria-label={`货物 ${index + 1} 入库成本总金额`} disabled={saving} value={costTotals[line.key] ?? (Number.isFinite(amount) && amount != null ? String(amount) : '')} onChange={event => setCostTotal(line, sanitizeDecimalInput(event.target.value, 2))} /></DemoField>
         <details className='demo-more' open={Boolean(specDetails[line.key])} onToggle={event => { const open = event.currentTarget.open; setSpecDetails(current => ({ ...current, [line.key]: open })); }}><summary>新增 / 修改货物</summary>
           <DemoField label={cartonOnly ? '客户常用货物' : '供货商常购货物'}><select aria-label={index ? `货物 ${index + 1} 常用货物` : '常用货物'} disabled={saving || !ready || !selectedParty} value={line.customer_spec_id || line.supplier_spec_id || ''} onChange={event => { const chosen = goods.find(item => String(item.id) === event.target.value); if (chosen) chooseGood(line, chosen); }}><option value=''>{selectedParty ? goods.length ? '选择常用货物' : '暂无常用货物' : `先选择${cartonOnly ? '客户' : '供货商'}`}</option>{goods.map(item => <option key={item.id} value={item.id}>{item.goods} · {item.specification}</option>)}</select></DemoField>
-          <DemoField label='选择已有货物'><select aria-label={`货物 ${index + 1} 选择已有商品`} value={line.product_id || ''} disabled={saving || !ready} onChange={event => { const chosen = products.find(item => item.id === Number(event.target.value)); if (chosen) chooseProduct(line, chosen); }}><option value=''>选择已有货物</option>{products.filter(item => !item.deleted_at && !lines.some(other => other.key !== line.key && other.product_id === item.id)).map(item => <option key={item.id} value={item.id}>{item.name} · {item.specification}</option>)}</select></DemoField>
+          {!fromCustomerSpec && (!cartonOnly || lineProducts.length > 0) && <DemoField label='选择已有货物'><select aria-label={`货物 ${index + 1} 选择已有商品`} value={line.product_id || ''} disabled={saving || !ready} onChange={event => { const chosen = lineProducts.find(item => item.id === Number(event.target.value)); if (chosen) chooseProduct(line, chosen); }}><option value=''>选择已有货物</option>{lineProducts.map(item => <option key={item.id} value={item.id}>{item.name} · {item.specification}</option>)}</select></DemoField>}
           {editable('goods', cartonOnly ? '纸箱名称（必填）' : '货物名称')}
           <DemoField label='长 × 宽 × 高 / 规格（必填）'><input type='text' aria-label={`货物 ${index + 1} 规格尺寸`} disabled={saving} value={line.specification} onChange={event => updateLine(line.key, { specification: cartonOnly ? formatSpecificationInput(event.target.value, line.specification) : event.target.value, product_id: null, create_product: false })} /></DemoField>
           <div className='demo-two'>{editable('material', '材质')}{editable('unit', '单位')}</div>
@@ -303,7 +311,7 @@ export default function InboundPage() {
       {!cartonOnly && <><DemoField label='司机电话'><input type='tel' value={driverPhone} onChange={event => setDriverPhone(event.target.value)} /></DemoField><DemoField label='车号'><input type='text' value={vehicleNo} onChange={event => setVehicleNo(event.target.value)} /></DemoField><DemoField label='运费（元）'><input type='number' value={freight} onChange={event => setFreight(sanitizeDecimalInput(event.target.value, 2))} /></DemoField></>}
       <DemoField label='操作人'><input type='text' value={operator} onChange={event => setOperator(event.target.value)} /></DemoField><DemoField label='备注'><input type='text' aria-label='入库备注' maxLength={500} value={remark} disabled={saving} onChange={event => setRemark(event.target.value)} /></DemoField>
     </details>
-    <button type='button' className='demo-primary' disabled={saving || !ready || Boolean(editingId && !editReady)} onClick={() => void save()}>{saving ? '正在保存…' : editingId ? '保存修改' : cartonOnly ? '确认纸箱入库' : '确认入库'}</button>
+    <button type='button' className='demo-primary' disabled={saving || !ready || Boolean(editingId && !editReady) || (cartonOnly && !editingId && !billingCustomer)} onClick={() => void save()}>{saving ? '正在保存…' : editingId ? '保存修改' : cartonOnly ? '确认纸箱入库' : '确认入库'}</button>
     {editingId && <button type='button' className='demo-action' disabled={saving} onClick={resetEditingDraft}>取消修改</button>}
     {preview && <div className='demo-card' data-testid='inbound-receipt'><h3>入库单 #{preview.id}{preview.voided_at ? ' · 已删除' : ''}</h3><p>{preview.entered_at?.replace('T', ' ') || preview.date} · {preview.customer_name || preview.supplier_name || '公共备货'}</p>{preview.lines.map((line, index) => <DemoDetail key={index} label={line.product_name || line.specification}>{line.delivered_qty} {line.unit} · {formatMoney(line.amount || 0)}</DemoDetail>)}<DemoDetail label='库位'>{preview.location || '未设库位'}</DemoDetail><DemoDetail label='供货来源'>{preview.supplier_name || '自产 / 不关联供货商'}</DemoDetail><DemoDetail label='货款合计'>{formatMoney(preview.total_amount)}</DemoDetail>{!preview.voided_at && <div className='demo-two'><button type='button' className='demo-action' disabled={saving} onClick={() => editNote(preview)}>修改入库单</button><button type='button' className='demo-action' disabled={saving} onClick={() => void voidNote(preview)}>删除入库单</button></div>}<button type='button' className='demo-action' onClick={() => void downloadCsv(deliveryNoteCsvUrl(preview.id), `delivery-note-${preview.id}.csv`).catch(error => Taro.showToast({ title: message(error), icon: 'none' }))}>导出 CSV</button></div>}
     <details className='demo-more'><summary>最近入库单</summary><button type='button' className='demo-action' onClick={() => setHistoryOpen(true)}>读取记录</button>{historyOpen && <>{historyError && <p role='alert'>{historyError}</p>}{notes.map(note => <InboundNoteRow key={note.id} note={note} onOpen={setPreview} />)}{!notes.length && <p>暂无入库单</p>}</>}</details>

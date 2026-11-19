@@ -86,6 +86,7 @@ async function main() {
     price: 1.4,
     stock: 4
   });
+  for (const product of [cartonProduct, finishedProduct]) Object.assign(product, { customer_id: customer.id, customer_name: customer.name });
   const groupedDisposable = db.addProduct({
     name: '多规格分组纸箱',
     material: '牛皮纸',
@@ -160,11 +161,17 @@ async function main() {
     const input = label => page.locator(`[aria-label=${JSON.stringify(label)}] input, input[aria-label=${JSON.stringify(label)}]`).first();
     const buttonContainingText = label => page.locator('taro-button-core, button').filter({ hasText: label }).last();
     const productionPath = '/#/pages/carton-inbound/index';
+    const selectProductionCustomer = async () => {
+      const select = page.getByLabel('关联客户', { exact: true });
+      await expect(select).toBeEnabled();
+      await select.selectOption(String(customer.id));
+    };
     const openProductionEntry = async () => {
       await page.goto(`${origin}${productionPath}`);
       await expect(page.getByTestId('carton-receipt-sheet')).toBeVisible();
       await expect(page.getByRole('heading', { name: '纸箱入库', exact: true })).toBeVisible();
       await expect(input('货物 1 本次完工数量')).toBeVisible();
+      await selectProductionCustomer();
       await openGoods(page); await expect(input('货物 1 入库单价')).toBeVisible();
     };
     const openProductPickerAndSelect = async name => {
@@ -271,10 +278,10 @@ async function main() {
 
     const newPost = apiRequests.filter(item => item.method === 'POST' && item.path === '/delivery-notes').at(-1);
     assert.equal(newPost.body.source_type, 'production', 'UI 必须提交自产来源');
-    assert.equal(newPost.body.party_type, null, '自产单不得绑定往来类型');
-    assert.equal(newPost.body.customer_id, null);
+    assert.equal(newPost.body.party_type, 'customer');
+    assert.equal(newPost.body.customer_id, customer.id);
     assert.equal(newPost.body.supplier_id, null);
-    assert.equal(newPost.body.customer_name, '');
+    assert.equal(newPost.body.customer_name, customer.name);
     assert.equal(newPost.body.supplier_name, '');
     assert.equal(newPost.body.driver_phone, '');
     assert.equal(newPost.body.vehicle_no, '');
@@ -289,10 +296,10 @@ async function main() {
     const productionNote = db.listDeliveryNotes().find(note => note.work_order_no === 'PROD-BROWSER-20261023-01');
     assert.ok(productionNote, '保存应生成纸箱自产入库单据');
     assert.equal(productionNote.source_type, 'production');
-    assert.equal(productionNote.party_type, null);
-    assert.equal(productionNote.customer_id, null);
+    assert.equal(productionNote.party_type, 'customer');
+    assert.equal(productionNote.customer_id, customer.id);
     assert.equal(productionNote.supplier_id, null);
-    assert.equal(productionNote.customer_name, '');
+    assert.equal(productionNote.customer_name, customer.name);
     assert.equal(productionNote.supplier_name, '');
     assert.equal(productionNote.total_amount, 7.28, '服务端应按各行完工数 × 入库单价取金额后求和');
     assert.deepEqual(productionNote.lines.map(line => line.amount), [3.08, 4.2]);
@@ -437,6 +444,7 @@ async function main() {
     // SKU, enter the received count, then save the stock-only receipt.
     await page.goto(`${origin}${productionPath}`);
     await expect(input('货物 1 本次完工数量')).toBeVisible();
+    await selectProductionCustomer();
     await chooseQuickReceipt(page, cartonProduct.name, { kind: 'product' });
     await expect(page.getByTestId('inbound-selected-summary-1')).toContainText(cartonProduct.specification);
     await expect(input('货物 1 入库单价')).toBeHidden();

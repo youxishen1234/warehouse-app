@@ -5,12 +5,13 @@ import './style.scss';
 export type QuickSpecOption = { id: string; title: string; detail?: string; search?: string };
 const normalized = (value: string) => value.toLocaleLowerCase().replace(/[\s×x*]/g, '');
 
-export default function QuickSpecPicker({ label, options, selected, disabled = false, onSelect, onCreate }: {
+export default function QuickSpecPicker({ label, options, selected, disabled = false, initiallyOpen = false, onSelect, onCreate }: {
   label: string; options: QuickSpecOption[]; selected?: string; disabled?: boolean;
+  initiallyOpen?: boolean;
   onSelect: (id: string) => void; onCreate: () => void;
 }) {
   const id = useId();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen);
   const [query, setQuery] = useState('');
   const [limit, setLimit] = useState(12);
   const matches = useMemo(() => {

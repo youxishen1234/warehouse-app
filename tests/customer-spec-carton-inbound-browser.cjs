@@ -214,13 +214,8 @@ async function main() {
     await chooseQuickReceipt(page, '零报价客户纸箱', { kind: 'common' });
     await expect(page.getByTestId('inbound-selected-summary-1')).toContainText('零报价客户纸箱');
     await expect(input('货物 1 入库单价')).toBeHidden();
-    await expect(page.getByRole('button', { name: '创建并关联商品', exact: true })).toBeVisible();
-    await input('货物 1 本次完工数量').fill('1');
-    const receiptsBeforeExplicitCreation = apiRequests.filter(row => row.method === 'POST' && row.path === '/delivery-notes').length;
-    await clickText('确认纸箱入库');
-    await expect(page.getByText('第 1 项请选择现有商品，或明确创建并关联商品', { exact: true })).toBeVisible();
-    assert.equal(apiRequests.filter(row => row.method === 'POST' && row.path === '/delivery-notes').length, receiptsBeforeExplicitCreation);
-    assert.equal(db.listProducts().length, 0, 'new specification needs explicit SKU creation before saving');
+    await expect(page.getByRole('button', { name: '创建并关联商品', exact: true })).toHaveCount(0);
+    assert.equal(db.listProducts().length, 0, 'selecting a common specification does not create inventory before saving');
     await chooseCustomerSpec('零报价客户纸箱');
     const zeroPrice = input('货物 1 入库单价');
     await expect(zeroPrice).toHaveValue('0');

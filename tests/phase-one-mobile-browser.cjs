@@ -64,7 +64,9 @@ async function main() {
   };
   const chooseGoods = async (name, index = 1) => {
     const picker = page.getByTestId(`inbound-line-${index}`).locator('.quick-spec-picker');
-    await picker.locator('.quick-spec-trigger').click();
+    const trigger = picker.locator('.quick-spec-trigger');
+    await expect(trigger).toBeEnabled();
+    if (await trigger.getAttribute('aria-expanded') !== 'true') await trigger.click();
     await picker.locator('.quick-spec-options button').filter({ hasText: name }).first().click();
   };
   const noOverflow = async () => assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'mobile screen has no horizontal overflow');

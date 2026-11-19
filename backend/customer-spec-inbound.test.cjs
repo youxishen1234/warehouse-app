@@ -139,6 +139,16 @@ test('customer carton account and dimension-book specs resolve atomically into p
       assert.equal(db.getProduct(first.lines[0].product_id).material, '牛皮纸');
     });
 
+    await t.test('direct receipt of an unnamed common spec reuses the same stock item without a product selection', () => {
+      const spec = db.listCartonInboundCustomers().find(row => row.id === customer.id).specs.find(row => row.id === 'dimension:["legacy-a","blank-goods"]');
+      const goods = `纸箱 ${spec.specification}`;
+      const first = receipt(customer, spec.id, 3.32, { goods, quantity: 502, delivered_qty: 502 });
+      const second = receipt(customer, spec.id, 3.32, { goods });
+      assert.equal(first.total_amount, 1666.64);
+      assert.equal(second.lines[0].product_id, first.lines[0].product_id);
+      assert.equal(db.getProduct(first.lines[0].product_id).stock, 506);
+    });
+
     await t.test('mismatched explicit products are rejected; duplicate products and later-line failures roll back', () => {
       const spec = db.listCartonInboundCustomers().find(row => row.id === customer.id).specs.find(row => row.id === 'dimension:["legacy-a","named-40"]');
       const mismatch = db.addProduct({ name: spec.goods, category: '纸箱', specification: '40×30×20 cm', material: '瓦楞纸', unit: '个', price: 9, stock: 0 });
