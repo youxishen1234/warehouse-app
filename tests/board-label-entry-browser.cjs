@@ -17,8 +17,9 @@ async function main() {
   });
   const base = 'http://127.0.0.1:' + server.address().port;
   const browser = await chromium.launch(process.env.PLAYWRIGHT_BROWSER_CHANNEL ? { channel: process.env.PLAYWRIGHT_BROWSER_CHANNEL } : {});
+  let context;
   try {
-    const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    context = await browser.newContext({ viewport: { width: 390, height: 844 } });
     await context.route(/https?:\/\/[^/]+\/api\//, async route => {
       const url = new URL(route.request().url());
       await route.fulfill({ response: await route.fetch({ url: base + url.pathname + url.search }) });
@@ -48,6 +49,10 @@ async function main() {
     const detailParams = new URLSearchParams(new URL(page.url()).hash.split('?')[1]);
     assert.equal(detailParams.get('kind'), 'paperboard-batch'); assert.equal(detailParams.get('id'), batch.id);
     console.log('PASS: customer/material/plate/color search, batch detail fields, stock and detail print routes, USB is default transport');
-  } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
+  } finally {
+    if (context) await context.unrouteAll({ behavior: 'ignoreErrors' }).catch(() => {});
+    await browser.close();
+    await new Promise(resolve => server.close(resolve));
+  }
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

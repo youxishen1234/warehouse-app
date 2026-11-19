@@ -464,6 +464,7 @@ async function main() {
     assert.ok(externalBlocked.every(request => !request.includes('youxishen.online')), '拦截的跨域非 API 请求不得触达生产域名');
     console.log(`PASS: quick SKU selection with quantity-only save, inventory-detail receipt actions, same-number receipt editing, delete stock rollback, production-only carton inbound, auto amount and zero price, multi-line totals, separator, duplicate-click lock, persisted stock-only notes, legacy history separation, local-only API, 320/390px layouts. Evidence: ${evidence}`);
   } finally {
+    await context.unrouteAll({ behavior: 'ignoreErrors' }).catch(() => {});
     await context.close();
     await browser.close();
     server.closeAllConnections();
