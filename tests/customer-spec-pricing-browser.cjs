@@ -167,7 +167,17 @@ async function main() {
     await dialog.screenshot({ path: path.join(evidence, 'customer-quote-add-320.png') });
     await assertDialogFits(390);
     await dialog.screenshot({ path: path.join(evidence, 'customer-quote-add-390.png') });
-    await fillRequired({ goods: '取消后不保存', size: '50×40×30', unit: '个', price: '1' });
+    const size = input('规格尺寸');
+    await size.pressSequentially('12');
+    await expect(size).toHaveValue('12×');
+    await size.pressSequentially('31');
+    await expect(size).toHaveValue('12×31×');
+    await size.pressSequentially('32');
+    await expect(size).toHaveValue('12×31×32');
+    await size.press('Backspace');
+    await expect(size).toHaveValue('12×31×3');
+    await fillRequired({ goods: '取消后不保存', size: '500x400*300', unit: '个', price: '1' });
+    await expect(size).toHaveValue('500×400×300');
     await dialog.getByText('取消', { exact: true }).click();
     await expect(dialog).toHaveCount(0);
     assert.equal(db.getCustomer(customer.id).specs.some(spec => spec.goods === '取消后不保存'), false);

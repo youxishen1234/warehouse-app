@@ -4,7 +4,7 @@ import { DemoSheet, DemoField } from '@/components/DemoUI';
 import Taro from '@tarojs/taro';
 import { getCustomer, getSupplier, updateCustomer, updateSupplier } from '@/services/api';
 import { session, watchSession } from '@/services/session';
-import { formatDimensionInput } from '@/utils/dimension-input';
+import { formatDimensionInput, maxDimensionSides } from '@/utils/dimension-input';
 import type { Customer, CustomerSpec } from '@/types';
 import { appendCustomerSpecQuote, sameCustomerSpecQuote } from './model';
 import type { CustomerSpecView } from './model';
@@ -42,9 +42,13 @@ const validDimensions = (value: string, kind: Kind) => {
     return Number.isFinite(length) && length > 0;
   });
 };
-const quoteDimensionInput = (value: string, previous: string, kind: Kind, sizeUnit: 'cm' | 'mm') => {
+const quoteDimensionInput = (value: string, previous: string, kind: Kind, sizeUnit: 'cm' | 'mm', supplier: boolean) => {
   const explicit = /[×xX*＊✕乘]/.test(value);
   const normalized = normalizeSize(value);
+  if (!supplier && /^[0-9×]*$/.test(previous) && value.startsWith(previous) && /^\d$/.test(value.slice(previous.length))) {
+    const sides = value.split('×');
+    return sides.length < maxDimensionSides(kind) && sides[sides.length - 1].length === 2 ? `${value}×` : value;
+  }
   // A pasted or replaced complete size keeps the sides the user entered.
   if (explicit && validDimensions(normalized, kind)) return normalized;
   return formatDimensionInput(value, previous, { sizeUnit, kind });
@@ -181,7 +185,7 @@ export default function QuoteEditor({ customer, supplier = false, seed, onClose,
   return <DemoSheet title={seed ? '编辑常用货物' : '添加常用货物'} onClose={onClose} busy={saving} testId='customer-quote-editor'>
     <p>保存货名、规格和参考单价，下次直接选择。历史单据保留原价格。</p>
     {input('goods', '货物名称', '规格货物', 100)}
-    <DemoField label='尺寸 / 规格'><input aria-label='规格尺寸' maxLength={90} value={draft.size} disabled={saving || !writable} onChange={event => setDraft(current => ({ ...current, size: quoteDimensionInput(event.target.value, current.size, current.kind, current.sizeUnit) }))} /></DemoField>
+    <DemoField label='尺寸 / 规格'><input aria-label='规格尺寸' maxLength={90} value={draft.size} disabled={saving || !writable} onChange={event => setDraft(current => ({ ...current, size: quoteDimensionInput(event.target.value, current.size, current.kind, current.sizeUnit, supplier) }))} /></DemoField>
     {input('material', '材质 / 楞型', '规格材质', 100)}
     {input('price', '参考单价（元 / ' + (draft.unit || '个') + '）', '规格常用单价', 20)}
     <details className='demo-more'><summary>单位与类别</summary>
