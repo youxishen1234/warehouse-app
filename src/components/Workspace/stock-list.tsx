@@ -1,6 +1,6 @@
 /* eslint-disable react/forbid-elements */
 import { View, Text, Button } from '@tarojs/components';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Taro from '@tarojs/taro';
 import { DemoSheet, DemoDetail } from '@/components/DemoUI';
 import type { BoardBatch } from '@/services/boards';
@@ -8,10 +8,13 @@ import { boardSpec, cartonSpec } from '@/services/boards';
 import type { Product, Transaction } from '@/types';
 import { formatMoney, formatTime } from '@/utils/format';
 import { openBusinessPage } from '@/services/business-navigation';
-import { getDeliveryNote, voidDeliveryNote } from '@/services/api';
+import { deleteProduct, getDeliveryNote, voidDeliveryNote } from '@/services/api';
 import { invalidateProducts } from '@/services/product-store';
 import { refreshSharedData } from '@/services/shared-refresh';
 import styles from '@/components/Workspace/workbench.module.scss';
+
+type CartonGroup = { key: string; name: string; customer: string; products: Product[] };
+const cartonGroupKey = (product: Product) => `${product.name}\u0000${product.customer_name || ''}`;
 
 export default function StockList({ kind, boards, cartons, transactions, onStocktake, onInbound }: {
   kind: 'all' | 'board' | 'carton';
@@ -23,7 +26,19 @@ export default function StockList({ kind, boards, cartons, transactions, onStock
   onInbound: (product: Product) => void;
 }) {
   const [selected, setSelected] = useState<Product>();
+  const [selectedGroup, setSelectedGroup] = useState<CartonGroup>();
   const [receiptBusy, setReceiptBusy] = useState(false);
+  const [productBusy, setProductBusy] = useState(false);
+  const cartonGroups = useMemo(() => {
+    const groups = new Map<string, CartonGroup>();
+    for (const product of cartons) {
+      const key = cartonGroupKey(product);
+      const group = groups.get(key) || { key, name: product.name, customer: product.customer_name || '', products: [] };
+      group.products.push(product);
+      groups.set(key, group);
+    }
+    return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name, 'zh-CN') || a.customer.localeCompare(b.customer, 'zh-CN'));
+  }, [cartons]);
   const latestReceipt = selected ? transactions
     .filter(row => row.product_id === selected.id && row.type === 'in' && !row.voided_at && !row.stocktake_id)
     .sort((a, b) => b.created_at - a.created_at)[0] : undefined;
@@ -61,21 +76,62 @@ export default function StockList({ kind, boards, cartons, transactions, onStock
       void Taro.showToast({ title: error instanceof Error ? error.message : '删除失败', icon: 'none' });
     } finally { setReceiptBusy(false); }
   };
+  const removeProduct = async () => {
+    if (!selected || productBusy) return;
+    if (Math.abs(selected.stock) > 0.000001) {
+      await Taro.showModal({
+        title: '请先清空库存',
+        content: `「${selected.name} · ${selected.specification || '未填规格'}」还有 ${selected.stock} ${selected.unit}。请先出库或盘点为 0，再删除该规格，避免库存被隐藏。`,
+        showCancel: false,
+        confirmText: '知道了'
+      });
+      return;
+    }
+    const confirmation = await Taro.showModal({
+      title: '删除这个规格？',
+      content: `「${selected.name} · ${selected.specification || '未填规格'}」将从库存和开单选择中隐藏。历史出入库、入库单和金额记录都会保留。`,
+      confirmText: '确认删除',
+      confirmColor: '#dc2626'
+    });
+    if (!confirmation.confirm) return;
+    setProductBusy(true);
+    try {
+      await deleteProduct(selected.id);
+      invalidateProducts(); refreshSharedData(); setSelected(undefined);
+      void Taro.showToast({ title: '规格已删除，历史记录已保留', icon: 'success' });
+    } catch (error) {
+      void Taro.showToast({ title: error instanceof Error ? error.message : '删除失败', icon: 'none' });
+    } finally { setProductBusy(false); }
+  };
   return <View data-testid='workbench-stock-list'>
     {kind !== 'carton' && boards.map(batch => <Button className={styles.stockCard} key={batch.id} data-testid='workbench-board' data-record-id={batch.id} onClick={() => void openBusinessPage('/pages/management/index?section=paperboard-batch&id=' + encodeURIComponent(batch.id))}>
       <View className={styles.stockTop}><View className={styles.avatar}>板</View><View className={styles.stockIdentity}><strong>{batch.name || `${batch.layers}层 ${batch.fluteType}楞纸板`}</strong><Text>{boardSpec(batch)} cm</Text><Text>成箱 {cartonSpec(batch)} cm</Text><Text>入库：{batch.enteredAt?.replace('T', ' ') || batch.date}</Text><Text>入库金额：{batch.amountMode === 'pending' ? '待核算' : formatMoney(batch.amount)}</Text></View><View className={styles.stockAmount}>{batch.remainingQty.toLocaleString()} <Text>张</Text></View></View>
       <View className={styles.stockBottom}><View><Text>客户：{batch.customerName || '公共备货'}</Text><Text>供货来源：{batch.supplier || '未关联供货商'}</Text><Text>库位：{batch.location || '未设库位'}</Text></View><Text>查看明细 ›</Text></View>
     </Button>)}
-    {kind !== 'board' && cartons.map(product => {
-    const receipts = transactions.filter(row => row.product_id === product.id && row.type === 'in' && !row.voided_at);
-    const customers = [...new Set([product.customer_name, ...receipts.map(row => row.customer_name)].filter(Boolean))];
+    {kind !== 'board' && cartonGroups.map(group => {
+    const productIds = new Set(group.products.map(product => product.id));
+    const receipts = transactions.filter(row => productIds.has(row.product_id) && row.type === 'in' && !row.voided_at);
+    const customers = [...new Set([group.customer, ...receipts.map(row => row.customer_name)].filter(Boolean))];
     const suppliers = [...new Set(receipts.map(row => row.supplier_name).filter(Boolean))];
     const latest = receipts.reduce<Transaction | undefined>((last, row) => !last || row.created_at > last.created_at ? row : last, undefined);
-    return <Button key={product.id} className={styles.stockCard} data-testid='workbench-carton' onClick={() => setSelected(product)}>
-      <View className={styles.stockTop}><View className={styles.avatar}>箱</View><View className={styles.stockIdentity}><strong>{product.name}</strong><Text>{product.specification}</Text>{latest && <Text>入库：{latest.entered_at?.replace('T', ' ') || formatTime(latest.created_at)}</Text>}</View><View className={styles.stockAmount}>{product.stock.toLocaleString()} <Text>{product.unit}</Text></View></View>
-      <View className={styles.stockBottom}><View><Text>客户：{customers.join('、') || '公共备货'}</Text><Text>供货来源：{suppliers.join('、') || (receipts.some(row => row.production_id) ? '自产' : '未关联供货商')}</Text><Text>库位：{latest?.location || '未设库位'}</Text></View><Text>查看明细 ›</Text></View>
+    const units = [...new Set(group.products.map(product => product.unit).filter(Boolean))];
+    const stock = group.products.reduce((sum, product) => sum + product.stock, 0);
+    const openGroup = () => group.products.length === 1 ? setSelected(group.products[0]) : setSelectedGroup(group);
+    return <Button key={group.key} className={styles.stockCard} data-testid='workbench-carton' onClick={openGroup}>
+      <View className={styles.stockTop}><View className={styles.avatar}>箱</View><View className={styles.stockIdentity}><strong>{group.name}</strong><Text>{group.products.length} 个规格{group.products.length === 1 ? ` · ${group.products[0].specification || '尺寸待补充'}` : ''}</Text>{latest && <Text>最近入库：{latest.entered_at?.replace('T', ' ') || formatTime(latest.created_at)}</Text>}</View><View className={styles.stockAmount}>{units.length === 1 ? stock.toLocaleString() : '多单位'} <Text>{units.length === 1 ? units[0] : `${group.products.length} 项`}</Text></View></View>
+      <View className={styles.stockBottom}><View><Text>客户：{customers.join('、') || '公共备货'}</Text><Text>供货来源：{suppliers.join('、') || (receipts.some(row => row.production_id) ? '自产' : '未关联供货商')}</Text><Text>库位：{latest?.location || '未设库位'}</Text></View><Text>{group.products.length === 1 ? '查看明细 ›' : `选择规格 ›`}</Text></View>
     </Button>;
   })}
+  {selectedGroup && <DemoSheet title={`${selectedGroup.name} · ${selectedGroup.products.length} 个规格`} onClose={() => setSelectedGroup(undefined)} testId='carton-spec-group-sheet'>
+    <p>选择一个规格查看库存，或修改、删除入库单。</p>
+    {selectedGroup.products.map(product => {
+      const latest = transactions.filter(row => row.product_id === product.id && row.type === 'in' && !row.voided_at).sort((a, b) => b.created_at - a.created_at)[0];
+      return <button key={product.id} type='button' className='demo-card' data-testid='carton-spec-option' onClick={() => { setSelectedGroup(undefined); setSelected(product); }}>
+        <div className='demo-row'><strong>{product.specification || '规格待补充'}</strong><span className='demo-badge'>{product.stock} {product.unit}</span></div>
+        <p>{[product.material, latest?.location, latest?.entered_at?.replace('T', ' ')].filter(Boolean).join(' · ') || '暂无入库明细'}</p>
+      </button>;
+    })}
+  </DemoSheet>}
   {selected && <DemoSheet title={selected.name} onClose={() => setSelected(undefined)} testId='carton-stock-detail'>
     <DemoDetail label='规格'>{selected.specification || '未填写'}</DemoDetail>
     {(() => { const latest = transactions.filter(row => row.product_id === selected.id && row.type === 'in' && !row.voided_at).sort((a, b) => b.created_at - a.created_at)[0]; return <><DemoDetail label='入库日期时间'>{latest?.entered_at?.replace('T', ' ') || (latest ? formatTime(latest.created_at) : '未记录')}</DemoDetail><DemoDetail label='系统登记时间'>{latest ? formatTime(latest.created_at) : '未记录'}</DemoDetail><DemoDetail label='库位'>{latest?.location || '未设库位'}</DemoDetail></>; })()}
@@ -86,6 +142,7 @@ export default function StockList({ kind, boards, cartons, transactions, onStock
     <p>数量变化记录</p>{transactions.filter(row => row.product_id === selected.id && !row.voided_at).map(row => <DemoDetail key={row.id} label={`${row.type === 'in' ? '入库' : row.type === 'out' ? '出库' : '盘点'} · ${formatTime(row.created_at)}`}>{row.type === 'out' ? '−' : '+'}{row.type === 'adjustment' ? row.adjustment ?? row.quantity : row.quantity} {row.unit}</DemoDetail>)}
     {latestReceipt && <div className='demo-card' data-testid='stock-latest-receipt-actions'><strong>最近入库单{latestNoteId ? ` #${latestNoteId}` : ''}</strong><p>{latestReceipt.entered_at?.replace('T', ' ') || formatTime(latestReceipt.created_at)} · {latestReceipt.quantity} {latestReceipt.unit}</p><div className='demo-two'><button type='button' className='demo-action' disabled={receiptBusy} onClick={() => void openLatestReceiptEditor()}>{receiptBusy ? '正在读取…' : '修改最近入库单'}</button><button type='button' className='demo-action' disabled={receiptBusy} onClick={() => void removeLatestReceipt()}>删除最近入库单</button></div></div>}
     <div className='demo-two'><button type='button' className='demo-primary' onClick={() => { setSelected(undefined); onInbound(selected); }}>同规格入库</button><button type='button' className='demo-primary demo-secondary' onClick={() => { setSelected(undefined); onStocktake(selected); }}>库存盘点</button></div>
+    <button type='button' className='demo-action' data-testid='delete-product-spec' disabled={productBusy || Math.abs(selected.stock) > 0.000001} onClick={() => void removeProduct()}>{Math.abs(selected.stock) > 0.000001 ? '库存清零后可删除该规格' : productBusy ? '正在删除…' : '删除该规格'}</button>
     <details className='demo-more'><summary>更多操作</summary><div className='demo-menu'><button type='button' onClick={() => void openBusinessPage('/pages/management/index?section=labels&kind=finished-product&id=' + selected.id)}>标签打印<span>›</span></button><button type='button' onClick={() => void openBusinessPage('/pages/management/index?section=transactions&type=in&product_id=' + selected.id)}>入库单据与金额<span>›</span></button></div></details>
   </DemoSheet>}
 

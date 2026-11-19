@@ -86,6 +86,26 @@ async function main() {
     price: 1.4,
     stock: 4
   });
+  const groupedDisposable = db.addProduct({
+    name: '多规格分组纸箱',
+    material: '牛皮纸',
+    category: '纸箱',
+    specification: '10×20×30',
+    unit: '个',
+    price: 1,
+    stock: 0,
+    safety_stock: 0
+  });
+  db.addProduct({
+    name: '多规格分组纸箱',
+    material: '牛皮纸',
+    category: '纸箱',
+    specification: '15×25×35',
+    unit: '个',
+    price: 1,
+    stock: 2,
+    safety_stock: 0
+  });
   const date = localDate();
   const legacyPurchase = db.addDeliveryNote({
     date,
@@ -299,6 +319,21 @@ async function main() {
     await page.goto(`${origin}/#/pages/management/index?section=stock`);
     await page.reload();
     await page.locator('.team-boot').waitFor({ state: 'detached' });
+    const groupedCard = page.getByTestId('workbench-carton').filter({ hasText: '多规格分组纸箱' });
+    await expect(groupedCard).toHaveCount(1);
+    await expect(groupedCard).toContainText('2 个规格');
+    await groupedCard.click();
+    await expect(page.getByTestId('carton-spec-group-sheet')).toBeVisible();
+    const groupedOptions = page.getByTestId('carton-spec-option');
+    await expect(groupedOptions).toHaveCount(2);
+    await groupedOptions.filter({ hasText: groupedDisposable.specification }).click();
+    await expect(page.getByTestId('carton-stock-detail')).toContainText(groupedDisposable.specification);
+    await page.getByTestId('delete-product-spec').click();
+    const productDeleteModal = page.locator('.taro-modal__content:visible').last();
+    await expect(productDeleteModal).toBeVisible();
+    await productDeleteModal.locator('.taro-model__confirm').click();
+    await expect.poll(() => db.getProduct(groupedDisposable.id).deleted_at || 0).toBeGreaterThan(0);
+
     const stockCard = page.getByTestId('workbench-carton').filter({ hasText: cartonProduct.name });
     await expect(stockCard).toBeVisible();
     await stockCard.click();
