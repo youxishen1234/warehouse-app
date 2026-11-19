@@ -114,6 +114,8 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
     });
   }, []);
   const changePanel = (next: Panel) => { setPanel(next); setQuery(''); setError(''); setStockWarningsOnly(false); setOrderAttention(null); if (next !== 'records') setRecordView('activity'); returnToTop(); };
+  const inventoryTab = embedded && initial === 'stock';
+  const returnToDashboard = () => inventoryTab ? void Taro.switchTab({ url: '/pages/home/index' }) : changePanel('home');
   const openFinance = (view: FinanceView, entry?: number) => { setFinancePartyId(undefined); setFinanceView(view); setFinanceEntryId(entry); changePanel('finance'); };
   const leaveCustomerCenter = () => {
     if (!customerRoute && !supplierRoute) { changePanel('home'); return; }
@@ -140,7 +142,7 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
     try {
       const record = await completeProduction({ batch_id: batch.id, ...(productId ? { product_id: productId } : { product_name: name || `${batch.layers}层${batch.fluteType}楞纸箱` }), consumed_quantity: Number(consumed), quantity: Number(quantity), remark });
       invalidateProducts(); setConsumed(''); setQuantity(''); setRemark(''); await reload();
-      setPanel('home'); void Taro.showToast({ title: `已领用 ${record.consumed_quantity} 张，入库 ${record.quantity} ${record.unit}`, icon: 'success' });
+      setPanel(inventoryTab ? 'stock' : 'home'); void Taro.showToast({ title: `已领用 ${record.consumed_quantity} 张，入库 ${record.quantity} ${record.unit}`, icon: 'success' });
     } catch (e) { setError(e instanceof Error ? e.message : '保存失败，请重试'); }
     finally { locked.current = false; setBusy(false); }
   };
@@ -160,7 +162,7 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
     } catch (e) { setError(e instanceof Error ? e.message : '盘点保存失败，请重试'); }
     finally { locked.current = false; setBusy(false); }
   };
-  const displayPanel = panel === 'production' || panel === 'inbound' ? 'home' : panel;
+  const displayPanel = panel === 'production' || panel === 'inbound' ? (inventoryTab ? 'stock' : 'home') : panel;
   const title = { home: '业务总台', inbound: '选择入库方式', stock: '库存管理', records: '业务记录', photos: '票据原件', production: '生产入库', finance: '收付款', customers: '客户管理', suppliers: '供货商管理' }[displayPanel];
   const appName = getCopy('appName');
   const brandCharacter = Array.from(appName.trim())[0] || '曙';
@@ -226,7 +228,7 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
   return <View className={styles.page} data-ui-version='web-workbench-v2' data-layout='demo-layout-v1' data-panel={panel} data-testid='simple-workbench' data-tab-route={embedded ? undefined : panel === 'stock' ? '/pages/inventory/index' : '/pages/home/index'}><View className={styles.surface}>
     <View className={styles.masthead}>
       <View className={styles.header}><View className={styles.heading}>
-        {displayPanel === 'home' ? <View className={styles.brand} aria-label={`${appName}标识`} data-testid='workbench-brand'><Text className={styles.brandCharacter}>{brandCharacter}</Text></View> : <Button aria-label='返回总台' className={styles.back} onClick={panel === 'customers' || panel === 'suppliers' ? leaveCustomerCenter : () => changePanel('home')}>‹</Button>}
+        {displayPanel === 'home' ? <View className={styles.brand} aria-label={`${appName}标识`} data-testid='workbench-brand'><Text className={styles.brandCharacter}>{brandCharacter}</Text></View> : <Button aria-label='返回总台' className={styles.back} onClick={panel === 'customers' || panel === 'suppliers' ? leaveCustomerCenter : returnToDashboard}>‹</Button>}
         <View className={styles.headingText}><Text className={styles.brandName}>{appName}</Text><Text className={styles.title}>{title}</Text></View>
       </View><Button className={styles.refresh} aria-label='刷新服务器数据' disabled={remote.loading} onClick={refresh}>↻</Button></View>
       <View className={styles.status}><Text>{now.getMonth() + 1}月{now.getDate()}日 · 周{'日一二三四五六'[now.getDay()]}</Text><Text data-testid='workbench-sync-status' className={remote.loadError ? styles.syncError : styles.synced}>{remote.loading ? hasSnapshot ? '同步中 · 当前数据仍可查看' : '同步中' : remote.loadError ? '同步未完成 · 当前显示上次成功数据' : lastSyncedAt ? '● 已同步' : ''}</Text></View>
@@ -309,7 +311,7 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
         <button type='button' className='demo-primary demo-secondary' onClick={() => open('/pages/carton-inbound/index?kind=purchase')}>选择已有货物入库</button>
         <button type='button' className='demo-primary' onClick={() => open('/pages/carton-inbound/index')}>＋ 纸箱入库</button>
       </DemoSheet>}
-      {panel === 'stock' && <View>
+      {displayPanel === 'stock' && <View>
         {stockWarningsOnly && <View className={styles.filterNotice}><Text>库存预警 · 全部商品</Text><Button className={styles.textAction} onClick={() => setStockWarningsOnly(false)}>清除筛选</Button></View>}
         <View className={styles.stockSummary}><View><Text>纸板原料</Text><strong>{hasSnapshot ? data.boards.reduce((sum, b) => sum + b.remainingQty, 0).toLocaleString() : '—'}<small>张</small></strong><Text>{hasSnapshot ? `${data.boards.length} 个批次` : ''}</Text></View><View><Text>纸箱成品</Text><strong>{hasSnapshot ? cartonProducts.reduce((sum, p) => sum + p.stock, 0).toLocaleString() : '—'}<small>个</small></strong><Text>{hasSnapshot ? `${cartonProducts.length} 种规格` : ''}</Text></View></View>
         <View className={styles.stockHeading}><Text className={styles.sectionHint}>原料与成品</Text>{action('入库', () => changePanel('inbound'))}</View>
@@ -318,7 +320,7 @@ export default function Workbench({ embedded = false, initial }: WorkbenchProps)
         <StockList kind={kind} boards={visibleBoards} cartons={visibleCartons} transactions={data.transactions} onProduce={id => { chooseBatch(id); changePanel('production'); }} onStocktake={openStocktake} onInbound={product => { Taro.setStorageSync('sg_transit', { product_id: product.id }); open('/pages/carton-inbound/index'); }} />
         {!visibleStockCount && <View className={styles.empty} data-testid='workbench-stock-empty'><Text>{stockCount ? '没有找到匹配库存' : `还没有${kind === 'board' ? '纸板' : '纸箱'}库存记录`}</Text>{stockCount > 0 && action('清空搜索', () => setQuery(''))}</View>}
       </View>}
-      {panel === 'production' && <DemoSheet title='生产入库' busy={busy} onClose={() => initial === 'production' ? closeBusinessSheet() : changePanel('home')} testId='production-receipt-sheet'>
+      {panel === 'production' && <DemoSheet title='生产入库' busy={busy} onClose={() => initial === 'production' ? closeBusinessSheet() : changePanel(inventoryTab ? 'stock' : 'home')} testId='production-receipt-sheet'>
         <p data-testid='production-stock-guide'>选择常用规格直接备货，无需客户订单。实际用料和成品数量请核对。</p>
         <DemoField label='成品规格'><select aria-label='入库纸箱商品' disabled={busy} value={productId || ''} onChange={event => setProductId(Number(event.target.value) || null)}><option value=''>{batch ? `纸箱 · ${cartonSpec(batch)} cm` : '选择成品规格'}</option>{data.products.filter(cartonProduct).map(product => <option key={product.id} value={product.id}>{product.name} · {product.specification}</option>)}</select></DemoField>
         <DemoField label='领用纸板批次'><select aria-label='领用哪批纸板' disabled={busy} value={batchId} onChange={event => chooseBatch(event.target.value)}><option value=''>选择纸板批次</option>{data.boards.filter(board => board.remainingQty > 0).map(board => <option key={board.id} value={board.id}>{board.supplier || '未关联供货商'} · {boardSpec(board)} cm · 余 {board.remainingQty} 张</option>)}</select></DemoField>
