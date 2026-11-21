@@ -12,7 +12,7 @@ import QuickSpecPicker from '@/components/QuickSpecPicker';
 import type { PartyGood } from '@/components/PartySearchPanel';
 import { formatSpecificationInput } from '@/pages/print-center/specification-input';
 import type { Customer, Product, Supplier } from '@/types';
-import { completeGood, matchingProducts, lineAmount, draftTotal } from './entry-model';
+import { completeGood, matchingProducts, missingLineDetails, lineAmount, draftTotal } from './entry-model';
 
 
 type EditableLine = {
@@ -189,7 +189,9 @@ export default function InboundPage() {
         const label = `第 ${index + 1} 项`;
         const fromCustomerSpec = cartonOnly && Boolean(line.customer_spec_id);
         if (!fromCustomerSpec && !line.product_id && !line.create_product) throw new Error(`${label}请选择现有商品，或明确创建并关联商品`);
-        if (!line.goods.trim() || !line.specification.trim() || !line.material.trim() || !line.unit.trim()) throw new Error(`${label}请补齐名称、尺寸、材质和单位`);
+        if (missingLineDetails(line)) {
+          throw new Error(`${label}请补齐货物名称、材质和单位；新建商品时还需填写尺寸`);
+        }
         if (!line.unit_price.trim() && !cartonOnly) throw new Error(`${label}请填写本次单价，未记录价格不能按零元入账`);
         if (line.customer_spec_id && !billingCustomer?.specs?.some(item => item.id === line.customer_spec_id)) throw new Error(`${label}客户货物资料已变更，请重新选择`);
         if (line.supplier_spec_id && !party?.specs?.some(item => item.id === line.supplier_spec_id)) throw new Error(`${label}供货货物资料已变更，请重新选择`);
@@ -213,7 +215,7 @@ export default function InboundPage() {
       if (wasEditing) resetEditingDraft();
       void Taro.showToast({ title: wasEditing ? '入库单修改成功' : '入库单保存成功', icon: 'success' }); await load(true, wasEditing);
     } catch (error) {
-      setSpecDetails(current => ({ ...current, ...Object.fromEntries(lines.filter(line => !line.goods.trim() || !line.specification.trim() || !line.material.trim() || !line.unit.trim() || (!line.unit_price.trim() && !cartonOnly)).map(line => [line.key, true])) }));
+      setSpecDetails(current => ({ ...current, ...Object.fromEntries(lines.filter(line => missingLineDetails(line) || (!line.unit_price.trim() && !cartonOnly)).map(line => [line.key, true])) }));
       void Taro.showToast({ title: message(error), icon: 'none' });
     }
     finally { busy.current = false; setSaving(false); }
@@ -292,7 +294,7 @@ export default function InboundPage() {
           <DemoField label={cartonOnly ? '客户常用货物' : '供货商常购货物'}><select aria-label={index ? `货物 ${index + 1} 常用货物` : '常用货物'} disabled={saving || !ready || !selectedParty} value={line.customer_spec_id || line.supplier_spec_id || ''} onChange={event => { const chosen = goods.find(item => String(item.id) === event.target.value); if (chosen) chooseGood(line, chosen); }}><option value=''>{selectedParty ? goods.length ? '选择常用货物' : '暂无常用货物' : `先选择${cartonOnly ? '客户' : '供货商'}`}</option>{goods.map(item => <option key={item.id} value={item.id}>{item.goods} · {item.specification}</option>)}</select></DemoField>
           {!fromCustomerSpec && (!cartonOnly || lineProducts.length > 0) && <DemoField label='选择已有货物'><select aria-label={`货物 ${index + 1} 选择已有商品`} value={line.product_id || ''} disabled={saving || !ready} onChange={event => { const chosen = lineProducts.find(item => item.id === Number(event.target.value)); if (chosen) chooseProduct(line, chosen); }}><option value=''>选择已有货物</option>{lineProducts.map(item => <option key={item.id} value={item.id}>{item.name} · {item.specification}</option>)}</select></DemoField>}
           {editable('goods', cartonOnly ? '纸箱名称（必填）' : '货物名称')}
-          <DemoField label='长 × 宽 × 高 / 规格（必填）'><input type='text' aria-label={`货物 ${index + 1} 规格尺寸`} disabled={saving} value={line.specification} onChange={event => updateLine(line.key, { specification: cartonOnly ? formatSpecificationInput(event.target.value, line.specification) : event.target.value, product_id: null, create_product: false })} /></DemoField>
+          <DemoField label='长 × 宽 × 高 / 规格（已有商品可留空）'><input type='text' aria-label={`货物 ${index + 1} 规格尺寸`} disabled={saving} value={line.specification} onChange={event => updateLine(line.key, { specification: cartonOnly ? formatSpecificationInput(event.target.value, line.specification) : event.target.value, product_id: null, create_product: false })} /></DemoField>
           <div className='demo-two'>{editable('material', '材质')}{editable('unit', '单位')}</div>
           <DemoField label='入库单价（元）'><input type='number' min='0' step='any' aria-label={`货物 ${index + 1} 入库单价`} disabled={saving} value={line.unit_price} onChange={event => { setCostTotals(current => { const next = { ...current }; delete next[line.key]; return next; }); updateLine(line.key, { unit_price: sanitizeDecimalInput(event.target.value, 6) }); }} /></DemoField>
           <DemoDetail label='入库金额（自动）'><span data-testid={`inbound-line-amount-${index + 1}`}>{amountText(amount)}</span></DemoDetail>

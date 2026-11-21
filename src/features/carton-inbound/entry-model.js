@@ -25,6 +25,13 @@ function matchingProducts(item, products, cartonOnly = false) {
     && normalized(item.unit) === normalized(product.unit));
 }
 
+function missingLineDetails(line) {
+  return !String(line?.goods ?? '').trim()
+    || (!line?.product_id && !String(line?.specification ?? '').trim())
+    || !String(line?.material ?? '').trim()
+    || !String(line?.unit ?? '').trim();
+}
+
 function lineAmount(line) {
   if (!String(line.unit_price ?? '').trim() || !String(line.delivered_qty ?? '').trim()) return null;
   const quantity = Number(line.delivered_qty), price = Number(line.unit_price);
@@ -37,4 +44,4 @@ function draftTotal(lines) {
   return amounts.length ? (amounts.every(Number.isFinite) ? roundDecimal(amounts.reduce((sum, value) => sum + value, 0), 2) : NaN) : null;
 }
 
-module.exports = { completeGood, matchingProducts, lineAmount, draftTotal };
+module.exports = { completeGood, matchingProducts, missingLineDetails, lineAmount, draftTotal };

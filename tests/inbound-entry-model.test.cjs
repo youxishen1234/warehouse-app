@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
-const { completeGood, matchingProducts, lineAmount, draftTotal } = require('../src/features/carton-inbound/entry-model');
+const { completeGood, matchingProducts, missingLineDetails, lineAmount, draftTotal } = require('../src/features/carton-inbound/entry-model');
 
 const good = overrides => ({ goods: '客户货号甲', specification: '30×20×15 cm', material: 'AB', unit: '个', price: 2.5, ...overrides });
 const products = [{ id: 4, name: '库存商品乙', category: '纸箱', specification: '300×200×150 mm', material: 'ab', unit: '个', price: 1, stock: 0 }];
@@ -15,6 +15,12 @@ test('empty prices never produce zero and totals include only explicitly priced 
   assert.equal(lineAmount({ delivered_qty: '8', unit_price: '' }), null);
   assert.equal(draftTotal([{ delivered_qty: '8', unit_price: '' }, { delivered_qty: '2', unit_price: '3.25' }]), 6.5);
   assert.equal(draftTotal([{ delivered_qty: '', unit_price: '' }]), null);
+});
+
+test('an existing product may be received without dimensions while a new product still requires them', () => {
+  const line = { product_id: 4, goods: '库存纸箱', specification: '', material: '牛皮纸', unit: '个' };
+  assert.equal(missingLineDetails(line), false);
+  assert.equal(missingLineDetails({ ...line, product_id: null }), true);
 });
 
 test('physical dimensions, material and stock unit all have to agree before automatic mapping', () => {

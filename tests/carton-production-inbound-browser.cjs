@@ -86,7 +86,16 @@ async function main() {
     price: 1.4,
     stock: 4
   });
-  for (const product of [cartonProduct, finishedProduct]) Object.assign(product, { customer_id: customer.id, customer_name: customer.name });
+  const noSpecificationProduct = db.addProduct({
+    name: '无尺寸纸箱',
+    material: '牛皮纸',
+    category: '纸箱',
+    specification: '',
+    unit: '个',
+    price: 1.8,
+    stock: 0
+  });
+  for (const product of [cartonProduct, finishedProduct, noSpecificationProduct]) Object.assign(product, { customer_id: customer.id, customer_name: customer.name });
   const groupedDisposable = db.addProduct({
     name: '多规格分组纸箱',
     material: '牛皮纸',
@@ -133,6 +142,7 @@ async function main() {
     ledger: db.listLedger({ include_voided: 'true' }).map(entry => ({ ...entry })),
     cartonStock: db.getProduct(cartonProduct.id).stock,
     finishedStock: db.getProduct(finishedProduct.id).stock,
+    noSpecificationStock: db.getProduct(noSpecificationProduct.id).stock,
     productionCount: db.listProduction().length
   };
 
@@ -468,9 +478,32 @@ async function main() {
     await expect.poll(() => db.getDeliveryNote(quickNote.id).voided_at).toBeGreaterThan(0);
     assert.equal(db.getProduct(cartonProduct.id).stock, baseline.cartonStock);
 
+    // Existing carton products are already identified by their SKU, so a
+    // missing dimension is optional metadata and must not block stock receipt.
+    await page.goto(`${origin}${productionPath}`);
+    await expect(input('货物 1 本次完工数量')).toBeVisible();
+    await selectProductionCustomer();
+    await chooseQuickReceipt(page, noSpecificationProduct.name, { kind: 'product' });
+    await expect(page.getByTestId('inbound-selected-summary-1')).toContainText('尺寸待补充');
+    await input('货物 1 本次完工数量').fill('2');
+    await expect(buttonContainingText('确认纸箱入库')).toBeEnabled();
+    const noSpecificationResponse = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/delivery-notes');
+    await buttonContainingText('确认纸箱入库').click();
+    const noSpecificationResult = await noSpecificationResponse;
+    assert.equal(noSpecificationResult.status(), 200, '已有纸箱商品缺少尺寸时仍应允许入库');
+    const noSpecificationNote = (await noSpecificationResult.json()).data;
+    assert.equal(noSpecificationNote.lines[0].product_id, noSpecificationProduct.id);
+    assert.equal(noSpecificationNote.lines[0].specification, '');
+    assert.equal(noSpecificationNote.lines[0].delivered_qty, 2);
+    assert.equal(db.getProduct(noSpecificationProduct.id).stock, baseline.noSpecificationStock + 2);
+    await buttonContainingText('删除入库单').click();
+    await page.locator('.taro-modal__content:visible').last().locator('.taro-model__confirm').click();
+    await expect.poll(() => db.getDeliveryNote(noSpecificationNote.id).voided_at).toBeGreaterThan(0);
+    assert.equal(db.getProduct(noSpecificationProduct.id).stock, baseline.noSpecificationStock);
+
     assert.deepEqual(pageErrors, [], '浏览器页面不应产生运行时异常');
     assert.ok(externalBlocked.every(request => !request.includes('youxishen.online')), '拦截的跨域非 API 请求不得触达生产域名');
-    console.log(`PASS: quick SKU selection with quantity-only save, inventory-detail receipt actions, same-number receipt editing, delete stock rollback, production-only carton inbound, auto amount and zero price, multi-line totals, separator, duplicate-click lock, persisted stock-only notes, legacy history separation, local-only API, 320/390px layouts. Evidence: ${evidence}`);
+    console.log(`PASS: quick SKU selection including existing cartons without dimensions, quantity-only save, inventory-detail receipt actions, same-number receipt editing, delete stock rollback, production-only carton inbound, auto amount and zero price, multi-line totals, separator, duplicate-click lock, persisted stock-only notes, legacy history separation, local-only API, 320/390px layouts. Evidence: ${evidence}`);
   } finally {
     await context.unrouteAll({ behavior: 'ignoreErrors' }).catch(() => {});
     await context.close();
