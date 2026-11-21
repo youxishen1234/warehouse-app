@@ -104,9 +104,22 @@ test('produce cartons into stock, create a ready-stock order, ship it and revers
   assert.equal(db.getCustomer(customer.id).debt, 75);
   assert.equal(db.listLedger().filter(row => row.party_id === customer.id && row.type === 'receivable').reduce((sum, row) => sum + row.amount, 0), 75);
 
+  const first = partial.transactions[0].transaction.id;
+  const second = completion.transactions[0].transaction.id;
+  assert.deepEqual(db.customerProfit().summary, { cents: 0, confirmed: 0, pending: 2 });
+  assert.throws(() => db.setShipmentProfitBatch(first, 'missing'), /不匹配/);
+  db.setShipmentProfitBatch(first, production.id);
+  assert.deepEqual(db.customerProfit({ customer_id: customer.id }).summary, { cents: 100, confirmed: 1, pending: 1 });
+  db.setShipmentProfitBatch(second, production.id);
+  assert.deepEqual(db.customerProfit().summary, { cents: 300, confirmed: 2, pending: 0 });
+  assert.equal(db.customerProfit({ from: Date.now() + 10000 }).total, 0);
+  db.setShipmentProfitBatch(first, null);
+  assert.equal(db.customerProfit().summary.cents, 200);
+
   // Voiding part of a fully shipped order reopens the ready-stock order and
   // reverses only that shipment's stock and receivable posting.
   db.deleteTransaction(completion.transactions[0].transaction.id);
+  assert.deepEqual(db.customerProfit().summary, { cents: 0, confirmed: 0, pending: 1 });
   assert.equal(db.listOrders().find(row => row.id === order.id).status, '待发货');
   assert.equal(db.getProduct(product.id).stock, 8);
   assert.equal(db.getCustomer(customer.id).debt, 25);

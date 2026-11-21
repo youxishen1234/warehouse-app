@@ -1589,6 +1589,73 @@ function postStock(type, productId, quantity, op, remark, partyId, details, inco
 function stockIn(productId, qty, op='', rmk='', supplierId=null, details={}, incomingPartyType='supplier', billingSource=null) { return postStock('in', productId, qty, op, rmk, supplierId, details, incomingPartyType, billingSource); }
 function stockOut(productId, qty, op='', rmk='', customerId=null, details={}) { return postStock('out', productId, qty, op, rmk, customerId, details); }
 
+const profitSignature = tx => JSON.stringify([tx.product_id, tx.quantity, tx.unit, tx.customer_id, tx.created_at]);
+const profitShipment = tx => tx.type === 'out' && tx.customer_id && !tx.voided_at;
+
+function profitContext() {
+  const batches = cache.production_records || [];
+  const byId = new Map(batches.map(batch => [batch.id, batch]));
+  const boards = new Map(listBoards().map(board => [board.id, board]));
+  const shipments = cache.transactions.filter(profitShipment);
+  const used = new Map();
+  const assignment = tx => tx.profit_batch?.signature === profitSignature(tx) ? byId.get(tx.profit_batch.id) : undefined;
+  for (const tx of shipments) {
+    const batch = assignment(tx);
+    if (batch) used.set(batch.id, roundDecimal((used.get(batch.id) || 0) + tx.quantity, 6));
+  }
+  const candidates = tx => batches.filter(batch => batch.product_id === tx.product_id && batch.unit === tx.unit
+    && batch.created_at <= tx.created_at && tx.quantity > 0
+    && roundDecimal(batch.quantity - (used.get(batch.id) || 0) + (assignment(tx)?.id === batch.id ? tx.quantity : 0), 6) >= tx.quantity);
+  return { boards, shipments, assignment, candidates };
+}
+
+function setShipmentProfitBatch(id, batchId) {
+  const { shipments, candidates } = profitContext();
+  const tx = shipments.find(row => row.id === id);
+  if (!tx) throw new Error('找不到有效的客户出库记录');
+  if (batchId === null) delete tx.profit_batch;
+  else {
+    if (!candidates(tx).some(batch => batch.id === batchId)) throw new Error('完工批次不匹配，或可分配数量不足');
+    tx.profit_batch = { id: batchId, signature: profitSignature(tx) };
+  }
+  persist();
+  return { id };
+}
+
+function customerProfit({ customer_id, from, page } = {}) {
+  const { boards, shipments, assignment, candidates } = profitContext();
+  const customer = Number(customer_id);
+  const start = Number(from) || 0;
+  const pageSize = 20;
+  const offset = (Math.max(1, Math.floor(Number(page) || 1)) - 1) * pageSize;
+  const rows = shipments.filter(tx => tx.created_at >= start && (!customer || tx.customer_id === customer))
+    .sort((a, b) => b.created_at - a.created_at || b.id - a.id);
+  const empty = () => ({ cents: 0, confirmed: 0, pending: 0 });
+  const summary = empty();
+  const customers = Object.create(null);
+  const items = [];
+  rows.forEach((tx, index) => {
+    const batch = assignment(tx);
+    const board = batch && boards.get(batch.batch_id);
+    const sales = Number.isFinite(tx.amount) && tx.unit_price > 0 ? tx.amount : null;
+    const cost = board && board.amountMode !== 'pending' && board.receivedQty > 0
+      && Number.isFinite(board.amount) && board.amount >= 0 && batch.consumed_quantity > 0 && batch.quantity > 0
+      ? roundDecimal(board.amount * batch.consumed_quantity / board.receivedQty * tx.quantity / batch.quantity, 2) : null;
+    const profit = sales === null || cost === null ? null : roundDecimal(sales - cost, 2);
+    const subtotal = customers[tx.customer_id] ||= empty();
+    for (const total of [summary, subtotal]) {
+      if (profit === null) total.pending++;
+      else { total.confirmed++; total.cents += Math.round(profit * 100); }
+    }
+    if (customer && index >= offset && index < offset + pageSize) {
+      items.push({ id: tx.id, name: tx.product_name, specification: tx.specification, quantity: tx.quantity, unit: tx.unit,
+        created_at: tx.created_at, sales, cost, profit, batch_id: batch?.id ?? null,
+        candidates: candidates(tx).map(value => ({ id: value.id, quantity: value.quantity, created_at: value.created_at })) });
+    }
+  });
+  return { summary, customers, items, total: rows.length, pageSize };
+}
+
 function listTx(f={}) {
   let l = cache.transactions.filter(t => f.include_voided === 'true' || !t.voided_at);
   if (f.type) l = l.filter(t => t.type===f.type);
@@ -1838,6 +1905,7 @@ function updateTransaction(id, d = {}) {
     else if (!sameProduct) tx.material = product.material ?? '';
     if (!sameProduct) for (const name of ['corrugation', 'weight', 'length', 'width', 'layers']) tx[name] = product[name];
     tx[partyField] = party?.id || null;
+    if (tx.profit_batch && tx.profit_batch.signature !== profitSignature(tx)) delete tx.profit_batch;
     tx[incoming ? 'supplier_name' : 'customer_name'] = party?.name || '';
     if (d.remark !== undefined) tx.remark = String(d.remark || '');
     if (d.operator !== undefined) tx.operator = String(d.operator || '');
@@ -2474,7 +2542,7 @@ function deleteBoard(id) { return atomicMutation(() => { const batch = cache.boa
 function listBusinessSpecifications() { return require('./business-workflow').specifications(cache); }
 function listProduction() { return (cache.production_records || []).slice().reverse(); }
 function completeProduction(raw, operator) { return atomicMutation(() => { const record = require('./business-workflow').complete(cache, raw, operator, stockIn, addProduct); persist(); return record; }); }
-module.exports = { listBusinessSpecifications, listProduction, completeProduction, listAttendance, addAttendance, updateAttendance, deleteAttendance, listPrintNotes, savePrintNote, deletePrintNote, temporaryPrintNote, shipPrintNote, getCustomerDimensions, updateCustomerDimensions, listBoards, receiveBoard, receiveBoards, moveBoard, updateBoard, deleteBoard, listProducts, getProduct, addProduct, updateProduct, deleteProduct,
+module.exports = { customerProfit, setShipmentProfitBatch, listBusinessSpecifications, listProduction, completeProduction, listAttendance, addAttendance, updateAttendance, deleteAttendance, listPrintNotes, savePrintNote, deletePrintNote, temporaryPrintNote, shipPrintNote, getCustomerDimensions, updateCustomerDimensions, listBoards, receiveBoard, receiveBoards, moveBoard, updateBoard, deleteBoard, listProducts, getProduct, addProduct, updateProduct, deleteProduct,
   getLedgerAttachments, addLedgerAttachment, readLedgerAttachment, listCustomerAttachments, addCustomerAttachment, readCustomerAttachment, prepareLedgerAttachment: ledgerAttachments.prepare, prepareCustomerAttachment, validateBackup,
   listCustomers, listCartonInboundCustomers, getCustomer, listInactiveCustomerNames, addCustomer, updateCustomer, saveCustomerSpecs, deleteCustomer,
   listSuppliers, getSupplier, addSupplier, updateSupplier, deleteSupplier,

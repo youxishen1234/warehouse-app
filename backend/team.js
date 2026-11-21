@@ -341,6 +341,17 @@ function install(db, options = {}) {
   });
   route('get', '/business-specifications', (req, res) => ok(res, db.listBusinessSpecifications()));
   route('get', '/production', (req, res) => ok(res, db.listProduction()));
+  route('get', '/customer-profit', (req, res) => ok(res, db.customerProfit(req.query)));
+  route('put', '/transactions/:id/profit-batch', (req, res) => {
+    if (req.user.role === 'viewer') throw error('只读账号不能确认成本', 403);
+    if (!IDENTITY_KEY_PATTERN.test(String(req.get('Idempotency-Key') || ''))) throw error('缺少有效的提交编号');
+    const batch = req.body?.batch_id;
+    if (batch !== null && (typeof batch !== 'string' || !batch)) throw error('请选择完工批次');
+    const operation = `PUT /transactions/${req.params.id}/profit-batch`;
+    const result = db.transact(req.user, req.get('Idempotency-Key'), digest(operation + JSON.stringify(req.body)), req.get('If-Match'), operation,
+      () => db.setShipmentProfitBatch(Number(req.params.id), batch));
+    res.set('X-Warehouse-Revision', String(result.revision)); ok(res, result.data);
+  });
   route('post', '/production', (req, res) => {
     if (req.user.role === 'viewer') throw error('只读账号不能提交生产', 403);
     if (!IDENTITY_KEY_PATTERN.test(String(req.get('Idempotency-Key') || ''))) throw error('缺少有效的提交编号');

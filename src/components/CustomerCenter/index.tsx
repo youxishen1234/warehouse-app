@@ -5,6 +5,8 @@ import type { Customer } from '@/types';
 import type { DimensionCustomer } from '@/services/customer-dimensions';
 import { session } from '@/services/session';
 import QuoteEditor from './QuoteEditor';
+import ShipmentProfit, { ProfitPeriod, ProfitSummary, useCustomerProfit } from './ShipmentProfit';
+import { formatMoney } from '@/utils/format';
 import {
   buildCustomerManagementRows, customerBalanceLabel, formatCustomerUnitPrice, MAX_VISIBLE_CUSTOMER_SPECS, specificationSearchText
 } from './model';
@@ -64,8 +66,15 @@ export default function CustomerCenter({
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editingSpec, setEditingSpec] = useState<{ customer: Customer; seed?: CustomerSpecView } | null>(null);
   const [selectedKey, setSelectedKey] = useState('');
-  const [detailTab, setDetailTab] = useState<'goods' | 'info'>('goods');
+  const [detailTab, setDetailTab] = useState<'goods' | 'info' | 'profit'>('goods');
   const [expandedSpecs, setExpandedSpecs] = useState(false);
+  const [month] = useState(() => {
+    const china = new Date(Date.now() + 8 * 3600000);
+    return Date.UTC(china.getUTCFullYear(), china.getUTCMonth(), 1) - 8 * 3600000;
+  });
+  const [profitFrom, setProfitFrom] = useState(month);
+  const profit = useCustomerProfit(profitFrom);
+  const period = <ProfitPeriod from={profitFrom} month={month} onChange={setProfitFrom} />;
   const [recentIds] = useState<number[]>(() => {
     const saved = Taro.getStorageSync('party-search-recent-customer');
     return Array.isArray(saved) ? saved : [];
@@ -94,10 +103,10 @@ export default function CustomerCenter({
     <Button className={styles.detailBack} onClick={() => setSelectedKey('')}>‹ 全部客户</Button>
     <View className={styles.detailHero}><View><strong>{selected.name}</strong><Button data-testid={selected.account ? `customer-edit-${selected.account.id}` : `customer-create-from-dimension-${selected.key}`} onClick={() => onEditParty('customer', selected.account?.id, selected.name)}>{selected.account ? '编辑资料' : '建立客户资料'}</Button></View>
       <Text>{[selected.account?.contact, selected.account?.phone].filter(Boolean).join(' · ')}</Text><Text>当前待收款</Text><strong>{formatCustomerUnitPrice(Number(selected.account?.debt || 0))}</strong></View>
-    <View className={styles.detailTabs}><Button aria-pressed={detailTab === 'goods'} onClick={() => setDetailTab('goods')}>常用货物</Button><Button onClick={() => selected.account ? onViewBills(selected.account.id) : onEditParty('customer', undefined, selected.name)}>往来账单</Button><Button aria-pressed={detailTab === 'info'} onClick={() => setDetailTab('info')}>客户资料</Button></View>
+    <View className={styles.detailTabs}><Button aria-pressed={detailTab === 'goods'} onClick={() => setDetailTab('goods')}>常用货物</Button><Button onClick={() => selected.account ? onViewBills(selected.account.id) : onEditParty('customer', undefined, selected.name)}>往来账单</Button>{selected.account && <Button aria-pressed={detailTab === 'profit'} onClick={() => setDetailTab('profit')}>利润</Button>}<Button aria-pressed={detailTab === 'info'} onClick={() => setDetailTab('info')}>客户资料</Button></View>
     {detailTab === 'goods' ? <CustomerSpecs customer={selected.account ? String(selected.account.id) : selected.key} specs={selected.specs} expanded={expandedSpecs} onToggle={() => setExpandedSpecs(value => !value)}
       editable={canEditSpecs && Boolean(selected.account)} onAdd={() => selected.account && setEditingSpec({ customer: selected.account })}
-      onEdit={spec => selected.account && setEditingSpec({ customer: selected.account, seed: spec })} onOrder={spec => onOpenOrders(selected.account?.id, spec.quoteId || spec.key)} /> : <View className={styles.detailInfo}>
+      onEdit={spec => selected.account && setEditingSpec({ customer: selected.account, seed: spec })} onOrder={spec => onOpenOrders(selected.account?.id, spec.quoteId || spec.key)} /> : detailTab === 'profit' && selected.account ? <>{period}<ShipmentProfit key={`${selected.account.id}:${profitFrom}`} customerId={selected.account.id} from={profitFrom} canEdit={canEditSpecs} onSaved={profit.reload} /></> : <View className={styles.detailInfo}>
       {([['客户名称', selected.name], ['联系人', selected.account?.contact], ['联系电话', selected.account?.phone], ['地址', selected.account?.address], ['备注', selected.account?.remark]]).map(([label, value]) => <View key={label}><Text>{label}</Text><Text>{value || '—'}</Text></View>)}
     </View>}
     <View className={styles.detailActions}><Button className={styles.secondaryAction} disabled={!selected.account} onClick={() => selected.account && onViewBills(selected.account.id)}>登记收款</Button><Button className={styles.primaryAction} data-testid='customer-center-orders' onClick={() => onOpenOrders(selected.account?.id)}>＋ 给客户开单</Button></View>
@@ -105,6 +114,10 @@ export default function CustomerCenter({
   </View>;
 
   return <View className={styles.customerCenter} data-testid='customer-center'>
+    {period}
+    {profit.loading ? <p role='status'>正在读取总利润…</p> : profit.loadError
+      ? <Button onClick={() => void profit.reload()}>总利润读取失败，点击重试</Button>
+      : <ProfitSummary label='全部客户总利润' totals={profit.data.summary} />}
     <View className={styles.summary}><View className={styles.summaryItem}><Text>全部客户</Text><strong>{rows.length}</strong></View><View className={styles.summaryItem}><Text>待收款客户</Text><strong>{rows.filter(row => Number(row.account?.debt || 0) > 0).length}</strong></View><View className={styles.summaryItem}><Text>待收合计</Text><strong>{formatCustomerUnitPrice(rows.reduce((sum, row) => sum + Number(row.account?.debt || 0), 0))}</strong></View></View>
     <Input
       className={styles.search}
@@ -128,9 +141,11 @@ export default function CustomerCenter({
     </View>
     <View className={styles.list} aria-live='polite'>
       {visibleRows.map(row => {
+        const subtotal = profit.ready && row.account ? profit.data.customers[row.account.id] : undefined;
         return <Button className={styles.listCard} key={row.key} data-testid={row.account ? `customer-management-card-${row.account.id}` : `customer-specs-only-${row.key}`} onClick={() => { setSelectedKey(row.key); setDetailTab('goods'); setExpandedSpecs(false); }}>
           <View className={styles.listCardTop}><View className={styles.partyAvatar}>{Array.from(row.name)[0]}</View><View className={styles.listCardIdentity}><strong>{row.name}</strong><Text>{[row.account?.contact, row.account?.phone].filter(Boolean).join(' · ')}</Text></View><Text className={styles.listChevron}>›</Text></View>
           <View className={styles.listCardFoot}><Text>常用货物 {row.specs.length} 种</Text><Text>{customerBalanceLabel(row.account)}</Text></View>
+          {subtotal && <View className={styles.listCardFoot}><Text>利润 {subtotal.confirmed ? formatMoney(subtotal.cents / 100) : '—'}</Text>{subtotal.pending > 0 && <Text>{subtotal.pending} 笔待确认</Text>}</View>}
         </Button>;
       })}
       {!visibleRows.length && <View className={styles.empty} data-testid='customer-center-empty'>

@@ -125,5 +125,22 @@ test('business workbench shares dimensions and completes production atomically',
       assert.equal(db.getSupplier(supplier.id).payable, 100);
       db.deleteBoard(b.id); assert.equal(db.getSupplier(supplier.id).payable, 0);
     });
+    await t.test('customer profit API confirms real shipments without double-allocating a batch', async () => {
+      const customer = db.addCustomer({ name: '利润测试客户' });
+      const product = db.getProduct(record.product_id);
+      db.stockIn(product.id, 2, 'test', '', null, { unit: product.unit });
+      const ship = qty => db.stockOut(product.id, qty, 'test', '', customer.id, { unit: product.unit, unit_price: 5 }).transaction;
+      const first = ship(6);
+      const second = ship(4);
+      const url = `/transactions/${first.id}/profit-batch`;
+      assert.equal((await call(url, 'PUT', { batch_id: record.id }, 'profit-confirm-00001')).status, 200);
+      assert.equal((await call(url, 'PUT', { batch_id: record.id }, 'profit-confirm-00001', 0)).status, 200);
+      assert.equal((await call(`/transactions/${second.id}/profit-batch`, 'PUT', { batch_id: record.id })).status, 400);
+      const report = await call(`/customer-profit?customer_id=${customer.id}`);
+      assert.equal(report.status, 200);
+      assert.deepEqual(report.data.summary, { cents: 1680, confirmed: 1, pending: 1 });
+      assert.equal(report.data.items.find(item => item.id === first.id).cost, 13.2);
+      assert.equal(JSON.parse(fs.readFileSync(process.env.WAREHOUSE_DATA_FILE, 'utf8')).transactions.find(tx => tx.id === first.id).profit_batch.id, record.id);
+    });
   } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); fs.rmSync(dir, { recursive: true, force: true }); }
 });
