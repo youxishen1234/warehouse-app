@@ -25,7 +25,10 @@ export function buildSpecificationOptions(customers: Customer[], products: Produ
   const options: SpecificationOption[] = [];
   for (const customer of active) {
     for (const spec of customer.specs || []) {
-      if (spec.kind === '纸板' || text(spec.unit || '个') !== '个' || !text(spec.specification)) continue;
+      // Existing cartons may still have a name and price before their size is filled in.
+      // Keep partial customer records selectable; fully blank rows remain filtered out.
+      if (spec.kind === '纸板' || text(spec.unit || '个') !== '个'
+        || (!text(spec.goods) && !text(spec.specification))) continue;
       options.push({ id: `customer:${customer.id}:${spec.id}`, source: 'customer', customer_id: customer.id, customer_name: customer.name, product_id: null,
         name: text(spec.goods), specification: normalizeSpecification(spec.specification), material: text(spec.material), price: priceText(spec.price), unit: '个' });
     }

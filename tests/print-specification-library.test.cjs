@@ -72,9 +72,9 @@ test('collects legacy customer specs, customer dimensions, and inventory product
   assert.equal(inventory.price, '2.345678');
 });
 
-test('excludes deleted accounts and products, non-piece units, and empty specifications', () => {
+test('excludes deleted accounts and products, non-piece units, and completely blank specifications', () => {
   const options = buildSpecificationOptions([
-    customer({ specs: [customerSpec(), customerSpec({ id: 'sheets', unit: '张' }), customerSpec({ id: 'empty', specification: '  ' })] }),
+    customer({ specs: [customerSpec(), customerSpec({ id: 'sheets', unit: '张' }), customerSpec({ id: 'empty', goods: ' ', specification: '  ' })] }),
     customer({ id: 2, name: '已删除客户', deleted_at: 100 })
   ], [
     product(), product({ id: 12, deleted_at: 100 }), product({ id: 13, unit: '件' }),
@@ -85,6 +85,21 @@ test('excludes deleted accounts and products, non-piece units, and empty specifi
   ]);
   assert.deepEqual(options.map(entry => entry.id).sort(), ['customer:1:box', 'dimension:dimension-customer:dimension-box', 'product:11']);
   assert.ok(options.every(entry => entry.unit === '个'));
+});
+
+test('keeps named customer cartons whose dimensions are not filled yet', () => {
+  const noDimensions = customerSpec({ id: 'no-dimensions', goods: '6坛红', specification: '  ', material: '', price: 12.5 });
+  const options = buildSpecificationOptions([customer({ specs: [noDimensions] })], []);
+  assert.equal(options.length, 1);
+  assert.equal(options[0].id, 'customer:1:no-dimensions');
+  assert.equal(options[0].name, '6坛红');
+  assert.equal(options[0].specification, '');
+  assert.equal(options[0].price, '12.5');
+  const result = addSpecificationOptions([], options, blankItem);
+  assert.equal(result.added, 1);
+  assert.equal(result.items[0].name, '6坛红');
+  assert.equal(result.items[0].specification, '');
+  assert.equal(result.items[0].price, '12.5');
 });
 
 test('keeps zero and full available price precision, and leaves missing prices blank', () => {

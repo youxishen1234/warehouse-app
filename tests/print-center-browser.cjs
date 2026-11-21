@@ -17,7 +17,10 @@ async function main() {
   const pair = require('../backend/remote-print').createStore(process.env.WAREHOUSE_REMOTE_PRINT_FILE).register('店里电脑','EPSON LQ-630K ESC/P2', { autoConnect: true });
   require('../backend/remote-print').createStore(process.env.WAREHOUSE_REMOTE_PRINT_FILE).claim(pair.agent,true);
   const customer = db.addCustomer({ name: '华兴包装（演示）', contact: '王先生', phone: '13800000000', address: '河北省沧州市东光县工业园', specs: [{ id: 'spec-demo', goods: '五层瓦楞纸箱', specification: '30x20*15mm', material: '五层', unit: '箱', price: 3.5 }] });
-  db.updateCustomer(customer.id, { specs: [{ id: 'spec-demo', goods: '五层瓦楞纸箱', specification: '30x20*15mm', unit: '个', price: 3.5 }] });
+  db.updateCustomer(customer.id, { specs: [
+    { id: 'spec-demo', goods: '五层瓦楞纸箱', specification: '30x20*15mm', unit: '个', price: 3.5 },
+    { id: 'spec-no-dimensions', goods: '尺寸未填纸箱', specification: '', material: '客户常用', unit: '个', price: 2.25 },
+  ] });
   const product = db.addProduct({ name: '五层瓦楞纸箱', specification: '30×20×15', unit: '个', stock: 1000, price: 3.5 });
   db.addCustomer({ name: '宏远纸业（演示）', contact: '李女士', phone: '13900000000', address: '东光县开发区' });
   const server = app.listen(0, '127.0.0.1');
@@ -119,6 +122,13 @@ async function main() {
     await expect(page.getByLabel('收货人', { exact: true })).toHaveValue(customer.contact);
     await page.getByLabel('选择客户常用规格').selectOption('spec-demo');
     await expect(page.getByLabel('第1项规格尺寸')).toHaveValue('30×20×15');
+    await expect(page.getByLabel('选择客户常用规格').locator('option[value="spec-no-dimensions"]')).toHaveText('尺寸未填纸箱 · 尺寸未填');
+    await page.getByLabel('选择客户常用规格').selectOption('spec-no-dimensions');
+    await expect(page.getByLabel('第2项产品名称')).toHaveValue('尺寸未填纸箱');
+    await expect(page.getByLabel('第2项规格尺寸')).toHaveValue('');
+    await expect(page.getByLabel('第2项单价')).toHaveValue('2.25');
+    await page.getByRole('button', { name: '删除第2项', exact: true }).click();
+    await expect(page.getByLabel('第2项产品名称')).toHaveCount(0);
     await page.getByLabel('第1项规格尺寸').fill('30x20*15');
     await expect(page.getByLabel('第1项规格尺寸')).toHaveValue('30×20×15');
     await expect(page.getByLabel('第1项规格尺寸')).toBeFocused();
